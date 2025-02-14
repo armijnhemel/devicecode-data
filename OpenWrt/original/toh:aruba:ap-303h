@@ -1,0 +1,676 @@
+====== Aruba AP-303H ======
+
+The Aruba AP-303H is a Qualcomm based dual-radio 802.11ac Wave 2 2x2:2 hospitality and branch AP with internal antennas, three local Gigabit Ethernet ports, PoE out and USB host interface. Supports wall-box and desk mount deployments.The Aruba Instant On AP11D is a much cheaper version of this device and is based on the same platform, the OpenWrt firmware for Aruba AP-303H can also be flashed onto the Aruba Instant On AP11D.
+
+
+/*****/
+/* How to add images ========> http://openwrt.org/meta/adding_images_to_openwrt_wiki */
+/*****/
+
+{{:media:aruba:ap303h.jpg?400|}}
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^Aruba$", "model": "^AP-303H$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^Aruba$", "model": "^AP-303H$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Aruba$", "model": "^AP-303H$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+  - Get the OpenWrt initramfs image. Rename it to ''ipq40xx.ari'' and put it into the TFTP server root directory.
+  - Configure the TFTP server to be reachable at 192.168.1.75/24.
+  - Connect the machine running the TFTP server to the **E0** (!) ethernet port of the access point, as it only tries to pull from the WAN port.
+  - Connect to the serial console. Interrupt autobooting by pressing Enter when prompted. (For information on the serial pinout see [[:toh:aruba:ap-303#serial|Aruba AP 303 serial]])
+  - Configure the bootargs and bootcmd for OpenWrt\\ <code>
+$ setenv bootargs_openwrt "setenv bootargs console=ttyMSM0,9600n8"
+$ setenv nandboot_openwrt "run bootargs_openwrt; ubi part aos1; ubi read 0x85000000 kernel; set fdt_high 0x87000000; bootm 0x85000000"
+$ setenv ramboot_openwrt "run bootargs_openwrt; setenv ipaddr 192.168.1.105; setenv serverip 192.168.1.75; netget; set fdt_high 0x87000000; bootm"
+$ setenv bootcmd "run nandboot_openwrt"
+$ saveenv
+</code>
+  - Load OpenWrt into RAM:<code>$ run ramboot_openwrt</code>
+  - After OpenWrt booted, transfer the OpenWrt sysupgrade image to the ''/tmp'' folder on the device. You will need to plug into **E1-E3** ports of the access point to reach OpenWrt, as E0 is the WAN port of the device.
+  - Flash OpenWrt:\\ <code>
+$ ubidetach -p /dev/mtd16
+$ ubiformat /dev/mtd16
+$ sysupgrade -n /tmp/openwrt-sysupgrade.bin
+</code>
+
+
+===== Back to stock =====
+
+To go back to the stock firmware, simply reset the bootcmd in the
+bootloader to the original value:
+
+  $ setenv bootcmd "boot"
+  $ saveenv
+
+===== Configuration ====
+
+==== LAN switch ====
+
+The device has four switch ports. E0/PT you can use on the back of the device or below of the device
+
+^ Port             ^ Switch Port   ^
+| E0/PT (PoE-in)    | lan0          |
+| E1                | lan1          |
+| E2                | lan2          |
+| E3    (PoE-out)   | lan3          |
+
+Note that for bridged AP configuration use 'wan' not 'lan0'
+
+  $ uci add_list network.@device[0].ports='wan'
+
+==== PoE Passthrough ====
+
+The magic numbers changed during the 6.1 -> 6.6 kernel update.
+
+=== OpenWrt 23.05.3 stable and earlier ===
+
+We need to deactivate GPIO 446 (low) for PoE Passthrough.
+<code>
+echo "446" > /sys/class/gpio/export
+echo "out" > /sys/class/gpio/gpio446/direction
+echo "0" > /sys/class/gpio/gpio446/value 
+</code>
+
+We can configure this permanently in /etc/config/system (activating at boot):
+<code>
+config gpio_switch 'poe_passthrough'
+	option name 'PoE Passthrough'
+	option gpio_pin '446'
+	option value '0'
+</code>
+
+It you want to make a checkbox to enable/disable the PoE Passthrough in LuCi, System/System. Add the lines below in /www/luci-static/resources/view/system/system.js 
+<code>
+if(uci.get('system','poe_passthrough')) {
+                        o = s.taboption('general', form.Flag, 'value', _('Enable PoE Passthrough E3'));
+                        o.ucisection = 'poe_passthrough';
+                        o.enabled = '0';
+                        o.disabled = '1';
+                        o.forcewrite = true;
+                }
+</code>
+
+
+
+=== OpenWrt Snapshots with 6.6 kernel ===
+
+We need to deactivate GPIO **546** (low) for PoE Passthrough.
+<code>
+echo "546" > /sys/class/gpio/export
+echo "out" > /sys/class/gpio/gpio546/direction
+echo "0" > /sys/class/gpio/gpio546/value 
+</code>
+
+We can configure this permanently in /etc/config/system (activating at boot):
+<code>
+config gpio_switch 'poe_passthrough'
+	option name 'PoE Passthrough'
+	option gpio_pin '546'
+	option value '0'
+</code>
+
+It you want to make a checkbox to enable/disable the PoE Passthrough in LuCi, System/System. Add the lines below in /www/luci-static/resources/view/system/system.js 
+<code>
+if(uci.get('system','poe_passthrough')) {
+                        o = s.taboption('general', form.Flag, 'value', _('Enable PoE Passthrough E3'));
+                        o.ucisection = 'poe_passthrough';
+                        o.enabled = '0';
+                        o.disabled = '1';
+                        o.forcewrite = true;
+                }
+</code>
+
+
+===== Flash Layout =====
+
+<code>
+root@Aruba-303H:~# cat /proc/mtd 
+dev:    size   erasesize  name
+mtd0: 00040000 00010000 "sbl1"
+mtd1: 00020000 00010000 "mibib"
+mtd2: 00060000 00010000 "qsee"
+mtd3: 00010000 00010000 "cdt"
+mtd4: 00010000 00010000 "ddrparams"
+mtd5: 00010000 00010000 "appsblenv"
+mtd6: 00100000 00010000 "appsbl"
+mtd7: 00010000 00010000 "ART"
+mtd8: 00170000 00010000 "osss"
+mtd9: 00010000 00010000 "pds"
+mtd10: 00010000 00010000 "apcd"
+mtd11: 00010000 00010000 "mfginfo"
+mtd12: 00010000 00010000 "fcache"
+mtd13: 00010000 00010000 "u-boot-env-bak"
+mtd14: 00040000 00010000 "u-boot-env"
+mtd15: 02000000 00020000 "aos0"
+mtd16: 02000000 00020000 "ubi"
+mtd17: 04000000 00020000 "aruba-ubifs"
+</code>
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Aruba$", "model": "^AP-303H$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+{{:media:aruba:303h-series-product-specs.jpg?400|}}
+
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+To open the case, peel off the 4 white rubber feet and remove the torx T8 screws. There are no clips and the case separates easily.
+
+When reassembling, be careful not to pinch the two antenna wires.
+
+{{:media:aruba:aruba_303h_case_open.jpg?500|}}
+{{:media:aruba:aruba_303h_power_bottom.jpg?500|}}
+{{:media:aruba:aruba_303h_power_top.jpg?500|}}
+{{:media:aruba:aruba_303h_main_pcb_top.jpg?500|}}
+{{:media:aruba:aruba_303h_serial_console.jpg?500|}}
+{{:media:aruba:aruba_303h_serial_console_zoom.png?500|}}
+==== Serial Console ====
+The 5-pin Micro-B connector located on the back of this device. Use an AP-CBL-SERU cable for direct
+management of this device when connected to a laptop or serial console. For pin-out details see below.
+
+{{:media:aruba:consolearuba303h.png?200|}}
+{{:media:aruba:ap-303h-console-cable.jpeg?800|}}
+
+^ Console connection parameters\\ for Aruba AP-303H  | 9600, 8N1 |
+
+The AP-303H is a little picky about drive strength on the console port. Some FTDI cables that work with e.g. a Raspberry Pi do not work with this device. In that case, you will be able to read boot messages on the console port, but you will not be able to interrupt APBoot by pressing Enter. An FTDI-style cable that can drive 3.3V @ 1 mA should work.
+
+When shopping for knock-off console cables, look for cables that specifically mention compatibility with Aruba APs.
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>
+APBoot 2.1.4.13 (build 59885)
+Built: 2017-05-31 at 12:00:36
+
+Model: AP-303H
+DRAM:  512 MiB
+Flash: Detected MX25L3205D: total 4 MiB
+NAND:  Detected MX35LFxGE4AB: total 128 MiB
+Power: 802.3at POE
+Net:   eth0
+Radio: ipq4029#0, ipq4029#1
+Reset: warm
+FIPS:  passed 
+
+Hit <Enter> to stop autoboot:  0 
+Booting OS partition 0
+Checking image @ 0x0
+Copying image from 0x84000000
+
+Image is signed; verifying checksum... passed
+SHA2 Signature available
+Signer Cert OK
+Policy Cert OK
+RSA signature verified using SHA2.
+Uncompressing Kernel Image ... OK
+[    0.000000] 
+[    0.000000] Aruba Networks
+[    0.000000] ArubaOS Version 8.9.0.1-8.9.0.1 (build 82154 / label #82154) 
+[    0.000000] Built by jenkins@pr-hpn-cd-build41 on 2021-11-08 at 18:31:36 PST (gcc version 4.6.3)
+[    0.000000] 
+[    0.000000] CPU: ARMv7 Processor [410fc075] revision 5 (ARMv7), cr=10c5387d
+[    0.015782] SMP: Total of 4 processors activated (384.00 BogoMIPS).
+[    0.051150] i2c-gpio driver registered
+[   18.701107] 3 ofpart partitions found on MTD device spi0.1
+[   18.754288] Creating 3 MTD partitions on "spi0.1":
+[   18.811587] 0x000000000000-0x000002000000 : "aos0"
+[   18.870491] 0x000002000000-0x000004000000 : "aos1"
+[   18.927690] 0x000004000000-0x000008000000 : "ubifs"
+[   18.991590] m25p80 spi0.0: found mx25l3205d, expected n25q128a11
+[   19.098638] Found AT97SC3203 on i2c_1.8
+[   19.142893] Key type dns_resolver registered
+[   19.183132] Registering SWP/SWPB emulation handler
+[   26.608466] There is no gpio reset info
+[   26.676790] 
+Starting Kernel SHA1 KAT ...
+[   26.711252] Completed Kernel SHA1 KAT 
+[   26.758276] Starting Kernel HMAC-SHA1 KAT ...
+[   26.808289] Starting Kernel DES KAT ...[   26.854138] Completed Kernel DES KAT 
+[   26.897735] Starting Kernel AES KAT ...
+[   26.941510] Completed Kernel AES KAT 
+[   26.941510] 
+[   27.005100] Starting Kernel AESGCM KAT ...
+[   27.051847] Completed Kernel AESGCM KAT 
+[   27.101118] Completed Kernel HMAC-SHA1 KAT 
+Thu Jan  1 00:00:00 PST 1970
+Populate AP type info
+Domain Name: SetMeUp.arubanetworks.com
+Current OEM Name : Aruba Networks
+Disabling ipv6 for devices by default
+AP-type has_ble_support: ONBOARD.
+IPv6 capability is supported for devices
+No panic info available
+Writing /dev/ttyMSM1 into /tmp/ble_port
+Enabling ble_daemon and ble_relay via nanny
+glenmorangie: Start hotplug
+Backup ENV.
+Installing glenmorangie ethernet driver
+[   46.663047] edma module_init
+[   47.534769] asap_switch: module license 'Proprietary' taints kernel.
+[   47.598368] Disabling lock debugging due to kernel taint
+Enter non-FIPS mode
+Cfg len is 6676
+uap controller less detected
+Mesh enabled
+dual uplink platform just by config
+Ethernet port 1 mode: active-standby
+Eth0 has been enslaved in bond0
+Starting watchdog process...
+Aruba watchdog daemon started [4 thread(s)]
+[   49.837863] eth0: GMAC Link is up with phy_speed=1000
+training packets starting...
+training packets on interface: 
+eth0 eth1 
+Index for interface eth0 is 3
+MAC address for interface eth0 is 20:4c:03:23:64:0c
+Index for interface eth1 is 5
+MAC address for interface eth1 is 20:4c:03:23:64:0d
+send training from interface eth0
+send training from interface eth1
+received Aruba Instant Training packet on eth0, sender eth0, status 0.
+subtype: 4, interface 3, sender-name: eth0, reserved: Aruba Instant Training
+training timeout
+Loading configuration file of length 6676...
+wifi uplink not present...
+Terminal access enabled...
+Valid SSID detected...
+touching file /tmp/ip_mode_0
+do ethtool autoneg on for eth0
+do ethtool autoneg on for eth1
+do ethtool autoneg on for eth2
+do ethtool autoneg on for eth3
+cp: /lib/nls_base.ko: No such file or directory
+cp: /lib/usbcore.ko: No such file or directory
+init usb modem ... 
+[   67.215796] SCSI subsystem initialized
+
+No USB Plugged in
+error in reading source file
+Ethernet uplink active. Becoming Mesh Portal
+Str Mesh Split5G Band Range: 
+Mesh Split5G Band Range: 0
+copying bootuplog ... 
+[   97.045245] uol_init_driver:429 HW offload not applicable, AP will use cutting through path!
+allow PAPI
+set device anul0 mtu to 2000
+notify asap_mod 3g no present...
+Starting update SBL1 ...
+SBL1 was updated already
+Done.
+apdot1x authentication is not enabled
+Starting DHCP
+Getting an IP address...
+Jan  1 00:01:11 udhcpc[6044]: udhcpc (v0.9.9-pre) started
+Jan  1 00:01:11 udhcpc[6044]: send_discover: pkt num 0, secs 0
+Jan  1 00:01:11 udhcpc[6044]: Sending discover...
+Jan  1 00:01:13 udhcpc[6044]: send_discover: pkt num 1, secs 512
+Jan  1 00:01:13 udhcpc[6044]: Sending discover...
+Jan  1 00:01:14 udhcpc[6044]: send_selecting: pkt num 0, secs 768
+Jan  1 00:01:14 udhcpc[6044]: Sending select for 192.168.199.3...
+Jan  1 00:01:14 udhcpc[6044]: Lease of 192.168.199.3 obtained, lease time 86400
+[  102.224594] ip_time_handler: Got ip and packets on bond0 Started conductor election 379-0, rand 33
+[  102.466800] (08:01:15) !!! Init ---> Member
+192.168.199.3 255.255.255.0 192.168.199.254
+Compressing all files in the /etc/httpd directory...
+Done.
+Starting Webserver
+bind: Transport endpoint is not connected
+bind: Transport endpoint is not connected
+bind: Transport endpoint is not connected
+NTP server 192.168.180.5 from configuration.
+Put ntpdate to the nannylist.
+AP rebooted caused by warm reset
+shutting down watchdog process (nanny will restart it)...
+ 
+	<<<<<       Welcome to the Access Point     >>>>>
+ 
+Completed SW FIPS KAT test
+Power supply mode is POE-AT:, USB Modem is not present.
+[  135.750581] Starting Kernel HMAC SHA1 FIPS KAT ...
+[  135.793376] Completed Kernel HMAC SHA1 FIPS KAT 
+User: [  137.752586] Starting Kernel HMAC SHA256 FIPS KAT ...
+[  137.797466] Completed Kernel HMAC SHA256 FIPS KAT 
+ble_ready NOT present @init ....
+[  139.760671] Starting Kernel HMAC SHA384 FIPS KAT ...
+[  139.805594] Completed Kernel HMAC SHA384 FIPS KAT 
+[  141.760587] Starting Kernel HMAC SHA512 FIPS KAT ...
+[  141.805462] Completed Kernel HMAC SHA512 FIPS KAT 
+
+User: 
+
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+APBoot 2.1.4.13 (build 59885)
+Built: 2017-05-31 at 12:00:36
+
+Model: AP-303H
+DRAM:  512 MiB
+Flash: Detected MX25L3205D: total 4 MiB
+NAND:  Detected MX35LFxGE4AB: total 128 MiB
+Power: 802.3at POE
+Net:   eth0
+Radio: ipq4029#0, ipq4029#1
+Reset: warm
+FIPS:  passed
+
+Hit <Enter> to stop autoboot:  0
+No size specified -> Using max size (2793472)
+Uncompressing Kernel Image ... OK
+ipq: fdt fixup unable to find compatible node
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 5.4.179 (builder@buildhost) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r16495-bf0c965af0)) #0 SMP Wed Feb 16 20:29:10 2022
+[    0.000000] CPU: ARMv7 Processor [410fc075] revision 5 (ARMv7), cr=10c5387d
+[    0.000000] CPU: div instructions available: patching division code
+[    0.000000] CPU: PIPT / VIPT nonaliasing data cache, VIPT aliasing instruction cache
+[    0.000000] OF: fdt: Machine model: Aruba AP-303H
+[    0.000000] Memory policy: Data cache writealloc
+[    0.000000] percpu: Embedded 15 pages/cpu s30156 r8192 d23092 u61440
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 129408
+[    0.000000] Kernel command line: console=ttyMSM0,9600n8
+[    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 508272K/522240K available (5791K kernel code, 189K rwdata, 876K rodata, 1024K init, 241K bss, 13968K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] NR_IRQS: 16, nr_irqs: 16, preallocated irqs: 16
+[    0.000000] random: get_random_bytes called from 0xc0a00bbc with crng_init=0
+[    0.000000] arch_timer: cp15 timer(s) running at 48.00MHz (virt).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0xb11fd3bfb, max_idle_ns: 440795203732 ns
+[    0.000007] sched_clock: 56 bits at 48MHz, resolution 20ns, wraps every 4398046511096ns
+[    0.000021] Switching to timer-based delay loop, resolution 20ns
+[    0.000259] Calibrating delay loop (skipped), value calculated using timer frequency.. 96.00 BogoMIPS (lpj=480000)
+[    0.000278] pid_max: default: 32768 minimum: 301
+[    0.000490] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.000508] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.001547] CPU: Testing write buffer coherency: ok
+[    0.002615] Setting up static identity map for 0x80300000 - 0x80300060
+[    0.002758] rcu: Hierarchical SRCU implementation.
+[    0.003219] smp: Bringing up secondary CPUs ...
+[    0.006420] smp: Brought up 1 node, 4 CPUs
+[    0.006440] SMP: Total of 4 processors activated (384.00 BogoMIPS).
+[    0.006448] CPU: All CPU(s) started in SVC mode.
+[    0.011436] VFP support v0.3: implementor 41 architecture 2 part 30 variant 7 rev 5
+[    0.011605] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.011632] futex hash table entries: 1024 (order: 4, 65536 bytes, linear)
+[    0.011851] pinctrl core: initialized pinctrl subsystem
+[    0.012898] NET: Registered protocol family 16
+[    0.013207] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.014463] cpuidle: using governor ladder
+[    0.014509] cpuidle: using governor menu
+[    0.019421] GPIO line 435 (USB-power) hogged as output/high
+[    0.034870] cryptd: max_cpu_qlen set to 1000
+[    0.038281] usbcore: registered new interface driver usbfs
+[    0.038349] usbcore: registered new interface driver hub
+[    0.038409] usbcore: registered new device driver usb
+[    0.038459] pps_core: LinuxPPS API ver. 1 registered
+[    0.038468] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.038494] PTP clock support registered
+[    0.040208] clocksource: Switched to clocksource arch_sys_counter
+[    0.041030] thermal_sys: Registered thermal governor 'step_wise'
+[    0.041338] NET: Registered protocol family 2
+[    0.041524] IP idents hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.042515] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
+[    0.042557] TCP established hash table entries: 4096 (order: 2, 16384 bytes, linear)
+[    0.042616] TCP bind hash table entries: 4096 (order: 3, 32768 bytes, linear)
+[    0.042703] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.042828] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.042866] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.043104] NET: Registered protocol family 1
+[    0.043149] PCI: CLS 0 bytes, default 64
+[    0.045136] workingset: timestamp_bits=14 max_order=17 bucket_order=3
+[    0.051106] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.051124] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.100934] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 248)
+[    0.104015] bam-dma-engine 8e04000.dma: num-channels unspecified in dt
+[    0.104037] bam-dma-engine 8e04000.dma: num-ees unspecified in dt
+[    0.105312] tcsr 1953000.ess_tcsr: setting ess interface select = 0
+[    0.105411] tcsr 1949000.tcsr: setting wifi_glb_cfg = 41000000
+[    0.105496] tcsr 194b000.tcsr: setting usb hs phy mode select = e700e7
+[    0.105588] tcsr 1957000.tcsr: setting wifi_noc_memtype_m0_m2 = 2222222
+[    0.105914] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.107800] msm_serial 78af000.serial: msm_serial: detected port #0
+[    0.107848] msm_serial 78af000.serial: uartclk = 1843200
+[    0.107914] 78af000.serial: ttyMSM0 at MMIO 0x78af000 (irq = 26, base_baud = 115200) is a MSM
+[    0.107948] msm_serial: console setup on port #0
+[    5.972650] printk: console [ttyMSM0] enabled
+[    6.029218] msm_serial 78b0000.serial: msm_serial: detected port #1
+[    6.079990] msm_serial 78b0000.serial: uartclk = 48000000
+[    6.152908] 78b0000.serial: ttyMSM1 at MMIO 0x78b0000 (irq = 27, base_baud = 3000000) is a MSM
+[    6.219800] msm_serial: driver initialized
+[    6.326761] loop: module loaded
+[    6.371642] spi_qup 78b5000.spi: IN:block:16, fifo:64, OUT:block:16, fifo:64
+[    6.408127] spi-nor spi0.0: mx25l3205d (4096 Kbytes)
+[    6.494628] 15 fixed-partitions partitions found on MTD device spi0.0
+[    6.553895] Creating 15 MTD partitions on "spi0.0":
+[    6.629951] 0x000000000000-0x000000040000 : "sbl1"
+[    6.687139] 0x000000040000-0x000000060000 : "mibib"
+[    6.745404] 0x000000060000-0x0000000c0000 : "qsee"
+[    6.802694] 0x0000000c0000-0x0000000d0000 : "cdt"
+[    6.861070] 0x0000000d0000-0x0000000e0000 : "ddrparams"
+[    6.918316] 0x0000000e0000-0x0000000f0000 : "appsblenv"
+[    6.978722] 0x0000000f0000-0x0000001f0000 : "appsbl"
+[    7.041220] 0x0000001f0000-0x000000200000 : "ART"
+[    7.103708] 0x000000200000-0x000000370000 : "osss"
+[    7.158910] 0x000000370000-0x000000380000 : "pds"
+[    7.215241] 0x000000380000-0x000000390000 : "apcd"
+[    7.272507] 0x000000390000-0x0000003a0000 : "mfginfo"
+[    7.328744] 0x0000003a0000-0x0000003b0000 : "fcache"
+[    7.390239] 0x0000003b0000-0x0000003c0000 : "u-boot-env-bak"
+[    7.450617] 0x0000003c0000-0x000000400000 : "u-boot-env"
+[    7.519086] spi-nand spi0.1: Macronix SPI NAND was found.
+[    7.581028] spi-nand spi0.1: 128 MiB, block size: 128 KiB, page size: 2048, OOB size: 64
+[    7.644914] 3 fixed-partitions partitions found on MTD device spi0.1
+[    7.742467] Creating 3 MTD partitions on "spi0.1":
+[    7.818485] 0x000000000000-0x000002000000 : "aos0"
+[    7.884024] random: fast init done
+[    8.021959] 0x000002000000-0x000004000000 : "ubi"
+[    8.123454] 0x000004000000-0x000008000000 : "aruba-ubifs"
+[    8.354402] ESS reset ok!
+[    8.378506] ESS reset ok!
+[    8.905115] i2c /dev entries driver
+[    8.905378] i2c_qup 78b7000.i2c: using default clock-frequency 100000
+[    8.934918] sdhci: Secure Digital Host Controller Interface driver
+[    9.011508] sdhci: Copyright(c) Pierre Ossman
+[    9.084352] sdhci-pltfm: SDHCI platform and OF driver helper
+[    9.141588] NET: Registered protocol family 10
+[    9.207717] Segment Routing with IPv6
+[    9.257441] NET: Registered protocol family 17
+[    9.302121] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    9.354145] 8021q: 802.1Q VLAN Support v1.8
+[    9.511484] Registering SWP/SWPB emulation handler
+[    9.569624] UBI: auto-attach mtd16
+[    9.616704] ubi0: attaching mtd16
+[   10.413126] crng init done
+[   10.508495] ubi0: scanning is finished
+[   10.548515] ubi0: attached mtd16 (name "ubi", size 32 MiB)
+[   10.548555] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[   10.605518] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[   10.687748] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[   10.770031] ubi0: good PEBs: 256, bad PEBs: 0, corrupted PEBs: 0
+[   10.851280] ubi0: user volume: 4, internal volumes: 1, max. volumes count: 128
+[   10.926296] ubi0: max/mean erase counter: 14/7, WL threshold: 4096, image sequence number: 1473885134
+[   11.010667] ubi0: available PEBs: 0, total reserved PEBs: 256, PEBs reserved for bad PEB handling: 20
+[   11.122175] ubi0: background thread "ubi_bgt0d" started, PID 104
+[   11.234671] block ubiblock0_1: created from ubi0:1(rootfs)
+[   11.305481] ubiblock: device ubiblock0_1 (rootfs) set to be root▒[   11.461988] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[   11.463615] Freeing unused kernel memory: 1024K
+[   11.550430] Run /sbin/init as init process
+[   12.511918] init: Console is alive
+[   12.512162] init: - watchdog -
+[   14.165660] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[   14.331379] dwc3-qcom 60f8800.usb2: IRQ hs_phy_irq not found
+[   14.331421] dwc3-qcom 60f8800.usb2: IRQ dp_hs_phy_irq not found
+[   14.387782] dwc3-qcom 60f8800.usb2: IRQ dm_hs_phy_irq not found
+[   14.455444] dwc3-qcom 60f8800.usb2: IRQ ss_phy_irq not found
+[   14.531368] dwc3 6000000.dwc3: Failed to get clk 'ref': -2
+[   14.698202] xhci-hcd xhci-hcd.0.auto: xHCI Host Controller
+[   14.698286] xhci-hcd xhci-hcd.0.auto: new USB bus registered, assigned bus number 1
+[   14.750633] xhci-hcd xhci-hcd.0.auto: hcc params 0x0220f665 hci version 0x100 quirks 0x0000000002010010
+[   14.841101] xhci-hcd xhci-hcd.0.auto: irq 96, io mem 0x06000000
+[   14.959139] hub 1-0:1.0: USB hub found
+[   15.024394] hub 1-0:1.0: 1 port detected
+[   15.070550] xhci-hcd xhci-hcd.0.auto: xHCI Host Controller
+[   15.119155] xhci-hcd xhci-hcd.0.auto: new USB bus registered, assigned bus number 2
+[   15.182670] xhci-hcd xhci-hcd.0.auto: Host supports USB 3.0 SuperSpeed
+[   15.280501] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[   15.353309] hub 2-0:1.0: USB hub found
+[   15.451519] hub 2-0:1.0: config failed, hub doesn't have any ports! (err -19)
+[   15.496341] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[   15.580626] usb 1-1: new full-speed USB device number 2 using xhci-hcd
+[   15.592528] init: - preinit -
+[   15.810326] usb 1-1: device descriptor read/64, error -71
+[   16.080580] usb 1-1: device descriptor read/64, error -71
+[   16.420261] usb 1-1: new full-speed USB device number 3 using xhci-hcd
+[   16.570364] usb 1-1: device descriptor read/64, error -71
+[   16.850350] usb 1-1: device descriptor read/64, error -71
+[   16.980477] usb usb1-port1: attempt power cycle
+[   17.446531] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   17.450335] usb 1-1: new full-speed USB device number 4 using xhci-hcd
+[   17.507378] usb 1-1: Device not responding to setup address.
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   17.801971] usb 1-1: Device not responding to setup address.
+[   18.021309] usb 1-1: device not accepting address 4, error -71
+[   18.171302] usb 1-1: new full-speed USB device number 5 using xhci-hcd
+[   18.172307] usb 1-1: Device not responding to setup address.
+[   18.451858] usb 1-1: Device not responding to setup address.
+[   18.671199] usb 1-1: device not accepting address 5, error -71
+[   18.673728] usb usb1-port1: unable to enumerate USB device
+[   20.754377] UBIFS (ubi0:2): default file-system created
+[   20.756794] UBIFS (ubi0:2): Mounting in unauthenticated mode
+[   20.802602] UBIFS (ubi0:2): background thread "ubifs_bgt0_2" started, PID 205
+[   21.059492] UBIFS (ubi0:2): UBIFS: mounted UBI device 0, volume 2, name "rootfs_data"
+[   21.059583] UBIFS (ubi0:2): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   21.140892] UBIFS (ubi0:2): FS size: 20189184 bytes (19 MiB, 159 LEBs), journal size 1015809 bytes (0 MiB, 8 LEBs)
+[   21.259590] UBIFS (ubi0:2): reserved for root: 953584 bytes (931 KiB)
+[   21.382508] UBIFS (ubi0:2): media format: w5/r0 (latest is w5/r0), UUID 674B7848-EB0D-4048-9552-CAF7D687CDE0, small LPT model
+[   21.465696] mount_root: overlay filesystem has not been fully initialized yet
+[   21.597256] mount_root: switching to ubifs overlay
+[   21.689735] urandom-seed: Seed file not found (/etc/urandom.seed)
+[   21.817811] procd: - early -
+[   21.818099] procd: - watchdog -
+[   22.435358] procd: - watchdog -
+[   23.429412] procd: - ubus -
+[   23.483157] procd: - init -
+Please press Enter to activate this console.
+[   24.017395] kmodloader: loading kernel modules from /etc/modules.d/*
+[   24.026134] Loading modules backported from Linux version v5.10.85-0-ge4f2aee6612e
+[   24.060074] urngd: v1.0.2 started.
+[   24.082129] Backport generated by backports.git v5.10.85-1-0-gf988973f
+[   24.222961] xt_time: kernel timezone is -0000
+[   24.325207] PPP generic driver version 2.4.2
+[   24.344233] NET: Registered protocol family 24
+[   25.883045] ath10k_ahb a000000.wifi: qca4019 hw1.0 target 0x01000000 chip_id 0x003900ff sub 0000:0000
+[   25.883093] ath10k_ahb a000000.wifi: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   25.985737] ath10k_ahb a000000.wifi: firmware ver 10.4b-ct-4019-fW-13-5ae337bb1 api 5 features mfp,peer-flow-ctrl,txstatus-noack,wmi-10.x-CT,ratemask-CT,regdump-CT,txrate-CT,flush-all-CT,pingpong-CT,ch-regs-CT,nop-CT,set-special-CT,tx-rc-CT,cust-stats-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT,wmi-bcn-rc-CT crc32 6b2b5c5b
+[   26.197493] ath10k_ahb a000000.wifi: board_file api 2 bmi_id 0:20 crc32 d2e9d359
+[   27.710487] ath10k_ahb a000000.wifi: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   27.710534] ath10k_ahb a000000.wifi: msdu-desc: 2500  skid: 32
+[   27.832347] ath10k_ahb a000000.wifi: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   27.856426] ath10k_ahb a000000.wifi: wmi print 'free: 53252 iram: 13432 sram: 35752'
+[   28.127395] ath10k_ahb a000000.wifi: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-file max-sta 32 raw 0 hwcrypto 1
+[   29.440387] ath10k_ahb a800000.wifi: qca4019 hw1.0 target 0x01000000 chip_id 0x003900ff sub 0000:0000
+[   29.440441] ath10k_ahb a800000.wifi: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   29.541814] ath10k_ahb a800000.wifi: firmware ver 10.4b-ct-4019-fW-13-5ae337bb1 api 5 features mfp,peer-flow-ctrl,txstatus-noack,wmi-10.x-CT,ratemask-CT,regdump-CT,txrate-CT,flush-all-CT,pingpong-CT,ch-regs-CT,nop-CT,set-special-CT,tx-rc-CT,cust-stats-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT,wmi-bcn-rc-CT crc32 6b2b5c5b
+[   29.754391] ath10k_ahb a800000.wifi: board_file api 2 bmi_id 0:21 crc32 d2e9d359
+[   31.267689] ath10k_ahb a800000.wifi: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   31.267737] ath10k_ahb a800000.wifi: msdu-desc: 2500  skid: 32
+[   31.387301] ath10k_ahb a800000.wifi: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   31.415209] ath10k_ahb a800000.wifi: wmi print 'free: 53252 iram: 13432 sram: 35752'
+[   31.679440] ath10k_ahb a800000.wifi: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-file max-sta 32 raw 0 hwcrypto 1
+[   31.845057] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   46.406155] br-lan: port 1(eth0) entered blocking state
+[   46.406212] br-lan: port 1(eth0) entered disabled state
+[   46.454781] device eth0 entered promiscuous mode
+[   46.632714] ess_edma c080000.edma eth1: Link is Down
+[   47.430963] br-lan: port 1(eth0) entered blocking state
+[   47.431247] br-lan: port 1(eth0) entered forwarding state
+[   47.479475] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   50.792798] ess_edma c080000.edma eth1: Link is Up - 1Gbps/Full - flow control rx/tx
+[   50.793576] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+
+
+
+BusyBox v1.33.2 (2022-02-16 20:29:10 UTC) built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt 21.02.2, r16495-bf0c965af0
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+----------------------
+
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * ...
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ipq40xx IPQ4029 128NAND 512RAM 1port GigabitEthernet 802.11abgnac 1USB USB2.0 bluetooth}}

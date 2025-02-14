@@ -1,0 +1,187 @@
+====== T-Com Speedport W921V ======
+Board: Arcadyan VGV953
+===== Photos =====
+
+{{media:t-com:speedport_w921v.jpg?200|}}
+
+Full PCB photo: [[https://www.onlinekosten.de/forum/showpost.php?p=2393404]]
+
+===== Hardware Info =====
+^ [[wp>Instruction set|Architecture]]   | [[wp>MIPS architecture|MIPS]]             |
+^ Vendor                                | [[wp>Lantiq]]                             |
+^ [[docs:techref:bootloader]]           | [[docs:techref:bootloader:uboot|U-Boot]]   |
+^ [[docs:techref:hardware:soc|System-On-Chip]]   | VR9 VRX 288 (MIPS 34K V5.5) |
+^ [[docs:techref:hardware:cpu|CPU]]/Speed        | 34K V5.5 500 MHz            |
+^ Flash-Chip      | [[https://www.dropbox.com/s/7dmijyi2iggl333/NAND256W3A.pdf?dl=0|NAND256W3A]] |
+^ Flash size      | 32 MiB NAND Flash |
+^ Ram-Chip        | [[https://www.winbond.com/resource-files/w971gg6jb_a10.pdf|W971GG6JB-25]] |
+^ RAM             | 128 MiB                                      |
+^ Wireless-2,4    | XWAY WAVE300 - PSB 8304 V V1.1               |
+^ Wireless-5      | XWAY WAVE300 - PSB 8301 V V1.1               |
+^ Dect            | COSIC Modem PMB 9643V V2.0                   |
+^ Modem           | XWAY VRX208 PSB 80190 V V1.1                 |
+^ Ethernet        | XWAY PEF 42068 F  [[docs:techref:swconfig]]  |
+^ Isdn            | PSB 21150 F V1.4                             |
+^ Internet        | ADSL/VDSL/FTTH                               |
+^ USB             | Yes 2 x 2.0                                  |
+^ [[docs:techref:hardware:port.serial|Serial]]    | Yes   |
+^ [[docs:techref:hardware:port.jtag|JTAG]]        | No    |
+
+===== Links and Information  =====
+
+[[https://github.com/openwrt-mirror/openwrt/pull/15/commits]] Original Git Hub push request OpenWrt
+
+[[https://github.com/cornelus1978/u-boot-lantiq/commit/87171de4d884cfff0b7b9403253f94892c9c9af3]] Original Git Hub push request u-boot
+
+[[https://github.com/openwrt/openwrt/pull/1477]] Current Git Hub push request OpenWrt
+
+[[https://forum.openwrt.org/t/telekom-speedport-w921v-arcardyan-vgv953-support/40058]] Forum Post Kernel Size
+
+[[https://www.dropbox.com/sh/093ixn7c2y00nxh/AADlhTb_C7DQZkMzQCV2UFD_a?dl=0]]Files for VGV953AKW22
+===== New instructions for VGV953AKW22 =====
+WIP!! Due to changes in Kernel partition size there is incompatibility with the previous version.
+u-boot		0x0		0x40000		256 KByte
+uboot-env	0x40000		0x20000		128 KByte
+kernel		0x60000		0x400000	4 MByte
+ubi		0x460000	0x1ba0000	27,625 MByte
+
+This Build is currently not compatible (or not tested) with the VGV953 builds. Fresh install is recommended.
+
+Serial console is required for conversion to OpenWrt, tftp server that allows uploads (for backup),
+
+All files from Dropbox can be put into root of the tftp (100 MBit! GBit transfer interrupted), Serial is ttyUSB0.
+
+Get UART console by shorting R133 solder pads (no resistor, next to the shield in the middle) and powering on the device.
+Your terminal must show "CFG 04" somewhere and "UART" in the last line. The R133 short can be removed now.
+
+Upload a special u-boot.asc RAM image using a serial cable (115200-N-8) GUI tools: terraterm (win) or cutecom (linux) use „Send File”.
+
+from another shell, use the latest file (19.07.0) with command: <code>cat u-boot.asc > /dev/ttyUSB0</code>
+
+When you see "VGV953AKW22" in Terminal, u-boot is loaded.  
+
+Backup can be done via tftp (limit the speed to 100M more stable).
+
+3(4) Commands are already configured in the image for backup, restore and u-boot update.
+
+<code>
+backup=nand read $loadaddr 0 0x2000000 tftpput $loadaddr 0x2000000 vgv953akw22.nand.dump
+restore=tftpboot vgv953akw22.nand.dump && nand write $loadaddr 0 0x2000000
+update-uboot=run load-uboot-nandtpl-lzo write-uboot-nand
+write-uboot-nand=nand erase 0 $filesize && nand write $fileaddr 0 $filesize
+</code>
+
+<code>
+VGV953AKW22 # run backup
+NAND read: device 0 whole chip
+...
+Bytes transferred = 33554432 (2000000 hex)
+</code>
+
+<code>
+VGV953AKW22 # run restore
+...
+Bytes transferred = 33554432 (2000000 hex)
+
+NAND write: device 0 whole chip
+ 33554432 bytes written: OK
+</code>
+
+<code>
+VGV953AKW22 # run update-uboot
+...
+Bytes transferred = 255871 (3e77f hex)
+
+NAND erase: device 0 offset 0x0, size 0x3e77f
+Erasing at 0x3c000 -- 100% complete.
+OK
+
+NAND write: device 0 offset 0x0, size 0x3e77f
+ 255871 bytes written: OK
+</code>
+
+after every update-uboot the device needs to be switched off (SPL: cannot start U-Boot)
+
+Incomplete from here, erase uboot-env necessary "nand erase 0x40000 0x1fa00"
+
+you should see now
+</code>ERROR: can't get kernel image!</code>
+
+MAC Address is on the PCB sticker and back of the case if not set change XX:XX:XX and set bootcmd
+setenv ethaddr 9C:80:DF:XX:XX:XX
+setenv bootcmd run nboot
+saveenv
+run netinit
+
+the last command will tftpboot vgv953akw22-initramfs-kernel.bin and start.
+from there you use the browser and open the WebIF or what way you prefer and perform Sysupgrade.
+===== Replacement of factory U-Boot =====
+Power off board.
+
+Short the (R133) and power on the router. 
+Add picture of location, there is no resistor, just pads, next to the shield in the middle.
+
+When CFG 04 UART Popups in terminal You can disconnect/revert R133 short to normal or You can wait till the end of process.
+
+<code>ROM VER: 1.0.5                                                                  
+CFG 04                                                                          
+EEPROM Data OK                                                                  
+UART</code>
+
+Upload a special ([[https://www.dropbox.com/s/gzp8aqzrc8nphs8/uboot-vgv953.asc?dl=0|uboot-vgv953.asc]]) U-Boot RAM image using a serial (baud 115200) cable via „Send File”(terraterm for win or cutecom for linux).
+
+Wait for U-Boot to load and stop auto-boot process.
+
+Then:
+
+Step 1: Type in console
+<code>
+nand erase.chip
+</code>
+Step 2: Set Your IP addres to "192.168.1.2" and start tftp server
+
+Step 3: Place [[https://www.dropbox.com/s/ostgjkgsw7tv03n/uboot-vgv953.bin?dl=0|uboot-vgv953.bin]] in tftp folder
+
+Step 4: Type in console
+<code>
+tftp uboot-vgv953.bin
+</code>
+Step 5: Type in console
+<code>
+nand write 81000000 0 0x{filesize in hex}
+</code>
+Step 6: Reset board
+
+===== Installing OpenWrt =====
+
+Step 1: Stop U-boot auto boot process and modify to auto boot OpenWrt at power on
+	setenv nboot 'nand read 0x80800000 0x60000 0x200000; bootm 0x80800000'
+	setenv bootcmd 'run nboot'
+	saveenv
+
+Step 2: Erase NAND 
+	nand erase 0x60000 0x1fa0000
+
+Step 3: Set Your IP addres to "192.168.1.2" and start tftp server
+
+Step 4: Place [[https://www.dropbox.com/s/zhzk6wun6vpnv7h/openwrt-lantiq-xrx200-VGV953-uImage-initramfs?dl=0|openwrt-lantiq-xrx200-VGV953-ramfs]] image in tftp folder
+
+Step 5: Upload initramfs image
+	tftp openwrt-lantiq-xrx200-VGV953-ramfs
+
+Step 6: Run initramfs image and wait till fully booted
+	bootm
+
+Step 7: Wait until boot complet, then upgrade via web with this [[https://www.dropbox.com/s/pwgidon13ayweht/openwrt-lantiq-xrx200-VGV953-ubifs-sysupgrade.tar?dl=0|openwrt-lantiq-xrx200-VGV953-ubifs-sysupgrade]]
+
+Hint: Ram Image or uncompressed Kernel should be smaller than 4.2 MB or boot will fail with "Uncompressing Kernel Image ... LZMA: uncompress or overwrite error 7 - must RESET" u-boot limitation
+post links to 18.06.0 initramfs and sysupgrade, [[https://github.com/Wingman2k/openwrt/tree/Wingman2k-VGV953|Git for master]]
+UBIFS recovery on boot message keeps me from pushing it to openwrt currently 18.06.0 files will follow
+===== Problems =====
+
+There are some problems with device.
+	wifi not working (no drivers for lantiq wave)
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>lantiq VR9 VRX288 32NAND 128RAM unsupported}}

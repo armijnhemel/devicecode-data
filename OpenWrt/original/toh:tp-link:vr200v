@@ -1,0 +1,1815 @@
+====== TP-Link Archer VR200 / VR200v ======
+Dual band AC750 VDSL2 Modem Router with telephony capabilities, ''[[docs:techref:hardware:soc:soc.lantiq|Lantiq]]''-target
+
+This router bears similarities with [[toh:tp-link:td-w8970_v1|TP-Link TD-W8970]].
+
+The router is targeted towards German market, but could easily be used in rest of Europe as well.
+
+The current TP-Link firmware is based on OpenWrt Backfire 10.03.1_LTQ. See ongoing research on the [[https://github.com/xdarklight/mktplinkfw3/blob/master/README.md|v3 header]].
+
+Flashing using u-boot serial console to upload image through tftp works.
+
+The VR200v image also works on the VR200, which is essentially the same target without POTS ports.
+
+
+OEM source code available at: [[http://www.tp-link.com/resources/gpl/Archer-VR200v_GPL.tar.gz|Archer-VR200v_GPL.tar.gz]]
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "unsupported_functions", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "VR200"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "VR200"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "VR200"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+
+==== Installation direct to Flash ====
+
+Once a serial (uartp **3.3v**) console has been established (see below for further details):
+
+  - Download the ''...sysupgrade.bin'' image as shown above
+  - Switch on the device and press ''t'' on the serial console until you get a prompt
+  - Optionally backup OEM flash:(needs console log; output hex, not binary; takes one hour)<code> sf read 0x80800000 0x000000 0x1000000 
+ md.b 0x80800000 0x1000000 </code>
+  - Optionally backup OEM radio partition MTD7:(needs console log; output hex, not binary; see below why)<code> sf read 0x80800000 0xff0000 0x10000 
+ md.b 0x80800000 0x10000 </code>
+  - Optionally set the device's IP (defaults to 192.168.1.1):<code>setenv ipaddr 192.168.1.1</code>
+  - Optionally set the address of your TFTP server (defaults to 192.168.1.100):<code>setenv serverip 192.168.1.2</code>
+  - Clear garbage data from RAM (not flash):<code>mw.b 0x80800000 0xff 0xf00000</code>
+  - Download the image into RAM (not flash):<code>tftpboot 0x80800000 openwrt-19.07.4-lantiq-xrx200-tplink_vr200v-squashfs-sysupgrade.bin</code>
+  - Erase the rootfs flash area:<code>sf erase 0x20000 0xf00000</code>
+  - Write image to flash:<code>sf write 0x80800000 0x20000 0xf00000</code>\\ **Note:** depending on your terminal emulation settings you may not see when the flash is finished, you could try to "blindly" type the next command (should be rather safe)
+  - Reboot:<code>reset</code>
+
+Note: Instalation with the methods: "OEM firmware update", "Rescue Mode" and "tftp request" do not work.
+
+==== Restore TP-LINK FW ====
+
+Once a serial console has been established (see below for further details):
+  - Obtain your firmware image. You need to strip the header off first: <code>dd if=orig.bin of=tplink.bin skip=257 bs=512</code>
+  - Switch on the device and press **t** on the serial console until you get a prompt, then run commands similar to these:
+    - Optionally set the device's IP (defaults to 192.168.1.1): <code>setenv ipaddr 192.168.1.1</code>
+    - Optionally set the address of your TFTP server (defaults to 192.168.1.100): <code>setenv serverip 192.168.1.2</code>
+    - Download the image into RAM (**not flash**): <code>tftpboot 0x80800000 tplink.bin</code>
+    - Erase the rootfs flash area:<code>sf erase 0x20000 0xf00000</code>
+    - Write image to flash: <code>sf write 0x80800000 0x20000 0xf00000</code>
+    - Reboot: <code>reset</code>
+
+==== Flash layout ====
+(for **OEM** firmware version VR200v_V1_150617_DE)
+
+^ partition   ^ address space           ^ name            ^ filesystem       ^ function             ^
+| mtd0        | 0x00000000-0x00020000   | **boot**        | n/a              | U-Boot v2.2.67       |
+| mtd1        | 0x00020000-0x00160000   | **kernel**      | RAM executable   | kernel 2.6.32.42     |
+| mtd2        | 0x00160000-0x00fb0000   | **rootfs**      | squashfs         | root                 |
+| mtd3        | 0x00fb0000-0x00fc0000   | **radioDECT**   | n/a              | ???                  |
+| mtd4        | 0x00fc0000-0x00fd0000   | **config**      | XML string       | user configuration   |
+| mtd5        | 0x00fd0000-0x00fe0000   | **romfile**     | n/a              | ???                  |
+| mtd6        | 0x00fe0000-0x00ff0000   | **rom**         | n/a              | ???                  |
+| mtd7        | 0x00ff0000-0x01000000   | **radio**       | n/a              | radio settings       |
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set]]  | [[wp>MIPS architecture|MIPS]]  |
+^ Vendor                  | [[wp>Lantiq]]                  |
+^ [[docs:techref:bootloader]]  | [[docs:techref:bootloader:uboot|U-Boot]] 2010.06-svn11795-LANTIQ-v-2.2.67  |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | Lantiq VRX288 v1.2  |
+^ [[docs:techref:hardware:cpu|CPU]]/Speed       | MIPS34Kc @ 500 MHz  |
+^ Flash-Chip    | Spansion FL128SAIF00  |
+^ Flash size    | 16 MiB  |
+^ RAM           | 128MiB DDR2 200 MHz [[https://www.winbond.com/resource-files/w971gg6kb_a03.pdf|Winbond W971GG6KB-25]] or SKhynix H5PS1G63KFA-S6C          |
+^ Wireless No1  | Lantiq XWAY WAVE300 2.4GHz 802.11bgn 3x3:1(PSB8221EL & PSB8301v) |
+^ Wireless No2  | MT7610EN 5GHz 802.11ac 1x1:1               |
+^ Ethernet      | 4x 10/100/1000 BASE-TX Ethernet Interface\\ (2x XWAY VR9 GPHY 11G & 2x XWAY PEF7071V via RGMII)  |
+^ Switch        | [[toh:tp-link:td-w8970_v1#switch|Internal configurable]] (Infineon)  |
+^ xDSL          | Lantiq XWAY VRX208 (PSB 80190 V V1.1)\\ Transformer: [[https://www.mnc-tek.com/En.php/Product/detail/id/788.html|EP-833SG]] |
+^ USB           | Yes 2x 2.0  |
+^ GPIO LEDs     | Power, DSL, Internet, Wireless 2.4GHz, Wireless 5GHz, LAN, USB, Phone         |
+^ GPIO Buttons  | WPS button, WiFi button, DECT Button, Reset button  |
+^ Serial        | [[#Serial|Yes]] uartp, internal holes  |
+^ Telephony     | Lantiq XWAY™ SLIC120 PEF 42068 V V1.2 2xFXS + Lantiq COSIC™-Modem PMB9643V DECTv6/CAT-iq|
+^ Power Supply | 12V 2.5A (External) (Input 100-240 50/60Hz 1.2A)|
+^ Consumption | 7.5w idle + (0.3 xDsl) (0.4 wifi) (0.4 openssl speed test) (0.3 pendrive on) (1.3 hdd on) (0.7 usb i/o) |
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+To remove the cover:
+  * There are two screws at the bottom of the device, under the rubber feet. \\
+  * The case is kept together by latches at the every side of the device. \\
+  * Start prying near the grill with a flat screwdriver, be careful to do not unglue the clear plastic front cover, you need to insert the screwdriver between two white plastic pieces. \\
+ {{https://i.postimg.cc/gcX9GXb9/20201102-103900.jpg}}
+  * Back side of the pcb. \\
+{{https://i.postimg.cc/QMN77KpS/20201102-102829.jpg}}\\
+  * Annex B,J:
+{{https://iili.io/FBLPTB.jpg}}\\
+  * Annex A,L,M: (Picture took from a TP-Link TD-W8970 v1)
+{{https://obrazki.elektroda.pl/6762618000_1459526142.jpg}}
+==== Serial ====
+
+Once the lid is off, remove 2 screws to get the PCB out and then flip it over to find silkscreened holes UARTP (3.3V), TX, RX close to the FCC and CE marks. Find yourself a suitable GND hole, eg. GND2. RX/TX will fit a 2.54mm-double pin header (mechanically connected with the plastics)
+
+{{https://i.postimg.cc/9MW7GRZJ/20201102-102210.jpg}}
+
+Press **t** on the console to interrupt U-Boot autobooting.
+
+(below step seems to be not needed/not for all fw versions?!)
+Logon through serial by pressing Enter and using: **admin/1234**.
+
+===== Debug Logs =====
+==== System Info: ====
+<WRAP bootlog>
+<nowiki>~ # cat /proc/cpuinfo
+system type             : VR9
+processor               : 0
+cpu model               : MIPS 34Kc V5.6
+BogoMIPS                : 332.59
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 16
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+ASEs implemented        : mips16 dsp mt
+shadow register sets    : 1
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+
+~ # cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00020000 00010000 "boot"
+mtd1: 00140000 00010000 "kernel"
+mtd2: 00e50000 00010000 "rootfs"
+mtd3: 00010000 00010000 "radioDECT"
+mtd4: 00010000 00010000 "config"
+mtd5: 00010000 00010000 "romfile"
+mtd6: 00010000 00010000 "rom"
+mtd7: 00010000 00010000 "radio"
+
+~ # cat /proc/partitions
+major minor  #blocks  name
+
+  31        0        128 mtdblock0
+  31        1       1280 mtdblock1
+  31        2      14656 mtdblock2
+  31        3         64 mtdblock3
+  31        4         64 mtdblock4
+  31        5         64 mtdblock5
+  31        6         64 mtdblock6
+  31        7         64 mtdblock7
+
+~ # cat /proc/meminfo
+MemTotal:         124752 kB
+MemFree:           67996 kB
+Buffers:            5744 kB
+Cached:            20024 kB
+SwapCached:            0 kB
+Active:             9924 kB
+Inactive:          20716 kB
+Active(anon):       4872 kB
+Inactive(anon):        0 kB
+Active(file):       5052 kB
+Inactive(file):    20716 kB
+Unevictable:           0 kB
+Mlocked:               0 kB
+SwapTotal:             0 kB
+SwapFree:              0 kB
+Dirty:                 0 kB
+Writeback:             0 kB
+AnonPages:          4888 kB
+Mapped:             4968 kB
+Shmem:                 0 kB
+Slab:              18172 kB
+SReclaimable:        908 kB
+SUnreclaim:        17264 kB
+KernelStack:         856 kB
+PageTables:          564 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:      118512 kB
+Committed_AS:      11204 kB
+VmallocTotal:    1048372 kB
+VmallocUsed:        1828 kB
+VmallocChunk:    1024504 kB
+
+~ # cat /proc/version
+Linux version 2.6.32.42 (swd@localhost.localdomain) (gcc version 4.3.3 (GCC) ) #7 Fri Jun 12 16:07:17 HKT 2015
+
+~ # lsmod
+
+NetUSB 163375 0 - Live 0x851c0000 (P)
+GPL_NetUSB 3455 1 NetUSB, Live 0x85142000
+DECT_paging 3811 2 - Live 0x8566e000
+cosic 69293 2 - Live 0x85100000
+drv_timer 3149 3 cosic, Live 0x8561d000
+ifx_voip_timer_driver 2761 2 - Live 0x87b22000
+voip 2396 2 - Live 0x8508a000 (P)
+drv_vmmc 198953 9 - Live 0x850c0000
+drv_kpi2udp 3808 0 - Live 0x85600000
+drv_tapi 178934 21 cosic,drv_vmmc,drv_kpi2udp, Live 0x85640000
+nf_nat_sip 5536 0 - Live 0x85022000
+nf_conntrack_sip 12845 1 nf_nat_sip, Live 0x8568c000
+nf_nat_h323 4576 0 - Live 0x8504c000
+nf_conntrack_h323 34607 1 nf_nat_h323, Live 0x85690000
+nf_nat_tftp 512 0 - Live 0x87a8d000
+nf_conntrack_tftp 2464 1 nf_nat_tftp, Live 0x85027000
+nf_nat_pptp 1376 0 - Live 0x85030000
+nf_nat_proto_gre 944 1 nf_nat_pptp, Live 0x8504f000
+nf_nat_ftp 1408 0 - Live 0x8503f000
+nf_conntrack_ftp 4832 1 nf_nat_ftp, Live 0x85034000
+MT7610_ap 1334730 1 - Live 0x85800000
+mtlk 828544 0 - Live 0x86500000
+mtlkroot 53998 1 mtlk, Live 0x86e40000
+ifx_ppa_api_proc 23212 0 - Live 0x86ee0000
+ifx_ppa_api 284223 1 ifx_ppa_api_proc, Live 0x86f80000
+drv_dsl_cpe_api 281360 0 - Live 0x86e80000
+drv_ifxos 14382 3 drv_vmmc,drv_tapi,drv_dsl_cpe_api, Live 0x870a0000
+ifxmips_ppa_hal_vr9_e5 52784 0 - Live 0x86e00000
+ifxmips_ppa_datapath_vr9_e5 208714 0 - Live 0x870c0000
+tp_domain 2860 0 - Live 0x87ae9000
+ipt_STAT 86379 0 - Live 0x87b40000
+nf_conntrack_pptp 3440 1 nf_nat_pptp, Live 0x87aa3000
+nf_conntrack_proto_gre 2789 1 nf_conntrack_pptp, Live 0x87a56000
+ifxusb_host 103947 0 - Live 0x87b00000
+scsi_wait_scan 448 0 - Live 0x87a8b000
+usb_storage 36104 0 - Live 0x87ae0000
+usbcore 108868 4 GPL_NetUSB,ifxusb_host,usb_storage, Live 0x87ac0000
+sd_mod 22796 0 - Live 0x87a90000
+scsi_mod 76020 2 usb_storage,sd_mod, Live 0x87a60000
+
+~ # ls /bin/ /sbin/ /usr/bin/ /usr/sbin/ /firmware/ /proc/
+/proc/:
+2671           2207           1818           44             locks
+2415           2206           1815           42             cmdline
+2406           2205           1798           8              cpuinfo
+2405           2202           1797           5              devices
+2402           2156           1409           4              interrupts
+2401           1914           960            3              loadavg
+2399           1899           952            2              meminfo
+2396           1895           653            1              stat
+2392           1890           647            self           uptime
+2389           1887           644            mounts         version
+2385           1882           638            net            softirqs
+2383           1881           636            sysvipc        kcore
+2382           1880           635            fs             kmsg
+2381           1850           634            driver         crypto
+2380           1849           373            tty            diskstats
+2379           1848           372            bus            partitions
+2378           1847           371            sys            sysrq-trigger
+2359           1846           271            irq            tplink
+2358           1845           269            misc           ifx_wdt
+2357           1844           268            mips           mtd
+2356           1843           265            execdomains    mirror
+2355           1842           264            ioports        vectoring
+2354           1841           263            iomem          url_list
+2353           1840           261            timer_list     scsi
+2352           1839           225            modules        ifxusb_hcd
+2351           1838           184            kallsyms       dsl_tc
+2345           1837           154            buddyinfo      eth
+2322           1833           133            pagetypeinfo   ppa
+2277           1831           83             vmstat         pagemode
+2241           1827           79             zoneinfo       NetUSB
+2235           1823           78             vmallocinfo
+2209           1821           77             slabinfo
+2208           1819           46             filesystems
+
+/firmware/:
+xdslrc.sh               gphy_image              adsl.scr
+xcpe_hw.bin             eth_wan_setting.sh      COSICFw.BIN
+xcpe_573E17_571502.bin  dsl_wan_setting.sh      BMCFw.BIN
+vdsl.scr                dsl_cpe_pipe.sh
+
+/usr/sbin/:
+zebra            radvd            handle_card      brctl            atmarp
+telnetd          pppd             dsl_cpe_control  br2684ctld
+switch_utility   ppacmd           dhcp6s           br2684ctl
+ripd             modem_scan       dhcp6c           atmarpd
+
+/usr/bin/:
+xtables-multi     taskset           iwlist            diagTool
+xdslSwitchNotify  snmpd             iwconfig          dhcpd
+wscd              smbpasswd         iptables          dhcpc
+wpatalk           smbd              ipsecVpn          ddns_ud
+wpa_supplicant    smbcontrol        ipcs              cwmp
+wlanconfig        setkey            ipcrm             cos
+wlNetlinkTool     rt2860apd         ip6tables         cli
+vsftpd            racoon            ip                chat
+voip_server       pjsua             igmpd             basename
+voip_client       ntpc              httpd             ated
+ushare            ntfs-3g           hostapd_wlan0     arping
+usb_modeswitch    noipdns           free              [[
+upnpd             nmbd              env               [
+tftp              logger            ebtables          Dectcli
+test              killall           dyndns
+tc                iwpriv            dnsProxy
+
+/sbin/:
+vconfig       rmmod         lsmod         ifconfig      halt
+usbp          reboot        insmod        hotplug_firm  getty
+route         poweroff      init          hotplug       blkid
+
+/bin/:
+uname                ps                   ls                   df
+umount               ping6                login                date
+tar                  ping                 ln                   cp
+sleep                pidof                kill                 chmod
+sh                   netstat              gzip                 cat
+sed                  mount                echo                 busybox
+rm                   mkdir                dumpAutoChanStat.sh  ash</nowiki>
+</WRAP>\\
+
+==== U-Boot info & printenv: ====
+<WRAP bootlog>
+<nowiki>ROM VER: 1.1.4
+CFG 05
+
+ROM VER: 1.1.4
+CFG 05
+
+DDR autotuning Rev 1.0
+DDR size from 0xa0000000 - 0xa7ffffff
+DDR check ok... start booting...
+
+
+
+U-Boot 2010.06-svn11795-LANTIQ-v-2.2.67 (Jun 17 2015 - 10:15:17)
+
+CLOCK CPU 500M RAM 250M
+DRAM:  128 MiB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   Internal phy(GE) firmware version: 0x8434
+vr9 Switch16384 KiB S25FL128P_UNI_64K at 0:3 is now current device
+MAC: c4-e9-84-xx-xx-xx
+
+
+Type "run flash_nfs" to mount root filesystem over NFS
+
+Hit any key to stop autoboot:  0
+VR9 # help
+?       - alias for 'help'
+base    - print or set address offset
+bootm   - boot application image from memory
+bootp   - boot image via network using BOOTP/TFTP protocol
+cmp     - memory compare
+cp      - memory copy
+crc32   - checksum calculation
+echo    - echo args to console
+go      - start application at address 'addr'
+help    - print command description/usage
+loop    - infinite loop on address range
+md      - memory display
+mm      - memory modify (auto-incrementing address)
+mtest   - simple RAM read/write test
+mw      - memory write (fill)
+nm      - memory modify (constant address)
+printenv- print environment variables
+rarpboot- boot image via network using RARP/TFTP protocol
+reset   - Perform RESET of the CPU
+run     - run commands in an environment variable
+setenv  - set environment variables
+sf      - SPI flash sub-system
+tftpboot- boot image via network using TFTP protocol
+version - print monitor version
+VR9 # printenv
+bootcmd=run flash_flash
+bootdelay=1
+baudrate=115200
+preboot=echo;echo Type \"run flash_nfs\" to mount root filesystem over NFS;echo
+bootfile="uImage"
+mem=127M
+phym=128M
+ipaddr=192.168.1.1
+serverip=192.168.1.100
+ethaddr=00:E0:92:00:01:40
+netdev=eth0
+console=ttyS0
+tftppath=
+loadaddr=0x80800000
+rootpath=/mnt/full_fs
+rootfsmtd=/dev/mtdblock2
+nfsargs= setenv bootargs root=/dev/nfs rw nfsroot=$(serverip):$(rootpath)
+ramargs=setenv bootargs root=/dev/ram rw
+addip=setenv bootargs $(bootargs) ip=$(ipaddr):$(serverip):$(gatewayip):$(netmask):$(hostname):$(netdev):on
+addmisc=setenv bootargs $(bootargs) console=$(console),$(baudrate) ethaddr=$(ethaddr) phym=$(phym) mem=$(mem) panic=1 mtdparts=$(mtdparts) init=/etc/preinit vpe1_load_addr=0x82000000 vpe1_mem=1M ethwan=$(ethwan)
+flash_nfs=run nfsargs addip addmisc;bootm $(kernel_addr)
+net_nfs=tftp $(loadaddr) $(tftppath)$(bootfile);run nfsargs addip addmisc;bootm
+net_flash=tftp $(loadaddr) $(tftppath)$(bootfile); run flashargs addip addmisc; bootm
+net_ram=tftp $(loadaddr) $(tftppath)$(bootfile); run ramargs addip addmisc; bootm
+u-boot=u-boot.ltq
+rootfs=rootfs.img
+firmware=firmware.img
+fullimage=fullimage.img
+totalimage=totalimage.img
+load=tftp $(loadaddr) $(u-boot)
+update=protect off 1:0-2;era 1:0-2;cp.b $(loadaddr) B0000000 $(filesize)
+flashargs=setenv bootargs root=$(rootfsmtd) rw rootfstype=squashfs
+flash_flash=sf probe 3; bootm 0x80800000
+update_uboot=tftpboot $(loadaddr) $(tftppath)$(u-boot);sf probe 3;sf erase 0 20000;sf write $(loadaddr) 0 $(filesize);reset
+update_kernel=tftpboot $(loadaddr) $(tftppath)$(bootfile);upgrade $(loadaddr) $(filesize)
+update_bootloader=update_uboot;update gphyfirmware
+update_rootfs=tftpboot $(loadaddr) $(tftppath)$(rootfs);upgrade $(loadaddr) $(filesize)
+update_firmware=tftpboot $(loadaddr) $(tftppath)$(firmware);upgrade $(loadaddr) $(filesize)
+update_fullimage=tftpboot $(loadaddr) $(tftppath)$(fullimage);upgrade $(loadaddr) $(filesize)
+update_totalimage=tftpboot $(loadaddr) $(tftppath)$(totalimage);upgrade $(loadaddr) $(filesize)
+stdin=serial
+stdout=serial
+stderr=serial
+ver=U-Boot-2010.06-svn11795-LANTIQ-v-2.2.67
+ethact=vr9 Switch
+
+Environment size: 2140/8188 bytes</nowiki>
+</WRAP>\\
+
+==== Original Firmware root access - for debugging purposes ====
+//Please note that this only works with old vendor firmware versions. Current versions have fixed that security hole.//
+
+When logged in to the web interface, go to Advanced/Wireless/Wireless Settings.
+Choose 2.4 GHz or 5GHz (better use the one, you don't need). Enter the following string as your Wireless Network Name (SSID):
+
+''$(killall telnetd)''
+
+then click "Save" and wait until it finishes.
+Repeat the procedure to start telnet with a shell.
+
+''$(/usr/sbin/telnetd -l /bin/sh)''
+
+then click "Save"
+
+Then telnet to 192.168.1.1 or whatever IP you have assigned to the router.
+The amount of available commands is very limited: no grep, no find, no mtd,
+ 
+You can download to one pendrive, a complete version of busybox at:
+{{https://busybox.net/downloads/binaries/1.19.0/busybox-mips}} (you need to rename and call it directly, like: ./busybox ls ....)
+
+Excepting MTD7 radio that is not mapped, you can backup the MTD partitions:
+<code> cat /dev/MTD# > /usr/..... </code>
+Change # with the mtd partition number, and append the pendrive folder.
+==== OEM bootlog: ====
+<WRAP bootlog>
+<nowiki>ROM VER: 1.1.4
+CFG 05
+
+ROM VER: 1.1.4
+CFG 05
+
+DDR autotuning Rev 1.0
+DDR size from 0xa0000000 - 0xa7ffffff
+DDR check ok... start booting...
+
+
+
+U-Boot 2010.06-svn11795-LANTIQ-v-2.2.67 (Jun 17 2015 - 10:15:17)
+
+CLOCK CPU 500M RAM 250M
+DRAM:  128 MiB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   Internal phy(GE) firmware version: 0x8434
+vr9 Switch16384 KiB S25FL128P_UNI_64K at 0:3 is now current device
+MAC: c4-e9-84-xx-xx-xx  
+
+
+Type "run flash_nfs" to mount root filesystem over NFS
+
+Hit any key to stop autoboot:  1  0 
+16384 KiB S25FL128P_UNI_64K at 0:3 is now current device
+16384 KiB S25FL128P_UNI_64K at 0:3 is now current device
+	Uncompressing ... 
+Starting kernel ...
+
+Lantiq xDSL CPE VR9
+mips_hpt_frequency = 250000000, counter_resolution = 2
+Linux version 2.6.32.42 (swd@localhost.localdomain) (gcc version 4.3.3 (GCC) ) #7 Fri Jun 12 16:07:17 HKT 2015
+phym = 08000000, mem = 07f00000, max_pfn = 00007f00
+Reserving memory for CP1 @0xa7f00000, size 0x00100000
+CPU revision is: 00019556 (MIPS 34Kc)
+Determined physical RAM map:
+User-defined physical RAM map:
+ memory: 07f00000 @ 00000000 (usable)
+Initrd not found or empty - disabling initrd
+Zone PFN ranges:
+  Normal   0x00000000 -> 0x00007f00
+Movable zone start PFN for each node
+early_node_map[1] active PFN ranges
+    0: 0x00000000 -> 0x00007f00
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32258
+Kernel command line: root=/dev/mtdblock2 rw rootfstype=squashfs ip=192.168.1.1:192.168.1.100::::eth0:on console=ttyS0,115200 	ethaddr=AC:9A:96:xx:xx:xx phym=128M mem=127M panic=1 	mtdparts=ifx_sflash:128k(boot),1280k(kernel),14656k(rootfs),64k(radioDECT),64k(config),64k(romfile),64k(rom),64k(radio) 	-(res) vpe1_load_addr=0x87f00000 vpe1_men=1M 	init=/sbin/init ethwan=
+PID hash table entries: 512 (order: -1, 2048 bytes)
+Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+Writing ErrCtl register=00000000
+Readback ErrCtl register=00000000
+Memory: 124400k/130048k available (2919k kernel code, 5484k reserved, 716k data, 188k init, 0k highmem)
+Hierarchical RCU implementation.
+NR_IRQS:185
+Lantiq ICU driver, version 3.0.1, (c) 2001-2011 Lantiq Deutschland GmbH
+console [ttyS0] enabled
+Calibrating delay loop... 332.59 BogoMIPS (lpj=1662976)
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+Lantiq PCI host controller driver, version 1.2.0, (c) 2001-2011 Lantiq Deutschland GmbH
+Lantiq PCIe Root Complex driver, version 1.9.1, (c) 2001-2011 Lantiq Deutschland GmbH
+bio: create slab <bio-0> at 0
+pci 0000:00:00.0: PME# supported from D1 D2
+pci 0000:00:00.0: PME# disabled
+ifx_pcie_rc_class_early_fixup port 0: fixed pcie host bridge to pci-pci bridge
+pci 0000:01:00.0: PME# supported from D0 D3hot
+pci 0000:01:00.0: PME# disabled
+pci 0000:02:00.0: PME# supported from D0 D3hot D3cold
+pci 0000:02:00.0: PME# disabled
+pci 0000:02:00.1: PME# supported from D0 D1 D3hot D3cold
+pci 0000:02:00.1: PME# disabled
+pci 0000:01:00.0: PCI bridge, secondary bus 0000:02
+pci 0000:01:00.0:   IO window: disabled
+pci 0000:01:00.0:   MEM window: 0x1c000000-0x1c1fffff
+pci 0000:01:00.0:   PREFETCH window: disabled
+NET: Registered protocol family 8
+NET: Registered protocol family 20
+Switching to clocksource MIPS
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+TCP: Hash tables configured (established 4096 bind 4096)
+TCP reno registered
+NET: Registered protocol family 1
+gptu: totally 6 16-bit timers/counters
+gptu: misc_register on minor 63
+gptu: succeeded to request irq 118
+gptu: succeeded to request irq 119
+gptu: succeeded to request irq 120
+gptu: succeeded to request irq 121
+gptu: succeeded to request irq 122
+gptu: succeeded to request irq 123
+IFX DMA driver, version ifxmips_dma_core.c:v1.1.5 
+,(c)2009 Infineon Technologies AG
+Lantiq CGU driver, version 1.1.38, (c) 2001-2011 Lantiq Deutschland GmbH
+vpe1_mem = 0
+Wired TLB entries for Linux read_c0_wired() = 0
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+Registering mini_fo version $Id$
+fuse init (API version 7.13)
+msgmni has been set to 243
+DMA Referenced PAGE_SIZE = 4096
+Infineon Technologies DEU driver version 2.0.0 
+Lantiq Technologies DEU Driver version 2.0.0
+IFX DEU DES initialized (multiblock) (DMA).
+Lantiq Technologies DEU Driver version 2.0.0
+IFX DEU AES initialized (multiblock) (DMA).
+Infineon Technologies DEU driver version 2.0.0 
+IFX DEU ARC4 initialized (multiblock) (DMA).
+Infineon Technologies DEU driver version 2.0.0 
+IFX DEU SHA1 initialized (DMA).
+Infineon Technologies DEU driver version 2.0.0 
+IFX DEU MD5 initialized (DMA).
+Infineon Technologies DEU driver version 2.0.0 
+IFX DEU SHA1_HMAC initialized (DMA).
+Infineon Technologies DEU driver version 2.0.0 
+IFX DEU MD5_HMAC initialized (DMA).
+DEU driver initialization complete!
+io scheduler noop registered (default)
+ifx_pmu_init: Major 252
+Lantiq PMU driver, version 1.2.6, (c) 2001-2011 Lantiq Deutschland GmbH
+Lantiq GPIO driver, version 1.3.2, (c) 2001-2011 Lantiq Deutschland GmbH
+GPIO: unable to get irq 32
+Infineon Technologies RCU driver version 1.1.1 
+Lantiq LED Controller driver, version 1.1.3, (c) 2001-2011 Lantiq Deutschland GmbH
+Lantiq (VRX) DSL CPE MEI driver, version 1.4.4, (c) 2013 Lantiq Deutschland GmbH
+ttyS0 at MMIO 0xbe100c00 (irq = 105) is a IFX_ASC
+Register ASC (UART) to PMCU.
+Lantiq ASC (UART) driver, version 1.0.14, (c) 2001-2011 Lantiq Deutschland GmbH
+brd: module loaded
+loop: module loaded
+Lantiq SSC driver, version 2.4.2, (c) 2001-2011 Lantiq Deutschland GmbH
+Register flash device:flash0
+8 cmdlinepart partitions found on MTD device ifx_sflash
+Creating 8 MTD partitions on "ifx_sflash":
+0x000000000000-0x000000020000 : "boot"
+0x000000020000-0x000000160000 : "kernel"
+0x000000160000-0x000000fb0000 : "rootfs"
+mtd: partition "rootfs" set to be root filesystem
+0x000000fb0000-0x000000fc0000 : "radioDECT"
+0x000000fc0000-0x000000fd0000 : "config"
+0x000000fd0000-0x000000fe0000 : "romfile"
+0x000000fe0000-0x000000ff0000 : "rom"
+0x000000ff0000-0x000001000000 : "radio"
+Lantiq SPI flash driver, version 1.2.4, (c) 2001-2011 Lantiq Deutschland GmbH
+ifxmips_gpio: Pin ID 10 (port 0, pin 10) has been reserved by module SFLASH from kernel module!
+ifx_dataflash_init status error 255
+Lantiq USIF-SPI driver, version 1.3.2, (c) 2001-2011 Lantiq Deutschland GmbH
+PPP generic driver version 2.4.2
+NET: Registered protocol family 24
+IFX SWITCH API, Version 1.2.5
+SWAPI: Registered character device [switch_api] with major no [81]
+Switch API: PCE MicroCode loaded !!
+Init IFX_ETHSW_Switch_API_procModule successfully.
+Init GPHY Driver for A12 !!
+res = 878f2380
+Registered led device: broadband_led
+Registered led device: internet_led
+Registered led device: usb1_link_led
+Registered led device: usb2_link_led
+Lantiq LED driver, version 1.1.4, (c) 2001-2011 Lantiq Deutschland GmbH
+Mirror/redirect action on
+u32 classifier
+    Actions configured 
+Netfilter messages via NETLINK v0.30.
+nf_conntrack version 0.5.0 (1946 buckets, 10000 max)
+CONFIG_NF_CT_ACCT is deprecated and will be removed soon. Please use
+nf_conntrack.acct=1 kernel parameter, acct=1 nf_conntrack module option or
+sysctl net.netfilter.nf_conntrack_acct=1 to enable it.
+GRE over IPv4 tunneling driver
+ip_tables: (C) 2000-2006 Netfilter Core Team
+TCP cubic registered
+NET: Registered protocol family 10
+ip6_tables: (C) 2000-2006 Netfilter Core Team
+IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+Ebtables v2.0 registered
+NET: Registered protocol family 8
+atmpvc_init() failed with -17
+KOAM is loaded successfully.
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted root (squashfs filesystem) readonly on device 31:2.
+Freeing unused kernel memory: 188k freed
+
+starting pid 195, tty '': '/etc/init.d/rcS'
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+IFXUSB: ifxusb_hcd: version 3.2 B130116
+Chip Version :0002 BurstSize=4
+IFXUSB: USB core #0 soft-reset
+IFXUSB: USB core #0 soft-reset
+ifxusb_hcd ifxusb_hcd: IFX USB Controller
+ifxusb_hcd ifxusb_hcd: new USB bus registered, assigned bus number 1
+ifxusb_hcd ifxusb_hcd: irq 54, io mem 0xbe101000
+IFXUSB: Init: Power Port (0)
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+IFXUSB: USB core #1 soft-reset
+IFXUSB: USB core #1 soft-reset
+ifxusb_hcd ifxusb_hcd: IFX USB Controller
+ifxusb_hcd ifxusb_hcd: new USB bus registered, assigned bus number 2
+ifxusb_hcd ifxusb_hcd: irq 83, io mem 0xbe106000
+IFXUSB: Init: Power Port (0)
+usb usb2: configuration #1 chosen from 1 choice
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 1 port detected
+dns_init
+domain_name:tplinkmodem.net
+GPHY FIRMWARE LOAD SUCCESSFULLY AT ADDR (GE MODE) : 803f0000
+IFX GPHY driver GE Mode, version ifxmips_xrx_gphy: V1.1.1 - Firmware: 8434
+
+Please press Enter to activate this console. [ dm_readFile ] 2042:  can not open xml file /var/tmp/pc/reduced_data_model.xml!, about to open file /etc/reduced_data_model.xml
+[ dm_loadCfg ] 2254:  software version is not match, in config, version = 0
+[ dm_readFile ] 2042:  can not open xml file /var/tmp/pc/default_config.xml!, about to open file /etc/default_config.xml
+[ parseConfigNode ] 522:  Meet unrecognized object node "PhDDNSCfg", skip the node
+[ parseConfigNode ] 527:  Meet unrecognized parameter node "PhDDNSCfg", skip the node
+[ parseConfigNode ] 522:  Meet unrecognized object node "X_TP_L2TP_Connection", skip the node
+[ parseConfigNode ] 522:  Meet unrecognized object node "X_TP_PPTP_Connection", skip the node
+[ parseConfigNode ] 522:  Meet unrecognized object node "QueueManagement", skip the node
+[ parseConfigNode ] 522:  Meet unrecognized object node "X_TP_IPTV", skip the node
+[ freshLineState ] 627:  Can not open /dev/dsl_cpe_api for reading!
+[ freshLineState ] 627:  Can not open /dev/dsl_cpe_api for reading!
+Loading E5 (MII0/1) driver ...... MAC-0: c4-e9-84-xx-xx-xx
+MAC-1: c4-e9-84-xx-xx-xy
+Succeeded!
+PPE datapath driver info:
+  Version ID: 64.3.3.1.0.1.1
+  Family    : VR9
+  DR Type   : Normal Data Path | Indirect-Fast Path
+  Interface : MII0 | MII1
+  Mode      : Routing
+  Release   : 0.1.1
+PPE 0 firmware info:
+  Version ID: 7.3.2.11.1
+  Family    : VR9
+  FW Package: E1
+  Release   : 2.11.1
+PPE 1 firmware info:
+  Version ID: 7.5.2.11.1
+  Family    : VR9
+  FW Package: D5
+  Release   : 2.11.1
+PPE firmware feature:
+  ATM/PTM TC-Layer Bonding        Support
+  L2 Trunking                     Support
+  Packet Acceleration             Support
+  IPv4                            Support
+  IPv6                            Support
+  6RD                             Support
+  DS-Lite                        [ freshLineState ] 627:  Can not open /dev/dsl_cpe_api for reading!
+[ freshLineState ] 627:  Can not open /dev/dsl_cpe_api for reading!
+[ updateDslL3Forwarding ] 619:  ###ipv4 default route intf is NO_INTERFACE, ipv6 is NO_INTERFACE.
+
+IFXOS, Version 1.5.17 (c) Copyright 2009, Lantiq Deutschland GmbH
+
+
+Lantiq CPE API Driver version: DSL CPE API V4.16.6-pd1
+
+Predefined debug level: 3
+PPA API --- init successfully
+ifx_ppa_init - init succeeded
+wlan0     no private ioctls.
+
+wlan0.0   no private ioctls.
+
+wlan0.0   no private ioctls.
+
+ra0       no private ioctls.
+
+ra1       no private ioctls.
+
+sendto: No such file or directory
+pid 264 send 2001 error
+ddns_ud> start enable = 0, server: , auth: , request 
+ioctl: No such device
+device eth0 entered promiscuous mode
+wlan0     no private ioctls.
+
+wlan0.0   no private ioctls.
+
+ra0       no private ioctls.
+
+ra1       no private ioctls.
+
+device eth0 left promiscuous mode
+device eth0.2 entered promiscuous mode
+device eth0 entered promiscuous mode
+device eth0.3 entered promiscuous mode
+device eth0.4 entered promiscuous mode
+device eth0.5 entered promiscuous mode
+[4294682866] mtlk0(mtlk_cdev_init:355): Max nodex set to 1048575
+[4294684526] mtlk0(__mtlk_print_endianess:4789): The system is Big endian (0xbeadfeed, 0xedfeadbe)
+[4294684526] mtlk0(mtlk_fast_mem_print_info:114): Using normal memory for hot context
+[4294684536] mtlk0(_mtlk_df_user_alloc_devname:8501): NDEV Name pattern: wlan%d
+Register WLAN SWITCH function
+Register wlan 2.4G WPS function
+[4294684546] mtlk0(mtlk_core_pdb_fast_handles_open:42): Open Hot-path parameters
+[4294684556] mtlk<4>(_mtlk_mmb_cleanup_reset_mac:3125): FW CPU reset is done
+mtlk 0000:00:0e.0: firmware: requesting cal_wlan0.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=196
+FIRMWARE=cal_wlan0.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+[4294684886] mtlk<3>(_mtlk_df_fw_request_firmware:63): Firmware (cal_wlan0.bin) is missing
+mtlk 0000:00:0e.0: firmware: requesting ap_upper_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=197
+FIRMWARE=cal_wlan0.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=198
+FIRMWARE=ap_upper_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+invoke /etc/hotplug/firmware.agent ()
+mtlk 0000:00:0e.0: firmware: requesting contr_lm.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=199
+FIRMWARE=ap_upper_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=200
+FIRMWARE=contr_lm.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=201
+FIRMWARE=contr_lm.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+[4294685976] mtlk0(_mtlk_core_start:3455): CID-0000: ap_upper_wave300.bin: @@@ VERSION INFO @@@ version number: 3.4.2.40.05_NoPsTxCancel_r4005 MIPS:  Upper CPU(TMC AGG AP) interface: PCI  phy type: real phy on Jul  2 2014 at 16:00:39@@@ END @@@
+contr_lm.bin: @@@ VERSION INFO @@@ version number: 3.4.2.40.05_NoPsTxCancel_r4005 MIPS:  Lower MAC  interface: --  phy type: real phy on Jul  2 2014 at 15:59:50@@@ END @@@
+
+[4294686026] mtlk0(mtlk_eeprom_check_ee_data:1353): Options mask is 0x00
+[4294686036] mtlk0(load_default_hw_table:2041): HW configuration is 3X3
+[4294686056] mtlk0(_mtlk_df_user_ppa_register:541): PPA device function is registered (id=3)
+[4294686086] mtlk0(_mtlk_core_mbss_add_vap:7695): CID-0000: Got PRM_ID_VAP_ADD
+[4294686086] mtlk0(_mtlk_df_user_alloc_devname:8501): NDEV Name pattern: wlan0.0
+Register WLAN SWITCH function
+Register wlan 2.4G WPS function
+[4294686096] mtlk0(mtlk_core_pdb_fast_handles_open:42): Open Hot-path parameters
+[4294686106] mtlk0(_mtlk_core_start:3455): CID-0001: ap_upper_wave300.bin: @@@ VERSION INFO @@@ version number: 3.4.2.40.05_NoPsTxCancel_r4005 MIPS:  Upper CPU(TMC AGG AP) interface: PCI  phy type: real phy on Jul  2 2014 at 16:00:39@@@ END @@@
+contr_lm.bin: @@@ VERSION INFO @@@ version number: 3.4.2.40.05_NoPsTxCancel_r4005 MIPS:  Lower MAC  interface: --  phy type: real phy on Jul  2 2014 at 15:59:50@@@ END @@@
+
+[4294686156] mtlk0(_mtlk_core_mbss_add_vap:7713): CID-0000: VAP#1 added
+[4294686726] mtlk<4>(_mtlk_core_async_clb:481): Requested ability 0x1000084 is disabled or never was registered
+Interface doesn't accept private ioctl...
+sEthVlan (8BE0): Device or resource busy
+[4294686746] mtlk0(_mtlk_core_mbss_is_rescan_exempted:2757): Re-Scan cannot be exempted (AOCS type = 2)
+[4294686756] mtlk0(mtlk_mbss_init:3447): CID-0000: _mtlk_core_mbss_check_activation_params returned successfully
+[4294686766] mtlk0(_mtlk_mbss_preactivate:2919): CID-0000: Pre-activation configured parameters:
+[4294686776] mtlk0(mtlk_core_configuration_dump:5010): CID-0000: Country             : DE
+[4294686776] mtlk0(mtlk_core_configuration_dump:5011): CID-0000: Domain              : 48
+[4294686786] mtlk0(mtlk_core_configuration_dump:5012): CID-0000: Network mode        : 802.11bgn
+[4294686796] mtlk0(mtlk_core_configuration_dump:5013): CID-0000: Band                : 2.4
+[4294686806] mtlk0(mtlk_core_configuration_dump:5014): CID-0000: Prog Model Spectrum : 40 MHz
+[4294686816] mtlk0(mtlk_core_configuration_dump:5015): CID-0000: Selected Spectrum   : 40 MHz
+[4294686826] mtlk0(mtlk_core_configuration_dump:5016): CID-0000: User Sel. Spectrum  : 40 MHz
+[4294686826] mtlk0(mtlk_core_configuration_dump:5017): CID-0000: Bonding             : upper
+[4294686836] mtlk0(mtlk_core_configuration_dump:5018): CID-0000: HT mode             : enabled
+[4294686846] mtlk0(mtlk_core_configuration_dump:5020): CID-0000: SM enabled          : enabled
+[4294686856] mtlk0(mtlk_aocs_set_config_frequency_band:3151): Overriding AOCS type for 2.4 GHz (NONE)
+[4294686866] mtlk0(_mtlk_mbss_preactivate:2934): CID-0000: Start AOCS
+[4294686866] mtlk0(_mtlk_mbss_preactivate:2947): CID-0000: ap_scan_band_cfg = 1
+[4294686876] mtlk0(_mtlk_core_perform_initial_scan:2703): CID-0000: Scan started 40MHz
+[4294686886] mtlk0(do_scan:596): Starting normal scan...
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_CB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=205
+FIRMWARE=ProgModel_BG_CB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_CB_38_RevB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=207
+FIRMWARE=ProgModel_BG_CB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=206
+FIRMWARE=ProgModel_BG_CB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+invoke /etc/hotplug/firmware.agent ()
+open DNS error: No such file or directory
+[ oal_sys_getOldTZInfo ] 392:  Open TZ file error!
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=208
+FIRMWARE=ProgModel_BG_CB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+[4294689196] mtlk0(_mtlk_core_perform_initial_scan:2703): CID-0000: Scan started 20MHz
+[4294689206] mtlk0(do_scan:596): Starting normal scan...
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_nCB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=209
+FIRMWARE=ProgModel_BG_nCB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_nCB_38_RevB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=210
+FIRMWARE=ProgModel_BG_nCB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=211
+FIRMWARE=ProgModel_BG_nCB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+invoke /etc/hotplug/firmware.agent ()
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=212
+FIRMWARE=ProgModel_BG_nCB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_CB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=213
+FIRMWARE=ProgModel_BG_CB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_CB_38_RevB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=214
+FIRMWARE=ProgModel_BG_CB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=215
+FIRMWARE=ProgModel_BG_CB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+invoke /etc/hotplug/firmware.agent ()
+[4294692806] mtlk0(prepare_progmodel_string:310): CID-0000: ProgModel: ProgModel_BG_CB_38_RevB_wave300.bin; version 2126
+
+[4294692816] mtlk0(_mtlk_mbss_preactivate:3049): CID-0000: Pre-activation selected parameters:
+[4294692826] mtlk0(mtlk_core_configuration_dump:5010): CID-0000: Country             : DE
+[4294692836] mtlk0(mtlk_core_configuration_dump:5011): CID-0000: Domain              : 48
+[4294692846] mtlk0(mtlk_core_configuration_dump:5012): CID-0000: Network mode        : 802.11bgn
+[4294692846] mtlk0(mtlk_core_configuration_dump:5013): CID-0000: Band                : 2.4
+[4294692856] mtlk0(mtlk_core_configuration_dump:5014): CID-0000: Prog Model Spectrum : 40 MHz
+[4294692866] mtlk0(mtlk_core_configuration_dump:5015): CID-0000: Selected Spectrum   : 40 MHz
+[4294692876] mtlk0(mtlk_core_configuration_dump:5016): CID-0000: User Sel. Spectrum  : 40 MHz
+[4294692886] mtlk0(mtlk_core_configuration_dump:5017): CID-0000: Bonding             : lower
+[4294692886] mtlk0(mtlk_core_configuration_dump:5018): CID-0000: HT mode             : enabled
+[4294692896] mtlk0(mtlk_core_configuration_dump:5020): CID-0000: SM enabled          : enabled
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=216
+FIRMWARE=ProgModel_BG_CB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplu[4294692986] mtlk0(_mtlk_channels_frequency_element_dump:3008): CID-0000: Channel        : 5
+[4294692996] mtlk0(_mtlk_channels_frequency_element_dump:3009): CID-0000: ChannelACT     : 0
+[4294693006] mtlk0(_mtlk_channels_frequency_element_dump:3010): CID-0000: ScanType       : 0
+[4294693006] mtlk0(_mtlk_channels_frequency_element_dump:3011): CID-0000: ChannelSwCnt   : 0
+[4294693016] mtlk0(_mtlk_channels_frequency_element_dump:3012): CID-0000: SwitchMode     : 48
+[4294693026] mtlk0(_mtlk_channels_frequency_element_dump:3013): CID-0000: SmRequired     : 0
+[4294693036] mtlk0(_mtlk_channels_frequency_element_dump:3014): CID-0000: CbTxPowerLim   : 104
+[4294693046] mtlk0(_mtlk_channels_frequency_element_dump:3015): CID-0000: nCbTxPowerLim  : 104
+[4294693056] mtlk0(_mtlk_channels_frequency_element_dump:3016): CID-0000: AntennaGain    : 0
+[4294693056] mtlk0(_mtlk_channels_frequency_element_dump:3017): CID-0000: ChannelLoad    : 0
+[4294693066] mtlk0(_mtlk_channels_frequency_element_dump:3019): CID-0000: MaxTxPwr[0]    : 0
+[4294693076] mtlk0(_mtlk_channels_frequency_element_dump:3020): CID-0000: MaxTxPwrIdx[0] : 0
+[4294693086] mtlk0(_mtlk_channels_frequency_element_dump:3019): CID-0000: MaxTxPwr[1]    : 0
+[4294693096] mtlk0(_mtlk_channels_frequency_element_dump:3020): CID-0000: MaxTxPwrIdx[1] : 0
+[4294693096] mtlk0(_mtlk_channels_frequency_element_dump:3019): CID-0000: MaxTxPwr[2]    : 0
+[4294693106] mtlk0(_mtlk_channels_frequency_element_dump:3020): CID-0000: MaxTxPwrIdx[2] : 0
+[4294693116] mtlk0(_mtlk_channels_frequency_element_dump:3022): CID-0000: SwitchType     : 0
+[4294693126] mtlk0(_mtlk_mbss_send_preactivate_req:2831): CID-0000: Sending UMI FW Preactivation
+g/firmware.agent ()
+[4294693166] mtlk<3>(mtlk_core_set_force_ncb:6615): CID-0000: Error returned for UMI_FORCE_NCB request to MAC (err=2)
+[4294693176] mtlk0(_mtlk_mbss_preactivate:3078): CID-0000: _mtlk_mbss_preactivate returned successfully
+[4294693186] mtlk0(mtlk_mbss_init:3454): CID-0000: _mtlk_mbss_preactivate_if_needed returned successfully
+[4294693196] mtlk0(mtlk_mbss_send_vap_activate:3142): CID-0000: Entering mtlk_mbss_send_vap_activate
+[4294693206] mtlk0(mtlk_mbss_send_vap_activate:3149): CID-0000: Start activation
+[4294693216] mtlk0(__mtlk_dump:66): dump of UMI_ACTIVATE_VAP:
+cp= 0x86e7b694 l=152
+0000:  c4 e9 84 xx xx xx 00 00  02 00 00 05 00 0f 00 00 
+0010:  aa 0f 00 00 55 00 00 00  ff ff ff ff 0c 00 00 00 
+0020:  54 50 2d 4c 49 4e 4b 5f  34 39 33 35 00 00 00 00 
+0030:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0040:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0050:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0060:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0070:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0080:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0090:  00 00 00 00 09 00 00 00  
+[4294693266] mtlk0(mtlk_mbss_send_vap_activate:3211): CID-0000: UMI_ACTIVATE_VAP
+[4294693276] mtlk0(mtlk_mbss_send_vap_activate:3212): CID-0000: 	sBSSID = C4:E9:84:xx:xx:xx
+[4294693286] mtlk0(mtlk_mbss_send_vap_activate:3213): CID-0000: 	sSSID = TP-LINK_4935
+[4294693286] mtlk0(mtlk_mbss_send_vap_activate:3214): CID-0000: 	Hidden = 0
+[4294693296] mtlk0(__mtlk_dump:66): 	sRSNie = 
+cp= 0x86e7b6d8 l=80
+0000:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0010:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0020:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0030:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0040:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+[4294693326] mtlk0(mtlk_mbss_send_vap_activate:3218): CID-0000: mtlk_txmm_msg_send, MsgId = 0x453, ESSID = TP-LINK_4935
+[4294693336] mtlk0(mtlk_mbss_init:3461): CID-0000: mtlk_mbss_send_vap_activate returned successfully
+Configuration file: /var/Wireless/wlan0.ap_bss
+Using interface wlan0 with hwaddr c4:e9:84:xx:xx:xx and ssid "TP-LINK_4935"
+WPS: Converting display to virtual_display for WPS 2.0 compliance
+WPS: Converting push_button to virtual_push_button f[4294694416] mtlk0(_mtlk_core_mbss_is_rescan_exempted:2760): Re-Scan cannot be exempted (20/40 is active)
+[4294694426] mtlk0(mtlk_mbss_init:3447): CID-0000: _mtlk_core_mbss_check_activation_params returned successfully
+[4294694436] mtlk0(_mtlk_mbss_preactivate:2919): CID-0000: Pre-activation configured parameters:
+[4294694446] mtlk0(mtlk_core_configuration_dump:5010): CID-0000: Country             : DE
+[4294694456] mtlk0(mtlk_core_configuration_dump:5011): CID-0000: Domain              : 48
+[4294694456] mtlk0(mtlk_core_configuration_dump:5012): CID-0000: Network mode        : 802.11bgn
+[4294694466] mtlk0(mtlk_core_configuration_dump:5013): CID-0000: Band                : 2.4
+[4294694476] mtlk0(mtlk_core_configuration_dump:5014): CID-0000: Prog Model Spectrum : 40 MHz
+[4294694486] mtlk0(mtlk_core_configuration_dump:5015): CID-0000: Selected Spectrum   : 40 MHz
+[4294694496] mtlk0(mtlk_core_configuration_dump:5016): CID-0000: User Sel. Spectrum  : 40 MHz
+[4294694506] mtlk0(mtlk_core_configuration_dump:5017): CID-0000: Bonding             : upper
+[4294694506] mtlk0(mtlk_core_configuration_dump:5018): CID-0000: HT mode             : enabled
+[4294694516] mtlk0(mtlk_core_configuration_dump:5020): CID-0000: SM enabled          : enabled
+[4294694526] mtlk0(mtlk_aocs_set_config_frequency_band:3151): Overriding AOCS type for 2.4 GHz (NONE)
+[4294694536] mtlk0(_mtlk_mbss_preactivate:2934): CID-0000: Start AOCS
+[4294694546] mtlk0(_mtlk_mbss_preactivate:2947): CID-0000: ap_scan_band_cfg = 1
+[4294694546] mtlk0(_mtlk_core_perform_initial_scan:2703): CID-0000: Scan started 40MHz
+[4294694556] mtlk0(do_scan:596): Starting normal scan...
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_CB_wave300.bin
+or WPS 2.0 compliance
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=217
+FIRMWARE=ProgModel_BG_CB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_CB_38_RevB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=218
+FIRMWARE=ProgModel_BG_CB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=219
+FIRMWARE=ProgModel_BG_CB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=220
+FIRMWARE=ProgModel_BG_CB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+[4294696036] mtlk0(_mtlk_core_perform_initial_scan:2703): CID-0000: Scan started 20MHz
+[4294696036] mtlk0(do_scan:596): Starting normal scan...
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_nCB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=221
+FIRMWARE=ProgModel_BG_nCB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_nCB_38_RevB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=223
+FIRMWARE=ProgModel_BG_nCB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=222
+FIRMWARE=ProgModel_BG_nCB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+invoke /etc/hotplug/firmware.agent ()
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=224
+FIRMWARE=ProgModel_BG_nCB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_CB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=225
+FIRMWARE=ProgModel_BG_CB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+mtlk 0000:00:0e.0: firmware: requesting ProgModel_BG_CB_38_RevB_wave300.bin
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=226
+FIRMWARE=ProgModel_BG_CB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+arguments (firmware) env (DEBUG=yes
+ACTION=add
+OLDPWD=/
+HOME=/
+SEQNUM=227
+FIRMWARE=ProgModel_BG_CB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+[4294698376] mtlk0(prepare_progmodel_string:310): CID-0000: ProgModel: ProgModel_BG_CB_38_RevB_wave300.bin; version 2126
+
+[4294698386] mtlk0(_mtlk_mbss_preactivate:3049): CID-0000: Pre-activation selected parameters:
+[4294698396] mtlk0(mtlk_core_configuration_dump:5010): CID-0000: Country             : DE
+[4294698406] mtlk0(mtlk_core_configuration_dump:5011): CID-0000: Domain              : 48
+[4294698416] mtlk0(mtlk_core_configuration_dump:5012): CID-0000: Network mode        : 802.11bgn
+[4294698426] mtlk0(mtlk_core_configuration_dump:5013): CID-0000: Band                : 2.4
+[4294698426] mtlk0(mtlk_core_configuration_dump:5014): CID-0000: Prog Model Spectrum : 40 MHz
+[4294698436] mtlk0(mtlk_core_configuration_dump:5015): CID-0000: Selected Spectrum   : 40 MHz
+[4294698446] mtlk0(mtlk_core_configuration_dump:5016): CID-0000: User Sel. Spectrum  : 40 MHz
+[4294698456] mtlk0(mtlk_core_configuration_dump:5017): CID-0000: Bonding             : lower
+[4294698466] mtlk0(mtlk_core_configuration_dump:5018): CID-0000: HT mode             : enabled
+[4294698476] mtlk0(mtlk_core_configuration_dump:5020): CID-0000: SM enabled          : enabled
+arguments (firmware) env (DEBUG=yes
+ACTION=remove
+OLDPWD=/
+HOME=/
+SEQNUM=228
+FIRMWARE=ProgModel_BG_CB_38_RevB_wave300.bin
+DEVPATH=/devices/pci0000:00/0000:00:0e.0/firmware/0000:00:0e.0
+SUBSYSTEM=firmware
+PATH=/bin:/sbin:/usr/sbin:/usr/bin
+TIMEOUT=60
+PWD=/etc/hotplug)
+invoke /etc/hotplug/firmware.agent ()
+[4294698576] mtlk0(_mtlk_channels_frequency_element_dump:3008): CID-0000: Channel        : 5
+[4294698576] mtlk0(_mtlk_channels_frequency_element_dump:3009): CID-0000: ChannelACT     : 0
+[4294698586] mtlk0(_mtlk_channels_frequency_element_dump:3010): CID-0000: ScanType       : 0
+[4294698596] mtlk0(_mtlk_channels_frequency_element_dump:3011): CID-0000: ChannelSwCnt   : 0
+[4294698606] mtlk0(_mtlk_channels_frequency_element_dump:3012): CID-0000: SwitchMode     : 48
+[4294698616] mtlk0(_mtlk_channels_frequency_element_dump:3013): CID-0000: SmRequired     : 0
+[4294698616] mtlk0(_mtlk_channels_frequency_element_dump:3014): CID-0000: CbTxPowerLim   : 104
+[4294698626] mtlk0(_mtlk_channels_frequency_element_dump:3015): CID-0000: nCbTxPowerLim  : 104
+[4294698636] mtlk0(_mtlk_channels_frequency_element_dump:3016): CID-0000: AntennaGain    : 0
+[4294698646] mtlk0(_mtlk_channels_frequency_element_dump:3017): CID-0000: ChannelLoad    : 0
+[4294698656] mtlk0(_mtlk_channels_frequency_element_dump:3019): CID-0000: MaxTxPwr[0]    : 0
+[4294698666] mtlk0(_mtlk_channels_frequency_element_dump:3020): CID-0000: MaxTxPwrIdx[0] : 0
+[4294698666] mtlk0(_mtlk_channels_frequency_element_dump:3019): CID-0000: MaxTxPwr[1]    : 0
+[4294698676] mtlk0(_mtlk_channels_frequency_element_dump:3020): CID-0000: MaxTxPwrIdx[1] : 0
+[4294698686] mtlk0(_mtlk_channels_frequency_element_dump:3019): CID-0000: MaxTxPwr[2]    : 0
+[4294698696] mtlk0(_mtlk_channels_frequency_element_dump:3020): CID-0000: MaxTxPwrIdx[2] : 0
+[4294698706] mtlk0(_mtlk_channels_frequency_element_dump:3022): CID-0000: SwitchType     : 0
+[4294698706] mtlk0(_mtlk_mbss_send_preactivate_req:2831): CID-0000: Sending UMI FW Preactivation
+[4294698756] mtlk<3>(mtlk_core_set_force_ncb:6615): CID-0000: Error returned for UMI_FORCE_NCB request to MAC (err=2)
+[4294698766] mtlk0(_mtlk_mbss_preactivate:3078): CID-0000: _mtlk_mbss_preactivate returned successfully
+[4294698776] mtlk0(mtlk_mbss_init:3454): CID-0000: _mtlk_mbss_preactivate_if_needed returned successfully
+[4294698776] mtlk0(mtlk_mbss_send_vap_activate:3142): CID-0000: Entering mtlk_mbss_send_vap_activate
+[4294698786] mtlk0(mtlk_mbss_send_vap_activate:3149): CID-0000: Start activation
+[4294698796] mtlk0(__mtlk_dump:66): dump of UMI_ACTIVATE_VAP:
+cp= 0x86e78dcc l=152
+0000:  c4 e9 84 xx xx xx 00 00  02 00 00 05 00 0f 00 00 
+0010:  aa 0f 00 00 55 00 00 00  ff ff ff ff 0c 00 00 00 
+0020:  54 50 2d 4c 49 4e 4b 5f  34 39 33 35 00 00 00 00 
+0030:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0040:  00 00 00 00 30 14 01 00  00 0f ac 04 01 00 00 0f 
+0050:  ac 04 01 00 00 0f ac 02  00 00 00 00 00 00 00 00 
+0060:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0070:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0080:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0090:  00 00 00 00 09 00 00 00  
+[4294698856] mtlk0(mtlk_mbss_send_vap_activate:3211): CID-0000: UMI_ACTIVATE_VAP
+[4294698856] mtlk0(mtlk_mbss_send_vap_activate:3212): CID-0000: 	sBSSID = C4:E9:84:xx:xx:xx
+[4294698866] mtlk0(mtlk_mbss_send_vap_activate:3213): CID-0000: 	sSSID = TP-LINK_4935
+[4294698876] mtlk0(mtlk_mbss_send_vap_activate:3214): CID-0000: 	Hidden = 0
+[4294698886] mtlk0(__mtlk_dump:66): 	sRSNie = 
+cp= 0x86e78e10 l=80
+0000:  30 14 01 00 00 0f ac 04  01 00 00 0f ac 04 01 00 
+0010:  00 0f ac 02 00 00 00 00  00 00 00 00 00 00 00 00 
+0020:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0030:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+0040:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 
+[4294698916] mtlk0(mtlk_mbss_send_vap_activate:3218): CID-0000: mtlk_txmm_msg_send, MsgId = 0x453, ESSID = TP-LINK_4935
+[4294698926] mtlk0(mtlk_mbss_init:3461): CID-0000: mtlk_mbss_send_vap_activate returned successfully
+device wlan0 entered promiscuous mode
+brctl: iface lq0: No such device
+device wlan0.0 entered promiscuous mode
+
+
+=== pAd = c0e38000, size = 1337288 ===
+
+<-- RTMPAllocTxRxRingMemory, Status=0
+<-- RTMPAllocAdapterBlock, Status=0
+device_id =0x7650
+MACVersion = 0x76502000
+load fw spent 20ms
+RX DESC a59e5000 size = 4096
+RX1 DESC a59e6000 size = 4096
+cfg_mode=14
+cfg_mode=14
+1. Phy Mode = 49
+2. Phy Mode = 49
+ext_pa_current_setting = 1
+MT76x0_TssiTableAdjust: upper_bound = 0x7F decimal: 127
+MT76x0_TssiTableAdjust: lower_bound = 0xFFFFFF80 decimal: -128
+*** MT76x0_TssiTableAdjust: A Tssi[-7 .. +7] = -128 -128 -128 -9 -15 5 -4 * 0 * 17 11 127 127 127 127 -128, offset=-6, tuning=1
+MT76x0_TssiTableAdjust: A Tssi[-7 .. +7] = -128 -128 -128 -15 -21 -1 -10 * -6 * 11 5 121 121 121 121 122, offset=-6, tuning=1
+mp_temperature=0xffffffff, step = +0
+MT76x0_TssiTableAdjust: upper_bound = 0x7F decimal: 127
+MT76x0_TssiTableAdjust: lower_bound = 0xFFFFFF80 decimal: -128
+*** MT76x0_TssiTableAdjust: A Tssi[-7 .. +7] = -128 -128 -128 -9 -15 5 -4 * -6 * 17 11 127 127 127 127 -6, offset=-6, tuning=1
+MT76x0_TssiTableAdjust: A Tssi[-7 .. +7] = -128 -128 -128 -15 -21 -1 -10 * -6 * 11 5 121 121 121 121 -12, offset=-6, tuning=1
+mp_temperature=0xffffffff, step = +0
+3. Phy Mode = 49
+bAutoTxAgcG = 1
+MCS Set = ff 00 00 00 01
+@@@ ed_monitor_init : ===>
+@@@ ed_monitor_init : <===
+Main bssid = c4:e9:84:xx:xx:xx
+<==== rt28xx_init, Status=0
+@@@ ed_monitor_exit : ===>
+@@@ ed_monitor_exit : <===
+@@@ ed_monitor_init : ===>
+@@@ ed_monitor_init : <===
+Register wlan 5G WPS function
+device ra0 entered promiscuous mode
+device apcli0 entered promiscuous mode
+brctl: bridge br0: Device or resource busy
+device ra1 entered promiscuous mode
+WLAN-Start wlNetlinkTool
+Waiting for Wireless Events from interfaces...
+sendto: No such file or directory
+pid 264 send 2030 error
+sendto: No such file or directory
+pid 264 send 2004 error
+[ startDslCpeCtl ] 1519:  /usr/sbin/dsl_cpe_control -f/firmware/xcpe_hw.bin -i10_00_10_00_00_04_01_07 -M2 -T1:0x1:0x1_2:0x1:0x1 -A/firmware/vdsl.scr -a/firmware/adsl.scr -n/firmware/xdslrc.sh -t192.168.1.1 -d192.168.1.1 &
+DTI Agent Start - @(#)Debug and Trace Interface, DTI Agent 1.1.4
+Send Fct Reg[00] - name: not_used, avail: No
+Send Fct Reg[01] - name: not_used, avail: No
+Send Fct Reg[02] - name: not_used, avail: No
+Send Fct Reg[03] - name: local_loop, avail: Yes
+DTI CLI - sendFct register IF: 0 name: DSL_API
+DTI CLI - sendFct register, IF = 0, CLI name = <DSL_API>
+listen thr - enter.
+DTI Connection Open - SERVER 192.168.1.1:9000.
+MEI_DRV: MEI_IfxRequestIrq(IRQ = 55, .., ), lock = 1
+
+
+nReturn=0 
+
+
+
+nReturn=4 nDslMode=0
+
+
+
+nReturn=0 nDslMode=1
+
+
+
+[ apiSetAdslTypeAndAnnexType ] 1547:  /firmware/dsl_cpe_pipe.sh g997xtusecs 10 00 10 00 00 04 01 07
+nReturn=0 
+
+
+
+nReturn=0 nDslMode=0 nDirection=0
+
+
+
+nReturn=0 nDslMode=0 nDirection=1
+
+
+
+nReturn=0 nDslMode=1 nDirection=0
+
+
+
+nReturn=0 nDslMode=1 nDirection=1
+
+
+
+nReturn=0 nDirection=0
+
+
+
+nReturn=0 nDirection=1
+
+
+
+nReturn=0 
+
+
+
+iptables: Bad rule (does a matching rule exist in that chain?).
+radvd starting
+[ getPidFromPidFile ] 112:  Cann't open file: /var/run/zebra.pid.
+[ getPidFromPidFile ] 112:  Cann't open file: /var/run/ripd.pid.
+[4294713556] mtlk0(_mtlk_df_user_ppa_unregister:566): PPA device function is unregistered (id=3)
+ifx_ppa_init - init succeeded
+[4294713956] mtlk0(_mtlk_df_user_ppa_register:541): PPA device function is registered (id=3)
+[4294713986] mtlk0(_mtlk_df_user_ppa_register:541): PPA device function is registered (id=4)
+[4294714306] mtlk0(_mtlk_df_user_ppa_unregister:566): PPA device function is unregistered (id=4)
+iptables: Bad rule (does a matching rule exist in that chain?).
+[4294714766] mtlk0(_mtlk_df_user_ppa_unregister:566): PPA device function is unregistered (id=3)
+nReturn=0 nData="E843 0003 0001 0009 "
+
+nReturn=0 nData="5048 0000 0001 "
+
+nReturn=0 nData="1762 0000 0001 "
+
+
+
+ifx_ppa_init - init succeeded
+[4294715166] mtlk0(_mtlk_df_user_ppa_register:541): PPA device function is registered (id=3)
+[4294715186] mtlk0(_mtlk_df_user_ppa_register:541): PPA device function is registered (id=4)
+[4294715516] mtlk0(_mtlk_df_user_ppa_unregister:566): PPA device function is unregistered (id=4)
+iptables: Bad rule (does a matching rule exist in that chain?).
+[4294715936] mtlk0(_mtlk_df_user_ppa_unregister:566): PPA device function is unregistered (id=3)
+ifx_ppa_init - init succeeded
+[4294716336] mtlk0(_mtlk_df_user_ppa_register:541): PPA device function is registered (id=3)
+[4294716366] mtlk0(_mtlk_df_user_ppa_register:541): PPA device function is registered (id=4)
+[4294716686] mtlk0(_mtlk_df_user_ppa_unregister:566): PPA device function is unregistered (id=4)
+iptables: Bad rule (does a matching rule exist in that chain?).
+ip6tables: Bad rule (does a matching rule exist in that chain?).
+TAPI, Version 4.10.4.2, (c) 2001-2013 Lantiq Deutschland GmbH
+Lantiq KPI2UDP driver, version 3.0.4.0, (c) 2008-2011 Lantiq Deutschland GmbH
+[ rsl_setStorageServiceObj ] 1394:  mountFlag is 3,We start usb server
+
+killall: ushare: no process killed
+Lantiq MIPS34KEc MPS driver, version 2.2.7.0, (c) 2006-2010 Lantiq Deutschland GmbH
+Lantiq VMMC device driver, version 1.15.0.4, (c) 2006-2013 Lantiq Deutschland GmbH
+voip: module license 'unspecified' taints kernel.
+Disabling lock debugging due to kernel taint
+iptables: Bad rule (does a matching rule exist in that chain?).
+uShare (version 1.1a), a lightweight UPnP A/V and DLNA Media Server.
+Benjamin Zores (C) 2005-2007, for GeeXboX Team.
+See http://ushare.geexbox.org/ for updates.
+iptables: Bad rule (does a matching rule exist in that chain?).
+ip6tables: Bad rule (does a matching rule exist in that chain?).
+ifxmips_gpio: Pin ID 39 (port 2, pin 7) has been reserved by module TEST from kernel module!
+kcg 333 :GPL NetUSB up!
+[#DECT# LOG LTQ_DECT_STACK_RFPI_Get:L356]DECT STACK: RFPI: 0x02:0xFFFFFF8A:0x60:0xFFFFFFC1:0x60
+[DectTk] <_Main>  The number of registration is: :0
+[DectTk] <_Main>  The Base pin is: :4941080
+kc  227 : init_DebugD end
+INFO17ED: NetUSB 1.02.66, 00020620 : Apr 30 2015 11:15:52
+INFO17EF: 7437: Archer VR200v :Archer VR200v 
+INFO17F0:  AUTH ISOC
+INFO17F1:  filterAudio
+kc   90 : run_telnetDBGDServer start 
+usbcore: registered new interface driver KC NetUSB General Driver
+INFO0145:  init proc : PAGE_SIZE 4096
+INFO16E1:  infomap 851cb070 
+INFO16E4:  sleep to wait br0 to wake up
+INFO15B4: tcpConnector() started... : br0 
+open DNS error: No such file or directory
+INFO1567: Bind to br0
+Msg=245 inc=0 p1=0 p2=50 p3=32 p4=65 datalen=0
+Msg=243 inc=0 p1=6 p2=0 p3=0 p4=255 datalen=0
+[#DECT# LOG LTQ_DECT_InitStack:L547]DECT Stack initialize OK!
+Enable forwarding
+Msg=48 inc=0 p1=5 p2=8 p3=0 p4=0 datalen=0
+DSL[00]: Reboot on training timeout (60)!!!
+xDSL Leave SHOWTIME!!
+nReturn=0 nData="6743 0014 0001 0041 "
+
+nReturn=0 nData="1762 0000 0001 "</nowiki>
+</WRAP>\\
+
+==== OpenWrt 18.06.5? bootlog: ====
+<WRAP bootlog>
+<nowiki>
+ROM VER: 1.1.4
+CFG 05
+
+DDR autotuning Rev 1.0
+DDR size from 0xa0000000 - 0xa7ffffff
+DDR check ok... start booting...
+
+
+
+U-Boot 2010.06-svn17008-LANTIQ-v-2.2.67 (Jul 26 2016 - 15:25:16)
+
+CLOCK CPU 500M RAM 250M
+DRAM:  128 MiB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   Internal phy(GE) firmware version: 0x8434
+vr9 Switch16384 KiB S25FL128P_UNI_64K at 0:3 is now current device
+MAC: a4-2b-b0-b9-2d-33  
+
+
+Type "run flash_nfs" to mount root filesystem over NFS
+
+Hit any key to stop autoboot:  0 
+16384 KiB S25FL128P_UNI_64K at 0:3 is now current device
+16384 KiB S25FL128P_UNI_64K at 0:3 is now current device
+        Uncompressing ... 
+Starting kernel ...
+
+[    0.000000] Linux version 4.9.198 (buildbot@91d4e1610b27) (gcc version 7.3.0 (OpenWrt GCC 7.3.0 r7897-9d401013fc) ) #0 SMP Tue Nov 5 14:12:18 2019
+[    0.000000] SoC: xRX200 rev 1.2
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019556 (MIPS 34Kc)
+[    0.000000] MIPS: machine is TP-LINK Archer VR200v
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 07f00000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Detected 1 available secondary CPU(s)
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007efffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007efffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007efffff]
+[    0.000000] percpu: Embedded 12 pages/cpu s17488 r8192 d23472 u49152
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32258
+[    0.000000] Kernel command line: console=ttyLTQ0,115200
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Writing ErrCtl register=0002c11c
+[    0.000000] Readback ErrCtl register=0002c11c
+[    0.000000] Memory: 121788K/130048K available (4357K kernel code, 181K rwdata, 900K rodata, 1264K init, 228K bss, 8260K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:256
+[    0.000000] Setting up vectored interrupts
+[    0.000000] Setting up IPI vectored interrupts
+[    0.000000] CPU Clock: 500MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041786 ns
+[    0.000011] sched_clock: 32 bits at 250MHz, resolution 4ns, wraps every 8589934590ns
+[    0.007883] Calibrating delay loop... 332.54 BogoMIPS (lpj=665088)
+[    0.042398] pid_max: default: 32768 minimum: 301
+[    0.047277] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.053812] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.065637] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.065649] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.065835] CPU1 revision is: 00019556 (MIPS 34Kc)
+[    0.116526] Synchronize counters for CPU 1: 
+[    0.116528] done.
+[    0.123037] Brought up 2 CPUs
+[    0.130636] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.140292] futex hash table entries: 512 (order: 2, 16384 bytes)
+[    0.146526] pinctrl core: initialized pinctrl subsystem
+[    0.153016] NET: Registered protocol family 16
+[    0.165947] pinctrl-xway 1e100b10.pinmux: Init done
+[    0.171910] dma-xway 1e104100.dma: Init done - hw rev: 7, ports: 7, channels: 28
+[    0.285112] dcdc-xrx200 1f106a00.dcdc: Core Voltage : 1016 mV
+[    0.308174] PCI host bridge /fpi@10000000/pci@E105400 ranges:
+[    0.313847]  MEM 0x0000000018000000..0x0000000019ffffff
+[    0.319119]   IO 0x000000001ae00000..0x000000001affffff
+[    0.436503] PCI host bridge /fpi@10000000/pcie@d900000 ranges:
+[    0.474133] usbcore: registered new interface driver usbfs
+[    0.479715] usbcore: registered new interface driver hub
+[    0.484962] random: fast init done
+[    0.485082] usbcore: registered new device driver usb
+[    0.485542] PCI host bridge to bus 0000:00
+[    0.485570] pci_bus 0000:00: root bus resource [mem 0x18000000-0x19ffffff]
+[    0.485587] pci_bus 0000:00: root bus resource [io  0x1ae00000-0x1affffff]
+[    0.485604] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.485620] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.486242] pci 0000:00:0e.0: BAR 1: assigned [mem 0x18000000-0x187fffff pref]
+[    0.486269] pci 0000:00:0e.0: BAR 0: assigned [mem 0x18800000-0x18800fff pref]
+[    0.486521] PCI host bridge to bus 0000:01
+[    0.486545] pci_bus 0000:01: root bus resource [mem 0x1c000000-0x1cffffff]
+[    0.486563] pci_bus 0000:01: root bus resource [io  0x1d800000-0x1d8fffff]
+[    0.486580] pci_bus 0000:01: root bus resource [??? 0x00000000 flags 0x0]
+[    0.486597] pci_bus 0000:01: No busn resource found for root bus, will use [bus 01-ff]
+[    0.486679] ifx_pcie_rc_class_early_fixup: fixed pcie host bridge to pci-pci bridge
+[    0.498639] pci 0000:01:00.0: bridge configuration invalid ([bus 02-00]), reconfiguring
+[    0.500368] pci 0000:01:00.0: BAR 8: assigned [mem 0x1c000000-0x1c1fffff]
+[    0.500392] pci 0000:02:00.0: BAR 0: assigned [mem 0x1c000000-0x1c0fffff]
+[    0.500420] pci 0000:02:00.1: BAR 0: assigned [mem 0x1c100000-0x1c1fffff]
+[    0.500442] pci 0000:01:00.0: PCI bridge to [bus 02]
+[    0.500466] pci 0000:01:00.0:   bridge window [mem 0x1c000000-0x1c1fffff]
+[    0.500584] ifx_pcie_bios_map_irq port 0 dev 0000:01:00.0 slot 0 pin 1 
+[    0.500593] ifx_pcie_bios_map_irq dev 0000:01:00.0 irq 144 assigned
+[    0.500625] ifx_pcie_bios_map_irq port 0 dev 0000:02:00.0 slot 0 pin 1 
+[    0.500632] ifx_pcie_bios_map_irq dev 0000:02:00.0 irq 144 assigned
+[    0.500663] ifx_pcie_bios_map_irq port 0 dev 0000:02:00.1 slot 0 pin 1 
+[    0.500670] ifx_pcie_bios_map_irq dev 0000:02:00.1 irq 144 assigned
+[    0.661336] clocksource: Switched to clocksource MIPS
+[    0.668903] NET: Registered protocol family 2
+[    0.674443] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.681363] TCP bind hash table entries: 1024 (order: 1, 8192 bytes)
+[    0.687750] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.694268] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    0.700069] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    0.706669] NET: Registered protocol family 1
+[    0.711910] gptu: totally 6 16-bit timers/counters
+[    0.716772] gptu: misc_register on minor 63
+[    0.720921] gptu: succeeded to request irq 126
+[    0.725429] gptu: succeeded to request irq 127
+[    0.729939] gptu: succeeded to request irq 128
+[    0.734431] gptu: succeeded to request irq 129
+[    0.738964] gptu: succeeded to request irq 130
+[    0.743483] gptu: succeeded to request irq 131
+[    0.748375] phy-xrx200 gphy-xrx200: requesting lantiq/xrx200_phy11g_a22.bin
+[    0.755896] phy-xrx200 gphy-xrx200: booting GPHY0 firmware at 7A80000
+[    0.762257] phy-xrx200 gphy-xrx200: booting GPHY1 firmware at 7A80000
+[    0.870269] No VPEs reserved for AP/SP, not initialize VPE loader
+[    0.870269] Pass maxvpes=<n> argument as kernel argument
+[    0.881647] No TCs reserved for AP/SP, not initializing RTLX.
+[    0.881647] Pass maxtcs=<n> argument as kernel argument
+[    0.894421] Crashlog allocated RAM at address 0x3f00000
+[    0.900248] workingset: timestamp_bits=30 max_order=15 bucket_order=0
+[    0.922336] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.928081] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.943557] io scheduler noop registered
+[    0.947374] io scheduler deadline registered (default)
+[    0.953879] 1e100c00.serial: ttyLTQ0 at MMIO 0x1e100c00 (irq = 112, base_baud = 0) is a lantiq,asc-
+[    0.962788] console [ttyLTQ0] enabled
+[    0.962788] console [ttyLTQ0] enabled
+[    0.970120] bootconsole [early0] disabled
+[    0.970120] bootconsole [early0] disabled
+[    0.981553] spi-lantiq-ssc 1e100800.spi: Lantiq SSC SPI controller (Rev 8, TXFS 8, RXFS 8, DMA 1)
+[    0.990952] m25p80 spi32766.4: s25fl128s (16384 Kbytes)
+[    0.994855] 7 fixed-partitions partitions found on MTD device spi32766.4
+[    1.001506] Creating 7 MTD partitions on "spi32766.4":
+[    1.006600] 0x000000000000-0x000000020000 : "u-boot"
+[    1.013938] 0x000000020000-0x000000fb0000 : "firmware"
+[    1.326718] random: crng init done
+[    3.212503] 2 tplink-fw partitions found on MTD device firmware
+[    3.217023] 0x000000020000-0x0000001cd6d8 : "kernel"
+[    3.224162] 0x0000001cd6d8-0x000000fb0000 : "rootfs"
+[    3.229874] mtd: device 3 (rootfs) set to be root filesystem
+[    3.234365] 1 squashfs-split partitions found on MTD device rootfs
+[    3.240351] 0x000000450000-0x000000fb0000 : "rootfs_data"
+[    3.247897] 0x000000fb0000-0x000000fc0000 : "radioDECT"
+[    3.254040] 0x000000fc0000-0x000000fd0000 : "config"
+[    3.259927] 0x000000fd0000-0x000000fe0000 : "romfile"
+[    3.265906] 0x000000fe0000-0x000000ff0000 : "rom"
+[    3.271460] 0x000000ff0000-0x000001000000 : "radio"
+[    3.280555] libphy: Fixed MDIO Bus: probed
+[    3.388057] libphy: lantiq,xrx200-mdio: probed
+[    3.469959] Intel XWAY PHY11G (PEF 7071/PEF 7072) v1.4 0:00: attached PHY driver [Intel XWAY PHY11G (PEF 7071/PEF 7072) v1.4] (mii_bus:phy_addr=0:00, irq=-1)
+[    3.553938] Intel XWAY PHY11G (PEF 7071/PEF 7072) v1.4 0:05: attached PHY driver [Intel XWAY PHY11G (PEF 7071/PEF 7072) v1.4] (mii_bus:phy_addr=0:05, irq=-1)
+[    3.637921] Intel XWAY PHY11G (xRX v1.2 integrated) 0:11: attached PHY driver [Intel XWAY PHY11G (xRX v1.2 integrated)] (mii_bus:phy_addr=0:11, irq=-1)
+[    3.721921] Intel XWAY PHY11G (xRX v1.2 integrated) 0:13: attached PHY driver [Intel XWAY PHY11G (xRX v1.2 integrated)] (mii_bus:phy_addr=0:13, irq=-1)
+[    3.837876] ltq-cputemp cputemp@0: Current CPU die temperature: 38.5 °C
+[    3.843538] wdt 1f8803f0.watchdog: Init done
+[    3.853007] NET: Registered protocol family 10
+[    3.858397] NET: Registered protocol family 17
+[    3.861551] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    3.874423] 8021q: 802.1Q VLAN Support v1.8
+[    3.891217] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    3.900864] Freeing unused kernel memory: 1264K
+[    3.903998] This architecture does not have kernel memory protection.
+[    4.734032] init: Console is alive
+[    4.736311] init: - watchdog -
+[    5.348736] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    5.502969] dwc2 1e101000.ifxhcd: requested GPIO 495
+[    5.607802] dwc2 1e101000.ifxhcd: DWC OTG Controller
+[    5.611470] dwc2 1e101000.ifxhcd: new USB bus registered, assigned bus number 1
+[    5.618759] dwc2 1e101000.ifxhcd: irq 62, io mem 0x00000000
+[    5.624282] dwc2 1e101000.ifxhcd: Hardware does not support descriptor DMA mode -
+[    5.631700] dwc2 1e101000.ifxhcd: falling back to buffer DMA mode.
+[    5.639328] hub 1-0:1.0: USB hub found
+[    5.641837] hub 1-0:1.0: 1 port detected
+[    5.747573] dwc2 1e106000.ifxhcd: DWC OTG Controller
+[    5.751200] dwc2 1e106000.ifxhcd: new USB bus registered, assigned bus number 2
+[    5.758512] dwc2 1e106000.ifxhcd: irq 91, io mem 0x00000000
+[    5.764016] dwc2 1e106000.ifxhcd: Hardware does not support descriptor DMA mode -
+[    5.771461] dwc2 1e106000.ifxhcd: falling back to buffer DMA mode.
+[    5.779271] hub 2-0:1.0: USB hub found
+[    5.781772] hub 2-0:1.0: 1 port detected
+[    5.787035] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    5.796534] init: - preinit -
+[    6.625553] lantiq,xrx200-net 1e108000.eth eth0: port 5 got link
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   10.081721] mount_root: jffs2 not ready yet, using temporary tmpfs overlay
+[   10.116122] urandom-seed: Seed file not found (/etc/urandom.seed)
+[   10.293148] procd: - early -
+[   10.294810] procd: - watchdog -
+[   10.913375] lantiq,xrx200-net 1e108000.eth eth0: port 5 lost link
+[   10.978169] procd: - watchdog -
+[   10.980385] procd: - ubus -
+[   11.107389] procd: - init -
+Please press Enter to activate this console.
+[   11.587101] kmodloader: loading kernel modules from /etc/modules.d/*
+[   11.595595] IFXOS, Version 1.5.19 (c) Copyright 2009, Lantiq Deutschland GmbH
+[   11.605526] NET: Registered protocol family 8
+[   11.608429] NET: Registered protocol family 20
+[   11.618753] PPP generic driver version 2.4.2
+[   11.627733] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   11.649468] Lantiq (VRX) DSL CPE MEI driver, version 1.5.17.6, (c) 2007-2015 Lantiq Beteiligungs-GmbH & Co. KG[   11.667871] 
+[   11.667871] 
+[   11.667871] Lantiq CPE API Driver version: DSL CPE API V4.17.18.6
+[   11.675574] 
+[   11.675574] Predefined debug level: 3
+[   11.687677] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   11.696468] Infineon Technologies DEU driver version 2.0.0 
+[   11.702843] IFX DEU DES initialized (multiblock).
+[   11.707820] IFX DEU AES initialized (multiblock).
+[   11.711819] IFX DEU ARC4 initialized (multiblock).
+[   11.716264] IFX DEU SHA1 initialized.
+[   11.719909] IFX DEU MD5 initialized.
+[   11.723505] IFX DEU SHA1_HMAC initialized.
+[   11.727572] IFX DEU MD5_HMAC initialized.
+[   11.738946] nf_conntrack version 0.5.0 (2048 buckets, 8192 max)
+[   11.785850] NET: Registered protocol family 24
+[   11.805213] xt_time: kernel timezone is -0000
+[   11.816556] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   24.866456] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   24.895056] br-lan: port 1(eth0.1) entered blocking state
+[   24.899090] br-lan: port 1(eth0.1) entered disabled state
+[   24.905373] device eth0.1 entered promiscuous mode
+[   24.909191] device eth0 entered promiscuous mode
+[   24.945636] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   27.971849] lantiq,xrx200-net 1e108000.eth eth0: port 5 got link
+[   27.976684] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   27.984787] br-lan: port 1(eth0.1) entered blocking state
+[   27.988830] br-lan: port 1(eth0.1) entered forwarding state
+[   27.996678] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   29.594942] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   29.605536] jffs2_build_filesystem(): unlocking the mtd device... [   29.610143] done.
+[   29.612001] jffs2_build_filesystem(): erasing all blocks after the end marker... [   53.555194] done.
+[   53.555705] jffs2: notice: (1357) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orp.
+</nowiki>
+</WRAP>\\
+===== Further Reading =====
+[[https://openwrt-devel.openwrt.narkive.com/DDazg2UK/lantiq-dsl-drivers-firmware-info|Lantiq VRX208 xDSl annex mods]], mail list\\
+[[:docs:guide-user:network:wan:isp-configurations]] xDSL config and firmware patch \\
+[[https://xdarklight.github.io/lantiq-xdsl-firmware-info/|xDSL firmware files for VRX200]]\\
+Lantiq XWAY WAVE300 2.4GHz [[https://github.com/garlett/wave300/tree/master/scripts|driver]] [[https://forum.openwrt.org/t/support-for-wave-300-wi-fi-chip/24690/260|forum]] \\
+[[https://github.com/openwrt/mt76|MT76 5.0Ghz github drivers]], Install command: \\
+<code> opkg update; opkg install kmod-mt76x0e wpad-mini pciutils; reboot </code>
+
+
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>Lantiq VR9 MIPS MIPS32 34Kc GigabitEthernet 1NIC 1WNIC 4Port VDSL2 USB 2USB JTAG Serial 802.11bgn 802.11ac 3Ant DetachableAntenna 128RAM 16Flash mt7610e}}

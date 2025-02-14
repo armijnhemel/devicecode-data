@@ -1,0 +1,143 @@
+====== MikroTik RouterBoard RB91xG 5HPnD (RB911/RB912)======
+
+There appears to be a new revision of this board, which has an ethernet problem [[https://dev.openwrt.org/ticket/17385]].
+It is distinguishable by the NANYA DDR memory on board.
+The ticket was closed on 2015-06-25. Ethernet is now reported working on Chaos Calmer.
+
+
+===== Hardware =====
+^ CPU ^ CPU Speed ^ RAM (MByte) ^ NAND (MByte) ^ Serial Flash ^ Ethernet ^ PoE ^ Wireless ^ USB ^ UART ^ JTAG ^
+| AR9342 | 600 MHz | 64 (NT5TU32M16DG–AC) | 128 (Samsung K9F1G08U0D-SCB0) | MX25L512E | AR8033 (10M/100M/1000M) | 8-30V 14W at 24V | AR9342-BL1A | 1x 2.0 | 1x onboard no pins | 1x onboard? |
+
+==== Photos ====
+**Original**\\
+{{media:mikrotik:rb912_v1.jpg?400|}}
+
+**Newer**\\
+{{media:mikrotik:rb91x_v2.jpg?400|}}
+
+=== Switch between mPCIe and USB slot with some Mikrotik devices ===
+ 
+With this board you need to choose between mPCIe and USB slot. You cannot use both at the same time.
+
+You can check this with command:
+  $ uci show system.usb_power_switch
+
+Result will be something like this:
+  system.usb_power_switch=gpio_switch
+  system.usb_power_switch.name='USB Power Switch'
+  system.usb_power_switch.gpio_pin='52'
+  system.usb_power_switch.value='1'
+
+system.usb_power_switch.value is the switch.
+  * value='1', USB port enabled, mPCIe slot disabled.
+  * value='0', mPCIe slot enabled, USB port disabled.
+
+To change this type:
+  $ uci system.usb_power_switch.value='0'
+  $ uci commit system
+
+This will enable mPCIe slot and disable USB port. Then just reboot, and your mPCIe card should be recognized.
+
+===== OpenWrt Installation =====
+==== Create image ====
+  $ mkdir /home/$USER/mikrotik/
+  $ cd /home/$USER/mikrotik/
+  $ svn co svn://svn.openwrt.org/openwrt/trunk/
+  $ cd /home/$USER/mikrotik/trunk
+Configure image for booting from RAM and NAND, enable regdomain set
+  $ make menuconfig
+
+'' Target System = AR7XXX
+ Subtarget = Mikrotik device with NAND flash
+ Target Images = choose ramdisk and tar.gz
+ Kernel modules -> Wireless Drivers -> kmod-ath Atheros common driver part ->
+  enable Force Atheros drivers to respect the user's regdomain settings (CONFIG_ATH_USER_REGD)''
+  $ make kernel_menuconfig CONFIG_TARGET=subtarget
+'' Machine selection
+ System type = Atheros AR71XX/AR724X/AR913X based boards
+ Atheros AR71XX/AR724X/AR913X machine selection - enable MikroTik RouterBOARD 91X support''
+  $ make V=s
+
+==== Run OpenWrt in RAM ====
+Create script: nano /tftp/loader.sh
+  #!/bin/bash
+  USER=user #CHANGE THIS
+  ifconfig eth0 192.168.1.10 up
+  dnsmasq -i eth0 --dhcp-range=192.168.1.100,192.168.1.200 \
+  --dhcp-boot=openwrt-ar71xx-mikrotik-vmlinux-initramfs.elf \
+  --enable-tftp --tftp-root=/home/$USER/mikrotik/trunk/bin/ar71xx/ -d -u $USER -p0 -K --log-dhcp --bootp-dynamic
+
+  * Run script loader.sh from **root/sudo**
+  * Unplug power jack from PoE injector
+  * Hold reset button
+  * Plug power jack
+  * Release the reset button after the 6 LEDS **stopped** blinking and **all 6 LED lights turned off** 
+  * The router is now in network boot mode
+
+Your RB91x should fetch an DHCP lease, load the initramfs image via tftp from your local machine and boot into OpenWrt. After a short beep the router should be reachable via IP: 192.168.1.1
+
+NOTE: Sometimes board uses default IP range: 192.168.88.x. This happens especially, when you have soft bricked the board. Then you must modify the script and replace 192.168.1.x with 192.168.88.x.
+
+==== Flash OpenWrt to Mikrotik ====
+**//The new & easy way to flash Openwrt/LEDE permanently//**
+
+Once your router has booted the initramfs image and is accessible via ssh root@192.168.1.1, just:
+
+  * copy the sysupgrade image via scp into the routers /tmp folder
+
+  scp lede-ar71xx-mikrotik-nand-large-squashfs-sysupgrade.bin root@192.168.1.1:/tmp
+  
+  * ssh into our router and trigger a normal sysupgrade
+
+  ssh root@192.168.1.1
+  root@LEDE:sysupgrade /tmp/lede-ar71xx-mikrotik-nand-large-squashfs-sysupgrade.bin
+
+**//The old way to flash an image //**
+
+To flash openwrt-ar71xx-nand-vmlinux-lzma.elf you must login to router via ''telnet 192.168.1.1'' and then copy OpenWrt image to ''/tmp/''
+
+Find ''kernel'' and ''rootfs'' partitions from ''/proc/mtd''
+  root@OpenWrt:/# cat /proc/mtd
+  dev:    size   erasesize  name
+  mtd0: 0000b000 00001000 "routerboot"
+  mtd1: 00001000 00001000 "hard_config"
+  mtd2: 00001000 00001000 "bios"
+  mtd3: 00001000 00001000 "soft_config"
+  mtd4: 00040000 00020000 "booter"
+  mtd5: 003c0000 00020000 "kernel"
+  mtd6: 07c00000 00020000 "rootfs"
+Erase them, there may be bad blocks detected and skipped during erase
+  root@OpenWrt:/# mtd erase /dev/mtd5
+  root@OpenWrt:/# mtd erase /dev/mtd6
+  root@OpenWrt:/# mkdir /mnt/kernel
+  root@OpenWrt:/# mkdir /mnt/rootfs
+  root@OpenWrt:/# mount /dev/mtdblock5 /mnt/kernel
+  root@OpenWrt:/# mount /dev/mtdblock6 /mnt/rootfs
+Change password to enable ssh
+  root@OpenWrt:/# passwd
+Copy kernel & rootfs to RB91x
+  $ cd /home/$USER/mikrotik/trunk
+  $ scp bin/ar71xx/openwrt-ar71xx-mikrotik-vmlinux-lzma.elf root@192.168.1.1:/tmp
+  $ scp bin/ar71xx/openwrt-ar71xx-mikrotik-DefaultNoWifi-rootfs.tar.gz root@192.168.1.1:/tmp
+Flash kernel & rootfs
+  root@OpenWrt:/# mv /tmp/openwrt-ar71xx-mikrotik-vmlinux-lzma.elf /mnt/kernel/kernel
+  root@OpenWrt:/# chmod +x /mnt/kernel/kernel
+  root@OpenWrt:/# umount /mnt/kernel
+  root@OpenWrt:/# tar -C /mnt/rootfs -xvzf /tmp/openwrt-ar71xx-mikrotik-DefaultNoWifi-rootfs.tar.gz
+  root@OpenWrt:/# umount /mnt/rootfs
+Stop loader.sh and finally
+  root@OpenWrt:/# reboot
+After reboot you should be able to login via telnet 192.168.1.1
+
+
+===== Links =====
+
+  * [[http://routerboard.com/RB912UAG-5HPnD]]
+  * [[http://img.routerboard.com/mimg/884_hi_res.png]]
+  * Helpfull info: [[https://dev.openwrt.org/log/trunk/target/linux/ar71xx/patches-3.10/703-MIPS-ath79-add-RB91x-support.patch]]
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR9342 GigabitEthernet 802.11abgn 2Ant 64RAM 128Flash}}

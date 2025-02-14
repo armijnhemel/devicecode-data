@@ -1,0 +1,580 @@
+====== TI Beaglebone Black ======
+{{:media:beaglebone:black:beaglebone_black.jpg?150&nolink}}
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^BeagleBone Black$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^BeagleBone Black$"}
+} -->
+
+It offers a lot of GPIO's, I2C, SPI, ADC and other easily accessible i/o.
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^BeagleBone Black$"}
+} -->
+
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+  - Download a snapshot ext4 build from the [[https://firmware-selector.openwrt.org/?version=SNAPSHOT&target=omap%2Fgeneric&id=ti_am335x-bone-black|firmware selector]]
+  - unpack the image file using gunzip<code>gunzip openwrt-omap-generic-ti_am335x-bone-black-ext4-sdcard.img.gz</code>
+  - write that to a Micro SD card <code>sudo dd if=openwrt-omap-generic-ti_am335x-bone-black-ext4-sdcard.img of=/dev/mmcblk0 bs=1M</code>
+
+
+{{page>meta:infobox:outdated&noheader&nofooter&noeditbtn}}
+
+
+
+FIXME Describe howto setup the whole sd card with the build files.
+
+
+==== Flash Layout ====
+Please check out the article [[docs:techref:flash.layout]]. It contains an example and a couple of explanations.
+
+As all omap platforms the Beaglebone needs a boot partition with the MLO, u-boot.img, devicetree file and the kernel. 
+
+<code>
+fdisk -l /dev/mmcblk0
+
+Disk /dev/mmcblk0: 2002 MB, 2002780160 bytes, 3911680 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x00000000
+
+        Device Boot      Start         End      Blocks   Id  System
+/dev/mmcblk0p1   *          63      144584       72261    c  W95 FAT32 (LBA)
+/dev/mmcblk0p2          145408      407551      131072   83  Linux
+</code>
+
+The first partition /dev/mmcblk0p1 is the boot partition which contains the boot loader and kernel.
+<code>
+ls /mnt/p1/
+MLO  am335x-boneblack.dtb  u-boot.img  uEnv.txt  zImage
+</code>
+
+The second partition is only 128 MiB size. It is formated with ext4 and contains the whole root file system. 
+<code>
+ls /mnt/p2 
+bin  dev  etc  lib  lost+found  mnt  overlay  proc  rom  root  sbin  sys  tmp  usr  var  www
+</code>
+
+I am currently working on squashfs with an overlay on top of it, like described on [[docs:techref:flash.layout]]. The difficulty there is, that it the root device is a block device and no mtd device. 
+
+Options are:
+ - block2mtd
+ - mtdblock
+
+This options currentl dont mount my overlay. 
+
+==== Bootpartiton ====
+:!: uEnv.txt is used on new uboot versions. Older u-boot versions use a boot.scr file.
+
+Very important is the uEnv.txt. It describes the u-boot boot environment for the device. It contains the kernel cmdline, root partition device and filesystem. The console ttyO0 is the debug serial console attached to the device. With this console you can see very early debug information from u-boot and the kernel. 
+
+<code>
+cat /mnt/p1/uEnv.txt 
+kernel_file=zImage
+fdtfile=am335x-boneblack.dtb
+
+loadzimage=load mmc ${mmcdev}:${mmcpart} ${loadaddr} ${kernel_file}
+loadfdt=load mmc ${mmcdev}:${mmcpart} ${fdtaddr} ${fdtfile}
+
+console=ttyO0,115200n8
+mmcroot=/dev/mmcblk0p2 ro
+mmcrootfstype=ext4 rootwait
+
+mmcargs=setenv bootargs console=${console} root=${mmcroot} rootfstype=${mmcrootfstype} ${optargs}
+
+uenvcmd=run loadzimage; run loadfdt; run mmcargs; bootz ${loadaddr} - ${fdtaddr}
+
+optargs="debug init=/etc/preinit"
+
+</code>
+
+==== OEM easy installation ====
+
+To reset your board to factory defaults (in this case Angstrom Linux) folow the following steps:
+  - Download OEM flash image [[http://beagleboard.org/Support/Software%20Support]]
+  - Put your SD-Card into your PC's SD-card reader
+  - find out which device the sd card is using dmesg
+  - xzcat BBB-eMMC-flasher-2013.09.12.img.xz | dd of=/dev/SDCARD 
+  - insert this sd card into your BBB and start it from the sd card. 
+
+
+
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+FIXME : HOWTO Upgrade
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name ^ Description ^ Default configuration ^
+| br-lan | LAN & WiFi | 192.168.1.1/24 | 
+
+
+
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+FIXME : Failsafe mode currently not working!
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The Beaglebone Black has three buttons. They are Reset, Power and "Boot from SDCard". Here, we merely name the buttons, so we can use them in the above Howto:
+FIXME
+^ BUTTON ^ Event ^
+| Reset | reset | 
+| Secure Easy Setup | ses | 
+
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set]]                | [[wp>ARM architecture|ARM]]   |
+^ Vendor                                | [[wp>BeagleBoard]]|
+^ [[docs:techref:bootloader]]           | [[docs:techref:bootloader:uboot|U-Boot]]  |
+^ [[docs:techref:hardware:soc|System-On-Chip]]   | AM3359AZ |
+^ [[docs:techref:hardware:cpu|CPU]] @Frq         | AM335x@1000MHz |
+^ Flash size                  | 2 GiB |
+^ Flash Chip                  | ??? |
+^ RAM size                    | 512 MiB   |
+^ RAM Chip                    |   |
+^ Wireless No1                | none  |
+^ Wireless No2                | none  |
+^ [[docs:techref:hardware:switch]]     | 10/100 MBit  |
+^ [[docs:techref:hardware:internet.access.technologies|Modem]]    | none   |
+^ USB                         | Yes 1 x 2.0   |
+^ [[docs:techref:hardware:port.serial|Serial]]   | [[#Serial|Yes]] |
+^ [[docs:techref:hardware:port.jtag|JTAG]]       | [[#JTAG|Possible to add, but no default]]   |
+
+==== Photos ====
+{{media:beaglebone:black:beaglebone_black-a5c.png|}}
+
+
+==== Opening the case ====
+**Note:** Since the beaglebone back ships without a case, this can't void your warranty. :)
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:
+
+**Photo of PCB with markings**
+
+{{media:beaglebone:black:beaglebone_black-a5c_serial-header.png?400|}}
+
+You can use a PLC2303 serial usb cable to connect to this header. 
+__**DO NOT CONNECT THE RED WIRE TO THE BOARD!**__
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:
+
+**Photo of PCB with markings**
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+To debrick this device, setup a SDCard with a working linux distribution and boot from the SDcard. (Hold the boot from sd card button pressed while booting). See the upper description to reset the formware to stock.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot SPL 2013.04-dirty (Jul 10 2013 - 14:02:53)
+musb-hdrc: ConfigData=0xde (UTMI-8, dyn FIFOs, HB-ISO Rx, HB-ISO Tx, SoftConn)
+musb-hdrc: MHDRC RTL version 2.0 
+musb-hdrc: setup fifo_mode 4
+musb-hdrc: 28/31 max ep, 16384/16384 memory
+USB Peripheral mode controller at 47401000 using PIO, IRQ 0
+musb-hdrc: ConfigData=0xde (UTMI-8, dyn FIFOs, HB-ISO Rx, HB-ISO Tx, SoftConn)
+musb-hdrc: MHDRC RTL version 2.0 
+musb-hdrc: setup fifo_mode 4
+musb-hdrc: 28/31 max ep, 16384/16384 memory
+USB Host mode controller at 47401800 using PIO, IRQ 0
+OMAP SD/MMC: 0
+mmc_send_cmd : timeout: No status update
+reading u-boot.img
+reading u-boot.img
+
+
+U-Boot 2013.04-dirty (Jul 10 2013 - 14:02:53)
+
+I2C:   ready
+DRAM:  512 MiB
+WARNING: Caches not enabled
+NAND:  No NAND device found!!!
+0 MiB
+MMC:   OMAP SD/MMC: 0, OMAP SD/MMC: 1
+*** Warning - readenv() failed, using default environment
+
+musb-hdrc: ConfigData=0xde (UTMI-8, dyn FIFOs, HB-ISO Rx, HB-ISO Tx, SoftConn)
+musb-hdrc: MHDRC RTL version 2.0 
+musb-hdrc: setup fifo_mode 4
+musb-hdrc: 28/31 max ep, 16384/16384 memory
+USB Peripheral mode controller at 47401000 using PIO, IRQ 0
+musb-hdrc: ConfigData=0xde (UTMI-8, dyn FIFOs, HB-ISO Rx, HB-ISO Tx, SoftConn)
+musb-hdrc: MHDRC RTL version 2.0 
+musb-hdrc: setup fifo_mode 4
+musb-hdrc: 28/31 max ep, 16384/16384 memory
+USB Host mode controller at 47401800 using PIO, IRQ 0
+Net:   <ethaddr> not set. Validating first E-fuse MAC
+cpsw, usb_ether
+Hit any key to stop autoboot:  0 
+gpio: pin 53 (gpio 53) value is 1
+mmc0 is current device
+micro SD card found
+mmc0 is current device
+gpio: pin 54 (gpio 54) value is 1
+SD/MMC found on device 0
+reading uEnv.txt
+** Unable to read file uEnv.txt **
+gpio: pin 55 (gpio 55) value is 1
+** Invalid partition 2 **
+U-Boot# 
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+
+<WRAP bootlog>
+<nowiki>U-Boot 2014.04 (May 13 2014 - 19:29:25)
+
+I2C:   ready
+DRAM:  512 MiB
+NAND:  0 MiB
+MMC:   OMAP SD/MMC: 0, OMAP SD/MMC: 1
+*** Warning - readenv() failed, using default environment
+
+Net:   <ethaddr> not set. Validating first E-fuse MAC
+cpsw, usb_ether
+Hit any key to stop autoboot:  0 
+mmc0 is current device
+SD/MMC found on device 0
+reading uEnv.txt
+473 bytes read in 6 ms (76.2 KiB/s)
+Loaded environment from uEnv.txt
+Importing environment from mmc ...
+Running uenvcmd ...
+reading zImage
+1922688 bytes read in 157 ms (11.7 MiB/s)
+reading am335x-boneblack.dtb
+29192 bytes read in 13 ms (2.1 MiB/s)
+Kernel image @ 0x80200000 [ 0x000000 - 0x1d5680 ]
+## Flattened Device Tree blob at 80f80000
+   Booting using the fdt blob at 0x80f80000
+   Using Device Tree in place at 80f80000, end 80f8a207
+
+Starting kernel ...
+
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 3.14.4 (georg@machariel) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r40867) ) #19 SMP Fri May 30 20:56:32 CEST 2014
+[    0.000000] CPU: ARMv7 Processor [413fc082] revision 2 (ARMv7), cr=10c5387d
+[    0.000000] CPU: PIPT / VIPT nonaliasing data cache, VIPT aliasing instruction cache
+[    0.000000] Machine model: TI AM335x BeagleBone
+[    0.000000] Memory policy: Data cache writeback
+[    0.000000] On node 0 totalpages: 130816
+[    0.000000] free_area_init_node: node 0, pgdat c0529b40, node_mem_map dfafa000
+[    0.000000]   Normal zone: 1024 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 130816 pages, LIFO batch:31
+[    0.000000] CPU: All CPU(s) started in SVC mode.
+[    0.000000] AM335X ES2.0 (sgx neon )
+[    0.000000] PERCPU: Embedded 7 pages/cpu @dfae1000 s8064 r8192 d12416 u32768
+[    0.000000] pcpu-alloc: s8064 r8192 d12416 u32768 alloc=8*4096
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 129792
+[    0.000000] Kernel command line: console=ttyO0,115200n8 root=/dev/mmcblk0p2 ro rootfstype=ext4 rootwait debug init=/etc/preinit
+[    0.000000] PID hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes)
+[    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Memory: 512844K/523264K available (3803K kernel code, 309K rwdata, 1160K rodata, 267K init, 230K bss, 10420K reserved, 0K highmem)
+[    0.000000] Virtual kernel memory layout:
+[    0.000000]     vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+[    0.000000]     fixmap  : 0xfff00000 - 0xfffe0000   ( 896 kB)
+[    0.000000]     vmalloc : 0xe0800000 - 0xff000000   ( 488 MB)
+[    0.000000]     lowmem  : 0xc0000000 - 0xe0000000   ( 512 MB)
+[    0.000000]     pkmap   : 0xbfe00000 - 0xc0000000   (   2 MB)
+[    0.000000]     modules : 0xbf000000 - 0xbfe00000   (  14 MB)
+[    0.000000]       .text : 0xc0008000 - 0xc04e0f1c   (4964 kB)
+[    0.000000]       .init : 0xc04e1000 - 0xc0523f80   ( 268 kB)
+[    0.000000]       .data : 0xc0524000 - 0xc0571448   ( 310 kB)
+[    0.000000]        .bss : 0xc0571448 - 0xc05aac54   ( 231 kB)
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000]  RCU restricting CPUs from NR_CPUS=4 to nr_cpu_ids=1.
+[    0.000000] RCU: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=1
+[    0.000000] NR_IRQS:16 nr_irqs:16 16
+[    0.000000] IRQ: Found an INTC at 0xfa200000 (revision 5.0) with 128 interrupts
+[    0.000000] Total of 128 interrupts on 1 active controller
+[    0.000000] OMAP clockevent source: timer2 at 24000000 Hz
+[    0.000016] sched_clock: 32 bits at 24MHz, resolution 41ns, wraps every 178956969942ns
+[    0.000046] OMAP clocksource: timer1 at 24000000 Hz
+[    0.000348] Console: colour dummy device 80x30
+[    0.000394] Calibrating delay loop... 548.86 BogoMIPS (lpj=2744320)
+[    0.049133] pid_max: default: 32768 minimum: 301
+[    0.049362] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.049384] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.060548] CPU: Testing write buffer coherency: ok
+[    0.061065] CPU0: thread -1, cpu 0, socket -1, mpidr 0
+[    0.061145] Setting up static identity map for 0x80013208 - 0x80013260
+[    0.062393] Brought up 1 CPUs
+[    0.062413] SMP: Total of 1 processors activated.
+[    0.062427] CPU: All CPU(s) started in SVC mode.
+[    0.068631] VFP support v0.3: implementor 41 architecture 3 part 30 variant c rev 3
+[    0.085838] omap_hwmod: tptc0 using broken dt data from edma
+[    0.086033] omap_hwmod: tptc1 using broken dt data from edma
+[    0.086209] omap_hwmod: tptc2 using broken dt data from edma
+[    0.091828] omap_hwmod: debugss: _wait_target_disable failed
+[    0.150098] pinctrl core: initialized pinctrl subsystem
+[    0.151395] regulator-dummy: no parameters
+[    0.152312] NET: Registered protocol family 16
+[    0.153026] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.155948] cpuidle: using governor ladder
+[    0.155970] cpuidle: using governor menu
+[    0.167662] platform 49000000.edma: alias fck already exists
+[    0.167701] platform 49000000.edma: alias fck already exists
+[    0.167725] platform 49000000.edma: alias fck already exists
+[    0.169339] OMAP GPIO hardware version 0.1
+[    0.187128] omap_init_mbox: hwmod doesn't have valid attrs
+[    0.205168] bio: create slab <bio-0> at 0
+[    0.231758] edma-dma-engine edma-dma-engine.0: TI EDMA DMA engine driver
+[    0.233018] vmmcsd_fixed: 3300 mV 
+[    0.238279] omap_i2c 44e0b000.i2c: could not find pctldev for node /pinmux@44e10800/pinmux_i2c0_pins, deferring probe
+[    0.238324] platform 44e0b000.i2c: Driver omap_i2c requests probe deferral
+[    0.238899] pps_core: LinuxPPS API ver. 1 registered
+[    0.238916] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.239610] PTP clock support registered
+[    0.241514] Advanced Linux Sound Architecture Driver Initialized.
+[    0.243469] Switched to clocksource timer1
+[    0.270577] NET: Registered protocol family 2
+[    0.271488] TCP established hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.271576] TCP bind hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.271685] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.271788] TCP: reno registered
+[    0.271812] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    0.271849] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    0.272204] NET: Registered protocol family 1
+[    0.277257] futex hash table entries: 256 (order: 2, 16384 bytes)
+[    0.278922] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.278951] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.279279] msgmni has been set to 1001
+[    0.279752] io scheduler noop registered
+[    0.279771] io scheduler deadline registered (default)
+[    0.281259] pinctrl-single 44e10800.pinmux: 142 pins at pa f9e10800 size 568
+[    0.287157] Serial: 8250/16550 driver, 2 ports, IRQ sharing enabled
+[    0.289919] omap_uart 44e09000.serial: no wakeirq for uart0
+[    0.290307] 44e09000.serial: ttyO0 at MMIO 0x44e09000 (irq = 88, base_baud = 3000000) is a OMAP UART0
+[    0.885663] console [ttyO0] enabled
+[    0.891255] omap_rng 48310000.rng: OMAP Random Number Generator ver. 20
+[    0.907730] omap_rtc 44e3e000.rtc: rtc core: registered 44e3e000.rtc as rtc0
+[    0.916624] i2c /dev entries driver
+[    0.922128] omap_wdt: OMAP Watchdog Timer Rev 0x01: initial timeout 60 sec
+[    0.931853] 48060000.mmc supply vmmc_aux not found, using dummy regulator
+[    0.974107] 481d8000.mmc supply vmmc_aux not found, using dummy regulator
+[    1.012057] mmc0: host does not support reading read-only switch. assuming write-enable.
+[    1.023602] mmc0: new high speed SD card at address 0002
+[    1.030671] mmcblk0: mmc0:0002 00000 1.86 GiB 
+[    1.038718]  mmcblk0: p1 p2
+[    1.057242] TCP: cubic registered
+[    1.060757] NET: Registered protocol family 17
+[    1.065675] 8021q: 802.1Q VLAN Support v1.8
+[    1.071691] Registering SWP/SWPB emulation handler
+[    1.078316] regulator-dummy: disabling
+[    1.086898] DCDC1: at 1500 mV 
+[    1.091449] vdd_mpu: 925 <--> 1325 mV at 1100 mV 
+[    1.096672] mmc1: BKOPS_EN bit is not set
+[    1.102242] vdd_core: 925 <--> 1150 mV at 1100 mV 
+[    1.108664] mmc1: new high speed MMC card at address 0001
+[    1.115848] mmcblk1: mmc1:0001 MMC02G 1.78 GiB 
+[    1.120926] LDO1: at 1800 mV 
+[    1.124315] mmcblk1boot0: mmc1:0001 MMC02G partition 1 1.00 MiB
+[    1.131341] mmcblk1boot1: mmc1:0001 MMC02G partition 2 1.00 MiB
+[    1.139416] LDO2: at 3300 mV 
+[    1.142774]  mmcblk1: p1 p2
+[    1.149994] LDO3: 1800 mV 
+[    1.153053]  mmcblk1boot1: unknown partition table
+[    1.160966] LDO4: at 3300 mV 
+[    1.164401]  mmcblk1boot0: unknown partition table
+[    1.171217] tps65217 0-0024: TPS65217 ID 0xe version 1.2
+[    1.177766] omap_i2c 44e0b000.i2c: bus 0 rev0.11 at 400 kHz
+[    1.243493] davinci_mdio 4a101000.mdio: davinci mdio revision 1.6
+[    1.249920] davinci_mdio 4a101000.mdio: detected phy mask fffffffe
+[    1.257332] libphy: 4a101000.mdio: probed
+[    1.261565] davinci_mdio 4a101000.mdio: phy[0]: device 4a101000.mdio:00, driver unknown
+[    1.271114] Detected MACID = 90:59:af:5c:1a:cf
+[    1.278169] omap_rtc 44e3e000.rtc: setting system clock to 2000-01-01 00:00:01 UTC (946684801)
+[    1.293207] ALSA device list:
+[    1.296440]   No soundcards found.
+[    1.303938] EXT4-fs (mmcblk0p2): INFO: recovery required on readonly filesystem
+[    1.311645] EXT4-fs (mmcblk0p2): write access will be enabled during recovery
+[    1.350661] EXT4-fs (mmcblk0p2): recovery complete
+[    1.366498] EXT4-fs (mmcblk0p2): mounted filesystem with ordered data mode. Opts: (null)
+[    1.375118] VFS: Mounted root (ext4 filesystem) readonly on device 179:2.
+[    1.382896] Freeing unused kernel memory: 264K (c04e1000 - c0523000)
+procd: Console is alive
+procd: - watchdog -
+procd: - preinit -
+[    1.690078] random: mktemp urandom read with 41 bits of entropy available
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    2.030611] usbcore: registered new interface driver usbfs
+[    2.037004] usbcore: registered new interface driver hub
+[    2.043094] usbcore: registered new device driver usb
+[    2.060133] SCSI subsystem initialized
+[    2.073264] usbcore: registered new interface driver usb-storage
+mounting /dev/root
+[    4.804319] EXT4-fs (mmcblk0p2): re-mounted. Opts: (null)
+procd: - early -
+procd: - watchdog -
+[    5.375073] random: nonblocking pool is initialized
+procd: - ubus -
+procd: - init -
+Please press Enter to activate this console.
+[    6.530404] NET: Registered protocol family 10
+[    6.541852] tun: Universal TUN/TAP device driver, 1.6
+[    6.547309] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[    6.563069] nf_conntrack version 0.5.0 (8017 buckets, 32068 max)
+[    6.576080] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    6.625974] 47401300.usb-phy supply vcc not found, using dummy regulator
+[    6.655561] musb-hdrc: ConfigData=0xde (UTMI-8, dyn FIFOs, bulk combine, bulk split, HB-ISO Rx, HB-ISO Tx, SoftConn)
+[    6.666756] musb-hdrc: MHDRC RTL version 2.0 
+[    6.671343] musb-hdrc: setup fifo_mode 4
+[    6.675513] musb-hdrc: 28/31 max ep, 16384/16384 memory
+[    6.681162] musb-hdrc musb-hdrc.0.auto: MUSB HDRC host driver
+[    6.687306] musb-hdrc musb-hdrc.0.auto: new USB bus registered, assigned bus number 1
+[    6.706456] hub 1-0:1.0: USB hub found
+[    6.713584] hub 1-0:1.0: 1 port detected
+[    6.734490] 47401b00.usb-phy supply vcc not found, using dummy regulator
+[    6.745607] musb-hdrc: ConfigData=0xde (UTMI-8, dyn FIFOs, bulk combine, bulk split, HB-ISO Rx, HB-ISO Tx, SoftConn)
+[    6.756762] musb-hdrc: MHDRC RTL version 2.0 
+[    6.761344] musb-hdrc: setup fifo_mode 4
+[    6.765504] musb-hdrc: 28/31 max ep, 16384/16384 memory
+[    6.771148] musb-hdrc musb-hdrc.1.auto: MUSB HDRC host driver
+[    6.777262] musb-hdrc musb-hdrc.1.auto: new USB bus registered, assigned bus number 2
+[    6.811667] hub 2-0:1.0: USB hub found
+[    6.823719] hub 2-0:1.0: 1 port detected
+[    7.222933] usbcore: registered new interface driver i2c-tiny-usb
+[    7.233869] usb 2-1: new high-speed USB device number 2 using musb-hdrc
+[    7.267342] u32 classifier
+[    7.270213]     input device check on
+[    7.274213]     Actions configured
+[    7.295490] Mirror/redirect action on
+[    7.323965] Loading modules backported from Linux version master-2014-05-22-0-gf2032ea
+[    7.332314] Backport generated by backports.git backports-20140320-37-g5c33da0
+[    7.364133] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    7.394186] hub 2-1:1.0: USB hub found
+[    7.398270] hub 2-1:1.0: 4 ports detected
+[    7.534891] xt_time: kernel timezone is -0000
+[    7.576871] cfg80211: Calling CRDA to update world regulatory domain
+[    7.591390] cfg80211: World regulatory domain updated:
+[    7.596971] cfg80211:  DFS Master region: unset
+[    7.601568] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[    7.611881] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[    7.620349] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[    7.628817] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[    7.637295] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[    7.645775] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[    7.654245] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[    7.734565] usbcore: registered new interface driver MOSCHIP usb-ethernet driver
+[    7.773063] usb 2-1.1: new high-speed USB device number 3 using musb-hdrc
+[    7.792786] PPP generic driver version 2.4.2
+[    7.824396] NET: Registered protocol family 24
+[    7.894653] usbcore: registered new interface driver rtl8192cu
+[    8.044158] usb 2-1.1: applying rev.C fixup
+[    8.073754] usb 2-1.1: applying rev.C fixup
+[    8.125561] MOSCHIP usb-ethernet driver 2-1.1:1.0 eth1: register 'MOSCHIP usb-ethernet driver' at usb-musb-hdrc.1.auto-1.1, MOSCHIP 7830/7832/7730 usb-NET adapter, 00:13:3b:39:0a:71
+[    8.243836] usb 2-1.3: new high-speed USB device number 4 using musb-hdrc
+[    8.386275] rtl8192cu: Chip version 0x11
+[    8.504215] rtl8192cu: MAC address: e8:94:f6:1d:d1:73
+[    8.509569] rtl8192cu: Board Type 0
+[    8.523834] rtl_usb: rx_max_size 15360, rx_urb_num 8, in_ep 1
+[    8.530068] rtl8192cu: Loading firmware rtlwifi/rtl8192cufw_TMSC.bin
+[    8.561920] ieee80211 phy0: Selected rate control algorithm 'rtl_rc'
+[    8.592660] rtlwifi: wireless switch is on
+[   12.358264] net eth0: initializing cpsw version 1.12 (0)
+[   12.444052] net eth0: phy found : id is : 0x7c0f1
+[   12.449137] libphy: PHY 4a101000.mdio:01 not found
+[   12.454292] net eth0: phy 4a101000.mdio:01 not found on slave 1
+[   12.483165] 8021q: adding VLAN 0 to HW filter on device eth0
+[   12.489403] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   13.145887] cfg80211: Calling CRDA for country: DE
+[   13.173842] cfg80211: Regulatory domain changed to country: DE
+[   13.180013] cfg80211:  DFS Master region: ETSI
+[   13.184609] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   13.194900] cfg80211:   (2400000 KHz - 2483000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   13.203320] cfg80211:   (5150000 KHz - 5350000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   13.211764] cfg80211:   (5470000 KHz - 5725000 KHz @ 80000 KHz), (N/A, 2700 mBm), (0 s)
+[   13.220222] cfg80211:   (57240000 KHz - 65880000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+procd: - init complete -
+[   14.477523] rtl8192cu: MAC auto ON okay!
+[   14.504400] rtl8192cu: Tx queue select: 0x05
+[   14.901576] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+[   15.075747] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+[   15.444276] libphy: 4a101000.mdio:00 - Link is Up - 100/Full
+[   15.450599] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+
+
+
+BusyBox v1.22.1 (2014-05-30 20:23:58 CEST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+  -----------------------------------------------------
+ BARRIER BREAKER (Bleeding Edge, r40887)
+ -----------------------------------------------------
+  * 1/2 oz Galliano         Pour all ingredients into
+  * 4 oz cold Coffee        an irish coffee mug filled
+  * 1 1/2 oz Dark Rum       with crushed ice. Stir.
+  * 2 tsp. Creme de Cacao
+ -----------------------------------------------------
+root@OpenWrt:/#</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+A lot of useful information about this board can be found here: 
+
+Links:
+  * [[http://elinux.org/Beagleboard:BeagleBoneBlack]]
+  * [[http://en.wikipedia.org/wiki/BeagleBoard]]
+  * [[http://dave.cheney.net/2013/09/22/two-point-five-ways-to-access-the-serial-console-on-your-beaglebone-black]]
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>omap 2048NAND 512RAM devboard gpio FastEthernet 0WNIC 1NIC no_switch USB gt32Flash ARM}}

@@ -1,0 +1,708 @@
+THIS IS WORK IN PROGRESS -- trying to follow the style guide - Original data at the bottom of the page.
+
+====== PatriotMemory GauntletNode =======
+Small device with Li-polymer battery rechargeable_battery. The device is marketed as a "wifi NAS" for backup, and for streaming media. It comes in a couple of different flavors (bare, the GauntletNode, or Gauntlet320, which comes with a 320GB 2.5' HDD already installed). The default firmware is based on linux 2.6.21
+it appears that "mapower" in taiwan is the original OEM of the device. Patriot seems to have use the hardware as-is, and just "tweaked" the firmware for their purpose.
+
+todo: list more accurate data on the device
+
+===== Supported Versions =====
+^ Version/Model ^ Launch Date ^ S/N ^ OpenWrt Version Supported ^ Model Specific Notes ^
+| GauntletNode      |  2012 (?)  | - |  -  | No built-in drive - customer installed. device is picky about drive format |
+| GauntletNode 320  |  2013      | - |  -  | pre-installed 320GB SATA drive (unsure if pre-formatted or not) |
+| GauntletNode Aero |  2013      | - |  -  | pre-installed 1TB SATA drive (unsure if pre-formatted or not)   |
+
+OEM source code is NOT available anywhere (legally anyway). Neither Mediatek (the Soc manufacturer), Mapower nor Patriot has released linux patches, or uboot patches (both GPLv2). That being said, the firmwares are available for download which provide some info about the hardware being used. 
+
+===== Hardware Highlights =====
+^ SoC ^ Ram ^ Flash ^ Network ^ USB ^ Serial ^ JTag ^
+| ralink 5350@360MHz | 64MiB | 8MiB | 1T1R wifi | No (used by internal HDD/chipset) | Yes (J1) | Yes? (J6) |
+
+Manufacturer's site: [[http://patriotmemory.com/]]
+follow "drivers and downloads", "accessories", "wifi mobile drives", and finally "GauntletNode 320 - Portable Drive Enclosure", and click "submit". this will lead you to the page to download the manual as well as the "firmware" (see below for more details). 
+
+===== OpenWrt support =====
+
+Not available for this device yet. work on getting the hardware tweaked for openwrt in progress.
+
+OpenWrt has a RT5350 set of patches that should work pretty much as-is. The build needs to be setup with just an initramfs though, instead of a full JFFS2 partition. from there, we should be able to upload the new build as a new firmware.
+
+
+===== Installation =====
+
+FIXME Please add the installation procedure here.
+
+==== Flash Layout ====
+
+OEM flash layout is as such
+^ Partition ^ Offset ^ Size ^ Name ^ Notes ^
+| mtd0 | 0 | 0x00800000 | ALL |
+| mtd1 | 0 | 0x00030000 | Bootloader | uboot with ralink mods |
+| mtd2 | 0x00030000 | 0x00010000 | Config | looks like "nvram" settings for linux |
+|      | 0x00030000 | 0x00001000 | Config | 0x0 - 0x1000 Uboot nvram settings (based on uboot serial output) |
+|      | 0x00032000 | 0x00002fff | Config | 0x2000 - 0x2fff system nvram settings (based on data blocks) |
+| mtd3 | 0x00040000 | 0x00010000 | Factory | calibration data for the wifi chipset (?) |
+| mtd4 | 0x00050000 | 0x00200000 | Recovery | linux kernel 2.6.21 with initramfs missing a lot of code |
+| mtd5 | 0x00250000 | 0x01200000 | Kernel | that partition somehow extends beyond the flash size, it should really be sized 0x005b0000 |
+
+It appears however that the partition boundaries and the location of the various bits of data do not quite match the partition layout.  
+For example, mtd2 (the "Config" partition) is really broken down in a couple different sections. that partition seems to have the nvram config starting at 0x00030000, for one "block" (0x00010000 worth of data). but looking closely at the data, it doesn't actually start at the beginning of the partition, there is a whole lot of "ff" values before the string data starts (0x0 to 0x1fff in that partition).
+
+''
+$ xxd -a mtdblock2.dd-nvram 
+0001fe0: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+0001ff0: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+0002000: de3f 9461 5765 6249 6e69 743d 3100 486f  .?.aWebInit=1.Ho
+0002010: 7374 4e61 6d65 3d57 6f72 6b47 726f 7570  stName=WorkGroup
+0002020: 004c 6f67 696e 3d61 646d 696e 0050 6173  .Login=admin.Pas
+0002030: 7377 6f72 643d 6164 6d69 6e00 4f70 6572  sword=admin.Oper
+0002040: 6174 696f 6e4d 6f64 653d 3300 506c 6174  ationMode=3.Plat
+0002050: 666f 726d 3d52 5435 3335 3000 7761 6e43  form=RT5350.wanC
+0002060: 6f6e 6e65 6374 696f 6e4d 6f64 653d 4448  onnectionMode=DH
+0002070: 4350 0077 616e 5f69 7061 6464 723d 3139  CP.wan_ipaddr=19
+...
+0002cf0: 5741 4e5f 4d41 435f 4144 4452 3d30 3a41  WAN_MAC_ADDR=0:A
+0002d00: 3a44 383a 323a 3734 3a33 340a 0052 4649  :D8:2:74:34..RFI
+0002d10: 4354 7970 653d 6666 0054 5850 6174 683d  CType=ff.TXPath=
+0002d20: 3100 5258 5061 7468 3d31 0000 0000 0000  1.RXPath=1......
+0002d30: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+*
+0006000: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+0006010: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+0006020: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+0006030: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+...
+000ffa0: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+000ffb0: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+000ffc0: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+000ffd0: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+000ffe0: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+000fff0: ffff ffff ffff ffff ffff ffff ffff ffff  ................
+''
+
+system nvram seems to be offset by 0x2000.
+
+the kernel partition seem to be of the wrong size (extending beyond the end of the flash by quite a bit (0x00250000 + 0x01200000 adds up to more than 0x00800000). this suggest that maybe the original setup called for a bigger FLASH chip
+
+==== OEM easy installation ====
+
+| FIXME no real intructions are available yet to install OpenWrt on this device. The hope is that we'll be able to do this somehow without loosing the factory/uboot/config |
+
+This section deals with how you install OpenWrt from a device freshly opened. 
+
+telnet to the device to backup your flash (dd the various partitions, make a link to /etc_ro/web/ and use wget/curl to download the content of the files. (be sure to backup uboot, factory and config partition from the flash. the kernel partition content is available for download (the bin file from the firmware download).
+
+since the system works completely in RAM, we should be able to reformat the flash to allow for the proper OpenWrt flash partitions.
+
+==== Upgrading OpenWrt ====
+
+| FIXME got to have a working build first |
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name    ^ Description      ^ Default configuration   ^
+| apcli0            | WiFi client      | DHCP                    |
+| br0 (ra0, eth2)   | default bridge   | 10.10.10.254            |
+| eth2              |                  |                         |
+| eth2.1            |                  |                         |
+| eth2.2            |                  |                         |
+| ra0               | WIFI             |                         |
+
+==== Switch Ports (for VLANs) ====
+| FIXME actually figure out how that's all hooked up (apcli, ra0, eth2,eth2.1, eth2.2) and how they are configured
+info below is from template. 
+
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | 4             |
+| LAN 1            | 3             |
+| LAN 2            | 2             |
+| LAN 3            | 1             |
+| LAN 4            | 0             |
+
+==== Failsafe mode ====
+
+by pressing the button in the pinhole (opposite side of the case from the battery level button/LED), uboot will boot from "Recovery" instead of "Kernel". Note however that the Recovery kernel seems to have a broken initramfs image (or truncated). bootlog of the recovery kernel complains about commands missing such as "cp" and "rm". It's unclear how to recover from that state.
+(hopefully, simple using mtd_write to the right partition with a file on the USB drive)
+
+==== Buttons ====
+
+^ BUTTON ^ Event ^
+| Recovery | boot from recovery instead of Kernel. Will send a SIGUSR1 when machine is running (need to identify process this is sent to - it is likely just resetting the nvram) | 
+| Power Button | On/Off |
+| Battery Indicator | display battery level using 4 LED - unsure if available from Linux | 
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set]]               | [[wp>MIPS architecture|MIPS]] |
+^ Vendor                               | [[wp>MediaTek]]  |
+^ [[docs:techref:bootloader]]          | [[docs:techref:bootloader:uboot|U-Boot]] |
+^ [[docs:techref:hardware:soc|System-On-Chip]]   | RT5350 |
+^ [[docs:techref:hardware:cpu|CPU]] @Frq         | MIPS 24K V4.12 @360MHz |
+^ Flash size                  | 8192 KiB |
+^ Flash Chip                  | cfeon EN25Q64 64Mbit/8MBytes |
+^ RAM size                    | 64 MiB |
+^ RAM Chip                    | ESMT brand 32MiB x2 |
+^ Wireless No1                | //SoC-integrated// 1T1R rt28xx (?) 2.4GHz 802.11b/g/n   |
+^ [[docs:techref:hardware:switch]]     | not sure if present |
+^ USB                         | Yes, SATA gateway attached, not usable for other devices |
+^ [[docs:techref:hardware:port.serial|Serial]]    | [[#Serial|Yes]]   |
+^ [[docs:techref:hardware:port.jtag|JTAG]]        | [[#JTAG|Yes]]     |
+
+==== Photos ====
+Model Number
+
+//Front://
+
+**Photo of front of the casing**
+
+//Back://
+
+**Photo of back of the casing**
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+  * Turn the device upside-down
+  * Remove 4 screws securing the bottom of the case. slide the panel and put aside. 
+  * If you have a GauntletNode 320 or if you have already installed a HDD, remove the HDD (disconnect SATA/POWER from HDD and set aside)
+  * The plate under the HDD can swivel on the power button side, and is kept down by a latch on the side opposite. Gently pull the tab to release the place. be careful with the SATA cable/connector. 
+  * DO NOT ATTEMPT TO REMOVE SATA CABLE (it doesn't appear to be removable)
+  * The battery is attached to the other side of the case using double sided tape. gently prying the battery away from the case. 
+  * Disconnect battery from main board
+  * Once the battery is removed, you should be able to see 2 tabs, one of each side of the case, holding the top side of the device to the "sides"
+  * Gently pry those out on both side. take care not to pull the plate until you have all 4 pegs detached.
+  * Remove the 4 screw on the board to remove it from the case altogether.
+
+
+{{:media:gauntletnode-pcb-sataside.jpg?400|}}
+
+there, you can see the SATA cables (it doesn't appear to be removable), as well as the battery connector. the battery is a 3350mah LiPo. 
+there is the first half of the 64Mbytes of ram on the bottom left of the picture, as well as a row of LEDs to indicate battery charge level when the proper switch is pushed. The flash chip on the top left, 8MiB (cfeon 64mbit -- see uboot output for more details)
+
+{{:media:gauntletnode-pcb-cpuside.jpg?400|}}
+
+the red cables have been added to attach a bus-pirate and get at the UART. the two middle pins are RX/TX, and the one away from the other white connector is the ground. those connections are sufficient to be able to reach uboot output. sadly, the nvram setup on flash (mtdblock2?) seems to have an invalid CRC, so it's being ignored, and compiled in default of "boot_delay=0" is used (which makes it hard to recover from a bad flash as-is).
+
+the second white connector (6pins) seems to have at least 4 pins where the traces go directly to the CPU under the shield. this could possibly be JTAG (?) 
+
+the switch on the side of the board (by R161) is the recovery switch (starts different kernel in uboot, or sends a signal to some process if already booted)
+the chip immediately to the right of R161 is the flash chip for the USB chipset (512K CMOS type).
+the bigger chip above it is a USB to SATA chip. it handle the USB3 to SATA connection (and probably also the RT5350-USB to SATA connection). Some experimentation is needed to find out how the USB cable disables wifi on there (i expect it holds the CPU in reset state as long as something is connected to the USB port). the chip is a ASMEDIA 1053 (?) that only seems to support USB2.0.
+at the bottom you can see, from left to right, the USB connector (USB3 style connector), the power switch, and the power barrel connector. 
+
+on the right side, the switch on the edge is the one that triggers the LED from the other side (battery charge level). 
+top right is the other half of the 64Mbytes of ram. 
+under the shield is the RT5350 SoC. on the left of that there are the two antenna connectors (leads to crappy flat antenna on the case)
+
+I am having trouble identifying the TSOP8 package next to the DRAM chip. not sure what it is (label on there is pretty much all gone).
+
+
+==== Serial ====
+
+4 pins are available on the board as a header marked "J1". multimeter probing show that pin1 (closest to the edge of the board) is connected to the GND pin of the flash. PIN1 is therefore GND. Pin4, using the same method, is connected to the VCC pin of the flash. 
+
+the UART is on J1. I hooked up a bus pirate to the connector as such (pin 1 being closest to the USB connector/power switch/edge of the board with all the connectors). See this table for cable/color/pinout.
+^ Board   ^ pinout   ^ buspirate      ^
+| pin 1   | GND      | GND (brown)    |
+| pin 2   | RX       | MOSI (white)   |
+| pin 3   | TX       | MISO (black)   |
+| pin 4   | Vcc      |                |
+
+see http://dangerousprototypes.com/docs/Common_Bus_Pirate_cable_pinouts for more references on the buspirate probes
+ 
+connect the buspirate to you machine, and to the board (See pins above), and do the following:
+(this includes all the settings needed to "see" output from the board)
+''
+
+HiZ>m
+1. HiZ
+2. 1-WIRE
+3. UART
+4. I2C
+5. SPI
+6. 2WIRE
+7. 3WIRE
+8. LCD
+x. exit(without change)
+
+(1)>3
+Set serial port speed: (bps)
+ 1. 300
+ 2. 1200
+ 3. 2400
+ 4. 4800
+ 5. 9600
+ 6. 19200
+ 7. 38400
+ 8. 57600
+ 9. 115200
+10. BRG raw value
+
+(1)>8
+Data bits and parity:
+ 1. 8, NONE *default 
+ 2. 8, EVEN 
+ 3. 8, ODD 
+ 4. 9, NONE
+(1)>1
+Stop bits:
+ 1. 1 *default
+ 2. 2
+(1)>1
+Receive polarity:
+ 1. Idle 1 *default
+ 2. Idle 0
+(1)>2
+Select output type:
+ 1. Open drain (H=Hi-Z, L=GND)
+ 2. Normal (H=3.3V, L=GND)
+
+(1)>2
+Ready
+UART>(2)
+Raw UART input
+Any key to exit
+
+''
+
+from there, turn on the gauntletnode, and you will see the uboot output in your terminal.
+
+attempting to use the bridge mode, however, i have not been able to get a proper serial console from either the OEM firmware (based on errors i see, i don't believe there is one available) or the OpenWrt (my initial device tree config was not correct -- will need to use SPI to recover the flash back to OEM, and reflash new firmware.
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+it is likely that J6 is a jtag connector (pin1 through 4 are connected directly to the ralink RT5350, pin 5 to GND (?) and pin 6 is connected to pin 4 on J1, assuming Vcc here)
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+
+===== Bootlogs =====
+
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.3 (May  1 2012 - 23:49:39)
+
+Board: Ralink APSoC DRAM:  64 MB
+relocate_code Pointer at: 83fb4000
+spi_wait_nsec: 42 
+spi device id: 1c 30 17 1c 30 (30171c30)
+find flash: EN25Q64
+raspi_read: from:30000 len:1000 
+*** Warning - bad CRC, using default environment
+
+############################################# 
+WiFi-DAS UBoot Version: 1.0.1
+-------------------------------------------- 
+============================================ 
+Ralink UBoot Version: 3.6.0.0
+-------------------------------------------- 
+ASIC 5350_MP (Port5<->None)
+DRAM_CONF_FROM: Boot-Strapping 
+DRAM_TYPE: SDRAM 
+DRAM_SIZE: 256 Mbits
+DRAM_WIDTH: 16 bits
+DRAM_TOTAL_WIDTH: 16 bits
+TOTAL_MEMORY_SIZE: 32 MBytes
+Flash component: SPI Flash
+Date:May  1 2012  Time:23:49:39
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:128, ways:4, linesz:32 ,total:16384 
+
+ ##### The CPU freq = 360 MHZ #### 
+ estimate memory size =64 Mbytes
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   5: Load recover system code then write to Flash via TFTP. 
+   6: Boot recover system code via Flash.
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. 
+
+You choosed 3
+
+
+You choosed 3
+
+ 0 
+   
+3: System Boot system code via Flash.
+## Booting image at bc250000 ...
+raspi_read: from:250000 len:40 
+   Image Name:   Linux Kernel Image
+   Created:      2012-06-25  12:09:47 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    5448490 Bytes =  5.2 MB
+   Load Address: 80000000
+   Entry Point:  803da000
+raspi_read: from:250040 len:53232a 
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 803da000) ...
+## Giving linux memsize in MB, 64
+
+Starting kernel ...
+
+
+LINUX started...
+
+ THIS IS ASIC
+init started: BusyBox v1.12.1 (2012-06-25 20:00:16 CST)
+starting pid 711, tty ' ': '/etc_ro/rcS'</nowiki>
+</WRAP>\\
+
+the last two lines seem to repeat over and over again, with more and more empty lines in between (at first just a line or two, and then dozen, then hundreds of empty lines).
+
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>Linux version 2.6.21 (root@ubuntu) (gcc version 3.4.2) #44 Mon Jun 25 20:09:41 CST 2012
+
+ The CPU frequency set to 360 MHz
+CPU revision is: 0001964c
+Determined physical RAM map:
+ memory: 04000000 @ 00000000 (usable)
+Initrd not found or empty - disabling initrd
+On node 0 totalpages: 16384
+  DMA zone: 128 pages used for memmap
+  DMA zone: 0 pages reserved
+  DMA zone: 16256 pages, LIFO batch:3
+  Normal zone: 0 pages used for memmap
+Built 1 zonelists.  Total pages: 16256
+Kernel command line: console=ttyS1,57600n8 root=/dev/ram0
+Primary instruction cache 32kB, physically tagged, 4-way, linesize 32 bytes.
+Primary data cache 16kB, 4-way, linesize 32 bytes.
+Synthesized TLB refill handler (20 instructions).
+Synthesized TLB load handler fastpath (32 instructions).
+Synthesized TLB store handler fastpath (32 instructions).
+Synthesized TLB modify handler fastpath (31 instructions).
+Cache parity protection disabled
+cause = 40808038, status = 11000000
+PID hash table entries: 256 (order: 8, 1024 bytes)
+calculating r4koff... 0015f900(1440000)
+CPU frequency 360.00 MHz
+Using 180.000 MHz high precision timer.
+Console: colour dummy device 80x25
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Memory: 56940k/65536k available (3086k kernel code, 8540k reserved, 853k data, 3912k init, 0k highmem)
+Calibrating delay loop... 239.61 BogoMIPS (lpj=479232)
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+Time: MIPS clocksource has been installed.
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+detected lzma initramfs
+detected lzma initramfs
+initramfs: LZMA lc=3,lp=0,pb=2,dictSize=1048576,origSize=15067136
+LZMA initramfs by Ming-Ching Tiew <mctiew@yahoo.com>......................................................................................................................................................................................................................................deice id : 1c 30 17 1c 30 (30171c30)
+EN25Q64(1c 30171c30) (8192 Kbytes)
+mtd .name = raspi, .size = 0x00800000 (8M) .erasesize = 0x00010000 (64K) .numeraseregions = 0
+Creating 6 MTD partitions on "raspi":
+0x00000000-0x00800000 : "ALL"
+0x00000000-0x00030000 : "Bootloader"
+0x00030000-0x00040000 : "Config"
+0x00040000-0x00050000 : "Factory"
+0x00050000-0x00250000 : "Recover"
+0x00250000-0x01200000 : "Kernel"
+mtd: partition "Kernel" extends beyond the end of device "raspi" -- size truncated to 0x5b0000
+RT3xxx EHCI/OHCI init.
+squashfs: version 3.2-r2 (2007/01/15) Phillip Lougher
+squashfs: LZMA suppport for slax.org by jro
+fuse init (API version 7.8)
+io scheduler noop registered (default)
+Ralink gpio driver initialized
+HDLC line discipline: version $Revision: 1.1.1.1 $, maxframe=4096
+N_HDLC line discipline registered.
+Serial: 8250/16550 driver $Revision: 1.8 $ 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at I/O 0xb0000500 (irq = 37) is a 16550A
+serial8250: ttyS1 at I/O 0xb0000c00 (irq = 12) is a 16550A
+RAMDISK driver initialized: 16 RAM disks of 8192K size 1024 blocksize
+loop: loaded (max 8 devices)
+rdm_major = 253
+Ralink APSoC Ethernet Driver Initilization. v2.1  256 rx/tx descriptors allocated, mtu = 1500!
+MAC_ADRH -- : 0x0000000a
+MAC_ADRL -- : 0xd8027433
+PROC INIT OK!
+PPP generic driver version 2.4.2
+PPP Deflate Compression module registered
+PPP BSD Compression module registered
+PPP MPPE Compression module registered
+NET: Registered protocol family 24
+PPPoL2TP kernel driver, V0.17
+PPTP driver version 0.8.1
+
+
+=== pAd = c0019000, size = 645976 ===
+
+ RTMPAllocAdapterBlock, Status=0
+block2mtd: version $Revision: 1.1.1.1 $
+rt3xxx-ehci rt3xxx-ehci: Ralink EHCI Host Controller
+rt3xxx-ehci rt3xxx-ehci: new USB bus registered, assigned bus number 1
+rt3xxx-ehci rt3xxx-ehci: irq 18, io mem 0x101c0000
+rt3xxx-ehci rt3xxx-ehci: USB 0.0 started, EHCI 1.00, driver 10 Dec 2004
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+ohci_hcd: 2006 August 04 USB 1.1 'Open' Host Controller (OHCI) Driver
+rt3xxx-ohci rt3xxx-ohci: RT3xxx OHCI Controller
+rt3xxx-ohci rt3xxx-ohci: new USB bus registered, assigned bus number 2
+rt3xxx-ohci rt3xxx-ohci: irq 18, io mem 0x101c1000
+usb usb2: configuration #1 chosen from 1 choice
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 1 port detected
+Initializing USB Mass Storage driver...
+usb 1-1: new high speed USB device using rt3xxx-ehci and address 2
+usb 1-1: configuration #1 chosen from 1 choice
+scsi0 : SCSI emulation for USB Mass Storage devices
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+nf_conntrack version 0.5.0 (512 buckets, 4096 max)
+ip_tables: (C) 2000-2006 Netfilter Core Team, Type=Restricted Cone
+arp_tables: (C) 2002 David S. Miller
+TCP cubic registered
+NET: Registered protocol family 1
+NET: Registered protocol family 10
+NET: Registered protocol family 17
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+Freeing unused kernel memory: 3912k freed
+usb-storage: device found at 2
+usb-storage: waiting for device to settle before scanning
+Algorithmics/MIPS FPU Emulator v1.5
+devpts: called with bogus options
+scsi 0:0:0:0: Direct-Access     ASMT     2105             0    PQ: 0 ANSI: 6
+sd 0:0:0:0: Attached scsi removable disk sda
+sd 0:0:0:0: Attached scsi generic sg0 type 0
+usb-storage: device scan complete
+
+phy_tx_ring = 0x0058b000, tx_ring = 0xa058b000
+
+phy_rx_ring0 = 0x0058c000, rx_ring0 = 0xa058c000
+MAC_ADRH -- : 0x0000000a
+MAC_ADRL -- : 0xd8027433
+RT305x_ESW: Link Status Changed
+RX DESC a05bb000  size = 2048
+ RTMPAllocTxRxRingMemory, Status=0
+Key1Str is Invalid key length(0) or Type(0)
+Key2Str is Invalid key length(0) or Type(0)
+Key3Str is Invalid key length(0) or Type(0)
+Key4Str is Invalid key length(0) or Type(0)
+rtmp_read_ap_client_from_file
+1. Phy Mode = 9
+2. Phy Mode = 9
+3. Phy Mode = 9
+RTMPSetPhyMode: channel is out of range, use first channel=0 
+MCS Set = ff 00 00 00 01
+SYNC - BBP R4 to 20MHz.l
+Main bssid = 00:0a:d8:02:74:32
+== rt28xx_init, Status=0
+0x1300 = 00064380
+eth2.2: Setting MAC address to  00 0a d8 02 74 34.
+device eth2 entered promiscuous mode
+VLAN (eth2.2):  Setting underlying device (eth2) to promiscious mode.
+eth2.1: add 33:33:00:00:00:01 mcast address to master interface
+eth2.1: add 01:00:5e:00:00:01 mcast address to master interface
+eth2.1: add 33:33:ff:02:74:33 mcast address to master interface
+eth2.2: add 33:33:00:00:00:01 mcast address to master interface
+eth2.2: add 01:00:5e:00:00:01 mcast address to master interface
+eth2.2: add 33:33:ff:02:74:34 mcast address to master interface
+device ra0 entered promiscuous mode
+br0: port 2(eth2) entering learning state
+br0: port 1(ra0) entering learning state
+br0: topology change detected, propagating
+br0: port 2(eth2) entering forwarding state
+br0: topology change detected, propagating
+br0: port 1(ra0) entering forwarding state
+eth2: no IPv6 routers present
+Rcv Wcid(1) AddBAReq
+Start Seq = 00000339
+eth2.1: no IPv6 routers present
+eth2.2: no IPv6 routers present
+apcli0: no IPv6 routers present
+ra0: no IPv6 routers present
+br0: no IPv6 routers present</nowiki>
+</WRAP>\\
+
+
+==== OpenWrt bootlog ====
+
+It appears, at this point, that not quite everything is working. that being said, the kernel *DOES* boot, and sends some output to the serial console.
+(now, with this image, the device is effectively bricked. I need to restore the original firmware with flashrom/spi, and fix that image to have wifi on by default, somehow...)
+
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.3 (May  1 2012 - 23:49:39)
+
+Board: Ralink APSoC DRAM:  64 MB
+relocate_code Pointer at: 83fb4000
+spi_wait_nsec: 42 
+spi device id: 1c 30 17 1c 30 (30171c30)
+find flash: EN25Q64
+raspi_read: from:30000 len:1000 
+*** Warning - bad CRC, using default environment
+
+############################################# 
+WiFi-DAS UBoot Version: 1.0.1
+-------------------------------------------- 
+============================================ 
+Ralink UBoot Version: 3.6.0.0
+-------------------------------------------- 
+ASIC 5350_MP (Port5<->None)
+DRAM_CONF_FROM: Boot-Strapping 
+DRAM_TYPE: SDRAM 
+DRAM_SIZE: 256 Mbits
+DRAM_WIDTH: 16 bits
+DRAM_TOTAL_WIDTH: 16 bits
+TOTAL_MEMORY_SIZE: 32 MBytes
+Flash component: SPI Flash
+Date:May  1 2012  Time:23:49:39
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:128, ways:4, linesz:32 ,total:16384 
+
+ ##### The CPU freq = 360 MHZ #### 
+ estimate memory size =64 Mbytes
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   5: Load recover system code then write to Flash via TFTP. 
+   6: Boot recover system code via Flash.
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. 
+
+You choosed 3
+
+
+You choosed 3
+                                                                                                                                                                                                                                             0 
+   
+3: System Boot system code via Flash.
+## Booting image at bc250000 ...
+raspi_read: from:250000 len:40 
+   Image Name:   MIPS OpenWrt Linux-3.10.36
+   Created:      2014-04-16  22:07:58 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    4503392 Bytes =  4.3 MB
+   Load Address: 80000000
+   Entry Point:  80000000
+raspi_read: from:250040 len:44b760 
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 80000000) ...
+## Giving linux memsize in MB, 64
+
+Starting kernel ...
+
+[    0.000000] Linux version 3.10.36 (epac@devopenwrt) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.01 r40521) ) #2 Sun Apr 20 21:30:22 PDT 2014
+[    0.000000] SoC Type: Ralink RT5350 id:1 rev:3
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 0001964c (MIPS 24KEc)
+[    0.000000] MIPS: machine is Patriot GauntletNode
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 02000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 16kB, 4-way, VIPT, no aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: mem=64M console=ttyS1,57600 root=/dev/ram0 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00009afc
+[    0.000000] Readback ErrCtl register=00009afc
+[    0.000000] Memory: 58324k/65536k available (2134k kernel code, 7212k reserved, 543k data, 3720k init, 0k highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:256
+[    0.000000] CPU Clock: 360MHz
+[    0.000000] Calibrating delay loop... 239.61 BogoMIPS (lpj=1198080)
+[    0.070000] pid_max: default: 32768 minimum: 301
+[    0.070000] Mount-cache hash table entries: 512
+[    0.080000] pinctrl core: initialized pinctrl subsystem
+[    0.090000] NET: Registered protocol family 16
+[    0.110000] pinmux core: rt2880-pinmux does not support function sdram
+[    0.120000] rt2880-pinmux pinctrl.1: invalid function sdram in map table
+[    0.150000] bio: create slab <bio-0> at 0
+[    0.160000] rt2880_gpio 10000600.gpio: registering 24 gpios
+[    0.170000] rt2880_gpio 10000600.gpio: registering 24 irq handlers
+[    0.180000] Switching to clocksource MIPS
+[    0.190000] NET: Registered protocol family 2
+[    0.200000] TCP established hash table entries: 512 (order: 0, 4096 bytes)
+[    0.220000] TCP bind hash table entries: 512 (order: -1, 2048 bytes)
+[    0.230000] TCP: Hash tables configured (established 512 bind 512)
+[    0.240000] TCP: reno registered
+[    0.250000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.260000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.270000] NET: Registered protocol family 1
+[    8.110000] rt-timer 10000100.timer: maximum frequncy is 7324Hz
+[    8.160000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    8.170000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    8.190000] msgmni has been set to 113
+[    8.200000] io scheduler noop registered
+[    8.210000] io scheduler deadline registered (default)
+[    8.220000] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    8.240000] 10000c00.uartlite: ttyS0 at MMIO 0x10000c00 (irq = 20) is a 16550A
+[    8.260000] of-flash 1f000000.cfi: do_map_probe() failed
+[    8.280000] eth0: done loading
+[    8.290000] rt2880_wdt 10000120.watchdog: Initialized
+[    8.300000] TCP: cubic registered
+[    8.310000] NET: Registered protocol family 17
+[    8.320000] 8021q: 802.1Q VLAN Support v1.8
+[    8.330000] turn off boot console early0</nowiki>
+</WRAP>\\
+
+
+===== Notes =====
+
+
+=== OEM firmware ===
+
+Original firmware is available for download [[http://patriotmemory.com/software/V_21_1.2.4.6.zip|here]] (latest as of 2014/01/11)
+
+the zip file contain a single file: PA21_1.2.4.6.bin.
+that file matches the content of /dev/mtdblock5 once the system has that firmware updated.
+
+boot args are: console=ttyS1,57600n8 root=/dev/ram0
+
+the firmware file (PA*.bin) has a 64 bytes uboot header (including CRC), and a LZMA compressed linux image. You can extract the linux image with ''dd if=PA_*.bin of=kernel.lzma bs=64 skip=1''. use unlzma to uncompress the kernel image. the initramfs can then be indentified with binwalk,  (lzma compressed cpio). binwalk will identify the offset, and you can extract the initramfs by using a combination of ''dd if=kernel of=initramfs.cpio.lzma bs=1 skip=<OFFSET_FROM_BINWALK>'', unlzma to uncompres the initramfs, and use cpio to extract the content of the initramfs.
+
+From there, you can inspect /etc/rcS and follow the init process on the system
+
+=== OpenWrt build notes ===
+
+There are two serial ports from the OEM bootlog. i setup the original serial console with only one. 
+
+The flash "partitioning" is wrong, and should be corrected in the image, so as not overflowing the flash. 
+
+The flash SPI addresses are available in the OEM bootlog.
+
+if kernel doesn't work after flashing, you can recover by booting the recovery kernel, simply by holding the button on the opposite side from the battery indicator while uboot starts. this will cause the kernel in the recovery partition to start, instead of the "kernel" partition. search for "gauntletnode" SSID, connect to it, and assign yourself the IP 10.10.10.100, and telnet to 10.10.10.254. you will get a shell directly. from there, you can use "tftp" to copy a new image (or the original one) to /tmp, and use "mtd_write -w /tmp/openwrt.new.bin mtd5" and flash something else that's valid. Once written, you can reboot normally and see what happens.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ramips rt5350 0NIC 1WNIC 64RAM 8Flash MIPS MIPS32 24K rechargeable_battery unsupported}}

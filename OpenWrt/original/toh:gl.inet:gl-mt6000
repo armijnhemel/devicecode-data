@@ -1,0 +1,1529 @@
+====== GL.iNet GL-MT6000 ======
+The GL-MT6000 (Flint 2) is a router based on the MediaTek Filogic 830 SoC that has dual-band 4x4 WiFi 6, two 2.5Gbit WAN, four 1Gbit LAN, 1GB DDR4 RAM, 8GB eMMC storage, and USB 3.2.\\
+{{:media:gl.inet:gl-mt6000_1.jpg?300|GL-MT6000 front}} {{:media:gl.inet:gl-mt6000_3.jpg?300|GL-MT6000 back}}
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "ethernet1gports", "ethernet2_5gports", "usbports", "deviceid"],
+  "filterColumns": {"brand": "^GL\\.iNet$", "model": "^GL-MT6000$"}
+} -->
+
+===== Installation =====
+
+The GL-MT6000 ships with a modified fork of OpenWrt and installation of official OpenWrt is performed by simply flashing a //sysupgrade// image (do not use a //factory// image see warning box below). Sysupgrade will also retain the OEM u-boot GUI and recovery method. Newcomers should choose the latest **non-SNAPSHOT**. First time install of OpenWrt can be achieved from either the OEM webUI or Uboot webUI.
+
+If creating a custom image, make sure you do not leave the "Script to run on first boot (uci-defaults)" box empty. If you do, the default reflash will be "Keep Configuration", causing problems later. A simple `#` entered into the empty box will be sufficient.
+
+Download the latest //sysupgrade// image for GL-MT6000 from [[https://firmware-selector.openwrt.org/|Firmware Selector]].\\  
+
+**GL-iNet web UI**\\
+  - Browse to the router OEM web interface, default IP is 192.168.8.1.
+  - Go to the Update page and drag in the image you downloaded, select //do not keep configuration//.
+  - This will flash and reboot the router. OpenWrt starts using the now default IP of 192.168.1.1.
+  - After flashing, OpenWrt can be configured as described in the [[:docs:guide-quick-start:walkthrough_login|Quick Start guide]].
+
+**Uboot web UI**\\
+
+  - Set your computer to static IP address 192.168.1.2.
+  - Connect ethernet from computer to any lan port of the GL-MT6000.
+  - With the GL-MT6000 power lead unplugged, press and hold the reset button.
+  - Plug in the power and wait for the LED to finish flashing and go from blue to solid white.
+  - On your computer, in the browser, go to http://192.168.1.1 and enter the Uboot web UI screen.
+  - Select the previously downloaded OpenWrt **SYSUPGRADE** image, ignoring ALL the other images.
+  - Upload and go, you should see "Update in progress".
+  - Wait a few minutes and the LED will eventually go to solid white again.
+  - Job done, don't forget to change your computer back to DHCP!
+
+For firmware updates always use sysupgrade images. If you installed a snapshot remember it does not come with LuCI, install via SSH: ''opkg update && opkg install luci''.
+
+To install on a bricked device see [[:toh:gl.inet:gl-mt6000#recovery|Recovery]] section below.
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "supportedcurrentrel", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^GL\\.iNet$", "model": "^GL-MT6000$"}
+} -->
+
+<WRAP center round important 100%>
+**WARNING: Always install a //sysupgrade// image.**\\
+Attempting to flash a //factory// image first, then flashing an OpenWrt image will very likely lead to bricking!\\
+**It is not necessary to replace the OEM u-boot with OpenWrt u-boot,**
+but if you wish to do so you will need to flash a preloader image first then the u-boot image.\\
+For further information about the preloader process, 
+see this [[https://github.com/openwrt/openwrt/commit/fe10f9743935d6986e80e7cb082469e6bc5a03f0|commit]] 
+</WRAP>
+
+===== Configuration =====
+
+==== Set WiFi country code ====
+Prior to enabling each SSID, set your country code as per [[docs:guide-user:network:wifi:wifi_countrycode|Country code for Wi-Fi operation]]:
+
+  - In LuCI go to Network -> Wireless
+  - Click “Edit” on the SSID you want to enable
+  - Select your “Country Code” from the dropdown
+  - Save and Apply
+
+Alternatively, set via SSH with ''iw reg set''.
+
+==== Hardware Acceleration ====
+MediaTek supports hardware acceleration for their SoCs which increases throughput and greatly reduces load off the CPU. It does this by processing traffic on their Packet Processing Engine (aka Network Accelerator). Users can expect 2.5Gbit routing with near 0/0/0/0 load across the CPU cores. The downside to this approach is it //cannot// be used in combination with QoS features such as [[:docs:guide-user:network:traffic-shaping:SQM]] and AQL. This is not enabled by default in OpenWrt. To enable, read below.
+
+=== Hardware Flow Offloading ===
+HFO enables hardware offloading of routing/NAT packets. The caveat being it is incompatible with SQM. This can be enabled via ''/etc/config/firewall'' or in LuCI as follows:
+
+  - Network -> Firewall -> Software Flow Offloading: enable
+  - Network -> Firewall -> Hardware Flow Offloading: enable
+  - Save and Apply
+
+=== Wireless Ethernet Dispatch ===
+WED enables hardware offloading of wireless traffic. The caveat being it will also bypass AQL which may result in [[https://forum.openwrt.org/t/gl-inet-gl-mt6000-aql-and-wifi-latency/196384/24|higher WiFi latency]]. This feature is not yet available in LuCI. To enable it, use the command line:
+
+  - SSH: ''nano /etc/modules.conf''
+  - Append: ''options mt7915e wed_enable=Y''
+  - Save and reboot
+
+To check if WED is enabled, the following module will return either Y or N (yes or no): ''cat /sys/module/mt7915e/parameters/wed_enable''
+
+To check traffic offloaded to the PPEs for wired and wireless, cat bind/status in ppe0/ppe1, e.g.: ''cat /sys/kernel/debug/ppe0/bind'' and ''cat /sys/kernel/debug/ppe1/bind''
+
+==== Adjusting AQL ====
+
+This device uses the [[:docs:techref:driver.wlan:mt76]] mac80211 wifi driver which supports [[https://github.com/torvalds/linux/commit/3ace10f5b5ad94bdbd4b419dc9da2217d57720a9|AQL]]. While the default values are sensible, reducing TX queue limits can improve latency, albeit with a reduction in peak throughput. See forum post for [[https://forum.openwrt.org/t/gl-inet-gl-mt6000-aql-and-wifi-latency/196384|adjusting AQL limits]] showing limits in the 1500-2500 range yield the lowest latency results. As always with WiFi, results will vary due to a variety of clients, frequencies, obstructions, etc. As noted above this cannot be used with WED enabled.
+
+Check current AQL limits: ''cat /sys/kernel/debug/ieee80211/phy*/aql_txq_limit''
+
+Example for setting different limits on both radios:\\
+''for ac in 0 1 2 3; do echo $ac 2500 8500 > /sys/kernel/debug/ieee80211/phy0/aql_txq_limit; done''\\
+''for ac in 0 1 2 3; do echo $ac 2500 8500 > /sys/kernel/debug/ieee80211/phy1/aql_txq_limit; done''
+
+To retain configuration after reboot save to ''/etc/rc.local'':
+
+  # AQL Tweaks
+  aql_txq_limit_l=2500
+  aql_txq_limit_h=8500
+  for ac in 0 1 2 3; do echo $ac $aql_txq_limit_l $aql_txq_limit_h > /sys/kernel/debug/ieee80211/phy0/aql_txq_limit; done
+  for ac in 0 1 2 3; do echo $ac $aql_txq_limit_l $aql_txq_limit_h > /sys/kernel/debug/ieee80211/phy1/aql_txq_limit; done
+
+==== Beamforming and Basic Service Set coloring ====
+These are enabled by default as per [[https://github.com/openwrt/openwrt/commit/590eaaeed59a9eb6637a1480587fc410de182523|commit]]. It is not recommended to change these settings unless you have a good reason. See commit comment for adjustments that can be made under the corresponding radio in ''/etc/config/wireless''. Restart wireless or reboot to take effect.
+
+[[https://www.techspot.com/article/1769-wi-fi-6-explained/|Beamforming]] improves data rates and range by directing signals toward specific clients instead of being omnidirectional. By controlling transmissions from several antennas, it will cause their signals to interfere on purpose and redirect the resulting signal in a new direction. MediaTek also has a proprietary beamforming feature called [[https://cdn-www.mediatek.com/page/iBF-Technology.pdf|iBF]] which supports legacy devices without BF built-in. Most clients have some form of BF support so iBF is generally not needed over the built-in solution.
+
+[[https://www.commscope.com/blog/2018/wi-fi-6-fundamentals-basic-service-set-coloring-bss-coloring/|Basic Service Set (BSS) Coloring]] marks shared frequencies to allow access points to determine whether simultaneous use of spectrum is permissible. This reduces interference due to congestion and ensures consistent service to multiple connected devices in high-density environments.
+
+==== Access Point mode ====
+If configuring this device to function only as a wireless access point (dumb AP) follow the [[:docs:guide-user:network:wifi:wifiextenders:bridgedap]] guide and consider leaving hardware acceleration features off as explained below.
+
+=== Flow Offloading ===
+A dumb AP does not perform routing/NAT since it is on the same LAN as the router. Flow offloading (SFO and HFO) will therefore have no impact, better to leave these off.
+
+=== WED ===
+Since a dumb AP does not perform other functions there is plenty of CPU headroom, therefore WiFi will typically have lower latency by leaving WED disabled so it will utilize AQL. Nevertheless if you would like to use WED, enable it as described above, then install the ''bridger'' package which does some BPF (Berkeley Packet Filter) magic to track and offload bridged streams. Optionally, edit ''/etc/config/bridger'' and define a device or bridge to exclude from bridge forwarding acceleration.
+
+==== Replacing the firmware ====
+
+The MediaTek firmware included with OpenWrt is generally reliable and can be left alone. However users wanting to replace it with the upstream firmware which includes bug fixes and other changes [[https://git01.mediatek.com/plugins/gitiles/openwrt/feeds/mtk-openwrt-feeds/|may download it here]] and compile from source or replace the binaries under ''/lib/firmware/mediatek/''. See [[https://forum.openwrt.org/t/gl-inet-flint-2-gl-mt6000-snapshot-experimental-bleeding-edge/197278/10|forum post]] for a script to partially automate this.
+
+To check running firmware version: ''dmesg | grep -i firmware''.
+
+==== Docker ====
+Given the generous 1GB RAM and 8GB eMMC, and with hardware offloading the CPU cores are mostly unloaded, this becomes a good device for Docker. Is Adblock-Fast missing a feature? Try the Pi-hole container. Samba not powerful enough? Host a NAS container. Have several WAPs plugged in a larger location? Consider Unifi-controller. Or perhaps a Nethack server you can login and play.
+
+  * [[:docs:guide-user:virtualization:Docker Host]] for installation 
+  * [[https://hub.docker.com/|Docker container hub]] for countless containers ready to run
+  * Popular container lists at [[https://awesome-docker.netlify.app/|Awesome Docker]] and [[https://www.smarthomebeginner.com/best-docker-containers-for-home-server/|Smart Home]]
+
+===== Recovery =====
+
+==== Return to OEM firmware ====
+
+The GL.iNet OEM firmware is a fork of OpenWrt and thankfully is compatible with official OpenWrt //sysupgrade// images, so returning to OEM is done simply by flashing their //sysupgrade// image without keeping settings and vice versa. The default IP is 192.168.8.1. They offer two branch options, one with kernel 5.4 using the MTK SDK and wifi driver, and the other closer to official OpenWrt with kernel 6.6 and open source mt76 driver. SFO, HFO, and WED are enabled by default.
+
+==== OEM Recovery ====
+
+The recovery interface in the OEM U-Boot works independently of running OpenWrt firmware, OEM firmware, or a bricked firmware. This [[https://docs.gl-inet.com/router/en/4/faq/debrick/|procedure]] is summarized below:
+
+  - Configure your computer ethernet interface with a static IP address of 192.168.1.2.
+  - Connect an ethernet cable from a LAN port (lan2-5) of the MT6000 to the ethernet port of your computer.
+  - Unplug the power cord from the MT6000.
+  - Press and hold the "Reset" button on the MT6000, then plug in the power lead while still holding the button.
+  - Keep holding the button and wait for the LED to stabilize (about 10 seconds). Then release the button.
+  - On your computer web browser, go to 192.168.1.1, you will see the u-boot web interface.
+  - Select your previously downloaded sysupgrade image then click upload, then continue to flash the MT6000.
+  - The MT6000 will reboot and you should be able to SSH into 192.168.1.1 and install LuCI to continue configuring the MT6000.
+  - Don't forget to set your computer back from static to DHCP when you have finished.
+
+==== Failsafe ====
+
+Generic OpenWrt [[docs:guide-user:troubleshooting:failsafe_and_factory_reset|Failsafe mode and factory reset]] is available for resetting settings etc.
+
+The LED blinks rapidly for a short period during the boot process to indicate failsafe mode triggering. For GL-MT6000 that is 10-15 seconds after power-on. Push the reset button during that rapid blinking to enter failsafe mode.
+
+==== LEDs ====
+
+The device has one frontside LED which can be either blue or white. OpenWrt has this hardcoded to show the boot process as follows:
+
+  * sysupgrade: white LED blinks
+  * bootloader, early boot: blue LED on (10-15 seconds)
+  * preinit/failsafe: blue LED blinks rapidly (2 seconds for failsafe entrance)
+  * late boot: blue LED blinks slowly (10+ seconds depending on packages)
+  * boot completed, running normally: white LED on
+
+Brightness can be set by assigning ''brightness'' a value 0-255, from dimmest to brightest, via SSH in: ''/sys/class/leds/''
+
+For example, to set LED to off (add to /etc/rc.local to keep after reboot): ''echo 0 > /sys/class/leds/white:system/brightness''
+
+==== Flash layout ====
+The default filesystems are as follows:\\
+
+  root@OpenWrt:~# df -h
+  Filesystem                Size      Used Available Use% Mounted on
+  /dev/root                 5.3M      5.3M         0 100% /rom
+  tmpfs                   493.3M    428.0K    492.9M   0% /tmp
+  /dev/loop0                7.2G    240.8M      7.0G   3% /overlay
+  overlayfs:/overlay        7.2G    240.8M      7.0G   3% /
+  tmpfs                   512.0K         0    512.0K   0% /dev
+  root@OpenWrt:~# lsblk
+  NAME         MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+  loop0          7:0    0  7.2G  0 loop /overlay
+  mmcblk0      179:0    0  7.3G  0 disk
+  ├─mmcblk0p1  179:1    0  512K  0 part
+  ├─mmcblk0p2  179:2    0    2M  0 part
+  ├─mmcblk0p3  179:3    0    2M  0 part
+  ├─mmcblk0p4  179:4    0    2M  0 part
+  ├─mmcblk0p5  179:5    0    2M  0 part
+  ├─mmcblk0p6  179:6    0   32M  0 part
+  └─mmcblk0p7  179:7    0  7.2G  0 part /rom
+  mmcblk0boot0 179:8    0    4M  1 disk
+  mmcblk0boot1 179:16   0    4M  1 disk
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["serialconnectionparameters", "serialconnectionvoltage"],
+  "filterColumns": {"brand": "^GL\\.iNet$", "model": "^GL-MT6000$"}
+} -->
+
+The pins are unpopulated, but clearly labeled and accessible without removing the heatsink.
+
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_serial-and-jtag-pinout.jpg?500|Serial and JTAG pinout}}
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+Like the serial pins, they are unpopulated, but clearly labeled and accessible without removing the heatsink. See photo above.
+
+===== Performance =====
+A forum user posted some speedtests on [[https://forum.openwrt.org/t/gl-mt6000-up-to-900-mbps-using-wireguard/173524/230|kernel 5.15]] and later on  [[https://www.waveform.com/tools/bufferbloat?test-id=fe841d79-96bf-4de2-bf27-17a34f5fff03|kernel 6.6]] using a cable modem with 950/30 rated gigabit service. Wireless tests were line of sight at about 15ft (5m) from the router. File sharing tests used a USB 3.0 SSD formatted exFAT using [[:docs:guide-user:services:nas:cifs.server|Samba]] 4.18.8, Ksmbd performance was noted to be similar.
+
+WAN to LAN:
+  - SFO+HFO: 958/36 Mbps, Load%: 0/0.7/0/0, +18ms, +33ms, Bufferbloat: B
+  - SQM Cake + packet steering: 885/20 Mbps, Load%: 70/50/50/50, +2ms, +0ms, Bufferbloat: A+, [[https://www.waveform.com/tools/bufferbloat?test-id=0c2c424a-5647-436b-8d1e-cab04c5ad7e8|Speedtest results]]
+  - SQM Fq_codel + packet steering: 900/20 Mbps, Load%: 70/40/45/30, +3ms, +0ms, Bufferbloat: A+, [[https://www.waveform.com/tools/bufferbloat?test-id=fe841d79-96bf-4de2-bf27-17a34f5fff03|Speedtest results]]
+
+WAN to WLAN:
+  - Default 5GHz 80MHz: 750/37 Mbps, Load%: 31/20/18/22
+  - WED 5GHz 80MHz: 810/37 Mbps, Load%: 5/0/0/0
+  - WED 2.4GHz 20MHz: 55/37 Mbps, Load% 1/0/0/0
+
+Samba on LAN:
+  - Read: 85 MB/s (680 Mbps), Load%: 13/8/32/5
+  - Write: 115 MB/s (920 Mbps), Load%: 30/25/25/15
+
+WireGuard on device:
+  - 806 Mbps using this [[https://forum.openwrt.org/t/a-wireguard-comparison-db/187586|forum]] script. Note speeds may be higher to VPN providers, this on-device script was used for comparison to other targets.
+
+Power consumption:
+  - A user submitted this device to The Power Consumption Database [[https://www.tpcdb.com/product.php?id=7698|here]].
+===== Community Builds =====
+
+[[https://forum.openwrt.org/t/mt6000-custom-build-with-luci-and-some-optimization-kernel-6-6-x/185241|Custom builds by pesa1234]] includes the newer mtk wifi firmware, iBF settings, QAM-256 VHT on 2.4GHz, and many configuration tweaks and built-in packages.
+
+===== Opening the case =====
+The bottom of the case includes two wall mount slots.
+
+  * Dimensions: 233 x 137 x 53mm
+  * Weight: 761g
+
+Under 4 rubber feet are 4 phillips screws. After removing these it must be pried open. You may break a few clips, but it'll open. (You won't really need the clips later, the 4 screws will hold it shut perfectly fine.) You'll then find a giant heatsink. 2 screws on the top will free the PCB and heatsink from the case. Be careful with the 8 antenna cables. You could disconnect those but leave them connected and just fold the board over. There is also a large backplate, 4 screws will free the heatsink and backplate from the PCB. There are multiple thick thermal pads on both sides of the PCB, so both the backplate and heatsink may stick a bit to the board. On the board there are multiple RF shields. If you want, you could spuder those open to find even more thermal pads.
+
+==== Photos ====
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_top-case.jpg?300|Top case with clips everywhere}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_side-view.jpg?300|Side view with USB port}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_backplate.jpg?300|Backplate}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_overview-1.jpg?300|Heatsink removed}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_heatsinks-on-scale.jpg?300|Heatsink and backplate on kitchen scale}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_board-top.jpg?300|Board top (RF shields and thermal pads removed)}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_board-underside.jpg?300|Board bottom (RF shields and thermal pads removed)}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_main-soc.jpg?300|Main SoC}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_1gbe-switch.jpg?300|1GBE switch}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_2.5gbe-phy.jpg?300|2.5GBE PHY}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_2.4ghz-frontend.jpg?300|2.4 GHz frontend}}
+{{:media:gl.inet:gl-mt6000:gl-inet-mt6000_5ghz-frontend.jpg?300|5 GHz frontend}}
+
+
+
+===== U-Boot =====
+
+GL.iNet [[https://github.com/gl-inet/mt798x-boot/|source code to U-Boot]] to compile bootloaders for a number of their devices. Follow their [[https://docs.gl-inet.com/router/en/3/tutorials/debrick/|instructions here]] to replace your U-Boot. Proceed with caution.
+
+Note that there is no strong motivation to modify the bootloader which is unlocked and suitable for OpenWrt purposes, unless you wish to add secure boot or to lock it down. Given the ample amount of storage space available on this device the included bootloader is sufficient.
+
+===== Wi-Fi features =====
+
+Radiation patterns for this device are posted in the [[https://fccid.io/2AFIW-MT6000/Test-Report/Antenna-Information-6969609.pdf|FCC filing]].
+
+<WRAP bootlog>
+<nowiki>
+root@OpenWrt:~# iw list
+Wiphy phy1
+        wiphy index: 1
+        max # scan SSIDs: 4
+        max scan IEs length: 2190 bytes
+        max # sched scan SSIDs: 0
+        max # match sets: 0
+        Retry short limit: 7
+        Retry long limit: 4
+        Coverage class: 0 (up to 0m)
+        Device supports AP-side u-APSD.
+        Device supports T-DLS.
+        Available Antennas: TX 0xf RX 0xf
+        Configured Antennas: TX 0xf0 RX 0xf0
+        Supported interface modes:
+                 * IBSS
+                 * managed
+                 * AP
+                 * AP/VLAN
+                 * monitor
+                 * mesh point
+                 * P2P-client
+                 * P2P-GO
+        Band 2:
+                Capabilities: 0x9ff
+                        RX LDPC
+                        HT20/HT40
+                        SM Power Save disabled
+                        RX Greenfield
+                        RX HT20 SGI
+                        RX HT40 SGI
+                        TX STBC
+                        RX STBC 1-stream
+                        Max AMSDU length: 7935 bytes
+                        No DSSS/CCK HT40
+                Maximum RX AMPDU length 65535 bytes (exponent: 0x003)
+                Minimum RX AMPDU time spacing: 2 usec (0x04)
+                HT TX/RX MCS rate indexes supported: 0-31
+                VHT Capabilities (0x339b79f6):
+                        Max MPDU length: 11454
+                        Supported Channel Width: 160 MHz
+                        RX LDPC
+                        short GI (80 MHz)
+                        short GI (160/80+80 MHz)
+                        TX STBC
+                        SU Beamformer
+                        SU Beamformee
+                        MU Beamformer
+                        MU Beamformee
+                        RX antenna pattern consistency
+                        TX antenna pattern consistency
+                VHT RX MCS set:
+                        1 streams: MCS 0-9
+                        2 streams: MCS 0-9
+                        3 streams: MCS 0-9
+                        4 streams: MCS 0-9
+                        5 streams: not supported
+                        6 streams: not supported
+                        7 streams: not supported
+                        8 streams: not supported
+                VHT RX highest supported: 0 Mbps
+                VHT TX MCS set:
+                        1 streams: MCS 0-9
+                        2 streams: MCS 0-9
+                        3 streams: MCS 0-9
+                        4 streams: MCS 0-9
+                        5 streams: not supported
+                        6 streams: not supported
+                        7 streams: not supported
+                        8 streams: not supported
+                VHT TX highest supported: 0 Mbps
+                VHT extended NSS: supported
+                HE Iftypes: managed
+                        HE MAC Capabilities ():
+                                +HTC HE Supported
+                                Trigger Frame MAC Padding Duration: 2
+                                OM Control
+                                Maximum A-MPDU Length Exponent: 3
+                                A-MSDU in A-MPDU
+                        HE PHY Capabilities: ():
+                                HE40/HE80/5GHz
+                                HE160/5GHz
+                                242 tone RUs/5GHz
+                                Device Class: 1
+                                LDPC Coding in Payload
+                                HE SU PPDU with 1x HE-LTF and 0.8us GI
+                                NDP with 4x HE-LTF and 3.2us GI
+                                STBC Tx <= 80MHz
+                                STBC Rx <= 80MHz
+                                Full Bandwidth UL MU-MIMO
+                                Partial Bandwidth UL MU-MIMO
+                                DCM Max Constellation: 2
+                                DCM Max Constellation Rx: 2
+                                SU Beamformer
+                                SU Beamformee
+                                Beamformee STS <= 80Mhz: 3
+                                Beamformee STS > 80Mhz: 3
+                                Sounding Dimensions <= 80Mhz: 3
+                                Sounding Dimensions > 80Mhz: 3
+                                Codebook Size SU Feedback
+                                Codebook Size MU Feedback
+                                Triggered CQI Feedback
+                                Partial Bandwidth Extended Range
+                                Partial Bandwidth DL MU-MIMO
+                                PPE Threshold Present
+                                Power Boost Factor ar
+                                HE SU PPDU & HE PPDU 4x HE-LTF 0.8us GI
+                                Max NC: 2
+                                20MHz in 40MHz HE PPDU 2.4GHz
+                                20MHz in 160/80+80MHz HE PPDU
+                                80MHz in 160/80+80MHz HE PPDU
+                                DCM Max BW: 1
+                                Longer Than 16HE SIG-B OFDM Symbols
+                                Non-Triggered CQI Feedback
+                                TX 1024-QAM
+                                RX 1024-QAM
+                                RX Full BW SU Using HE MU PPDU with Compression SIGB
+                                RX Full BW SU Using HE MU PPDU with Non-Compression SIGB
+                        HE RX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE TX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE RX MCS and NSS set 160 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE TX MCS and NSS set 160 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        PPE Threshold 0x3b 0x1c 0xc7 0x71 0x1c 0xc7 0x71 0x1c 0xc7 0x71
+                HE Iftypes: AP
+                        HE MAC Capabilities ():
+                                +HTC HE Supported
+                                TWT Responder
+                                BSR
+                                OM Control
+                                Maximum A-MPDU Length Exponent: 3
+                                BQR
+                                A-MSDU in A-MPDU
+                                OM Control UL MU Data Disable RX
+                        HE PHY Capabilities: (0x0c20ce926f1bafd0000c00):
+                                HE40/HE80/5GHz
+                                HE160/5GHz
+                                LDPC Coding in Payload
+                                NDP with 4x HE-LTF and 3.2us GI
+                                STBC Tx <= 80MHz
+                                STBC Rx <= 80MHz
+                                Full Bandwidth UL MU-MIMO
+                                Partial Bandwidth UL MU-MIMO
+                                DCM Max Constellation: 2
+                                DCM Max Constellation Rx: 2
+                                SU Beamformer
+                                SU Beamformee
+                                MU Beamformer
+                                Beamformee STS <= 80Mhz: 3
+                                Beamformee STS > 80Mhz: 3
+                                Sounding Dimensions <= 80Mhz: 3
+                                Sounding Dimensions > 80Mhz: 3
+                                Codebook Size SU Feedback
+                                Codebook Size MU Feedback
+                                Triggered SU Beamforming Feedback
+                                Triggered MU Beamforming Feedback
+                                Partial Bandwidth Extended Range
+                                PPE Threshold Present
+                                Max NC: 2
+                                STBC Tx > 80MHz
+                                STBC Rx > 80MHz
+                                TX 1024-QAM
+                                RX 1024-QAM
+                        HE RX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE TX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE RX MCS and NSS set 160 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE TX MCS and NSS set 160 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        PPE Threshold 0x3b 0x1c 0xc7 0x71 0x1c 0xc7 0x71 0x1c 0xc7 0x71
+                HE Iftypes: mesh point
+                        HE MAC Capabilities ():
+                                +HTC HE Supported
+                                OM Control
+                                Maximum A-MPDU Length Exponent: 3
+                                A-MSDU in A-MPDU
+                        HE PHY Capabilities: ():
+                                HE40/HE80/5GHz
+                                HE160/5GHz
+                                LDPC Coding in Payload
+                                STBC Tx <= 80MHz
+                                STBC Rx <= 80MHz
+                        HE RX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE TX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE RX MCS and NSS set 160 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE TX MCS and NSS set 160 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                Frequencies:
+                        * 5180.0 MHz [36] (23.0 dBm)
+                        * 5200.0 MHz [40] (23.0 dBm)
+                        * 5220.0 MHz [44] (23.0 dBm)
+                        * 5240.0 MHz [48] (23.0 dBm)
+                        * 5260.0 MHz [52] (24.0 dBm) (radar detection)
+                        * 5280.0 MHz [56] (24.0 dBm) (radar detection)
+                        * 5300.0 MHz [60] (24.0 dBm) (radar detection)
+                        * 5320.0 MHz [64] (24.0 dBm) (radar detection)
+                        * 5500.0 MHz [100] (24.0 dBm) (radar detection)
+                        * 5520.0 MHz [104] (24.0 dBm) (radar detection)
+                        * 5540.0 MHz [108] (24.0 dBm) (radar detection)
+                        * 5560.0 MHz [112] (24.0 dBm) (radar detection)
+                        * 5580.0 MHz [116] (24.0 dBm) (radar detection)
+                        * 5600.0 MHz [120] (24.0 dBm) (radar detection)
+                        * 5620.0 MHz [124] (24.0 dBm) (radar detection)
+                        * 5640.0 MHz [128] (24.0 dBm) (radar detection)
+                        * 5660.0 MHz [132] (24.0 dBm) (radar detection)
+                        * 5680.0 MHz [136] (24.0 dBm) (radar detection)
+                        * 5700.0 MHz [140] (24.0 dBm) (radar detection)
+                        * 5720.0 MHz [144] (24.0 dBm) (radar detection)
+                        * 5745.0 MHz [149] (30.0 dBm)
+                        * 5765.0 MHz [153] (30.0 dBm)
+                        * 5785.0 MHz [157] (30.0 dBm)
+                        * 5805.0 MHz [161] (30.0 dBm)
+                        * 5825.0 MHz [165] (30.0 dBm)
+                        * 5845.0 MHz [169] (27.0 dBm) (no IR)
+                        * 5865.0 MHz [173] (27.0 dBm) (no IR)
+                        * 5885.0 MHz [177] (27.0 dBm) (no IR)
+        valid interface combinations:
+                 * #{ IBSS } <= 1, #{ AP, mesh point } <= 16, #{ managed } <= 19,
+                   total <= 19, #channels <= 1, STA/AP BI must match, radar detect widths: { 20 MHz (no HT), 20 MHz, 40 MHz, 80 MHz, 160 MHz }
+
+        HT Capability overrides:
+                 * MCS: ff ff ff ff ff ff ff ff ff ff
+                 * maximum A-MSDU length
+                 * supported channel width
+                 * short GI for 40 MHz
+                 * max A-MPDU length exponent
+                 * min MPDU start spacing
+        max # scan plans: 1
+        max scan plan interval: -1
+        max scan plan iterations: 0
+        Supported extended features:
+                * [ VHT_IBSS ]: VHT-IBSS
+                * [ RRM ]: RRM
+                * [ BEACON_RATE_LEGACY ]: legacy beacon rate setting
+                * [ BEACON_RATE_HT ]: HT beacon rate setting
+                * [ BEACON_RATE_VHT ]: VHT beacon rate setting
+                * [ FILS_STA ]: STA FILS (Fast Initial Link Setup)
+                * [ CQM_RSSI_LIST ]: multiple CQM_RSSI_THOLD records
+                * [ CONTROL_PORT_OVER_NL80211 ]: control port over nl80211
+                * [ ACK_SIGNAL_SUPPORT ]: ack signal level support
+                * [ TXQS ]: FQ-CoDel-enabled intermediate TXQs
+                * [ SCAN_RANDOM_SN ]: use random sequence numbers in scans
+                * [ SCAN_MIN_PREQ_CONTENT ]: use probe request with only rate IEs in scans
+                * [ CAN_REPLACE_PTK0 ]: can safely replace PTK 0 when rekeying
+                * [ AIRTIME_FAIRNESS ]: airtime fairness scheduling
+                * [ STA_TX_PWR ]: TX power control per station
+                * [ AQL ]: Airtime Queue Limits (AQL)
+                * [ CONTROL_PORT_NO_PREAUTH ]: disable pre-auth over nl80211 control port support
+                * [ DEL_IBSS_STA ]: deletion of IBSS station support
+                * [ SCAN_FREQ_KHZ ]: scan on kHz frequency support
+                * [ CONTROL_PORT_OVER_NL80211_TX_STATUS ]: tx status for nl80211 control port support
+                * [ FILS_DISCOVERY ]: FILS discovery frame transmission support
+                * [ UNSOL_BCAST_PROBE_RESP ]: unsolicated broadcast probe response transmission support
+                * [ BEACON_RATE_HE ]: HE beacon rate support (AP/mesh)
+                * [ BSS_COLOR ]: BSS coloring support
+                * [ RADAR_BACKGROUND ]: Radar background support
+                * [ POWERED_ADDR_CHANGE ]: can change MAC address while up
+Wiphy phy0
+        wiphy index: 0
+        max # scan SSIDs: 4
+        max scan IEs length: 2200 bytes
+        max # sched scan SSIDs: 0
+        max # match sets: 0
+        Retry short limit: 7
+        Retry long limit: 4
+        Coverage class: 0 (up to 0m)
+        Device supports AP-side u-APSD.
+        Device supports T-DLS.
+        Available Antennas: TX 0xf RX 0xf
+        Configured Antennas: TX 0xf RX 0xf
+        Supported interface modes:
+                 * IBSS
+                 * managed
+                 * AP
+                 * AP/VLAN
+                 * monitor
+                 * mesh point
+                 * P2P-client
+                 * P2P-GO
+        Band 1:
+                Capabilities: 0x9ff
+                        RX LDPC
+                        HT20/HT40
+                        SM Power Save disabled
+                        RX Greenfield
+                        RX HT20 SGI
+                        RX HT40 SGI
+                        TX STBC
+                        RX STBC 1-stream
+                        Max AMSDU length: 7935 bytes
+                        No DSSS/CCK HT40
+                Maximum RX AMPDU length 65535 bytes (exponent: 0x003)
+                Minimum RX AMPDU time spacing: 2 usec (0x04)
+                HT TX/RX MCS rate indexes supported: 0-31
+                HE Iftypes: managed
+                        HE MAC Capabilities ():
+                                +HTC HE Supported
+                                Trigger Frame MAC Padding Duration: 2
+                                OM Control
+                                Maximum A-MPDU Length Exponent: 3
+                                A-MSDU in A-MPDU
+                        HE PHY Capabilities: ():
+                                HE40/2.4GHz
+                                242 tone RUs/2.4GHz
+                                Device Class: 1
+                                LDPC Coding in Payload
+                                HE SU PPDU with 1x HE-LTF and 0.8us GI
+                                NDP with 4x HE-LTF and 3.2us GI
+                                STBC Tx <= 80MHz
+                                STBC Rx <= 80MHz
+                                Full Bandwidth UL MU-MIMO
+                                Partial Bandwidth UL MU-MIMO
+                                DCM Max Constellation: 2
+                                DCM Max Constellation Rx: 2
+                                SU Beamformer
+                                SU Beamformee
+                                Beamformee STS <= 80Mhz: 3
+                                Beamformee STS > 80Mhz: 3
+                                Sounding Dimensions <= 80Mhz: 3
+                                Sounding Dimensions > 80Mhz: 3
+                                Codebook Size SU Feedback
+                                Codebook Size MU Feedback
+                                Triggered CQI Feedback
+                                Partial Bandwidth Extended Range
+                                Partial Bandwidth DL MU-MIMO
+                                PPE Threshold Present
+                                Power Boost Factor ar
+                                HE SU PPDU & HE PPDU 4x HE-LTF 0.8us GI
+                                Max NC: 2
+                                20MHz in 40MHz HE PPDU 2.4GHz
+                                20MHz in 160/80+80MHz HE PPDU
+                                80MHz in 160/80+80MHz HE PPDU
+                                DCM Max BW: 1
+                                Longer Than 16HE SIG-B OFDM Symbols
+                                Non-Triggered CQI Feedback
+                                TX 1024-QAM
+                                RX 1024-QAM
+                                RX Full BW SU Using HE MU PPDU with Compression SIGB
+                                RX Full BW SU Using HE MU PPDU with Non-Compression SIGB
+                        HE RX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE TX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        PPE Threshold 0x3b 0x1c 0xc7 0x71 0x1c 0xc7 0x71 0x1c 0xc7 0x71
+                HE Iftypes: AP
+                        HE MAC Capabilities ():
+                                +HTC HE Supported
+                                TWT Responder
+                                BSR
+                                OM Control
+                                Maximum A-MPDU Length Exponent: 3
+                                BQR
+                                A-MSDU in A-MPDU
+                                OM Control UL MU Data Disable RX
+                        HE PHY Capabilities: (0x0220ce926f1bafd0000c00):
+                                HE40/2.4GHz
+                                LDPC Coding in Payload
+                                NDP with 4x HE-LTF and 3.2us GI
+                                STBC Tx <= 80MHz
+                                STBC Rx <= 80MHz
+                                Full Bandwidth UL MU-MIMO
+                                Partial Bandwidth UL MU-MIMO
+                                DCM Max Constellation: 2
+                                DCM Max Constellation Rx: 2
+                                SU Beamformer
+                                SU Beamformee
+                                MU Beamformer
+                                Beamformee STS <= 80Mhz: 3
+                                Beamformee STS > 80Mhz: 3
+                                Sounding Dimensions <= 80Mhz: 3
+                                Sounding Dimensions > 80Mhz: 3
+                                Codebook Size SU Feedback
+                                Codebook Size MU Feedback
+                                Triggered SU Beamforming Feedback
+                                Triggered MU Beamforming Feedback
+                                Partial Bandwidth Extended Range
+                                PPE Threshold Present
+                                Max NC: 2
+                                STBC Tx > 80MHz
+                                STBC Rx > 80MHz
+                                TX 1024-QAM
+                                RX 1024-QAM
+                        HE RX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE TX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        PPE Threshold 0x3b 0x1c 0xc7 0x71 0x1c 0xc7 0x71 0x1c 0xc7 0x71
+                HE Iftypes: mesh point
+                        HE MAC Capabilities ():
+                                +HTC HE Supported
+                                OM Control
+                                Maximum A-MPDU Length Exponent: 3
+                                A-MSDU in A-MPDU
+                        HE PHY Capabilities: ():
+                                HE40/2.4GHz
+                                LDPC Coding in Payload
+                                STBC Tx <= 80MHz
+                                STBC Rx <= 80MHz
+                        HE RX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                        HE TX MCS and NSS set <= 80 MHz
+                                1 streams: MCS 0-11
+                                2 streams: MCS 0-11
+                                3 streams: MCS 0-11
+                                4 streams: MCS 0-11
+                                5 streams: not supported
+                                6 streams: not supported
+                                7 streams: not supported
+                                8 streams: not supported
+                Frequencies:
+                        * 2412.0 MHz [1] (30.0 dBm)
+                        * 2417.0 MHz [2] (30.0 dBm)
+                        * 2422.0 MHz [3] (30.0 dBm)
+                        * 2427.0 MHz [4] (30.0 dBm)
+                        * 2432.0 MHz [5] (30.0 dBm)
+                        * 2437.0 MHz [6] (30.0 dBm)
+                        * 2442.0 MHz [7] (30.0 dBm)
+                        * 2447.0 MHz [8] (30.0 dBm)
+                        * 2452.0 MHz [9] (30.0 dBm)
+                        * 2457.0 MHz [10] (30.0 dBm)
+                        * 2462.0 MHz [11] (30.0 dBm)
+                        * 2467.0 MHz [12] (disabled)
+                        * 2472.0 MHz [13] (disabled)
+                        * 2484.0 MHz [14] (disabled)
+        valid interface combinations:
+                 * #{ IBSS } <= 1, #{ AP, mesh point } <= 16, #{ managed } <= 19,
+                   total <= 19, #channels <= 1, STA/AP BI must match, radar detect widths: { 20 MHz (no HT), 20 MHz, 40 MHz, 80 MHz, 160 MHz }
+
+        HT Capability overrides:
+                 * MCS: ff ff ff ff ff ff ff ff ff ff
+                 * maximum A-MSDU length
+                 * supported channel width
+                 * short GI for 40 MHz
+                 * max A-MPDU length exponent
+                 * min MPDU start spacing
+        max # scan plans: 1
+        max scan plan interval: -1
+        max scan plan iterations: 0
+        Supported extended features:
+                * [ VHT_IBSS ]: VHT-IBSS
+                * [ RRM ]: RRM
+                * [ BEACON_RATE_LEGACY ]: legacy beacon rate setting
+                * [ BEACON_RATE_HT ]: HT beacon rate setting
+                * [ BEACON_RATE_VHT ]: VHT beacon rate setting
+                * [ FILS_STA ]: STA FILS (Fast Initial Link Setup)
+                * [ CQM_RSSI_LIST ]: multiple CQM_RSSI_THOLD records
+                * [ CONTROL_PORT_OVER_NL80211 ]: control port over nl80211
+                * [ ACK_SIGNAL_SUPPORT ]: ack signal level support
+                * [ TXQS ]: FQ-CoDel-enabled intermediate TXQs
+                * [ SCAN_RANDOM_SN ]: use random sequence numbers in scans
+                * [ SCAN_MIN_PREQ_CONTENT ]: use probe request with only rate IEs in scans
+                * [ CAN_REPLACE_PTK0 ]: can safely replace PTK 0 when rekeying
+                * [ AIRTIME_FAIRNESS ]: airtime fairness scheduling
+                * [ STA_TX_PWR ]: TX power control per station
+                * [ AQL ]: Airtime Queue Limits (AQL)
+                * [ CONTROL_PORT_NO_PREAUTH ]: disable pre-auth over nl80211 control port support
+                * [ DEL_IBSS_STA ]: deletion of IBSS station support
+                * [ SCAN_FREQ_KHZ ]: scan on kHz frequency support
+                * [ CONTROL_PORT_OVER_NL80211_TX_STATUS ]: tx status for nl80211 control port support
+                * [ FILS_DISCOVERY ]: FILS discovery frame transmission support
+                * [ UNSOL_BCAST_PROBE_RESP ]: unsolicated broadcast probe response transmission support
+                * [ BEACON_RATE_HE ]: HE beacon rate support (AP/mesh)
+                * [ BSS_COLOR ]: BSS coloring support
+                * [ RADAR_BACKGROUND ]: Radar background support
+                * [ POWERED_ADDR_CHANGE ]: can change MAC address while up
+</nowiki>
+</WRAP>\\
+
+===== Bootlogs =====
+
+==== OEM bootlog ====
+<WRAP bootlog>
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x410fd034]
+[    0.000000] Linux version 5.15.134 (gl-ci@gl-ci-server) (aarch64-openwrt-linux-musl-gcc (OpenWrt GCC 12.3.0 r23497-6637af95aa) 12.3.0, GNU ld (GNU Binutils) 2.40.0) #0 SMP Mon Oct 9 21:45:35 2023
+[    0.000000] Machine model: GL.iNet GL-MT6000
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x0000000040000000-0x000000007fffffff]
+[    0.000000]   DMA32    empty
+[    0.000000]   Normal   empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000040000000-0x0000000042ffffff]
+[    0.000000]   node   0: [mem 0x0000000043000000-0x000000004302ffff]
+[    0.000000]   node   0: [mem 0x0000000043030000-0x000000004fbfffff]
+[    0.000000]   node   0: [mem 0x000000004fc00000-0x000000004ffbffff]
+[    0.000000]   node   0: [mem 0x000000004ffc0000-0x000000007fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000040000000-0x000000007fffffff]
+[    0.000000] psci: probing for conduit method from DT.
+[    0.000000] psci: PSCIv1.1 detected in firmware.
+[    0.000000] psci: Using standard PSCI v0.2 function IDs
+[    0.000000] psci: MIGRATE_INFO_TYPE not supported.
+[    0.000000] psci: SMC Calling Convention v1.2
+[    0.000000] percpu: Embedded 17 pages/cpu s30424 r8192 d31016 u69632
+[    0.000000] pcpu-alloc: s30424 r8192 d31016 u69632 alloc=17*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 [0] 2 [0] 3
+[    0.000000] Detected VIPT I-cache on CPU0
+[    0.000000] CPU features: detected: GIC system register CPU interface
+[    0.000000] CPU features: kernel page table isolation disabled by kernel configuration
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 258048
+[    0.000000] Kernel command line:  root=PARTLABEL=rootfs rootwait
+[    0.000000] Dentry cache hash table entries: 131072 (order: 8, 1048576 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 65536 (order: 7, 524288 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 1011432K/1048576K available (8512K kernel code, 934K rwdata, 2300K rodata, 448K init, 303K bss, 37144K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000]  Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[    0.000000] GICv3: GIC: Using split EOI/Deactivate mode
+[    0.000000] GICv3: 640 SPIs implemented
+[    0.000000] GICv3: 0 Extended SPIs implemented
+[    0.000000] GICv3: Distributor has no Range Selector support
+[    0.000000] Root IRQ handler: gic_handle_irq
+[    0.000000] GICv3: 16 PPIs implemented
+[    0.000000] GICv3: CPU0: found redistributor 0 region 0:0x000000000c080000
+[    0.000000] arch_timer: cp15 timer(s) running at 13.00MHz (phys).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x2ff89eacb, max_idle_ns: 440795202429 ns
+[    0.000001] sched_clock: 56 bits at 13MHz, resolution 76ns, wraps every 4398046511101ns
+[    0.000112] Calibrating delay loop (skipped), value calculated using timer frequency.. 26.00 BogoMIPS (lpj=130000)
+[    0.000121] pid_max: default: 32768 minimum: 301
+[    0.000328] Mount-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.000337] Mountpoint-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.001368] rcu: Hierarchical SRCU implementation.
+[    0.001630] smp: Bringing up secondary CPUs ...
+[    0.001892] Detected VIPT I-cache on CPU1
+[    0.001916] GICv3: CPU1: found redistributor 1 region 0:0x000000000c0a0000
+[    0.001942] CPU1: Booted secondary processor 0x0000000001 [0x410fd034]
+[    0.002207] Detected VIPT I-cache on CPU2
+[    0.002219] GICv3: CPU2: found redistributor 2 region 0:0x000000000c0c0000
+[    0.002230] CPU2: Booted secondary processor 0x0000000002 [0x410fd034]
+[    0.002468] Detected VIPT I-cache on CPU3
+[    0.002478] GICv3: CPU3: found redistributor 3 region 0:0x000000000c0e0000
+[    0.002488] CPU3: Booted secondary processor 0x0000000003 [0x410fd034]
+[    0.002513] smp: Brought up 1 node, 4 CPUs
+[    0.002527] SMP: Total of 4 processors activated.
+[    0.002531] CPU features: detected: 32-bit EL0 Support
+[    0.002534] CPU features: detected: CRC32 instructions
+[    0.002559] CPU features: emulated: Privileged Access Never (PAN) using TTBR0_EL1 switching
+[    0.002613] CPU: All CPU(s) started at EL2
+[    0.002621] alternatives: patching kernel code
+[    0.005129] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.005150] futex hash table entries: 1024 (order: 4, 65536 bytes, linear)
+[    0.005294] pinctrl core: initialized pinctrl subsystem
+[    0.005939] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.006183] DMA: preallocated 128 KiB GFP_KERNEL pool for atomic allocations
+[    0.006204] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+[    0.006221] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+[    0.006472] thermal_sys: Registered thermal governor 'fair_share'
+[    0.006474] thermal_sys: Registered thermal governor 'bang_bang'
+[    0.006478] thermal_sys: Registered thermal governor 'step_wise'
+[    0.006481] thermal_sys: Registered thermal governor 'user_space'
+[    0.006644] ASID allocator initialised with 65536 entries
+[    0.006966] pstore: Registered ramoops as persistent store backend
+[    0.006970] ramoops: using 0x10000@0x42ff0000, ecc: 0
+[    0.015054] cryptd: max_cpu_qlen set to 1000
+[    0.016920] SCSI subsystem initialized
+[    0.017000] libata version 3.00 loaded.
+[    0.017796] clocksource: Switched to clocksource arch_sys_counter
+[    0.018245] NET: Registered PF_INET protocol family
+[    0.018332] IP idents hash table entries: 16384 (order: 5, 131072 bytes, linear)
+[    0.018793] tcp_listen_portaddr_hash hash table entries: 512 (order: 1, 8192 bytes, linear)
+[    0.018808] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.018815] TCP established hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.018852] TCP bind hash table entries: 8192 (order: 5, 131072 bytes, linear)
+[    0.018932] TCP: Hash tables configured (established 8192 bind 8192)
+[    0.019060] MPTCP token hash table entries: 1024 (order: 2, 24576 bytes, linear)
+[    0.019099] UDP hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.019117] UDP-Lite hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.019219] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    0.019238] PCI: CLS 0 bytes, default 64
+[    0.021219] workingset: timestamp_bits=46 max_order=18 bucket_order=0
+[    0.024019] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.024034] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.045845] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 251)
+[    0.046712] gpio-export gpio-export: 1 gpio(s) exported
+[    0.049497] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.050870] printk: console [ttyS0] disabled
+[    0.071009] 11002000.serial: ttyS0 at MMIO 0x11002000 (irq = 121, base_baud = 2500000) is a ST16650V2
+[    0.724762] printk: console [ttyS0] enabled
+[    0.729604] mtk_rng 1020f000.rng: registered RNG driver
+[    0.729661] hwrng: no data available
+[    0.738400] cacheinfo: Unable to detect cache hierarchy for CPU 0
+[    0.746571] loop: module loaded
+[    0.749740] Loading iSCSI transport class v2.0-870.
+[    0.878972] mtk_soc_eth 15100000.ethernet: generated random MAC address 
+[    0.887196] mtk_soc_eth 15100000.ethernet: generated random MAC address 
+[    1.609629] mtk_soc_eth 15100000.ethernet eth0: mediatek frame engine at 0xffffffc009700000, irq 129
+[    1.619444] mtk_soc_eth 15100000.ethernet eth1: mediatek frame engine at 0xffffffc009700000, irq 129
+[    1.628972] i2c_dev: i2c /dev entries driver
+[    1.634198] mtk-wdt 1001c000.watchdog: Watchdog enabled (timeout=31 sec, nowayout=0)
+[    1.642684] NET: Registered PF_INET6 protocol family
+[    1.648354] Segment Routing with IPv6
+[    1.652026] In-situ OAM (IOAM) with IPv6
+[    1.655962] NET: Registered PF_PACKET protocol family
+[    1.661059] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.674092] 8021q: 802.1Q VLAN Support v1.8
+[    1.679239] pstore: Using crash dump compression: deflate
+[    1.729856] mt7530-mdio mdio-bus:1f: configuring for fixed/2500base-x link mode
+[    1.738931] mt7530-mdio mdio-bus:1f: Link is Up - 2.5Gbps/Full - flow control rx/tx
+[    1.747872] mt7530-mdio mdio-bus:1f lan2 (uninitialized): PHY [mt7530-0:00] driver [MediaTek MT7531 PHY] (irq=137)
+[    1.759528] mtk-msdc 11230000.mmc: phase: [map:fffffff] [maxlen:28] [final:9]
+[    1.766882] mmc0: new HS400 MMC card at address 0001
+[    1.768584] mt7530-mdio mdio-bus:1f lan3 (uninitialized): PHY [mt7530-0:01] driver [MediaTek MT7531 PHY] (irq=138)
+[    1.772651] mmcblk0: mmc0:0001 8GTF4R 7.28 GiB
+[    1.787670] GPT:Primary header thinks Alt. header is not at the end of the disk.
+[    1.791957] mt7530-mdio mdio-bus:1f lan4 (uninitialized): PHY [mt7530-0:02] driver [MediaTek MT7531 PHY] (irq=139)
+[    1.795074] GPT:1 != 15269887
+[    1.808331] GPT:Alternate GPT header not at the end of the disk.
+[    1.814317] GPT:1 != 15269887
+[    1.815149] mt7530-mdio mdio-bus:1f lan5 (uninitialized): PHY [mt7530-0:03] driver [MediaTek MT7531 PHY] (irq=140)
+[    1.817268] GPT: Use GNU Parted to correct GPT errors.
+[    1.817291]  mmcblk0: p1 p2 p3 p4 p5 p6 p7
+[    1.837947] mmcblk0boot0: mmc0:0001 8GTF4R 4.00 MiB
+[    1.843735] mmcblk0boot1: mmc0:0001 8GTF4R 4.00 MiB
+[    1.848952] mmcblk0rpmb: mmc0:0001 8GTF4R 512 KiB, chardev (250:0)
+[    2.057807] mt7530-mdio mdio-bus:1f lan1 (uninitialized): PHY [mdio-bus:07] driver [RTL8221B-VB-CG 2.5Gbps PHY] (irq=63)
+[    2.069347] DSA: tree 0 setup
+[    2.075258] VFS: Mounted root (squashfs filesystem) readonly on device 179:7.
+[    2.082546] Freeing unused kernel memory: 448K
+[    2.127855] Run /sbin/init as init process
+[    2.131935]   with arguments:
+[    2.134886]     /sbin/init
+[    2.137577]   with environment:
+[    2.140711]     HOME=/
+[    2.143055]     TERM=linux
+[    2.238076] init: Console is alive
+[    2.241569] init: - watchdog -
+[    2.597751] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    2.625579] install gl_hw_info
+[    2.632285] usbcore: registered new interface driver usbfs
+[    2.637814] usbcore: registered new interface driver hub
+[    2.643145] usbcore: registered new device driver usb
+[    2.652151] gl-tertf: (C) 2021 jianhui zhao <jianhui.zhao@gl-inet.com>
+[    2.660745] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    2.668093] gl-kmwan: (C) 2023 chongjun luo <luochognjun@gl-inet.com>
+[    2.675089] fsl-ehci: Freescale EHCI Host controller driver
+[    2.681287] ehci-platform: EHCI generic platform driver
+[    2.687865] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    2.694546] ohci-platform: OHCI generic platform driver
+[    2.700576] uhci_hcd: USB Universal Host Controller Interface driver
+[    2.710462] xhci-mtk 11200000.usb: xHCI Host Controller
+[    2.715698] xhci-mtk 11200000.usb: new USB bus registered, assigned bus number 1
+[    2.726179] xhci-mtk 11200000.usb: hcc params 0x01403f99 hci version 0x110 quirks 0x0000000000210010
+[    2.735345] xhci-mtk 11200000.usb: irq 122, io mem 0x11200000
+[    2.741175] xhci-mtk 11200000.usb: xHCI Host Controller
+[    2.746385] xhci-mtk 11200000.usb: new USB bus registered, assigned bus number 2
+[    2.753773] xhci-mtk 11200000.usb: Host supports USB 3.2 Enhanced SuperSpeed
+[    2.761139] hub 1-0:1.0: USB hub found
+[    2.764891] hub 1-0:1.0: 2 ports detected
+[    2.769182] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    2.777506] hub 2-0:1.0: USB hub found
+[    2.781369] hub 2-0:1.0: 1 port detected
+[    2.789212] usbcore: registered new interface driver usb-storage
+[    2.795934] usbcore: registered new interface driver uas
+[    2.801499] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    2.811621] init: - preinit -
+[    3.064427] mtk_soc_eth 15100000.ethernet eth0: configuring for fixed/2500base-x link mode
+[    3.072890] mtk_soc_eth 15100000.ethernet eth0: Link is Up - 2.5Gbps/Full - flow control rx/tx
+[    3.084372] mt7530-mdio mdio-bus:1f lan1: configuring for phy/2500base-x link mode
+[    3.237803] usb 1-2: new high-speed USB device number 2 using xhci-mtk
+[    4.888820] usb 2-1: new SuperSpeed USB device number 2 using xhci-mtk
+[    4.921046] scsi host0: uas
+[    4.933089] random: procd: uninitialized urandom read (4 bytes read)
+[    5.096981] scsi 0:0:0:0: Direct-Access     Samsung  PSSD T7          0    PQ: 0 ANSI: 6
+[    5.106218] sd 0:0:0:0: [sda] 3907029168 512-byte logical blocks: (2.00 TB/1.82 TiB)
+[    5.114038] sd 0:0:0:0: [sda] Write Protect is off
+[    5.118820] sd 0:0:0:0: [sda] Mode Sense: 43 00 00 00
+[    5.124008] sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+[    5.133130] xhci-mtk 11200000.usb: ERROR Transfer event for unknown stream ring slot 1 ep 2
+[    5.141458] xhci-mtk 11200000.usb: @0000000040bf2650 428fe100 00000000 1a000200 01038001
+[    5.149854] sd 0:0:0:0: [sda] Optimal transfer size 33553920 bytes
+[    5.158035]  sda: sda1
+[    5.161514] sd 0:0:0:0: [sda] Attached SCSI disk
+[    5.172262] mount_root: loading kmods from internal overlay
+[    5.186819] kmodloader: loading kernel modules from //etc/modules-boot.d/*
+[    5.195697] kmodloader: done loading kernel modules from //etc/modules-boot.d/*
+[    5.296867] block: attempting to load /etc/config/fstab
+[    5.303954] block: unable to load configuration (fstab: Entry not found)
+[    5.310676] block: no usable configuration
+[    5.315136] loop0: detected capacity change from 0 to 15178752
+[    5.377798] loop0: detected capacity change from 15178752 to 15088128
+[    5.391184] mount_root: overlay filesystem in /dev/loop0 has not been formatted yet
+[    7.921010] F2FS-fs (loop0): Found nat_bits in checkpoint
+[    7.974084] F2FS-fs (loop0): Mounted with checkpoint version = 8f5dc87
+[    8.028078] block: attempting to load /etc/config/fstab
+[    8.033341] block: unable to load configuration (fstab: Entry not found)
+[    8.040052] block: no usable configuration
+[    8.044660] mount_root: overlay filesystem has not been fully initialized yet
+[    8.052008] mount_root: switching to f2fs overlay
+[    8.059150] overlayfs: null uuid detected in lower fs '/', falling back to xino=off,index=off,nfs_export=off.
+[    8.210466] urandom-seed: Seed file not found (/etc/urandom.seed)
+[    8.272981] procd: - early -
+[    8.275903] procd: - watchdog -
+[    8.393290] random: jshn: uninitialized urandom read (4 bytes read)
+[    8.482534] random: jshn: uninitialized urandom read (4 bytes read)
+[    8.552689] random: jshn: uninitialized urandom read (4 bytes read)
+[    8.810140] procd: - watchdog -
+[    8.813434] procd: - ubus -
+[    8.868383] procd: - init -
+[    9.089786] kmodloader: loading kernel modules from /etc/modules.d/*
+[    9.119805] ntfs: driver 2.1.32 [Flags: R/O MODULE].
+[    9.126459] tun: Universal TUN/TAP device driver, 1.6
+[    9.162240] GACT probability on
+[    9.166004] Mirror/redirect action on
+[    9.174060] u32 classifier
+[    9.176767]     input device check on
+[    9.180541]     Actions configured
+[    9.181805] urngd: v1.0.2 started.
+[    9.193630] fuse: init (API version 7.34)
+[    9.200059] crypto-safexcel 10320000.crypto: EIP97:230(0,1,4,4)-HIA:270(0,5,5),PE:150/433(alg:7fcdfc00)/0/0/0
+[    9.224081] Bridge firewalling registered
+[    9.229641] usbcore: registered new interface driver cdc_acm
+[    9.235299] cdc_acm: USB Abstract Control Model driver for USB modems and ISDN adapters
+[    9.244371] usbcore: registered new interface driver cdc_wdm
+[    9.251403] Loading modules backported from Linux version v6.1.24-0-g0102425ac76b
+[    9.259083] Backport generated by backports.git v5.15.92-1-44-gd6ea70fafd36
+[    9.268331] usbcore: registered new interface driver ipheth
+[    9.291836] random: crng init done
+[    9.295252] random: 35 urandom warning(s) missed due to ratelimiting
+[    9.310577] usbcore: registered new interface driver usbserial_generic
+[    9.317175] usbserial: USB Serial support registered for generic
+[    9.340127] xt_time: kernel timezone is -0000
+[    9.345500] usbcore: registered new interface driver cdc_ether
+[    9.352775] usbcore: registered new interface driver cdc_ncm
+[    9.367933] usbcore: registered new interface driver huawei_cdc_ncm
+[    9.392885] mt798x-wmac 18000000.wifi: attaching wed device 0 version 2
+[    9.435656] platform 15010000.wed: MTK WED WO Firmware Version: DEV_000000, Build Time: 20221012175005
+[    9.445137] platform 15010000.wed: MTK WED WO Chip ID 00 Region 3
+[    9.948169] mt798x-wmac 18000000.wifi: HW/SW Version: 0x8a108a10, Build Time: 20230825174645a
+[    9.948169]
+[   10.055514] mt798x-wmac 18000000.wifi: WM Firmware Version: ____000000, Build Time: 20230825174709
+[   10.124946] mt798x-wmac 18000000.wifi: WA Firmware Version: ____000000, Build Time: 20230825174916
+[   10.272195] mt798x-wmac 18000000.wifi: eeprom load fail, use default bin
+[   10.278973] mt798x-wmac 18000000.wifi: Direct firmware load for mediatek/mt7986_eeprom_mt7976_dual.bin failed with error -2
+[   10.290079] mt798x-wmac 18000000.wifi: Falling back to sysfs fallback for: mediatek/mt7986_eeprom_mt7976_dual.bin
+[   10.347647] PPP generic driver version 2.4.2
+[   10.352997] NET: Registered PF_PPPOX protocol family
+[   10.359234] usbcore: registered new interface driver qmi_wwan
+[   10.366222] usbcore: registered new interface driver rndis_host
+[   10.374983] wireguard: WireGuard 1.0.0 loaded. See www.wireguard.com for information.
+[   10.382862] wireguard: Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+[   10.393660] usbcore: registered new interface driver option
+[   10.399337] usbserial: USB Serial support registered for GSM modem (1-port)
+[   10.408973] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   16.108950] kmwan: sensitivity and mode are set.
+[   16.701932] mtk_soc_eth 15100000.ethernet eth0: Link is Down
+[   16.713419] mtk_soc_eth 15100000.ethernet eth0: configuring for fixed/2500base-x link mode
+[   16.721885] mtk_soc_eth 15100000.ethernet eth0: Link is Up - 2.5Gbps/Full - flow control rx/tx
+[   16.723105] device eth0 entered promiscuous mode
+[   16.735556] mt7530-mdio mdio-bus:1f lan1: configuring for phy/2500base-x link mode
+[   16.777893] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   16.784748] br-lan: port 1(lan1) entered blocking state
+[   16.789994] br-lan: port 1(lan1) entered disabled state
+[   16.796544] device lan1 entered promiscuous mode
+[   16.811259] mt7530-mdio mdio-bus:1f lan2: configuring for phy/gmii link mode
+[   16.821107] br-lan: port 2(lan2) entered blocking state
+[   16.826335] br-lan: port 2(lan2) entered disabled state
+[   16.833343] device lan2 entered promiscuous mode
+[   16.844833] mt7530-mdio mdio-bus:1f lan3: configuring for phy/gmii link mode
+[   16.854710] br-lan: port 3(lan3) entered blocking state
+[   16.860018] br-lan: port 3(lan3) entered disabled state
+[   16.867149] device lan3 entered promiscuous mode
+[   16.878509] mt7530-mdio mdio-bus:1f lan4: configuring for phy/gmii link mode
+[   16.888311] br-lan: port 4(lan4) entered blocking state
+[   16.893529] br-lan: port 4(lan4) entered disabled state
+[   16.900821] device lan4 entered promiscuous mode
+[   16.912088] mt7530-mdio mdio-bus:1f lan5: configuring for phy/gmii link mode
+[   16.921935] br-lan: port 5(lan5) entered blocking state
+[   16.927158] br-lan: port 5(lan5) entered disabled state
+[   16.934586] device lan5 entered promiscuous mode
+[   17.177805] mtk_soc_eth 15100000.ethernet eth1: PHY [mdio-bus:01] driver [RTL8221B-VB-CG 2.5Gbps PHY] (irq=62)
+[   17.188063] mtk_soc_eth 15100000.ethernet eth1: configuring for phy/2500base-x link mode
+[   17.859628] br-lan: port 6(wlan0) entered blocking state
+[   17.864952] br-lan: port 6(wlan0) entered disabled state
+[   17.870584] device wlan0 entered promiscuous mode
+[   17.918767] br-lan: port 6(wlan0) entered blocking state
+[   17.924093] br-lan: port 6(wlan0) entered forwarding state
+[   17.929937] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   18.164975] br-lan: port 7(wlan1) entered blocking state
+[   18.170352] br-lan: port 7(wlan1) entered disabled state
+[   18.175871] device wlan1 entered promiscuous mode
+[   18.225106] br-lan: port 7(wlan1) entered blocking state
+[   18.230472] br-lan: port 7(wlan1) entered forwarding state
+[   18.406801] tertf: br-lan registered, add it
+[   18.647235] exFAT-fs (sda1): Volume was not properly unmounted. Some data may be corrupt. Please run fsck.
+[   18.813373] br-lan: port 6(wlan0) entered disabled state
+[   18.825197] br-lan: port 7(wlan1) entered disabled state
+[   19.034905] mt7530-mdio mdio-bus:1f lan3: Link is Up - 10Mbps/Half - flow control off
+[   19.042793] br-lan: port 3(lan3) entered blocking state
+[   19.048035] br-lan: port 3(lan3) entered forwarding state
+[   19.508677] mt7530-mdio mdio-bus:1f lan2: Link is Up - 1Gbps/Full - flow control rx/tx
+[   19.516700] br-lan: port 2(lan2) entered blocking state
+[   19.521974] br-lan: port 2(lan2) entered forwarding state
+[   20.722271] mtk_soc_eth 15100000.ethernet eth1: Link is Up - 1Gbps/Full - flow control off
+[   20.730697] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+[   20.878054] mt7530-mdio mdio-bus:1f lan4: Link is Up - 1Gbps/Full - flow control rx/tx
+[   20.886009] br-lan: port 4(lan4) entered blocking state
+[   20.891255] br-lan: port 4(lan4) entered forwarding state
+[   21.065966] HTB: quantum of class 10001 is big. Consider r2q change.
+[   21.081619] HTB: quantum of class 10001 is big. Consider r2q change.
+[   21.279529] HTB: quantum of class 10001 is big. Consider r2q change.
+[   21.372511] HTB: quantum of class 10001 is big. Consider r2q change.
+[   21.389651] HTB: quantum of class 10001 is big. Consider r2q change.
+[   21.900156] [add_dev_config 307]add node success. iface:wan, dev:eth1, ifindex:3
+[   21.967913] [set_fib_nh 94]ifindex:3 route_flag:2
+[   23.481772] HTB: quantum of class 10001 is big. Consider r2q change.
+[   23.498169] HTB: quantum of class 10001 is big. Consider r2q change.
+[   23.736839] HTB: quantum of class 10001 is big. Consider r2q change.
+[   23.824346] HTB: quantum of class 10001 is big. Consider r2q change.
+[   23.840993] HTB: quantum of class 10001 is big. Consider r2q change.
+[   27.184187] br-lan: port 7(wlan1) entered blocking state
+[   27.189511] br-lan: port 7(wlan1) entered forwarding state
+[   30.276946] br-lan: port 6(wlan0) entered blocking state
+[   30.282273] br-lan: port 6(wlan0) entered forwarding state
+[   32.897830] device br-lan entered promiscuous mode
+[   42.240957] device br-lan left promiscuous mode
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x410fd034]
+[    0.000000] Linux version 6.6.56 (builder@buildhost) (aarch64-openwrt-linux-musl-gcc (OpenWrt GCC 13.3.0 r27798-dbc2923cbe) 13.3.0, GNU ld (GNU Binutils) 2.42) #0 SMP Fri Oct 18 11:38:21 2024
+[    0.000000] Machine model: GL.iNet GL-MT6000
+[    0.000000] OF: reserved mem: 0x0000000042ff0000..0x0000000042ffffff (64 KiB) map non-reusable ramoops@42ff0000
+[    0.000000] OF: reserved mem: 0x0000000043000000..0x000000004302ffff (192 KiB) nomap non-reusable secmon@43000000
+[    0.000000] OF: reserved mem: 0x000000004fc00000..0x000000004fcfffff (1024 KiB) nomap non-reusable wmcpu-reserved@4fc00000
+[    0.000000] OF: reserved mem: 0x000000004fd00000..0x000000004fd3ffff (256 KiB) nomap non-reusable wo-emi@4fd00000
+[    0.000000] OF: reserved mem: 0x000000004fd40000..0x000000004fd7ffff (256 KiB) nomap non-reusable wo-emi@4fd40000
+[    0.000000] OF: reserved mem: 0x000000004fd80000..0x000000004ffbffff (2304 KiB) nomap non-reusable wo-data@4fd80000
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x0000000040000000-0x000000007fffffff]
+[    0.000000]   DMA32    empty
+[    0.000000]   Normal   empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000040000000-0x0000000042ffffff]
+[    0.000000]   node   0: [mem 0x0000000043000000-0x000000004302ffff]
+[    0.000000]   node   0: [mem 0x0000000043030000-0x000000004fbfffff]
+[    0.000000]   node   0: [mem 0x000000004fc00000-0x000000004ffbffff]
+[    0.000000]   node   0: [mem 0x000000004ffc0000-0x000000007fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000040000000-0x000000007fffffff]
+[    0.000000] psci: probing for conduit method from DT.
+[    0.000000] psci: PSCIv1.1 detected in firmware.
+[    0.000000] psci: Using standard PSCI v0.2 function IDs
+[    0.000000] psci: MIGRATE_INFO_TYPE not supported.
+[    0.000000] psci: SMC Calling Convention v1.2
+[    0.000000] percpu: Embedded 18 pages/cpu s35112 r8192 d30424 u73728
+[    0.000000] pcpu-alloc: s35112 r8192 d30424 u73728 alloc=18*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 [0] 2 [0] 3
+[    0.000000] Detected VIPT I-cache on CPU0
+[    0.000000] CPU features: detected: GIC system register CPU interface
+[    0.000000] CPU features: kernel page table isolation disabled by kernel configuration
+[    0.000000] alternatives: applying boot alternatives
+[    0.000000] Kernel command line:  root=PARTLABEL=rootfs rootwait
+[    0.000000] Dentry cache hash table entries: 131072 (order: 8, 1048576 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 65536 (order: 7, 524288 bytes, linear)
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 258048
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] software IO TLB: SWIOTLB bounce buffer size adjusted to 1MB
+[    0.000000] software IO TLB: area num 4.
+[    0.000000] software IO TLB: mapped [mem 0x000000007fb05000-0x000000007fc05000] (1MB)
+[    0.000000] Memory: 1009728K/1048576K available (8896K kernel code, 904K rwdata, 2592K rodata, 448K init, 304K bss, 38848K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000]  Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[    0.000000] GICv3: GIC: Using split EOI/Deactivate mode
+[    0.000000] GICv3: 640 SPIs implemented
+[    0.000000] GICv3: 0 Extended SPIs implemented
+[    0.000000] Root IRQ handler: gic_handle_irq
+[    0.000000] GICv3: GICv3 features: 16 PPIs
+[    0.000000] GICv3: CPU0: found redistributor 0 region 0:0x000000000c080000
+[    0.000000] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+[    0.000000] arch_timer: cp15 timer(s) running at 13.00MHz (phys).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x2ff89eacb, max_idle_ns: 440795202429 ns
+[    0.000000] sched_clock: 56 bits at 13MHz, resolution 76ns, wraps every 4398046511101ns
+[    0.000063] Calibrating delay loop (skipped), value calculated using timer frequency.. 26.00 BogoMIPS (lpj=130000)
+[    0.000070] pid_max: default: 32768 minimum: 301
+[    0.002048] Mount-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.002056] Mountpoint-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.003608] cacheinfo: Unable to detect cache hierarchy for CPU 0
+[    0.003990] RCU Tasks Trace: Setting shift to 2 and lim to 1 rcu_task_cb_adjust=1.
+[    0.004093] rcu: Hierarchical SRCU implementation.
+[    0.004095] rcu:     Max phase no-delay instances is 1000.
+[    0.004403] smp: Bringing up secondary CPUs ...
+[    0.004660] Detected VIPT I-cache on CPU1
+[    0.004695] GICv3: CPU1: found redistributor 1 region 0:0x000000000c0a0000
+[    0.004723] CPU1: Booted secondary processor 0x0000000001 [0x410fd034]
+[    0.005011] Detected VIPT I-cache on CPU2
+[    0.005032] GICv3: CPU2: found redistributor 2 region 0:0x000000000c0c0000
+[    0.005043] CPU2: Booted secondary processor 0x0000000002 [0x410fd034]
+[    0.005297] Detected VIPT I-cache on CPU3
+[    0.005314] GICv3: CPU3: found redistributor 3 region 0:0x000000000c0e0000
+[    0.005324] CPU3: Booted secondary processor 0x0000000003 [0x410fd034]
+[    0.005350] smp: Brought up 1 node, 4 CPUs
+[    0.005354] SMP: Total of 4 processors activated.
+[    0.005356] CPU features: detected: 32-bit EL0 Support
+[    0.005358] CPU features: detected: CRC32 instructions
+[    0.005383] CPU features: emulated: Privileged Access Never (PAN) using TTBR0_EL1 switching
+[    0.005386] CPU: All CPU(s) started at EL2
+[    0.005388] alternatives: applying system-wide alternatives
+[    0.008083] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.008099] futex hash table entries: 1024 (order: 4, 65536 bytes, linear)
+[    0.008969] pinctrl core: initialized pinctrl subsystem
+[    0.009806] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.010323] DMA: preallocated 128 KiB GFP_KERNEL pool for atomic allocations
+[    0.010342] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+[    0.010357] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+[    0.010656] thermal_sys: Registered thermal governor 'fair_share'
+[    0.010659] thermal_sys: Registered thermal governor 'bang_bang'
+[    0.010661] thermal_sys: Registered thermal governor 'step_wise'
+[    0.010663] thermal_sys: Registered thermal governor 'user_space'
+[    0.010713] ASID allocator initialised with 65536 entries
+[    0.011539] pstore: Using crash dump compression: deflate
+[    0.011543] pstore: Registered ramoops as persistent store backend
+[    0.011545] ramoops: using 0x10000@0x42ff0000, ecc: 0
+[    0.016989] Modules: 29440 pages in range for non-PLT usage
+[    0.016997] Modules: 520960 pages in range for PLT usage
+[    0.017830] cryptd: max_cpu_qlen set to 1000
+[    0.018683] SCSI subsystem initialized
+[    0.018809] libata version 3.00 loaded.
+[    0.019863] clocksource: Switched to clocksource arch_sys_counter
+[    0.021465] NET: Registered PF_INET protocol family
+[    0.021557] IP idents hash table entries: 16384 (order: 5, 131072 bytes, linear)
+[    0.022755] tcp_listen_portaddr_hash hash table entries: 512 (order: 1, 8192 bytes, linear)
+[    0.022768] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.022774] TCP established hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.022810] TCP bind hash table entries: 8192 (order: 6, 262144 bytes, linear)
+[    0.022972] TCP: Hash tables configured (established 8192 bind 8192)
+[    0.023049] UDP hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.023065] UDP-Lite hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.023306] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    0.023329] PCI: CLS 0 bytes, default 64
+[    0.024251] workingset: timestamp_bits=46 max_order=18 bucket_order=0
+[    0.027507] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.027511] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.049022] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 251)
+[    0.053007] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.055981] printk: console [ttyS0] disabled
+[    0.076330] 11002000.serial: ttyS0 at MMIO 0x11002000 (irq = 116, base_baud = 2500000) is a ST16650V2
+[    0.076367] printk: console [ttyS0] enabled
+[    0.844806] mtk_rng 1020f000.rng: registered RNG driver
+[    0.852803] loop: module loaded
+[    0.981555] i2c_dev: i2c /dev entries driver
+[    0.987123] mtk-wdt 1001c000.watchdog: Watchdog enabled (timeout=31 sec, nowayout=0)
+[    0.996013] NET: Registered PF_INET6 protocol family
+[    1.001627] Segment Routing with IPv6
+[    1.005302] In-situ OAM (IOAM) with IPv6
+[    1.009241] NET: Registered PF_PACKET protocol family
+[    1.014308] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.027499] 8021q: 802.1Q VLAN Support v1.8
+[    1.078272] mtk-msdc 11230000.mmc: Final PAD_DS_TUNE: 0x14414
+[    1.084296] mmc0: new HS400 MMC card at address 0001
+[    1.090514] mmcblk0: mmc0:0001 8GTF4R 7.28 GiB
+[    1.095962] GPT:Primary header thinks Alt. header is not at the end of the disk.
+[    1.103381] GPT:1 != 15269887
+[    1.106336] GPT:Alternate GPT header not at the end of the disk.
+[    1.112327] GPT:1 != 15269887
+[    1.115279] GPT: Use GNU Parted to correct GPT errors.
+[    1.120418]  mmcblk0: p1 p2 p3 p4 p5 p6 p7
+[    1.125889] mmcblk0boot0: mmc0:0001 8GTF4R 4.00 MiB
+[    1.131618] mmcblk0boot1: mmc0:0001 8GTF4R 4.00 MiB
+[    1.136721] mmcblk0rpmb: mmc0:0001 8GTF4R 512 KiB, chardev (250:0)
+[    1.892804] mtk_soc_eth 15100000.ethernet eth0: mediatek frame engine at 0xffffffc081e00000, irq 119
+[    1.902753] mtk_soc_eth 15100000.ethernet eth1: mediatek frame engine at 0xffffffc081e00000, irq 119
+[    2.010829] mt7530-mdio mdio-bus:1f: configuring for fixed/2500base-x link mode
+[    2.019529] mt7530-mdio mdio-bus:1f: Link is Up - 2.5Gbps/Full - flow control rx/tx
+[    2.030515] mt7530-mdio mdio-bus:1f lan2 (uninitialized): PHY [mt7530-0:00] driver [MediaTek MT7531 PHY] (irq=124)
+[    2.052657] mt7530-mdio mdio-bus:1f lan3 (uninitialized): PHY [mt7530-0:01] driver [MediaTek MT7531 PHY] (irq=125)
+[    2.074583] mt7530-mdio mdio-bus:1f lan4 (uninitialized): PHY [mt7530-0:02] driver [MediaTek MT7531 PHY] (irq=126)
+[    2.096499] mt7530-mdio mdio-bus:1f lan5 (uninitialized): PHY [mt7530-0:03] driver [MediaTek MT7531 PHY] (irq=127)
+[    2.339998] mt7530-mdio mdio-bus:1f lan1 (uninitialized): PHY [mdio-bus:07] driver [RTL8221B-VB-CG 2.5Gbps PHY (C45)] (irq=62)
+[    2.352095] mtk_soc_eth 15100000.ethernet eth0: entered promiscuous mode
+[    2.358809] DSA: tree 0 setup
+[    2.362042] clk: Disabling unused clocks
+[    2.368601] VFS: Mounted root (squashfs filesystem) readonly on device 179:7.
+[    2.375920] Freeing unused kernel memory: 448K
+[    2.380396] Run /sbin/init as init process
+[    2.384476]   with arguments:
+[    2.387427]     /sbin/init
+[    2.390122]   with environment:
+[    2.393246]     HOME=/
+[    2.395590]     TERM=linux
+[    2.493112] init: Console is alive
+[    2.496610] init: - watchdog -
+[    2.715946] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    2.737512] usbcore: registered new interface driver usbfs
+[    2.743076] usbcore: registered new interface driver hub
+[    2.748399] usbcore: registered new device driver usb
+[    2.754045] gpio_button_hotplug: loading out-of-tree module taints kernel.
+[    2.765953] xhci-mtk 11200000.usb: xHCI Host Controller
+[    2.771217] xhci-mtk 11200000.usb: new USB bus registered, assigned bus number 1
+[    2.781666] xhci-mtk 11200000.usb: hcc params 0x01403f99 hci version 0x110 quirks 0x0000000000200010
+[    2.790857] xhci-mtk 11200000.usb: irq 128, io mem 0x11200000
+[    2.796677] xhci-mtk 11200000.usb: xHCI Host Controller
+[    2.801898] xhci-mtk 11200000.usb: new USB bus registered, assigned bus number 2
+[    2.809278] xhci-mtk 11200000.usb: Host supports USB 3.2 Enhanced SuperSpeed
+[    2.816715] hub 1-0:1.0: USB hub found
+[    2.820483] hub 1-0:1.0: 2 ports detected
+[    2.824774] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    2.833151] hub 2-0:1.0: USB hub found
+[    2.836906] hub 2-0:1.0: 1 port detected
+[    2.843993] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    2.861479] init: - preinit -
+[    3.029195] mtk_soc_eth 15100000.ethernet eth0: configuring for fixed/2500base-x link mode
+[    3.037685] mtk_soc_eth 15100000.ethernet eth0: Link is Up - 2.5Gbps/Full - flow control rx/tx
+[    3.054739] mt7530-mdio mdio-bus:1f lan1: configuring for phy/2500base-x link mode
+[    7.341534] loop0: detected capacity change from 0 to 15178752
+[    7.389875] loop0: detected capacity change from 15178752 to 15168000
+[    7.449838] F2FS-fs (loop0): Disable nat_bits due to incorrect cp_ver (5961551312994160843, 9714480623703806133)
+[    7.464098] F2FS-fs (loop0): Mounted with checkpoint version = 6147d0cb
+[    7.471443] mount_root: loading kmods from internal overlay
+[    7.530297] kmodloader: loading kernel modules from /tmp/overlay/upper/etc/modules-boot.d/*
+[    7.540888] raid6: skipped pq benchmark and selected neonx8
+[    7.546461] raid6: using neon recovery algorithm
+[    7.551894] xor: measuring software checksum speed
+[    7.557461]    8regs           :  4191 MB/sec
+[    7.562600]    32regs          :  4207 MB/sec
+[    7.567764]    arm64_neon      :  3983 MB/sec
+[    7.572117] xor: using function: 32regs (4207 MB/sec)
+[    7.595914] Btrfs loaded, zoned=no, fsverity=no
+[    7.604198] usbcore: registered new interface driver usb-storage
+[    7.611063] usbcore: registered new interface driver uas
+[    7.616572] kmodloader: done loading kernel modules from /tmp/overlay/upper/etc/modules-boot.d/*
+[    7.702817] block: attempting to load /tmp/overlay/upper/etc/config/fstab
+[    7.710035] block: extroot: not configured
+[    7.714264] block: attempting to load /etc/config/fstab
+[    7.720389] block: unable to load configuration (fstab: Entry not found)
+[    7.727098] block: no usable configuration
+[    7.732311] mount_root: switching to f2fs overlay
+[    7.738447] overlayfs: null uuid detected in lower fs '/', falling back to xino=off,index=off,nfs_export=off.
+[    7.749968] urandom-seed: Seeding with /etc/urandom.seed
+[    7.772151] random: procd: uninitialized urandom read (4 bytes read)
+[    7.775471] procd: - early -
+[    7.781496] procd: - watchdog -
+[    8.311347] procd: - watchdog -
+[    8.314817] procd: - ubus -
+[   11.370103] random: crng init done
+[   11.376587] procd: - init -
+[   11.593818] kmodloader: loading kernel modules from /etc/modules.d/*
+[   11.637056] GACT probability on
+[   11.640857] Mirror/redirect action on
+[   11.648053] u32 classifier
+[   11.650772]     input device check on
+[   11.654417]     Actions configured
+[   11.662498] crypto-safexcel 10320000.crypto: EIP97:230(0,1,4,4)-HIA:270(0,5,5),PE:150/433(alg:7fcdfc00)/0/0/0
+[   11.678276] Bridge firewalling registered
+[   11.683412] Loading modules backported from Linux version v6.11.2-0-g7aa21fec187b
+[   11.690926] Backport generated by backports.git v6.1.110-1-32-gc61f71fe0942
+[   11.716768] xt_time: kernel timezone is -0000
+[   11.740505] urngd: v1.0.2 started.
+[   12.106996] mt798x-wmac 18000000.wifi: HW/SW Version: 0x8a108a10, Build Time: 20240823160656a
+[   12.106996]
+[   12.211875] mt798x-wmac 18000000.wifi: WM Firmware Version: ____000000, Build Time: 20240823160721
+[   12.296577] mt798x-wmac 18000000.wifi: WA Firmware Version: DEV_000000, Build Time: 20240823160840
+[   12.402632] mt798x-wmac 18000000.wifi: registering led 'mt76-phy0'
+[   12.481354] mt798x-wmac 18000000.wifi: registering led 'mt76-phy1'
+[   12.580572] PPP generic driver version 2.4.2
+[   12.585911] NET: Registered PF_PPPOX protocol family
+[   12.593838] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   14.579440] mtk_soc_eth 15100000.ethernet eth0: Link is Down
+[   14.598597] mtk_soc_eth 15100000.ethernet eth0: configuring for fixed/2500base-x link mode
+[   14.607129] mtk_soc_eth 15100000.ethernet eth0: Link is Up - 2.5Gbps/Full - flow control rx/tx
+[   14.609229] mt7530-mdio mdio-bus:1f lan1: configuring for phy/2500base-x link mode
+[   14.660575] br-lan: port 1(lan1) entered blocking state
+[   14.665800] br-lan: port 1(lan1) entered disabled state
+[   14.671062] mt7530-mdio mdio-bus:1f lan1: entered allmulticast mode
+[   14.677313] mtk_soc_eth 15100000.ethernet eth0: entered allmulticast mode
+[   14.686834] mt7530-mdio mdio-bus:1f lan1: entered promiscuous mode
+[   14.706258] mt7530-mdio mdio-bus:1f lan2: configuring for phy/gmii link mode
+[   14.717680] br-lan: port 2(lan2) entered blocking state
+[   14.722988] br-lan: port 2(lan2) entered disabled state
+[   14.728244] mt7530-mdio mdio-bus:1f lan2: entered allmulticast mode
+[   14.736291] mt7530-mdio mdio-bus:1f lan2: entered promiscuous mode
+[   14.752011] mt7530-mdio mdio-bus:1f lan3: configuring for phy/gmii link mode
+[   14.762710] br-lan: port 3(lan3) entered blocking state
+[   14.767928] br-lan: port 3(lan3) entered disabled state
+[   14.773176] mt7530-mdio mdio-bus:1f lan3: entered allmulticast mode
+[   14.781204] mt7530-mdio mdio-bus:1f lan3: entered promiscuous mode
+[   14.796726] mt7530-mdio mdio-bus:1f lan4: configuring for phy/gmii link mode
+[   14.807423] br-lan: port 4(lan4) entered blocking state
+[   14.812660] br-lan: port 4(lan4) entered disabled state
+[   14.817891] mt7530-mdio mdio-bus:1f lan4: entered allmulticast mode
+[   14.826114] mt7530-mdio mdio-bus:1f lan4: entered promiscuous mode
+[   14.840550] mt7530-mdio mdio-bus:1f lan5: configuring for phy/gmii link mode
+[   14.851211] br-lan: port 5(lan5) entered blocking state
+[   14.856424] br-lan: port 5(lan5) entered disabled state
+[   14.861662] mt7530-mdio mdio-bus:1f lan5: entered allmulticast mode
+[   14.870044] mt7530-mdio mdio-bus:1f lan5: entered promiscuous mode
+[   15.109938] mtk_soc_eth 15100000.ethernet eth1: PHY [mdio-bus:01] driver [RTL8221B-VB-CG 2.5Gbps PHY (C45)] (irq=61)
+[   15.120721] mtk_soc_eth 15100000.ethernet eth1: configuring for phy/2500base-x link mode
+[   17.015658] mt7530-mdio mdio-bus:1f lan4: Link is Up - 10Mbps/Half - flow control off
+[   17.015689] br-lan: port 4(lan4) entered blocking state
+[   17.028750] br-lan: port 4(lan4) entered forwarding state
+[   17.205833] mt7530-mdio mdio-bus:1f lan2: Link is Up - 1Gbps/Full - flow control rx/tx
+[   17.205864] br-lan: port 2(lan2) entered blocking state
+[   17.218999] br-lan: port 2(lan2) entered forwarding state
+[   18.406334] mt7530-mdio mdio-bus:1f lan3: Link is Up - 1Gbps/Full - flow control rx/tx
+[   18.406358] br-lan: port 3(lan3) entered blocking state
+[   18.419464] br-lan: port 3(lan3) entered forwarding state
+[   18.598242] overlay: filesystem on /opt/docker/check-overlayfs-support2179128603/upper not supported as upperdir
+[   18.712115] mtk_soc_eth 15100000.ethernet eth1: Link is Up - 1Gbps/Full - flow control off
+</WRAP>\\
+
+===== Notes =====
+  - Power cable: a relatively short 3ft (1m) cable is included. Users may want to purchase an [[https://www.amazon.com/dp/B08SJXJG48/|extension cable]].
+  - Power switch: users may want to add an [[https://www.amazon.com/dp/B0BZJ5CKXG/|on/off switch]] which also extends the length of the cable slightly.
+  - USB port: located on the side. Users wanting to hide the cable to an external drive may use a [[https://www.amazon.com/gp/product/B0BZ4LC8QP|USB 3.0 angled adapter]].
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>mediatek u-boot 4core MT7986 8192NAND 1024RAM eMMC 6Port 2.5GigabitEthernet GigabitEthernet JumboFrames 4Ant 2WNIC wifi6 802.11ax 802.11bgn 1USB USB3.0 hwVLAN ARMv8 12v_powered serial jtag filogic}}

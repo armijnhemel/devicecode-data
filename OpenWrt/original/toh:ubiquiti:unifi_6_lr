@@ -1,0 +1,2610 @@
+====== Ubiquiti UniFi 6 LR ======
+
+The Ubiquiti U6 Long Range (U6-LR) is a PoE powered 802.11ax WiFi 6 access point with 8 spacial streams. The design is approximately a 9" (220mm) disk designed for wall mounting or can be layed flat on a shelf. There are several devices released under their WiFi 6 line:
+
+  * [[toh:ubiquiti:unifi_6_lite|U6-Lite]]
+  * [[toh:ubiquiti:unifi_6_plus|U6+]]
+  * [[toh:ubiquiti:unifi_6_lr|U6-LR]]
+
+{{media:ubiquiti:unifi_6_lr_front.jpg?200|Unifi 6 LR Front}}
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^Ubiquiti$", "model": "^Unifi 6 LR$"}
+} -->
+
+<WRAP center round important 60%>Some v2 devices don't have Ethernet working even after flashing the right firmware. This is due to missing 10M and 100M link binary blobs. Await a patch soon or use 1000M/2500M connection.</WRAP>
+
+**Important** Devices with manufacturing date 2234 (34rd week of 2022) and later appear to be a **version 3** hardware with a different (1 GbE only) Ethernet PHY chip.  Flashing v2 firmware to this hardware will result in inoperable Ethernet.  See [[https://forum.openwrt.org/t/unifi-6-lr-v2-ethernet-not-working/141792/18|this forum thread]] for details.
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "ethernet2_5gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^Ubiquiti$", "model": "^Unifi 6 LR$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Ubiquiti$", "model": "^Unifi 6 LR$"}
+} -->
+
+==== v1 vs v2 ====
+
+Two versions, v1 and v2, are not official names and thus not found in official Ubiquiti documents. Difference between two versions is that [[https://community.ui.com/questions/U6-LR-can-not-change-LED-color-on-one-of-2-dev/c4545100-167f-48c2-982d-86730c532b05|v1's LED has full RGB color support while v2's has limited blue/white colors]], [[https://dl.ui.com/ds/u6-lr_ds.pdf|due to supply shortages]].
+
+After SSHing into Ubiquiti's original firmware, doing [[https://jamiej.co.uk/blog/controlling-ubiquiti-u6-lr-wifi-access-point-led-colour-in-home-assistant/|this]] might tell you whether your device supports RGB, especially red color, thus v1:
+<code>
+# echo -n 255,0,0 > /proc/ubnt_ledbar/custom_color
+</code>
+With a v1 hardware, the above command should change the LED color to red.
+
+Even if you are unsure, it looks like installing a v1 firmware on a v2 device is [[https://forum.openwrt.org/t/ubiquiti-unifi-6-lr-v1-vs-v2/136350/7|not fatal, just getting an error message around LED device initialization]].
+
+==== v3 ====
+
+Since about summer 2022 there is a v3 device with a RTL8211 PHY. **The v3 is not compatible with v1/v2 images.** Use a v3 image (since 23.05).
+
+To check for v3, SSH into the device and check the kernel ring buffer:
+
+<code>
+# dmesg | grep mtk_sgmii_init
+[    1.298583] mtk_sgmii_init(): detect RTL8211_CARD
+</code>
+
+There are currently two known PHYs:
+
+^ PHY ^ Version ^
+|AQR112C | v2 |
+|RTL8211 | v3 |
+
+Note: as of early 2024, it appears that both v2 and v3 are in production.
+
+==== U-Boot mod version ====
+Amongst the standard sysupgrade firmware for the barebones Unifi 6 LR router that comes with the stock Uboot, there is also a "uboot mod" version that takes advantage of the dual-boot and ARM Trustzone but they are a little more complicated to flash. This version works by flashing the preloader, uboot and recovery partitions in addition to the rootfs/OS partition. There isn't much benefit other than having slightly more storage space, debugging crashes and making use of fallback dual-boot partition.
+The instructions for flashing this version are as they follow:
+  - If you are in the stock firmware, boot ''ubnt_unifi-6-lr-*-ubootmod-initramfs-recovery.itb'' (where * is your router version) in RAM via TFTP, otherwise use the standard OpenWrt firmware installation method.
+  - SSH to the router and run ''opkg update'', then ''opkg install kmod-mtd-rw'' and finally ''insmod mtd-rw i_want_a_brick=1''
+  - Now change your current working directory to ''cd /tmp'' and in there download the partition files as such while making sure the correct version is used:<code>
+wget https://downloads.openwrt.org/<LATEST>/targets/mediatek/mt7622/openwrt-mediatek-mt7622-ubnt_unifi-6-lr-*-ubootmod-preloader.bin
+wget https://downloads.openwrt.org/<LATEST>/targets/mediatek/mt7622/openwrt-mediatek-mt7622-ubnt_unifi-6-lr-*-ubootmod-bl31-uboot.fip
+wget https://downloads.openwrt.org/<LATEST>/targets/mediatek/mt7622/openwrt-mediatek-mt7622-ubnt_unifi-6-lr-*-ubootmod-initramfs-recovery.itb
+wget https://downloads.openwrt.org/<LATEST>/targets/mediatek/mt7622/openwrt-mediatek-mt7622-ubnt_unifi-6-lr-*-ubootmod-squashfs-sysupgrade.itb
+</code>
+  - Now that we have all files, we need to flash them one after the other and restart the device as such:<code>
+mtd write *ubnt_unifi-6-lr-*-ubootmod-preloader.bin bl2
+mtd write *ubnt_unifi-6-lr-*-ubootmod-bl31-uboot.fip fip
+mtd erase u-boot-env
+mtd write *ubnt_unifi-6-lr-*-ubootmod-initramfs-recovery.itb recovery
+mtd write *ubnt_unifi-6-lr-*-ubootmod-squashfs-sysupgrade.itb firmware
+reboot -f
+</code>
+
+It is important to NOT mix the 2 versions and just stick to one.
+
+==== Installation Steps ====
+
+  - Perform a factory reset of the device by holding down the reset button for ~10 seconds until the LED flashes.
+  - The MAC address of the device is on the rear panel of the device (middle line next to the QR code - combination of small and large font), and also encoded in the QR code (first line of encoded text).  Alternatively you may:
+    - Use arp or ip to find the IP address of the booted device <code>$ arp -a</code> or <code>$ ip neigh</code>
+    - Record the MAC address of the device in case this is needed for debugging or recovery in future.
+  - The access point will attempt to obtain an IP address by DHCP.  If none is available it will keep its default IP address: **192.168.1.20** (old stock firmware may use 192.168.1.34).
+  - Connect to the booted device through SSH using username and password: **ubnt**. If the AP has a DHCP-assigned IP address, use that instead. <code>$ ssh -oHostKeyAlgorithms=+ssh-rsa ubnt@192.168.1.20</code>
+  - Check which hardware version you have - by running: <code>U6-LR-BZ.6.2.37# dmesg | grep mtk_sgmii_init</code> **RTL8211 based boards will not currently work with the V1 or V2 firmwares** (see [[https://forum.openwrt.org/t/unifi-6-lr-v2-ethernet-not-working/141792/18|forum thread]]).
+  - Optionally take a full mtd backup using the instructions at [[:docs:guide-user:installation:generic.backup]] - in the "mtdbk.sh" script, replace <code>OPENWRT="root@openwrt.lan"</code> with <code>OPENWRT="ubnt@192.168.1.20"</code> (n.b. the stock firmware is based on Ubiquiti's internal fork of OpenWRT 17.01, so this script works on the stock firmware otherwise unaltered).
+  - Transfer the OpenWrt **sysupgrade** image to the device using SCP. Note that OpenSSH 8.7 and newer requires the -O flag. <code>$ scp -O -oHostKeyAlgorithms=+ssh-rsa path/to/openwrt-xx.yy.z-mediatek-mt7622-ubnt_unifi-6-lr-vNUM-squashfs-sysupgrade.bin ubnt@192.168.1.x:/tmp/openwrt.bin</code>
+  - Verify the checksum matches the checksum from the openwrt download page:<code># sha256sum /tmp/openwrt.bin</code>
+  - Check the mtd partition number for bs / kernel0 / kernel1 <code># cat /proc/mtd</code>
+  - The remainder of the install instructions assume the following mtd partition allocations:  ''6:bs'' ''8:kernel0'' ''9:kernel1'' ...do not proceed unless they match.
+  - When using newer stock firmware versions (6.2+) some mtd partitions are write protected. To remove the lock the following command needs to be executed:<code>
+# #Unlock mtd partitions with some magic:
+# echo "5edfacbf" > /proc/ubnthal/.uf
+</code>
+  - Set the bootselect flag to boot from kernel0: <code># dd if=/dev/zero bs=1 count=1 of=/dev/mtdblock6</code>
+  - Write the OpenWrt sysupgrade image to both kernel0 and kernel1:<code>
+# dd if=/tmp/openwrt.bin of=/dev/mtdblock8 && dd if=/tmp/openwrt.bin of=/dev/mtdblock9 && reboot
+</code> Writing the images to flash will take about 2 minutes for each partition.  If the writes are successful, the access point will reboot into OpenWRT.  The first boot will take approximately 4 minutes minutes, during the later part of this the LED will repeatedly flash white/off.
+  - Once the LED turns a continuous blue, the install is completed, and the device is ready to be configured.
+  - The default IP address is 192.168.1.1/24 and a DHCP **server** will be active on the LAN-port, and the wifi disabled.  Make a direct cable connection to the access point (using a static IP address in the 192.168.1.0/24 range, or a DHCP client) to configure the access point for your network via SSH and/or the web interface (e.g. by changing the DHCP-Client and disabling the DHCP and IPv6 client address auto-assignment for the LAN network).
+==== Flash Layout ====
+
+<code>
+dev:    size   erasesize  name
+mtd0: 00040000 00001000 "Preloader"
+mtd1: 00020000 00001000 "ATF"
+mtd2: 00060000 00001000 "u-boot"
+mtd3: 00010000 00001000 "u-boot-env"
+mtd4: 00040000 00001000 "Factory"
+mtd5: 00010000 00001000 "EEPROM"
+mtd6: 00010000 00001000 "bs"
+mtd7: 00100000 00001000 "cfg"
+mtd8: 01ee0000 00001000 "kernel0"
+mtd9: 01ee0000 00001000 "kernel1"
+</code>
+
+
+===== Upgrading OpenWrt =====
+
+==== LuCI Web Upgrade Process ====
+
+  * Browse to ''<nowiki>http://192.168.1.x/cgi-bin/luci/mini/system/upgrade/</nowiki>'' LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+==== Terminal Upgrade Process ====
+
+If you don't have a GUI (LuCI) available, you can alternatively upgrade via the command line.
+There are two command line methods for upgrading:
+
+  * ''sysupgrade''
+
+Note: It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== sysupgrade ===
+
+  * Login as root via SSH on 192.168.1.//x//
+
+<code>$ ssh root@192.168.1.x</code>
+
+  * then enter the following commands:
+
+<code>
+# cd /tmp
+# wget https://downloads.openwrt.org/snapshots/targets/mediatek/mt7622/sysupgrade.bin
+# sysupgrade /tmp/sysupgrade.bin
+</code>
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+In the failsafe mode, a device may not be configured with an IPv4 address. It still could have an IPv6 address, which can be used to SSH to a device during recovery operation. You may be able to discover the address by monitoring Ethernet frames coming from device's MAC address. When an IPv6 address is brought up, a neighbor solicitation packet is sent, and it has an IPv6 address of a host. Thus it is important to record MAC address somewhere.
+
+<code>
+sudo tcpdump -i ${interface_name} -v -n ether host ${unifi6_macaddr}
+</code>
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless etc.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| lan              | LAN                  | 192.168.1.1/24          |
+| wlan0            | radio0 802.11bgn     | Disabled                |
+| wlan1            | radio1 802.11nacax   | Disabled                |
+
+==== Buttons ====
+The Ubiquiti Unifi 6 LR has the following buttons:
+
+^ BUTTON   ^ Event   ^
+| Reset    |  reset  |
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Ubiquiti$", "model": "^Unifi 6 LR$"}
+} -->
+
+==== Photos ====
+
+//Front://\\
+{{:media:ubiquiti:unifi_6_lr_front.jpg?400|Front}}
+
+//Back://\\
+{{:media:ubiquiti:unifi_6_lr_back.jpg?400|back}}
+
+//Backside label://\\
+**Insert photo of backside label**
+
+//Inside://\\
+{{:media:ubiquiti:unifi_6_lr_pcb_layer.jpeg|}}
+
+//PCB Layout://\\
+{{:media:ubiquiti:unifi_6_lr_pcb_layout.jpeg|}}
+
+//Antennas://\\
+{{:media:ubiquiti:unifi_6_lr_antennas.jpeg|}}
+
+//Antenna Layout with Labels//\\
+{{:media:ubiquiti:unifi_6_lr_antenna_layout.jpeg|}}
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+Opening the case is a tricky task, as it is glued together. 
+The recommended trick here, in order to avoid most damage potential to the plastic cover is:
+USE A HEATGUN to warm up the outer border of the enclosure (~90ºC) and than start with a sharp knife to lift the cover step by step.
+Insert a flat knife between the front and back casing below the ethernet port.
+Open up a gap this way and insert a flat scredriver, remove the knife.
+
+Work your way around the casing by applying force to seperate the front
+and back casing. This losens the glue and opens the plastic clips. Be
+gentle, as these clips are very cheap and break quickly.
+
+//Main PCB://\\
+**Open enclosure with PCB**
+
+{{:media:ubiquiti:unifi_6_lr_open_case.jpeg|}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+CPU UART0 at the pinout next to the Holtek MCU.
+
+Pinout (first pin next to SoC / MCU)
+
+0 3V3
+1 RX
+2 TX
+3 GND
+
+**serial pinout**
+
+{{:media:ubiquiti:img_4843.jpeg?400|}}
+
+^ Serial connection parameters\\ for Ubiquiti Unifi 6 LR | 115200, 8N1 |
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>
+[start missing]
+[   33.085921] 	Built date: 20191218025902a
+[   33.085935] 
+[   33.085937] 	Platform: ALPS
+[   33.085942] 	HW/SW version: 0x8a108a10
+[   33.085949] 	Patch version: 0x00000010
+[   33.085957] 	Target address: 0x9c000, length: 82080
+[   33.086017] patch is not ready && get semaphore success
+[   33.086061] EventGenericEventHandler: CMD Success
+[   33.086627] MtCmdPatchFinishReq
+[   33.097881] EventGenericEventHandler: CMD Success
+[   33.097945] release patch semaphore
+[   33.097952] WfMcuHwInit: Before NICLoadFirmware, check ICapMode = 0
+[   33.097961] Parsing CPU 0 fw tailer
+[   33.097964] 	Chip ID: 0x06
+[   33.097969] 	Eco version: 0x00
+[   33.097973] 	Region number: 0x00
+[   33.097977] 	Format version: 0x00
+[   33.097982] 	Ram version: _reserved_
+[   33.097991] 	Built date: 20191218030115�
+[   33.098004] 	Common crc: 0x0
+[   33.098007] Parsing tailer region 0
+[   33.098010] 	Feature set: 0x01
+[   33.098015] 	Target address: 0xb7000, Download size: 249856
+[   33.098018] Parsing tailer region 1
+[   33.098021] 	Feature set: 0x01
+[   33.098026] 	Target address: 0x203dc00, Download size: 50144
+[   33.098064] EventGenericEventHandler: CMD Success
+[   33.102143] EventGenericEventHandler: CMD Success
+[   33.102489] MtCmdFwStartReq: override = 0x0, address = 0x0
+[   33.144605] EventGenericEventHandler: CMD Success
+[   33.144624] MCU Init Done!
+[   33.144633] efuse_probe: efuse = 2
+[   33.144637] RtmpChipOpsEepromHook::e2p_type=2, inf_Type=4
+[   33.144641] RtmpEepromGetDefault::e2p_dafault=2
+[   33.144645] RtmpChipOpsEepromHook: E2P type(2), E2pAccessMode = 2, E2P default = 2
+[   33.144652] NVM is FLASH mode. dev_idx [0] FLASH OFFSET [0x0]
+[   33.177026] [34mNICReadEEPROMParameters: EEPROM 0x52 bb08[m
+[   33.177050] MtCmdSetTxLpfCal_7622:(ret = 0)
+[   33.177061] MtCmdSetTxDcIqCal_7622:(ret = 0)
+[   33.177081] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177098] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177108] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177117] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177126] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177135] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177281] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177491] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177504] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177513] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177522] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177532] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177598] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   33.177797] mt7622_pa_lna_set(): read antCtrl = 0, polCtrl = 4, wifiStreams = 44
+[   33.177881] mt7622_tssi_set(): nic_cfg1=20, mode=1
+[   34.142726] Country Region from e2p = 0
+[   34.142744] read sub id = 1
+[   34.142752] RcRadioInit(): DbdcMode=0, ConcurrentBand=1
+[   34.142758] RcRadioInit(): pRadioCtrl=ffffffc005b1cda0,Band=0,rfcap=1,channel=1,PhyMode=2 extCha=0xf
+[   34.142768] ubnt_load_sku_data: UBNT MT_SOC RF_LOCKDOWN Feature ON !!!
+[   34.142777] --> Using builtin MT_SOC SKU table for US
+[   34.143305] MtBfBackOffLoadParam: RF_LOCKDOWN Feature OFF !!!
+[   34.143446] EEPROM Init Done!
+[   34.143452] mt_mac_init()-->
+[   34.143464] mt7622_init_mac_cr(): TMAC_TRCR0=0x82783c8c
+[   34.143480] <--mt_mac_init()
+[   34.211918] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   34.222544] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   34.233170] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   34.233185] MAC Init Done!
+[   34.233190] MT7622BBPInit() todo
+[   34.233193] PHY Init Done!
+[   34.233735] MtCmdSetMacTxRx:(ret = 0)
+[   34.233876] ap_ftkd> Initialize FT KDP Module...
+[   34.233886] Main bssid = 00:00:00:00:00:00
+[   34.242648] MtCmdSetMacTxRx:(ret = 0)
+[   34.249964] MtCmdSetMacTxRx:(ret = 0)
+[   34.249972] <==== mt_wifi_init, Status=0
+[   34.249976] TxBfModuleEnCtrl:It's not DBDC mode
+[   34.249997] MtCmdEDCCACtrl: BandIdx: 0, EDCCACtrl: 1
+[   34.250118] ra1: VLAN features updated vwire/vport[0]!
+[   34.250127] ra1: assigned ifindex: 6
+[   34.250622] ra2: VLAN features updated vwire/vport[0]!
+[   34.250630] ra2: assigned ifindex: 7
+[   34.251088] ra3: VLAN features updated vwire/vport[0]!
+[   34.251097] ra3: assigned ifindex: 8
+[   34.251480] ra4: VLAN features updated vwire/vport[0]!
+[   34.251488] ra4: assigned ifindex: 9
+[   34.251839] ra5: VLAN features updated vwire/vport[0]!
+[   34.251847] ra5: assigned ifindex: 10
+[   34.252407] ra6: VLAN features updated vwire/vport[0]!
+[   34.252417] ra6: assigned ifindex: 11
+[   34.253021] ra7: VLAN features updated vwire/vport[0]!
+[   34.253031] ra7: assigned ifindex: 12
+[   34.253595] The new WDS interface MAC = 00:00:00:00:00:00, MacTabMatchWCID = 0
+[   34.253631] wds0: VLAN features updated vwire/vport[0]!
+[   34.253637] wds0: assigned ifindex: 13
+[   34.254147] The new WDS interface MAC = 00:00:00:00:00:00, MacTabMatchWCID = 0
+[   34.254171] wds1: VLAN features updated vwire/vport[0]!
+[   34.254176] wds1: assigned ifindex: 14
+[   34.254691] The new WDS interface MAC = 00:00:00:00:00:00, MacTabMatchWCID = 0
+[   34.254714] wds2: VLAN features updated vwire/vport[0]!
+[   34.254720] wds2: assigned ifindex: 15
+[   34.255244] The new WDS interface MAC = 00:00:00:00:00:00, MacTabMatchWCID = 0
+[   34.255271] wds3: VLAN features updated vwire/vport[0]!
+[   34.255279] wds3: assigned ifindex: 16
+[   34.255669] Total allocated 4 WDS interfaces!
+[   34.255838] apcli0: VLAN features updated vwire/vport[0]!
+[   34.255847] apcli0: assigned ifindex: 17
+[   34.256293] 80211> re-init bands...
+[   34.256300] 80211> RFICType= 1, NumOfChan= 14
+[   34.256303] 80211> Number of rate = 12
+[   34.256306] 80211> CurTxPower = 0 dBm
+[   34.256312] 80211> TxStream = 0
+[   34.256319] WtcSetMaxStaNum: BssidNum:8, MaxStaNum:118 (WdsNum:4, ApcliNum:1, MaxNumChipRept:32), MinMcastWcid:119
+[   34.282883] RedInit: set Driver/N9 RED Enable to 1.
+[   34.282910] RedInit: RED Initiailize Done.
+[   34.282914] cp_support_is_enabled: set Driver CP_SUPPORT to Mode 2.
+[   34.282923] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_UP
+[   34.282929] wifi_sys_open(), wdev idx = 0
+[   34.282937] wdev_attr_update(): wdevId0 = 24:5a:4c:6e:fc:72
+[   34.282942] [RcGetHdevByPhyMode] channel 0 fix for rdev fetching
+[   34.283019] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   34.283023] phy_freq_adjust : no prim_ch value for adjust!
+[   34.283254] Caller: wlan_operate_init+0xe8/0x118 [mt_soc_wifi]
+[   34.283259] phy_mode=14, ch=0, wdev_type=1
+[   34.283264] ht_cap->HtCapInfo: ldpc=1,ch_width=0,gf=0,sgi20=1,sgi40=0,tx_stbc=1,rx_stbc=1,amsdu_size=0
+[   34.283268] ht_cap->HtCapParm: mdpu_density=5, ampdu_factor=3
+[   34.286126] AP inf up for ra_0(func_idx) OmacIdx=0
+[   34.288500] mtd_isr::DriverOwn = TRUE
+[   34.289213] AsicRadioOnOffCtrl(): DbdcIdx=0 RadioOn
+[   34.295822] ApAutoChannelAtBootUp----------------->
+[   34.295835] ApAutoChannelAtBootUp: AutoChannelBootup[0] = 1
+[   34.296009] MtCmdSetMacTxRx:(ret = 0)
+[   34.296038] MtCmdChannelSwitch: control_chl = 1,control_ch2=0, central_chl = 1 DBDCIdx= 0, Band= 0
+[   34.296043] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   34.628211] MtCmdChannelSwitch: control_chl = 6,control_ch2=0, central_chl = 6 DBDCIdx= 0, Band= 0
+[   34.628222] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   34.844196] MtCmdChannelSwitch: control_chl = 11,control_ch2=0, central_chl = 11 DBDCIdx= 0, Band= 0
+[   34.844202] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   35.044194] ====================================================================
+[   35.044201] Channel   1 : Busy Time =   2075, Skip Channel = FALSE, BwCap = TRUE
+[   35.044205] Channel   6 : Busy Time =   2743, Skip Channel = FALSE, BwCap = TRUE
+[   35.044210] Channel  11 : Busy Time =   4676, Skip Channel = FALSE, BwCap = TRUE
+[   35.044213] ====================================================================
+[   35.044219] Rule 3 Channel Busy time value : Select Primary Channel 1
+[   35.044223] Rule 3 Channel Busy time value : Min Channel Busy = 2075
+[   35.044226] Rule 3 Channel Busy time value : BW = 20
+[   35.044230] [SelectClearChannelBusyTime] - band0 END
+[   35.044235] ApAutoChannelAtBootUp : Auto channel selection: Selected channel = 1, IsAband = 0
+[   35.044242] [41m AutoChSelUpdateChannel(): Update channel for wdev for this band PhyMode = 14, Channel = 1 [m
+[   35.044246] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   35.044261] MtCmdChannelSwitch: control_chl = 1,control_ch2=0, central_chl = 1 DBDCIdx= 0, Band= 0
+[   35.044265] BW = 0,TXStream = 4, RXStream = 4, scan(0)
+[   35.063287] [DfsCacNormalStart] Normal start. Enable MAC TX
+[   35.136965] ApAutoChannelAtBootUp<-----------------
+[   35.136998] [PMF]APPMFInit:: apidx=0, MFPC=1, MFPR=0, SHA256=0
+[   35.137006] [RSN IE CAP] WPAMakeRsnIeCap RSN CAP 00 00 
+[   35.137011] [PMF]PMF_MakeRsnIeGMgmtCipher: Insert BIP to the group management cipher of RSNIE
+[   35.137055] wifi_sys_linkup(), wdev idx = 0
+[   35.137064] wtc_acquire_groupkey_wcid: Found a non-occupied wtbl_idx:127 for WDEV_TYPE:1
+[   35.137064]  LinkToOmacIdx = 0, LinkToWdevType = 1
+[   35.186311] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 0, CmdBssInfoBmcRate.u2McTransmit = 0
+[   35.234478] UpdateBeaconHandler, BCN_UPDATE_INIT, OmacIdx = 0
+[   35.234544] APStartUpForMbss: BssIndex = 0 channel = 1
+[   35.234579] TxCCKStreamCtrl: set wrong parameters
+[   35.239219] apidx 0 for WscUUIDInit
+[   35.239224] Generate UUID for apidx(0)
+[   35.239376] 8021q: adding VLAN 0 to HW filter on device ra0
+[   35.239383] ra0: add static VID[0]!
+[   35.299109] rai0: ===> main_virtual_if_open
+[   35.299125] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_INIT
+[   35.299420] load l1profile succeed!
+[   35.299432] mt_service_open: wlan service opens successfully!
+[   35.299670] creating /proc/ubnt_rx_task/
+[   35.299685] creating /proc/ubnt_rx_task/info
+[   35.299691] creating /proc/ubnt_rx_task/enable
+[   35.299696] creating /proc/ubnt_rx_task/que_th
+[   35.299701] creating /proc/ubnt_rx_task/proc_th
+[   35.300146] APWdsInitialize():WdsEntry[0]
+[   35.300149] APWdsInitialize():WdsEntry[1]
+[   35.300153] APWdsInitialize():WdsEntry[2]
+[   35.300156] APWdsInitialize():WdsEntry[3]
+[   35.300159] APWdsInitialize():WdsEntry[4]
+[   35.300162] APWdsInitialize():WdsEntry[5]
+[   35.300166] APWdsInitialize():WdsEntry[6]
+[   35.300169] APWdsInitialize():WdsEntry[7]
+[   35.300248] APWdsInitialize():WdsEntry[8]
+[   35.300252] APWdsInitialize():WdsEntry[9]
+[   35.300255] APWdsInitialize():WdsEntry[10]
+[   35.300259] APWdsInitialize():WdsEntry[11]
+[   35.300262] APWdsInitialize():WdsEntry[12]
+[   35.300265] APWdsInitialize():WdsEntry[13]
+[   35.300269] APWdsInitialize():WdsEntry[14]
+[   35.300272] APWdsInitialize():WdsEntry[15]
+[   35.301663] BssidNum=8
+[   35.301666] Pf2MbssIdxMap:
+[   35.301670]  0  1  2  3  4  5  6  7 
+[   35.304044] E2pAccessMode=2
+[   35.304211] ax_rx_task start...
+[   35.304495] SSID[0]=40e5756b1cb2943e, EdcaIdx=0
+[   35.304515] SSID[1]=, EdcaIdx=0
+[   35.304535] SSID[2]=, EdcaIdx=0
+[   35.304554] SSID[3]=, EdcaIdx=0
+[   35.304574] SSID[4]=, EdcaIdx=0
+[   35.304594] SSID[5]=, EdcaIdx=0
+[   35.304614] SSID[6]=, EdcaIdx=0
+[   35.304633] SSID[7]=, EdcaIdx=0
+[   35.304855] RTMPSetProfileParameters(): DBDC Mode=0, eDBDC_mode = 0
+[   35.304965] cfg_mode=17
+[   35.304970] cfg_mode=17
+[   35.304973] cfg_mode=17
+[   35.304980] wmode_band_equal(): Band Equal!
+[   35.305225] auto_ch_select_set_cfg(): BandIdx0, AutoChannelAtBootup=1, AutoChannelAlg = 3
+[   35.305229] auto_ch_select_set_cfg(): BandIdx1, AutoChannelAtBootup=0, AutoChannelAlg = 0
+[   35.305277] Index0 Channel=0
+[   35.306069] BandSteering=0
+[   35.306203] BndStrgBssIdx=0;0;0;0
+[   35.306636] [TxPower] BAND0: 100
+[   35.310018] [SkuTableIdx]: 0
+[   35.310213] [CCKTxStream] BAND0: 4
+[   35.310240] [PERCENTAGEenable] BAND0: 1
+[   35.310269] [BFBACKOFFenable] BAND0: 0
+[   35.311415] profile: FragThreshold[0]=2346
+[   35.311691] SHAILESH: APCLI0 VlanTag=0
+[   35.311695] SHAILESH: APCLI1 VlanTag=0
+[   35.311786] APEdca0
+[   35.311992] APEdca1
+[   35.312230] APEdca2
+[   35.312437] APEdca3
+[   35.317582] UAPSDCapable[0]=0
+[   35.317586] UAPSDCapable[1]=0
+[   35.317589] UAPSDCapable[2]=0
+[   35.317592] UAPSDCapable[3]=0
+[   35.317596] UAPSDCapable[4]=0
+[   35.317599] UAPSDCapable[5]=0
+[   35.317602] UAPSDCapable[6]=0
+[   35.317605] UAPSDCapable[7]=0
+[   35.317609] default ApCliUAPSDCapable[0]=0
+[   35.317612] default ApCliUAPSDCapable[1]=0
+[   35.318069] DfsZeroWait Support=0/0
+[   35.318545] DfsZeroWaitCacTime=255/255
+[   35.319634] read_itxbf: ITxBfEn = 0
+[   35.319637] read_itxbf: BSSID[0]
+[   35.319641] read_itxbf: MBSS[0] ITxBfEn = 0
+[   35.319644] read_itxbf: More BSSID[1]
+[   35.319647] read_itxbf: More MBSS[1] ITxBfEn = 0
+[   35.319650] read_itxbf: More BSSID[2]
+[   35.319654] read_itxbf: More MBSS[2] ITxBfEn = 0
+[   35.319657] read_itxbf: More BSSID[3]
+[   35.319660] read_itxbf: More MBSS[3] ITxBfEn = 0
+[   35.319663] read_itxbf: More BSSID[4]
+[   35.319666] read_itxbf: More MBSS[4] ITxBfEn = 0
+[   35.319669] read_itxbf: More BSSID[5]
+[   35.319672] read_itxbf: More MBSS[5] ITxBfEn = 0
+[   35.319675] read_itxbf: More BSSID[6]
+[   35.319679] read_itxbf: More MBSS[6] ITxBfEn = 0
+[   35.319682] read_itxbf: More BSSID[7]
+[   35.319685] read_itxbf: More MBSS[7] ITxBfEn = 0
+[   35.319688] read_itxbf: Common.ITxBfEn = 0
+[   35.319729] read_etxbf: ETxBfEnCond = 2
+[   35.319732] read_etxbf: BSSID[0]
+[   35.319736] read_etxbf: MBSS[0] ETxBfEnCond = 2
+[   35.319739] read_etxbf: More BSSID[1]
+[   35.319742] read_etxbf: More MBSS[1] ETxBfEnCond = 2
+[   35.319745] read_etxbf: More BSSID[2]
+[   35.319749] read_etxbf: More MBSS[2] ETxBfEnCond = 2
+[   35.319752] read_etxbf: More BSSID[3]
+[   35.319755] read_etxbf: More MBSS[3] ETxBfEnCond = 2
+[   35.319758] read_etxbf: More BSSID[4]
+[   35.319761] read_etxbf: More MBSS[4] ETxBfEnCond = 2
+[   35.319764] read_etxbf: More BSSID[5]
+[   35.319767] read_etxbf: More MBSS[5] ETxBfEnCond = 2
+[   35.319770] read_etxbf: More BSSID[6]
+[   35.319774] read_etxbf: More MBSS[6] ETxBfEnCond = 2
+[   35.319777] read_etxbf: More BSSID[7]
+[   35.319780] read_etxbf: More MBSS[7] ETxBfEnCond = 2
+[   35.320823] MBSS[0] MuOfdmaDlEnable = 1
+[   35.320827] More MBSS[1] MuOfdmaDlEnable = 1
+[   35.320830] More MBSS[2] MuOfdmaDlEnable = 1
+[   35.320833] More MBSS[3] MuOfdmaDlEnable = 1
+[   35.320837] More MBSS[4] MuOfdmaDlEnable = 1
+[   35.320840] More MBSS[5] MuOfdmaDlEnable = 1
+[   35.320843] More MBSS[6] MuOfdmaDlEnable = 1
+[   35.320846] More MBSS[7] MuOfdmaDlEnable = 1
+[   35.321048] MBSS[0] MuOfdmaUlEnable = 0
+[   35.321052] More MBSS[1] MuOfdmaUlEnable = 0
+[   35.321055] More MBSS[2] MuOfdmaUlEnable = 0
+[   35.321058] More MBSS[3] MuOfdmaUlEnable = 0
+[   35.321061] More MBSS[4] MuOfdmaUlEnable = 0
+[   35.321064] More MBSS[5] MuOfdmaUlEnable = 0
+[   35.321068] More MBSS[6] MuOfdmaUlEnable = 0
+[   35.321071] More MBSS[7] MuOfdmaUlEnable = 0
+[   35.321273] MBSS[0] MuMimoDlEnable = 1
+[   35.321276] More MBSS[1] MuMimoDlEnable = 1
+[   35.321280] More MBSS[2] MuMimoDlEnable = 1
+[   35.321283] More MBSS[3] MuMimoDlEnable = 1
+[   35.321286] More MBSS[4] MuMimoDlEnable = 1
+[   35.321289] More MBSS[5] MuMimoDlEnable = 1
+[   35.321292] More MBSS[6] MuMimoDlEnable = 1
+[   35.321295] More MBSS[7] MuMimoDlEnable = 1
+[   35.321498] MBSS[0] MuMimoUlEnable = 0
+[   35.321501] More MBSS[1] MuMimoUlEnable = 0
+[   35.321504] More MBSS[2] MuMimoUlEnable = 0
+[   35.321508] More MBSS[3] MuMimoUlEnable = 0
+[   35.321511] More MBSS[4] MuMimoUlEnable = 0
+[   35.321514] More MBSS[5] MuMimoUlEnable = 0
+[   35.321517] More MBSS[6] MuMimoUlEnable = 0
+[   35.321520] More MBSS[7] MuMimoUlEnable = 0
+[   35.336575] [PMF]Set_PMFMFPC_Proc:: apidx=0, Desired MFPC=0
+[   35.336692] [PMF]Set_PMFMFPR_Proc:: apidx=0, Desired MFPR=0
+[   35.336807] [PMF]Set_PMFSHA256_Proc:: apidx=0, Desired PMFSHA256=0
+[   35.340664] APCLI[0] ApCliMuOfdmaDlEnable = 0
+[   35.340776] APCLI[0] ApCliMuOfdmaUlEnable = 0
+[   35.340890] APCLI[0] ApCliMuMimoDlEnable = 0
+[   35.341004] APCLI[0] ApCliMuMimoUlEnable = 0
+[   35.341322] rtmp_read_wds_from_file(): WDS Profile
+[   35.341530] WDS Number: band[0]=0, band[1]=0
+[   35.341623] WDS-Enable mode=0
+[   35.344496] HT_BAWinSize: wdev[0]: (TX=256, RX=256)
+[   35.344501] HT_BAWinSize: wdev[1]: (TX=256, RX=256)
+[   35.344505] HT_BAWinSize: wdev[2]: (TX=256, RX=256)
+[   35.344509] HT_BAWinSize: wdev[3]: (TX=256, RX=256)
+[   35.344513] HT_BAWinSize: wdev[4]: (TX=256, RX=256)
+[   35.344517] HT_BAWinSize: wdev[5]: (TX=256, RX=256)
+[   35.344520] HT_BAWinSize: wdev[6]: (TX=256, RX=256)
+[   35.344524] HT_BAWinSize: wdev[7]: (TX=256, RX=256)
+[   35.344890] HT: WDEV[0] Ext Channel = ABOVE
+[   35.345153] ChipI=7915, Value=0, pcie_aspm in profile=0
+[   35.345348] ChipID=7915, TWTSupport in profile=1
+[   35.354736] RateType 1,PhyMode 0,Mcs 0
+[   35.354741] RateType 1,PhyMode 0,Mcs 0
+[   35.354745] RateType 1,PhyMode 0,Mcs 0
+[   35.354750] RateType 1,PhyMode 0,Mcs 0
+[   35.354754] RateType 1,PhyMode 0,Mcs 0
+[   35.354758] RateType 1,PhyMode 0,Mcs 0
+[   35.354762] RateType 1,PhyMode 0,Mcs 0
+[   35.354766] RateType 1,PhyMode 0,Mcs 0
+[   35.354971] RateType 2,PhyMode 0,Mcs 0
+[   35.354975] RateType 2,PhyMode 0,Mcs 0
+[   35.354979] RateType 2,PhyMode 0,Mcs 0
+[   35.354983] RateType 2,PhyMode 0,Mcs 0
+[   35.354986] RateType 2,PhyMode 0,Mcs 0
+[   35.354991] RateType 2,PhyMode 0,Mcs 0
+[   35.354994] RateType 2,PhyMode 0,Mcs 0
+[   35.354998] RateType 2,PhyMode 0,Mcs 0
+[   35.381719] ICapMode = 0
+[   35.388747] CFG80211Radio = 1
+[   35.389965] MinRSSI=0
+[   35.389977] WtcSetMaxStaNum: MaxStaNum:230, BssidNum:8, WdsNum:16, MSTANum:1, MaxNumChipRept:32, MinMcastWcid:279
+[   35.390000] Top Init Done!
+[   35.390020] Use dev_alloc_skb
+[   35.390026] token_tx_queue_init(): ct sw token number = 8191
+[   35.390458] token_tx_queue_init(): token que inited done!id_head/tail=0/8192
+[   35.390463] token_tx_queue_init(): ffffffc0159efc08,ffffffc0159efc08
+[   35.391622] TxRing[0]: attr:0, total 2048 entry initialized
+[   35.392456] TxRing[1]: attr:0, total 2048 entry initialized
+[   35.392588] RX[0] DESC ffffff800b974000 size = 24576
+[   35.393633] RX[1] DESC ffffff800b97b000 size = 24576
+[   35.394670] RX[2] DESC ffffff800b982000 size = 8192
+[   35.395002] RX[3] DESC ffffff800b985000 size = 16384
+[   35.395654] RX[4] DESC ffffff800b98a000 size = 8192
+[   35.396146] -->TX_RING_0[0xd5420]: Attr:0, Base=0x44b38000, Cnt=2048!
+[   35.396152] -->TX_RING_1[0xd5430]: Attr:0, Base=0x44b80000, Cnt=2048!
+[   35.396158] -->TX_RING_2[0xd5400]: Attr:3, Base=0x44ade000, Cnt=128!
+[   35.396164] -->TX_RING_3[0xd5410]: Attr:2, Base=0x44adf000, Cnt=256!
+[   35.396169] -->TX_RING_4[0xd5440]: Attr:1, Base=0x44ae0000, Cnt=256!
+[   35.396190] -->RX_RING0[0xd4500]: Base=0x44ba0000, Cnt=1536
+[   35.396196] -->RX_RING1[0xd4510]: Base=0x44ba8000, Cnt=1536
+[   35.396201] -->RX_RING2[0xd5500]: Base=0x44af2000, Cnt=512
+[   35.396205] -->RX_RING3[0xd5510]: Base=0x56150000, Cnt=1024
+[   35.396210] -->RX_RING4[0xd5520]: Base=0x56154000, Cnt=512
+[   35.396215] Hif Init Done!
+[   35.399321] pci_driver_own_by_port: success to clear p=0 fw own, from(1): 1 is interrupt mode, 2 is polling mode.
+[   35.399326] driver_own: port=1 is not enabled
+[   35.399330] fw_prepare():using E2 ROM patch
+[   35.399334] fw_prepare():using E2 RAM
+[   35.399348] Parsing patch header
+[   35.399352] 	Built date: 20200902160956a
+[   35.399366] 
+[   35.399368] 	Platform: ALPS
+[   35.399374] 	HW/SW version: 0x8a108a10
+[   35.399381] 	Patch version: 0xffffffff
+[   35.399388] 	Section num: 0x2, subsys: 0x4
+[   35.399394] 	Section 0: type = 0x30002, offset = 0xe0, size = 0xfc80
+[   35.399398] 	Target address: 0x200000, length: 0xfc80
+[   35.399402] 	Section 1: type = 0x30002, offset = 0xfd60, size = 0x136b0
+[   35.399405] 	Target address: 0xe000f000, length: 0x136b0
+[   35.399546] Patch SEM Status = 2
+[   35.399571] patch is not ready && get semaphore success
+[   35.399577] Start address = 0x200000, DL length = 64640, Data mode = 0x80000000
+[   35.400732] EventGenericEventHandler: CMD Success
+[   35.400745] MtCmdAddressLenReq:(ret = 0)
+[   35.401089] Start address = 0xe000f000, DL length = 79536, Data mode = 0x80000000
+[   35.402242] EventGenericEventHandler: CMD Success
+[   35.402255] MtCmdAddressLenReq:(ret = 0)
+[   35.402638] MtCmdPatchFinishReq
+[   35.406140] EventGenericEventHandler: CMD Success
+[   35.406324] Patch SEM Status = 3
+[   35.406336] release patch semaphore
+[   35.406342] [42m WfMcuHwInit: Before NICLoadFirmware, check ICapMode = 0 [m
+[   35.409271] Parsing CPU 0 fw tailer
+[   35.409282] 	Chip ID: 0x0b
+[   35.409287] 	Eco version: 0x01
+[   35.409292] 	Region number: 0x07
+[   35.409296] 	Format version: 0x02
+[   35.409300] 	Format flag: 0x01
+[   35.409305] 	Ram version: ____000000
+[   35.409314] 	Built date: 20201120161613�
+[   35.409327] 	Common crc: 0xf63326d0
+[   35.409332] Parsing tailer region 0
+[   35.409335] 	Decomp crc: 0x0
+[   35.409338] 	Decomp size: 0x0
+[   35.409341] 	Decomp block size: 0x0
+[   35.409344] 	Target address: 0x21fc00
+[   35.409347] 	Download size: 108544
+[   35.409350] 	Feature set: 0x20
+[   35.409354] Parsing tailer region 1
+[   35.409357] 	Decomp crc: 0x0
+[   35.409360] 	Decomp size: 0x0
+[   35.409363] 	Decomp block size: 0x0
+[   35.409366] 	Target address: 0x31dc00
+[   35.409368] 	Download size: 205824
+[   35.409371] 	Feature set: 0x00
+[   35.409376] Parsing tailer region 2
+[   35.409378] 	Decomp crc: 0x0
+[   35.409381] 	Decomp size: 0x0
+[   35.409384] 	Decomp block size: 0x0
+[   35.409387] 	Target address: 0x417400
+[   35.409390] 	Download size: 31744
+[   35.409392] 	Feature set: 0x00
+[   35.409397] Parsing tailer region 3
+[   35.409400] 	Decomp crc: 0x0
+[   35.409402] 	Decomp size: 0x0
+[   35.409405] 	Decomp block size: 0x0
+[   35.409408] 	Target address: 0xe0022800
+[   35.409411] 	Download size: 382976
+[   35.409413] 	Feature set: 0x00
+[   35.409418] Parsing tailer region 4
+[   35.409421] 	Decomp crc: 0x0
+[   35.409424] 	Decomp size: 0x0
+[   35.409426] 	Decomp block size: 0x0
+[   35.409429] 	Target address: 0xe0080000
+[   35.409432] 	Download size: 360448
+[   35.409434] 	Feature set: 0x00
+[   35.409439] Parsing tailer region 5
+[   35.409442] 	Decomp crc: 0x0
+[   35.409445] 	Decomp size: 0x0
+[   35.409448] 	Decomp block size: 0x0
+[   35.409450] 	Target address: 0x23a400
+[   35.409453] 	Download size: 89088
+[   35.409456] 	Feature set: 0x00
+[   35.409460] Parsing tailer region 6
+[   35.409463] 	Decomp crc: 0x0
+[   35.409466] 	Decomp size: 0x0
+[   35.409469] 	Decomp block size: 0x0
+[   35.409472] 	Target address: 0x400000
+[   35.409475] 	Download size: 81920
+[   35.409477] 	Feature set: 0x00
+[   35.409481] 	Release info: header tag = 0, total length = 0
+[   35.409488] Start address = 0x21fc00, DL length = 108544, Data mode = 0x80000000
+[   35.410700] EventGenericEventHandler: CMD Success
+[   35.410724] MtCmdAddressLenReq:(ret = 0)
+[   35.411267] Start address = 0x31dc00, DL length = 205824, Data mode = 0x80000000
+[   35.412455] EventGenericEventHandler: CMD Success
+[   35.412469] MtCmdAddressLenReq:(ret = 0)
+[   35.413501] Start address = 0x417400, DL length = 31744, Data mode = 0x80000000
+[   35.414681] EventGenericEventHandler: CMD Success
+[   35.414694] MtCmdAddressLenReq:(ret = 0)
+[   35.414835] Start address = 0xe0022800, DL length = 382976, Data mode = 0x80000000
+[   35.416034] EventGenericEventHandler: CMD Success
+[   35.416046] MtCmdAddressLenReq:(ret = 0)
+[   35.417831] Start address = 0xe0080000, DL length = 360448, Data mode = 0x80000000
+[   35.419010] EventGenericEventHandler: CMD Success
+[   35.419024] MtCmdAddressLenReq:(ret = 0)
+[   35.419971] Start address = 0x23a400, DL length = 89088, Data mode = 0x80000000
+[   35.421161] EventGenericEventHandler: CMD Success
+[   35.421174] MtCmdAddressLenReq:(ret = 0)
+[   35.421388] Start address = 0x400000, DL length = 81920, Data mode = 0x80000000
+[   35.422638] EventGenericEventHandler: CMD Success
+[   35.422649] MtCmdAddressLenReq:(ret = 0)
+[   35.422872] MtCmdFwStartReq: override = 0x1, address = 0x21fc00
+[   35.424046] EventGenericEventHandler: CMD Success
+[   35.424388] Parsing CPU 1 fw tailer
+[   35.424394] 	Chip ID: 0x00
+[   35.424399] 	Eco version: 0x01
+[   35.424403] 	Region number: 0x03
+[   35.424408] 	Format version: 0x02
+[   35.424412] 	Format flag: 0x01
+[   35.424416] 	Ram version: DEV_000000
+[   35.424426] 	Built date: 20201120103446�
+[   35.424439] 	Common crc: 0x4896812e
+[   35.424442] Parsing tailer region 0
+[   35.424445] 	Decomp crc: 0x0
+[   35.424448] 	Decomp size: 0x0
+[   35.424451] 	Decomp block size: 0x0
+[   35.424454] 	Target address: 0x10200000
+[   35.424457] 	Download size: 84256
+[   35.424459] 	Feature set: 0x00
+[   35.424464] Parsing tailer region 1
+[   35.424467] 	Decomp crc: 0x0
+[   35.424470] 	Decomp size: 0x0
+[   35.424472] 	Decomp block size: 0x0
+[   35.424475] 	Target address: 0x10300000
+[   35.424478] 	Download size: 19408
+[   35.424480] 	Feature set: 0x00
+[   35.424485] Parsing tailer region 2
+[   35.424488] 	Decomp crc: 0x0
+[   35.424491] 	Decomp size: 0x0
+[   35.424493] 	Decomp block size: 0x0
+[   35.424496] 	Target address: 0xe0000000
+[   35.424499] 	Download size: 8496
+[   35.424502] 	Feature set: 0x00
+[   35.424506] 	Release info: header tag = 0, total length = 0
+[   35.424511] Start address = 0x10200000, DL length = 84256, Data mode = 0x80000010
+[   35.425692] EventGenericEventHandler: CMD Success
+[   35.425704] MtCmdAddressLenReq:(ret = 0)
+[   35.425891] Start address = 0x10300000, DL length = 19408, Data mode = 0x80000010
+[   35.428244] EventGenericEventHandler: CMD Success
+[   35.428257] MtCmdAddressLenReq:(ret = 0)
+[   35.428333] Start address = 0xe0000000, DL length = 8496, Data mode = 0x80000010
+[   35.429559] EventGenericEventHandler: CMD Success
+[   35.429572] MtCmdAddressLenReq:(ret = 0)
+[   35.429625] MtCmdFwStartReq: override = 0x4, address = 0x0
+[   35.529636] EventGenericEventHandler: CMD Success
+[   35.529686] MCU Init Done!
+[   35.529700] efuse_probe: efuse = 10000012
+[   35.529704] RtmpChipOpsEepromHook::e2p_type=2, inf_Type=5
+[   35.529708] RtmpEepromGetDefault::e2p_dafault=1
+[   35.529712] RtmpChipOpsEepromHook: E2P type(2), E2pAccessMode = 2, E2P default = 1
+[   35.529722] NVM is FLASH mode. dev_idx [1] FLASH OFFSET [0x20000]
+[   35.529730] [42mrtmp_nv_init(): EEPROM Size[131072][m
+[   35.731709] [42m[EEPROMImage - PreCalImageInfo - PreCalImage - TxDPDImage][m
+[   35.731709] [42m[0xffffffc0152e0000 - 0xffffffc0152e0e00 - 0xffffffc0152e0e10 - 0xffffffc0152ed220][m
+[   35.731719] validFlashEepromID(): eeFlashId=7915, pAd->ChipID=7915
+[   35.732492] [32m[d-die version:1][m
+[   35.765057] [32m[a-die version:2][m
+[   35.889916] 
+[   35.889925] [34mNICReadEEPROMParameters: EEPROM 0x62 7[m
+[   35.889929] NICReadEEPROMParameters: Group Pre-Cal finished, load Group Pre-Cal data
+[   35.890471] NICReadEEPROMParameters: DPD 5G Pre-Cal finished!
+[   35.890475] NICReadEEPROMParameters: DPD 2G Pre-Cal finished!
+[   36.041028] Country Region from e2p = 0
+[   36.041034] antenna_default_reset() todo
+[   36.041039] antenna_default_reset() value = 0x2424, TxPath = 4, RxPath = 4
+[   36.041045] RTMPReadTxPwrPerRate(459): Don't Support this now!
+[   36.041050] rc_radio_init(): DBDC MODE=0, ConcurrentBand=1
+[   36.041058] rc_radio_init(): radio_ctrl=ffffffc004b31ed8,Band=0,rfcap=3,channel=1,PhyMode=2 extCha=0xf
+[   36.041065] ucAction = 0, ucBandIdx = 0, ucSmthIntlBypass = 0
+[   36.041071] AntCfgInit(2726): Not support for HIF_MT yet!
+[   36.041082] [34mMtReadPwrLimitTable: sku table idx: 19
+[   36.041082] [0mubnt_load_sku_data: UBNT AX RF_LOCKDOWN Feature ON !!!
+[   36.041119] --> Using builtin AX SKU table for US
+[   36.043185] mt7915_check_RF_lock_down: RFlockDown Enable: 0
+[   36.043203] [34mMtReadPwrLimitTable: sku table idx: 19
+[   36.043203] [0mmt7915_check_RF_lock_down: RFlockDown Enable: 0
+[   36.045299] EEPROM Init Done!
+[   36.045322] mac_init()-->
+[   36.045326] init_mac_cr()-->
+[   36.045330] <--mac_init()
+[   36.048408] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   36.050151] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   36.051906] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   36.051926] MAC Init Done!
+[   36.051944] BBPInit():BBP Initialization.....
+[   36.051950] 	Band 0: valid=1, isDBDC=0, Band=2, CBW=1, CentCh/PrimCh=1/1, prim_ch_idx=0, txStream=2
+[   36.051956] 	Band 1: valid=0, isDBDC=0, Band=0, CBW=0, CentCh/PrimCh=0/0, prim_ch_idx=0, txStream=0
+[   36.051959] BBPInit() todo
+[   36.051961] PHY Init Done!
+[   36.054747] tx_pwr_comp_init():NotSupportYet!
+[   36.054774] Set_SCSDefaultEnable(): BandIdx=0, SCSEnable=1
+[   36.054952] MtCmdSetMacTxRx:(ret = 0)
+[   36.055099] ap_ftkd> Initialize FT KDP Module...
+[   36.055127] Main bssid = 00:00:00:00:00:00
+[   36.055133] SetMuruPlatformTypeProc: param.ucPlatformType = 1
+[   36.055165] muru_cfg_dlul_limits:(Ret = 1
+[   36.055186] muru_cfg_dlul_limits:(Ret = 1
+[   36.055445] MtCmdSetMacTxRx:(ret = 0)
+[   36.055457] <==== mt_wifi_init, Status=0
+[   36.055461] TxBfModuleEnCtrl:It's not DBDC mode
+[   36.055493] HeraInitStbcPriority: u1BandIdx = 0, u1StbcPriority = 0
+[   36.055509] HeraConfigStbcPriority: u1BandIdx = 0, u1Operation=1, u1StbcPriority = 0
+[   36.055515] CmdHeraStbcPriorityCtrl: u1BandIdx=0, u1Operation=1, u1StbcPriority=0
+[   36.055580] Register MBSSID IF 1 (rai1)
+[   36.055595] rai1: VLAN features updated vwire/vport[0]!
+[   36.055604] rai1: assigned ifindex: 18
+[   36.056621] Register MBSSID IF 2 (rai2)
+[   36.056635] rai2: VLAN features updated vwire/vport[0]!
+[   36.056643] rai2: assigned ifindex: 19
+[   36.057220] Register MBSSID IF 3 (rai3)
+[   36.057229] rai3: VLAN features updated vwire/vport[0]!
+[   36.057235] rai3: assigned ifindex: 20
+[   36.057669] Register MBSSID IF 4 (rai4)
+[   36.057677] rai4: VLAN features updated vwire/vport[0]!
+[   36.057682] rai4: assigned ifindex: 21
+[   36.058076] Register MBSSID IF 5 (rai5)
+[   36.058084] rai5: VLAN features updated vwire/vport[0]!
+[   36.058089] rai5: assigned ifindex: 22
+[   36.058486] Register MBSSID IF 6 (rai6)
+[   36.058494] rai6: VLAN features updated vwire/vport[0]!
+[   36.058499] rai6: assigned ifindex: 23
+[   36.058919] Register MBSSID IF 7 (rai7)
+[   36.058927] rai7: VLAN features updated vwire/vport[0]!
+[   36.058932] rai7: assigned ifindex: 24
+[   36.059245] MSTA_Init (1) ---> ApCli
+[   36.059345] Register MSTA IF (apclii0) , pAd->MSTANum = 1
+[   36.059682] Caller: RTMPSetHT+0x2d0/0x328 [ax_wifi]
+[   36.059687] 
+[   36.059687] phy_mode=177, ch=0, wdev_type=2
+[   36.059691] ht_cap: ht_cap->HtCapInfo, 
+[   36.059696] ldpc=1,ch_width=1,gf=0,sgi20=1,sgi40=1,tx_stbc=1,rx_stbc=1,amsdu_size=1
+[   36.059699] ht_cap: ht_cap->HtCapParm, 
+[   36.059703] mdpu_density=0, ampdu_factor=3
+[   36.059724] apclii0: VLAN features updated vwire/vport[0]!
+[   36.059731] apclii0: assigned ifindex: 25
+[   36.060102] APCLI init address table
+[   36.060113] 80211> re-init bands...
+[   36.060117] 80211> RFICType= 3, NumOfChan= 48
+[   36.060120] 80211> Number of rate = 12
+[   36.060124] 80211> CurTxPower = 0 dBm
+[   36.060131] 80211> TxStream = 0
+[   36.060146] mt_service_init: wlan service inits successfully!
+[   36.060154] WtcSetMaxStaNum: MaxStaNum:230, BssidNum:8, WdsNum:16, MSTANum:1, MaxNumChipRept:32, MinMcastWcid:279
+[   36.181312] RedInit: set CR4/N9 RED Enable to 1.
+[   36.181334] RedInit: RED Initiailize Done.
+[   36.181344] cp_support_is_enabled: set CR4 CP_SUPPORT to Mode 2.
+[   36.181365] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_UP
+[   36.181372] wifi_sys_open(), wdev idx = 0
+[   36.181386] ucAction = 0, ucBandIdx = 0, ucSmthIntlBypass = 0
+[   36.181566] phy_oper_init(): operate TxStream = 4, RxStream = 4
+[   36.181589] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   36.181593] phy_freq_adjust : no prim_ch value for adjust!
+[   36.181876] Caller: wlan_operate_init+0xf4/0x120 [ax_wifi]
+[   36.181880] 
+[   36.181880] phy_mode=177, ch=0, wdev_type=1
+[   36.181885] ht_cap: ht_cap->HtCapInfo, 
+[   36.181890] ldpc=1,ch_width=1,gf=0,sgi20=1,sgi40=1,tx_stbc=1,rx_stbc=1,amsdu_size=1
+[   36.181893] ht_cap: ht_cap->HtCapParm, 
+[   36.181896] mdpu_density=5, ampdu_factor=3
+[   36.181904] wdev_attr_update(): wdevId0 = 24:5a:4c:6e:fc:73
+[   36.183513] AP inf up for ra_0(func_idx) OmacIdx=0
+[   36.183529] AsicRadioOnOffCtrl(): DbdcIdx=0 RadioOn
+[   36.184903] ApAutoChannelAtBootUp----------------->
+[   36.184908] ApAutoChannelAtBootUp: AutoChannelBootup[0] = 1
+[   36.185112] MtCmdSetMacTxRx:(ret = 0)
+[   36.185132] [AutoChSelBuildChannelListFor5G] ChListNum5G = 25
+[   36.185253] mt7915_apply_dpd_flatness_data: DPD Pre-Cal finished, load DPD Pre-Cal data
+[   36.400352] mt7915_apply_dpd_flatness_data: DPD Pre-Cal finished, load DPD Pre-Cal data
+[   36.612353] mt7915_apply_dpd_flatness_data: DPD Pre-Cal finished, load DPD Pre-Cal data
+[   36.824347] mt7915_apply_dpd_flatness_data: DPD Pre-Cal finished, load DPD Pre-Cal data
+[   37.036346] mt7915_apply_dpd_flatness_data: DPD Pre-Cal finished, load DPD Pre-Cal data
+[   37.152633] UpdateBeaconHandler, wdev(0) bss not ready (state:0, caller:ApUpdateCapabilityAndErpIe+0x330/0x3c0 [ax_wifi])!!
+[   37.248357] mt7915_apply_dpd_flatness_data: DPD Pre-Cal finished, load DPD Pre-Cal data
+[   37.460348] mt7915_apply_dpd_flatness_data: DPD Pre-Cal finished, load DPD Pre-Cal data
+[   37.672337] mt7915_apply_dpd_flatness_data: DPD Pre-Cal finished, load DPD Pre-Cal data
+[   37.884317] ====================================================================
+[   37.884325] Channel  36 : Busy Time =      2, Skip Channel = FALSE, BwCap = TRUE
+[   37.884329] Channel  40 : Busy Time =    252, Skip Channel = FALSE, BwCap = TRUE
+[   37.884334] Channel  44 : Busy Time =     47, Skip Channel = FALSE, BwCap = TRUE
+[   37.884338] Channel  48 : Busy Time =      0, Skip Channel = FALSE, BwCap = TRUE
+[   37.884342] Channel 149 : Busy Time =      3, Skip Channel = FALSE, BwCap = TRUE
+[   37.884346] Channel 153 : Busy Time =     18, Skip Channel = FALSE, BwCap = TRUE
+[   37.884350] Channel 157 : Busy Time =    207, Skip Channel = FALSE, BwCap = TRUE
+[   37.884354] Channel 161 : Busy Time =      0, Skip Channel = FALSE, BwCap = TRUE
+[   37.884356] ====================================================================
+[   37.884364] Rule 3 Channel Busy time value : Select Primary Channel 149
+[   37.884367] Rule 3 Channel Busy time value : Min Channel Busy = 18
+[   37.884371] Rule 3 Channel Busy time value : BW = 40
+[   37.884375] [SelectClearChannelBusyTime] - band0 END
+[   37.884380] ApAutoChannelAtBootUp : Auto channel selection: Selected channel = 149, IsAband = 1
+[   37.884387] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   37.884442] mt7915_apply_dpd_flatness_data: DPD Pre-Cal finished, load DPD Pre-Cal data
+[   37.899974] DfsBuildChannelList(): Done
+[   37.899980] zero_wait_dfs_switch_ch(): outband ch 0, ch_stat 0
+[   37.899984] ApAutoChannelAtBootUp<-----------------
+[   37.899991] [PMF]APPMFInit:: apidx=0, MFPC=0, MFPR=0, SHA256=0
+[   37.899999] [RSN IE CAP] WPAMakeRsnIeCap RSN CAP 00 00
+[   37.900314] Caller: RTMPSetHT+0x2d0/0x328 [ax_wifi]
+[   37.900340] 
+[   37.900340] phy_mode=177, ch=149, wdev_type=1
+[   37.900344] ht_cap: ht_cap->HtCapInfo, 
+[   37.900350] ldpc=1,ch_width=1,gf=0,sgi20=1,sgi40=1,tx_stbc=1,rx_stbc=1,amsdu_size=1
+[   37.900353] ht_cap: ht_cap->HtCapParm, 
+[   37.900356] mdpu_density=5, ampdu_factor=3
+[   37.900374] wifi_sys_linkup(), wdev idx = 0
+[   37.900384] wtc_acquire_groupkey_wcid: Found a non-occupied wtbl_idx:287 for WDEV_TYPE:1
+[   37.900384]  LinkToOmacIdx = 0, LinkToWdevType = 1
+[   37.900392] TRTableInsertMcastEntry:band0 group_idx[0]=0
+[   37.966466] (bssUpdateChannel), ucPrimCh=149, ucCentChSeg0=151, ucCentChSeg1=0, BW=1, ucHetbRU26Disable=0, ucHetbAllDisable=1
+[   37.966472] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 8192, CmdBssInfoBmcRate.u2McTransmit = 8192
+[   38.070283] UpdateBeaconHandler, BCN_UPDATE_INIT, OmacIdx = 0 (rai0)
+[   38.070290] 	Band0 BcnInitedRnd = 19
+[   38.070405] MtCmdTxPowerSKUCtrl: tx_pwr_sku_en: 1, BandIdx: 0
+[   38.070416] MtCmdTxBfBackoffCtrl: fgTxBFBackoffEn: 0, BandIdx: 0
+[   38.070438] MtCmdTxPowerPercentCtrl: fgTxPowerPercentEn: 1, BandIdx: 0
+[   38.070475] TxCCKStreamCtrl: set wrong parameters
+[   38.078662] set muru_update_he_cfg()!!!!
+[   38.078671] PrintSrCmd:
+[   38.078671] u1CmdSubId = 1, u1ArgNum = 0, u1DbdcIdx = 0, u1Status = 0
+[   38.078671] u1DropTaIdx = 0, u1StaIdx = 0, u4Value = 0
+[   38.078686] PrintSrCmd:
+[   38.078686] u1CmdSubId = 5, u1ArgNum = 0, u1DbdcIdx = 0, u1Status = 0
+[   38.078686] u1DropTaIdx = 0, u1StaIdx = 0, u4Value = 0
+[   38.078711] PrintSrCmd:
+[   38.078711] u1CmdSubId = 3, u1ArgNum = 0, u1DbdcIdx = 0, u1Status = 0
+[   38.078711] u1DropTaIdx = 0, u1StaIdx = 0, u4Value = 0
+[   38.078770] apidx 0 for WscUUIDInit
+[   38.078774] Generate UUID for apidx(0)
+[   38.078793] WDS_Init():wds_num[0]=0, count=0, MAX_WDS_ENTRY=16, if_idx=0, flg_wds_init=0
+[   38.078797] Total allocated 0 WDS(es) for band0!
+[   38.078941] 8021q: adding VLAN 0 to HW filter on device rai0
+[   38.078947] rai0: add static VID[0]!
+[   38.389028] br0: assigned ifindex: 26
+[   38.398899] br0: port 1(eth0) entered blocking state
+[   38.398914] br0: port 1(eth0) entered disabled state
+[   38.399092] device eth0 entered promiscuous mode
+[   38.401847] br0: port 2(ra0) entered blocking state
+[   38.401859] br0: port 2(ra0) entered disabled state
+[   38.402026] device ra0 entered promiscuous mode
+[   38.404362] br0: port 3(apclii0) entered blocking state
+[   38.404372] br0: port 3(apclii0) entered disabled state
+[   38.404542] device apclii0 entered promiscuous mode
+[   38.440565] br0: port 2(ra0) entered blocking state
+[   38.440579] br0: port 2(ra0) entered forwarding state
+[   38.445856] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   38.553952] [btmtk_info] btmtk_uart_tty_open: tty ffffffc015b14c00
+[   38.553952] 
+[   38.554283] [btmtk_info] btmtk_allocate_hci_device done
+[   38.554290] [btmtk_info] btmtk_uart_tty_open: tty done ffffffc015b14c00
+[   38.554290] 
+[   38.554363] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.554370] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.554394] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.554430] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.554460] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.554468] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.554471] <!!> Set STP enable <!!>
+[   38.554476] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.554479] <!!> Set BAUDRATE <!!>
+[   38.660208] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.660217] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.660240] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.660251] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.660283] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.660291] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.660294] <!!> Send Wakeup <!!>
+[   38.661564] <!!> Send Wakeup done, then wait 200ms for uart sleep <!!>
+[   38.864204] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.864209] <!!> Set STP mandatory command <!!>
+[   38.864798] [btmtk_info] btmtk_send_set_stp_cmd done
+[   38.865689] [btmtk_info] btmtk_send_set_stp1_cmd done
+[   38.865697] [btmtk_info] btmtk_uart_tty_ioctl: tty ffffffc015b14c00
+[   38.865700] <!!> Set HCIUARTLOADPATCH command <!!>
+[   38.867278] [btmtk_info] btmtk_send_wmt_get_patch_semaphore send
+[   38.867854] [btmtk_info] btmtk_load_rom_patch_766x: skip download
+[   38.867854] 
+[   38.867861] [btmtk_info] btmtk_send_wmt_release_patch_semaphore send
+[   38.868419] [btmtk_info] btmtk_load_rom_patch_766x: release semaphore
+[   38.868419] 
+[   39.084298] mtk_soc_eth 1b100000.ethernet: path gmac1_sgmii in set_mux_gdm1_to_gmac1_esw updated = 1
+[   39.084308] mtk_soc_eth 1b100000.ethernet: mux mux_gmac2_gmac0_to_gephy isn't present on the SoC
+[   39.084313] mtk_soc_eth 1b100000.ethernet: mux mux_u3_gmac2_to_qphy isn't present on the SoC
+[   39.084324] mtk_soc_eth 1b100000.ethernet: path gmac1_sgmii in set_mux_gmac1_gmac2_to_sgmii_rgmii updated = 1
+[   39.084330] mtk_soc_eth 1b100000.ethernet: mux mux_gmac12_to_gephy_sgmii isn't present on the SoC
+[   39.084630] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   39.084685] br0: port 1(eth0) entered blocking state
+[   39.084692] br0: port 1(eth0) entered forwarding state
+[   42.680782] [btmtk_info] bt_open, BTMTK uart version: 7.0.20051901
+[   42.680800] [btmtk_info] btmtk_send_init_cmds
+[   42.680804] [btmtk_info] btmtk_calibration_flow done
+[   42.681373] [btmtk_info] btmtk_send_wmt_power_on_cmd_766x done
+[   42.681986] [btmtk_info] btmtk_send_hci_tci_set_sleep_cmd_766x done
+[   42.768034] ra0: ===> main_virtual_if_close
+[   42.768066] ra0: VLAN features updated vwire/vport[0]!
+[   42.768111] wifi_sys_linkdown(), wdev idx = 0
+[   42.782082] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 0, CmdBssInfoBmcRate.u2McTransmit = 0
+[   42.815245] wifi_sys_close(), wdev idx = 0
+[   42.818092] APStop(), oper(0) bssid(0)=24:5a:4c:6e:fc:72
+[   42.818138] wifi_sys_close(), wdev idx = 0
+[   42.818158] ap_ftkd> Release FT KDP Module...
+[   42.818172] wifi_sys_close(), wdev idx = 1
+[   42.818181] wifi_sys_close(), wdev idx = 2
+[   42.818190] wifi_sys_close(), wdev idx = 3
+[   42.818199] wifi_sys_close(), wdev idx = 4
+[   42.818208] wifi_sys_close(), wdev idx = 5
+[   42.818217] wifi_sys_close(), wdev idx = 6
+[   42.818226] wifi_sys_close(), wdev idx = 7
+[   42.818236] <=== APStop()
+[   42.826563] CmdReStartDLRsp: WiFI FW Download Success
+[   42.827895] tx_kickout_fail_count = 0
+[   42.827904] tx_timeout_fail_count = 0
+[   42.827907] rx_receive_fail_count = 0
+[   42.827910] alloc_cmd_msg = 1240
+[   42.827913] free_cmd_msg = 1240
+[   42.828397] cut_through_token_list_destroy(): ffffffc0164a5190,ffffffc0164a5190
+[   42.828726] cut_through_token_list_destroy(): ffffffc0164a51b0,ffffffc0164a51b0
+[   43.132316] RTMP_AllTimerListRelease: Size=35
+[   43.132329] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bd99f78!
+[   43.132517] RTMP_AllTimerListRelease: Timer is allocated by APOneShotSettingInitialize+0xa4/0x180 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:1
+[   43.132523] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bd99fd8!
+[   43.132622] RTMP_AllTimerListRelease: Timer is allocated by APOneShotSettingInitialize+0xc8/0x180 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:1
+[   43.132627] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc5d9b0!
+[   43.132743] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.132747] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc5da10!
+[   43.132861] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.132866] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc65f88!
+[   43.132980] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.132984] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc65fe8!
+[   43.133098] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.133103] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc6e560!
+[   43.133217] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.133221] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc6e5c0!
+[   43.133335] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.133339] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc76b38!
+[   43.133453] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.133458] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc76b98!
+[   43.133572] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.133576] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc7f110!
+[   43.133690] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.133695] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc7f170!
+[   43.133808] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.133813] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc876e8!
+[   43.133927] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.133931] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc87748!
+[   43.134045] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.134049] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc8fcc0!
+[   43.134163] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.134168] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc8fd20!
+[   43.134281] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.134286] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc98298!
+[   43.134400] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.134404] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc982f8!
+[   43.134518] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.134522] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca0870!
+[   43.134637] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.134642] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca08d0!
+[   43.134755] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.134759] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca8e48!
+[   43.134873] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.134878] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca8ea8!
+[   43.134992] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.134997] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb1420!
+[   43.135111] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.135115] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb1480!
+[   43.135230] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.135234] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb99f8!
+[   43.135348] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.135352] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb9a58!
+[   43.135466] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.135471] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcc1fd0!
+[   43.135585] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.135590] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcc2030!
+[   43.135704] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.135708] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcca5a8!
+[   43.135823] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.135828] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcca608!
+[   43.135941] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.135946] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcd2b80!
+[   43.136060] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.136064] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcd2be0!
+[   43.136178] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.136198] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcdb158!
+[   43.136314] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.136318] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcdb1b8!
+[   43.136433] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.136437] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bede490!
+[   43.136547] RTMP_AllTimerListRelease: Timer is allocated by RedInit+0x118/0x190 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   43.152599] <---HwCtrlThread
+[   43.260941] br0: port 2(ra0) entered disabled state
+[   43.262686] Unkown frame_type = 20, req = 1
+[   43.262718] Unkown frame_type = 0, req = 1
+[   43.262793] ra0: ===> main_virtual_if_open
+[   43.262953] load l1profile succeed!
+[   43.566127] APWdsInitialize():WdsEntry Number=4
+[   43.566915] BSS0 MinPhyDataRate=0
+[   43.566919] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   43.566925] BSS0 MinPhyBeaconRate=0
+[   43.566929] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   43.566934] BSS0 MinPhyMgmtRate=0
+[   43.566938] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   43.566942] BSS0 MinPhyBcMcRate=0
+[   43.566946] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   43.566950] BSS0 LimitClientSupportRate=0
+[   43.566955] BSS0 DisableCCKRate=0
+[   43.568346] E2pAccessMode=2
+[   43.568758] SSID[0]=40e5756b1cb2943e, EdcaIdx=0
+[   43.568845] SSID[1]=, EdcaIdx=0
+[   43.568931] SSID[2]=, EdcaIdx=0
+[   43.569016] SSID[3]=, EdcaIdx=0
+[   43.569103] SSID[4]=, EdcaIdx=0
+[   43.569189] SSID[5]=, EdcaIdx=0
+[   43.569275] SSID[6]=, EdcaIdx=0
+[   43.569362] SSID[7]=, EdcaIdx=0
+[   43.569723] BSS0 PhyMode=14
+[   43.569730] wmode_band_equal(): Band Equal!
+[   43.569769] auto_ch_select_set_cfg(): BandIdx0, AutoChannelAtBootup=1, AutoChannelAlg = 3
+[   43.570526] BandSteering=0
+[   43.570564] BndStrgBssIdx=
+[   43.570953] [TxPower] BAND0: 100 
+[   43.571236] [CCKTxStream] BAND0: 4
+[   43.571319] [PERCENTAGEenable] BAND0: 1 
+[   43.571357] [BFBACKOFFenable] BAND0: 0 
+[   43.571829] FragThreshold[0]=2346
+[   43.578073] DfsZeroWait Support=0/0
+[   43.578590] DfsZeroWaitCacTime=255/255
+[   43.579503] read_etxbf: ETxBfEnCond = 1
+[   43.579507] read_etxbf: BSSID[0]
+[   43.579511] read_etxbf: MBSS[0] ETxBfEnCond = 1
+[   43.579514] read_etxbf: More BSSID[1]
+[   43.579518] read_etxbf: More MBSS[1] ETxBfEnCond = 1
+[   43.579521] read_etxbf: More BSSID[2]
+[   43.579524] read_etxbf: More MBSS[2] ETxBfEnCond = 1
+[   43.579527] read_etxbf: More BSSID[3]
+[   43.579530] read_etxbf: More MBSS[3] ETxBfEnCond = 1
+[   43.579533] read_etxbf: More BSSID[4]
+[   43.579537] read_etxbf: More MBSS[4] ETxBfEnCond = 1
+[   43.579540] read_etxbf: More BSSID[5]
+[   43.579543] read_etxbf: More MBSS[5] ETxBfEnCond = 1
+[   43.579546] read_etxbf: More BSSID[6]
+[   43.579550] read_etxbf: More MBSS[6] ETxBfEnCond = 1
+[   43.579553] read_etxbf: More BSSID[7]
+[   43.579556] read_etxbf: More MBSS[7] ETxBfEnCond = 1
+[   43.602890] If/wds0 - PeerPhyOpMode=255
+[   43.603434] APWdsInitialize():WdsEntry Number=4
+[   43.603437] WDS-Enable mode=0
+[   43.603524] AndesSendCmdMsg: Could not send in band command due to diablefRTMP_ADAPTER_MCU_SEND_IN_BAND_CMD
+[   43.603528] AndesSendCmdMsg: Command type = ed, Extension command type = 48
+[   43.605030] HT: WDEV[0] Ext Channel = ABOVE
+[   43.605168] ChipI=7622, Value=0, pcie_aspm in profile=0
+[   43.611585] BSS0 MinPhyDataRate=0
+[   43.611589] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   43.611593] BSS1 MinPhyDataRate=0
+[   43.611596] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   43.611599] BSS2 MinPhyDataRate=0
+[   43.611602] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   43.611606] BSS3 MinPhyDataRate=0
+[   43.611609] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   43.611612] BSS4 MinPhyDataRate=0
+[   43.611616] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   43.611619] BSS5 MinPhyDataRate=0
+[   43.611622] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   43.611626] BSS6 MinPhyDataRate=0
+[   43.611629] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   43.611632] BSS7 MinPhyDataRate=0
+[   43.611635] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   43.611778] BSS0 MinPhyBeaconRate=0
+[   43.611781] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   43.611785] BSS1 MinPhyBeaconRate=0
+[   43.611788] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   43.611791] BSS2 MinPhyBeaconRate=0
+[   43.611794] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   43.611798] BSS3 MinPhyBeaconRate=0
+[   43.611801] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   43.611804] BSS4 MinPhyBeaconRate=0
+[   43.611807] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   43.611811] BSS5 MinPhyBeaconRate=0
+[   43.611814] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   43.611817] BSS6 MinPhyBeaconRate=0
+[   43.611820] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   43.611824] BSS7 MinPhyBeaconRate=0
+[   43.611827] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   43.611970] BSS0 MinPhyMgmtRate=0
+[   43.611974] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   43.611977] BSS1 MinPhyMgmtRate=0
+[   43.611980] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   43.611984] BSS2 MinPhyMgmtRate=0
+[   43.611987] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   43.611990] BSS3 MinPhyMgmtRate=0
+[   43.611993] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   43.611996] BSS4 MinPhyMgmtRate=0
+[   43.612000] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   43.612003] BSS5 MinPhyMgmtRate=0
+[   43.612006] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   43.612009] BSS6 MinPhyMgmtRate=0
+[   43.612012] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   43.612016] BSS7 MinPhyMgmtRate=0
+[   43.612019] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   43.612166] BSS0 MinPhyBcMcRate=0
+[   43.612170] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   43.612181] BSS1 MinPhyBcMcRate=0
+[   43.612184] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   43.612187] BSS2 MinPhyBcMcRate=0
+[   43.612191] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   43.612194] BSS3 MinPhyBcMcRate=0
+[   43.612197] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   43.612200] BSS4 MinPhyBcMcRate=0
+[   43.612204] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   43.612207] BSS5 MinPhyBcMcRate=0
+[   43.612210] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   43.612213] BSS6 MinPhyBcMcRate=0
+[   43.612216] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   43.612220] BSS7 MinPhyBcMcRate=0
+[   43.612223] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   43.612368] BSS0 LimitClientSupportRate=0
+[   43.612371] BSS1 LimitClientSupportRate=0
+[   43.612374] BSS2 LimitClientSupportRate=0
+[   43.612378] BSS3 LimitClientSupportRate=0
+[   43.612381] BSS4 LimitClientSupportRate=0
+[   43.612384] BSS5 LimitClientSupportRate=0
+[   43.612388] BSS6 LimitClientSupportRate=0
+[   43.612391] BSS7 LimitClientSupportRate=0
+[   43.612536] BSS0 DisableCCKRate=0
+[   43.612539] BSS1 DisableCCKRate=0
+[   43.612543] BSS2 DisableCCKRate=0
+[   43.612546] BSS3 DisableCCKRate=0
+[   43.612549] BSS4 DisableCCKRate=0
+[   43.612552] BSS5 DisableCCKRate=0
+[   43.612556] BSS6 DisableCCKRate=0
+[   43.612559] BSS7 DisableCCKRate=0
+[   43.630437] ICapMode = 0
+[   43.634769] MinRSSI=0
+[   43.634925] WtcSetMaxStaNum: BssidNum:8, MaxStaNum:118 (WdsNum:4, ApcliNum:1, MaxNumChipRept:32), MinMcastWcid:119
+[   43.635068] Top Init Done!
+[   43.635075] Use dev_alloc_skb
+[   43.635457] RX[0] DESC ffffffc00588c000 size = 8192
+[   43.635616] RX[1] DESC ffffffc00588e000 size = 8192
+[   43.635709] cut_through_init(): ct sw token number = 4095
+[   43.635860] cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+[   43.635865] cut_through_token_list_init(): ffffffc01561c310,ffffffc01561c310
+[   43.636015] cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+[   43.636019] cut_through_token_list_init(): ffffffc01561c330,ffffffc01561c330
+[   43.636108] Hif Init Done!
+[   43.636113] ctl->txq = ffffff800bed9060
+[   43.636116] ctl->rxq = ffffff800bed9078
+[   43.636120] ctl->ackq = ffffff800bed9090
+[   43.636123] ctl->kickq = ffffff800bed90a8
+[   43.636126] ctl->tx_doneq = ffffff800bed90c0
+[   43.636129] ctl->rx_doneq = ffffff800bed90d8
+[   43.641155] mt_rbus 0000:00:00.0: Direct firmware load for mt7622_patch_e2_hdr.bin failed with error -2
+[   43.641169] Parsing patch header
+[   43.641173] 	Built date: 20191218025902a
+[   43.641187] 
+[   43.641189] 	Platform: ALPS
+[   43.641195] 	HW/SW version: 0x8a108a10
+[   43.641201] 	Patch version: 0x00000010
+[   43.641210] 	Target address: 0x9c000, length: 82080
+[   43.647757] patch is ready, continue to ILM/DLM DL
+[   43.647770] WfMcuHwInit: Before NICLoadFirmware, check ICapMode = 0
+[   43.647780] Parsing CPU 0 fw tailer
+[   43.647783] 	Chip ID: 0x06
+[   43.647788] 	Eco version: 0x00
+[   43.647792] 	Region number: 0x00
+[   43.647797] 	Format version: 0x00
+[   43.647801] 	Ram version: _reserved_
+[   43.647811] 	Built date: 20191218030115�
+[   43.647823] 	Common crc: 0x0
+[   43.647828] Parsing tailer region 0
+[   43.647830] 	Feature set: 0x01
+[   43.647836] 	Target address: 0xb7000, Download size: 249856
+[   43.647839] Parsing tailer region 1
+[   43.647841] 	Feature set: 0x01
+[   43.647846] 	Target address: 0x203dc00, Download size: 50144
+[   43.647894] EventGenericEventHandler: CMD Success
+[   43.653290] EventGenericEventHandler: CMD Success
+[   43.653608] MtCmdFwStartReq: override = 0x0, address = 0x0
+[   43.696004] EventGenericEventHandler: CMD Success
+[   43.696045] MCU Init Done!
+[   43.696057] efuse_probe: efuse = 2
+[   43.696063] RtmpChipOpsEepromHook::e2p_type=2, inf_Type=4
+[   43.696067] RtmpEepromGetDefault::e2p_dafault=2
+[   43.696072] RtmpChipOpsEepromHook: E2P type(2), E2pAccessMode = 2, E2P default = 2
+[   43.696080] NVM is FLASH mode. dev_idx [0] FLASH OFFSET [0x0]
+[   43.728967] [34mNICReadEEPROMParameters: EEPROM 0x52 bb08[m
+[   43.729010] MtCmdSetTxLpfCal_7622:(ret = 0)
+[   43.729028] MtCmdSetTxDcIqCal_7622:(ret = 0)
+[   43.729040] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729052] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729061] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729070] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729079] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729089] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729099] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729220] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729422] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729568] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729578] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729588] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729598] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   43.729605] mt7622_pa_lna_set(): read antCtrl = 0, polCtrl = 4, wifiStreams = 44
+[   43.729611] mt7622_tssi_set(): nic_cfg1=20, mode=1
+[   43.845099] [btmtk_info] bt_close
+[   43.845107] [btmtk_info] btmtk_send_deinit_cmds
+[   43.847352] [btmtk_info] bt_open, BTMTK uart version: 7.0.20051901
+[   43.847365] [btmtk_info] btmtk_send_init_cmds
+[   43.847369] [btmtk_info] btmtk_calibration_flow done
+[   43.848936] [btmtk_info] btmtk_send_wmt_power_on_cmd_766x done
+[   43.850162] [btmtk_info] btmtk_send_hci_tci_set_sleep_cmd_766x done
+[   44.695871] Country Region from e2p = 0
+[   44.695898] read sub id = 1
+[   44.695907] RcRadioInit(): DbdcMode=0, ConcurrentBand=1
+[   44.695914] RcRadioInit(): pRadioCtrl=ffffffc005b1cda0,Band=0,rfcap=1,channel=1,PhyMode=2 extCha=0xf
+[   44.695928] ubnt_load_sku_data: UBNT MT_SOC RF_LOCKDOWN Feature ON !!!
+[   44.695938] --> Using builtin MT_SOC SKU table for US
+[   44.696496] MtBfBackOffLoadParam: RF_LOCKDOWN Feature OFF !!!
+[   44.696635] EEPROM Init Done!
+[   44.696643] mt_mac_init()-->
+[   44.696655] mt7622_init_mac_cr(): TMAC_TRCR0=0x82783c8c
+[   44.696671] <--mt_mac_init()
+[   44.715247] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   44.725872] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   44.736498] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   44.736558] MAC Init Done!
+[   44.736564] MT7622BBPInit() todo
+[   44.736566] PHY Init Done!
+[   44.737104] MtCmdSetMacTxRx:(ret = 0)
+[   44.737255] ap_ftkd> Initialize FT KDP Module...
+[   44.737266] Main bssid = 24:5a:4c:6e:fc:72
+[   44.746175] MtCmdSetMacTxRx:(ret = 0)
+[   44.753492] MtCmdSetMacTxRx:(ret = 0)
+[   44.753506] <==== mt_wifi_init, Status=0
+[   44.753510] TxBfModuleEnCtrl:It's not DBDC mode
+[   44.753533] MtCmdEDCCACtrl: BandIdx: 0, EDCCACtrl: 1
+[   44.753566] 80211> re-init bands...
+[   44.753570] 80211> RFICType= 1, NumOfChan= 14
+[   44.753573] 80211> Number of rate = 12
+[   44.753576] 80211> CurTxPower = 0 dBm
+[   44.753582] 80211> TxStream = 4
+[   44.753588] WtcSetMaxStaNum: BssidNum:8, MaxStaNum:118 (WdsNum:4, ApcliNum:1, MaxNumChipRept:32), MinMcastWcid:119
+[   44.778354] RedInit: set Driver/N9 RED Enable to 1.
+[   44.778371] RedInit: RED Initiailize Done.
+[   44.778376] cp_support_is_enabled: set Driver CP_SUPPORT to Mode 2.
+[   44.778383] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_UP
+[   44.778390] wifi_sys_open(), wdev idx = 0
+[   44.778396] wdev_attr_update(): wdevId0 = 24:5a:4c:6e:fc:72
+[   44.778401] [RcGetHdevByPhyMode] channel 0 fix for rdev fetching
+[   44.778472] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   44.778476] phy_freq_adjust : no prim_ch value for adjust!
+[   44.778693] Caller: wlan_operate_init+0xe8/0x118 [mt_soc_wifi]
+[   44.778704] phy_mode=14, ch=0, wdev_type=1
+[   44.778709] ht_cap->HtCapInfo: ldpc=1,ch_width=0,gf=0,sgi20=1,sgi40=0,tx_stbc=1,rx_stbc=1,amsdu_size=0
+[   44.778713] ht_cap->HtCapParm: mdpu_density=5, ampdu_factor=3
+[   44.781548] AP inf up for ra_0(func_idx) OmacIdx=0
+[   44.783949] mtd_isr::DriverOwn = TRUE
+[   44.784586] AsicRadioOnOffCtrl(): DbdcIdx=0 RadioOn
+[   44.791136] ApAutoChannelAtBootUp----------------->
+[   44.791141] ApAutoChannelAtBootUp: AutoChannelBootup[0] = 1
+[   44.791316] MtCmdSetMacTxRx:(ret = 0)
+[   44.791343] MtCmdChannelSwitch: control_chl = 1,control_ch2=0, central_chl = 1 DBDCIdx= 0, Band= 0
+[   44.791347] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   45.012204] MtCmdChannelSwitch: control_chl = 6,control_ch2=0, central_chl = 6 DBDCIdx= 0, Band= 0
+[   45.012213] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   45.228201] MtCmdChannelSwitch: control_chl = 11,control_ch2=0, central_chl = 11 DBDCIdx= 0, Band= 0
+[   45.228213] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   45.428200] ====================================================================
+[   45.428216] Channel   1 : Busy Time =    518, Skip Channel = FALSE, BwCap = TRUE
+[   45.428220] Channel   6 : Busy Time =   2936, Skip Channel = FALSE, BwCap = TRUE
+[   45.428224] Channel  11 : Busy Time =   4096, Skip Channel = FALSE, BwCap = TRUE
+[   45.428228] ====================================================================
+[   45.428235] Rule 3 Channel Busy time value : Select Primary Channel 1
+[   45.428239] Rule 3 Channel Busy time value : Min Channel Busy = 518
+[   45.428242] Rule 3 Channel Busy time value : BW = 20
+[   45.428247] [SelectClearChannelBusyTime] - band0 END
+[   45.428252] ApAutoChannelAtBootUp : Auto channel selection: Selected channel = 1, IsAband = 0
+[   45.428258] [41m AutoChSelUpdateChannel(): Update channel for wdev for this band PhyMode = 14, Channel = 1 [m
+[   45.428263] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   45.428283] MtCmdChannelSwitch: control_chl = 1,control_ch2=0, central_chl = 1 DBDCIdx= 0, Band= 0
+[   45.428288] BW = 0,TXStream = 4, RXStream = 4, scan(0)
+[   45.447333] [DfsCacNormalStart] Normal start. Enable MAC TX
+[   45.520993] ApAutoChannelAtBootUp<-----------------
+[   45.521028] [PMF]APPMFInit:: apidx=0, MFPC=1, MFPR=0, SHA256=0
+[   45.521036] [RSN IE CAP] WPAMakeRsnIeCap RSN CAP 00 00 
+[   45.521041] [PMF]PMF_MakeRsnIeGMgmtCipher: Insert BIP to the group management cipher of RSNIE
+[   45.521086] wifi_sys_linkup(), wdev idx = 0
+[   45.521095] wtc_acquire_groupkey_wcid: Found a non-occupied wtbl_idx:127 for WDEV_TYPE:1
+[   45.521095]  LinkToOmacIdx = 0, LinkToWdevType = 1
+[   45.570461] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 0, CmdBssInfoBmcRate.u2McTransmit = 0
+[   45.618660] UpdateBeaconHandler, BCN_UPDATE_INIT, OmacIdx = 0
+[   45.618731] APStartUpForMbss: BssIndex = 0 channel = 1
+[   45.618765] TxCCKStreamCtrl: set wrong parameters
+[   45.623451] apidx 0 for WscUUIDInit
+[   45.623457] Generate UUID for apidx(0)
+[   45.623644] br0: port 2(ra0) entered blocking state
+[   45.623650] br0: port 2(ra0) entered forwarding state
+[   45.623688] 8021q: adding VLAN 0 to HW filter on device ra0
+[   45.623693] ra0: add static VID[0]!
+[   45.628347] ra0: ===> main_virtual_if_close
+[   45.628376] ra0: VLAN features updated vwire/vport[0]!
+[   45.628422] wifi_sys_linkdown(), wdev idx = 0
+[   45.703033] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 0, CmdBssInfoBmcRate.u2McTransmit = 0
+[   45.736523] wifi_sys_close(), wdev idx = 0
+[   45.739307] APStop(), oper(0) bssid(0)=24:5a:4c:6e:fc:72
+[   45.739325] wifi_sys_close(), wdev idx = 0
+[   45.739342] ap_ftkd> Release FT KDP Module...
+[   45.739355] wifi_sys_close(), wdev idx = 1
+[   45.739364] wifi_sys_close(), wdev idx = 2
+[   45.739372] wifi_sys_close(), wdev idx = 3
+[   45.739381] wifi_sys_close(), wdev idx = 4
+[   45.739389] wifi_sys_close(), wdev idx = 5
+[   45.739398] wifi_sys_close(), wdev idx = 6
+[   45.739407] wifi_sys_close(), wdev idx = 7
+[   45.739416] <=== APStop()
+[   45.747652] CmdReStartDLRsp: WiFI FW Download Success
+[   45.748887] tx_kickout_fail_count = 0
+[   45.748891] tx_timeout_fail_count = 0
+[   45.748895] rx_receive_fail_count = 0
+[   45.748898] alloc_cmd_msg = 1140
+[   45.748901] free_cmd_msg = 1140
+[   45.749301] cut_through_token_list_destroy(): ffffffc01561c310,ffffffc01561c310
+[   45.749562] cut_through_token_list_destroy(): ffffffc01561c330,ffffffc01561c330
+[   46.052770] RTMP_AllTimerListRelease: Size=35
+[   46.052779] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bd99f78!
+[   46.052965] RTMP_AllTimerListRelease: Timer is allocated by APOneShotSettingInitialize+0xa4/0x180 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:1
+[   46.052982] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bd99fd8!
+[   46.053101] RTMP_AllTimerListRelease: Timer is allocated by APOneShotSettingInitialize+0xc8/0x180 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:1
+[   46.053106] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc5d9b0!
+[   46.053225] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.053229] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc5da10!
+[   46.053343] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.053348] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc65f88!
+[   46.053462] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.053466] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc65fe8!
+[   46.053580] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.053584] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc6e560!
+[   46.053699] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.053703] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc6e5c0!
+[   46.053817] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.053822] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc76b38!
+[   46.053935] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.053940] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc76b98!
+[   46.054053] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.054058] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc7f110!
+[   46.054172] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.054177] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc7f170!
+[   46.054291] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.054295] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc876e8!
+[   46.054409] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.054414] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc87748!
+[   46.054528] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.054532] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc8fcc0!
+[   46.054645] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.054650] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc8fd20!
+[   46.054763] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.054768] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc98298!
+[   46.054881] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.054886] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc982f8!
+[   46.055000] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.055004] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca0870!
+[   46.055118] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.055122] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca08d0!
+[   46.055236] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.055241] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca8e48!
+[   46.055355] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.055359] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca8ea8!
+[   46.055473] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.055477] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb1420!
+[   46.055592] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.055596] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb1480!
+[   46.055710] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.055714] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb99f8!
+[   46.055828] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.055833] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb9a58!
+[   46.055946] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.055950] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcc1fd0!
+[   46.056064] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.056069] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcc2030!
+[   46.056183] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.056220] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcca5a8!
+[   46.056337] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.056347] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcca608!
+[   46.056468] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.056478] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcd2b80!
+[   46.056598] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.056608] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcd2be0!
+[   46.056730] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.056740] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcdb158!
+[   46.056859] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.056869] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcdb1b8!
+[   46.056988] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.056998] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bede490!
+[   46.057113] RTMP_AllTimerListRelease: Timer is allocated by RedInit+0x118/0x190 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   46.058171] <---HwCtrlThread
+[   46.059931] br0: port 2(ra0) entered disabled state
+[   46.083220] apclii0: ===> msta_virtual_if_open
+[   46.083238] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_INIT
+[   46.083244] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_UP
+[   46.083266] wifi_sys_open(), wdev idx = 8
+[   46.083277] ucAction = 0, ucBandIdx = 0, ucSmthIntlBypass = 0
+[   46.083294] phy_oper_init(): operate TxStream = 4, RxStream = 4
+[   46.083624] Caller: wlan_operate_init+0xf4/0x120 [ax_wifi]
+[   46.083631] 
+[   46.083631] phy_mode=177, ch=149, wdev_type=2
+[   46.083635] ht_cap: ht_cap->HtCapInfo, 
+[   46.083640] ldpc=1,ch_width=1,gf=0,sgi20=1,sgi40=1,tx_stbc=1,rx_stbc=1,amsdu_size=1
+[   46.083643] ht_cap: ht_cap->HtCapParm, 
+[   46.083647] mdpu_density=0, ampdu_factor=3
+[   46.086520] Caller: RTMPSetHT+0x2d0/0x328 [ax_wifi]
+[   46.086534] 
+[   46.086534] phy_mode=177, ch=149, wdev_type=2
+[   46.086538] ht_cap: ht_cap->HtCapInfo, 
+[   46.086544] ldpc=1,ch_width=1,gf=0,sgi20=1,sgi40=1,tx_stbc=1,rx_stbc=1,amsdu_size=1
+[   46.086547] ht_cap: ht_cap->HtCapParm, 
+[   46.086550] mdpu_density=0, ampdu_factor=3
+[   46.086575] MSTA interface up for apcli0 func_idx=0 OmacIdx=1
+[   46.086765] br0: port 3(apclii0) entered blocking state
+[   46.086772] br0: port 3(apclii0) entered forwarding state
+[   46.086806] 8021q: adding VLAN 0 to HW filter on device apclii0
+[   46.086813] apclii0: add static VID[0]!
+[   46.170110] WDS STA 4 Address Mode set to  1 for wcid 0 
+[   46.170122] apclii0: VLAN features updated vwire/vport[1]!
+[   46.170134] Setting MtCmdSetA4Enable TRUE 
+[   46.171076] Error no wdev when set vwire
+[   46.182880] Set the VLAN checking policy : 4
+[   46.183714] Set the VLAN checking policy : 2
+[   46.260400] Unkown frame_type = 0, req = 0
+[   46.260412] Unkown frame_type = 20, req = 0
+[   46.291723] apclii0: ===> msta_virtual_if_close
+[   46.291741] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_DOWN
+[   46.292446] wifi_sys_close(), wdev idx = 8
+[   46.293035] apclii0: VLAN features updated vwire/vport[0]!
+[   46.293050] Setting MtCmdSetA4Enable FALSE 
+[   46.293081] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_DEINIT
+[   46.293497] br0: port 3(apclii0) entered disabled state
+[   46.295846] ra0: ===> main_virtual_if_open
+[   46.296012] load l1profile succeed!
+[   46.597295] APWdsInitialize():WdsEntry Number=4
+[   46.598067] BSS0 MinPhyDataRate=0
+[   46.598071] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   46.598076] BSS0 MinPhyBeaconRate=0
+[   46.598080] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   46.598084] BSS0 MinPhyMgmtRate=0
+[   46.598087] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   46.598092] BSS0 MinPhyBcMcRate=0
+[   46.598095] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   46.598099] BSS0 LimitClientSupportRate=0
+[   46.598103] BSS0 DisableCCKRate=0
+[   46.599466] E2pAccessMode=2
+[   46.599877] SSID[0]=40e5756b1cb2943e, EdcaIdx=0
+[   46.599963] SSID[1]=, EdcaIdx=0
+[   46.600049] SSID[2]=, EdcaIdx=0
+[   46.600135] SSID[3]=, EdcaIdx=0
+[   46.600252] SSID[4]=, EdcaIdx=0
+[   46.600343] SSID[5]=, EdcaIdx=0
+[   46.600430] SSID[6]=, EdcaIdx=0
+[   46.600516] SSID[7]=, EdcaIdx=0
+[   46.600879] BSS0 PhyMode=14
+[   46.600886] wmode_band_equal(): Band Equal!
+[   46.600925] auto_ch_select_set_cfg(): BandIdx0, AutoChannelAtBootup=1, AutoChannelAlg = 3
+[   46.601683] BandSteering=0
+[   46.601721] BndStrgBssIdx=
+[   46.602109] [TxPower] BAND0: 100 
+[   46.602356] [CCKTxStream] BAND0: 4
+[   46.602439] [PERCENTAGEenable] BAND0: 1 
+[   46.602477] [BFBACKOFFenable] BAND0: 0 
+[   46.602949] FragThreshold[0]=2346
+[   46.609230] DfsZeroWait Support=0/0
+[   46.609747] DfsZeroWaitCacTime=255/255
+[   46.610660] read_etxbf: ETxBfEnCond = 1
+[   46.610664] read_etxbf: BSSID[0]
+[   46.610667] read_etxbf: MBSS[0] ETxBfEnCond = 1
+[   46.610671] read_etxbf: More BSSID[1]
+[   46.610674] read_etxbf: More MBSS[1] ETxBfEnCond = 1
+[   46.610677] read_etxbf: More BSSID[2]
+[   46.610681] read_etxbf: More MBSS[2] ETxBfEnCond = 1
+[   46.610684] read_etxbf: More BSSID[3]
+[   46.610687] read_etxbf: More MBSS[3] ETxBfEnCond = 1
+[   46.610690] read_etxbf: More BSSID[4]
+[   46.610693] read_etxbf: More MBSS[4] ETxBfEnCond = 1
+[   46.610696] read_etxbf: More BSSID[5]
+[   46.610700] read_etxbf: More MBSS[5] ETxBfEnCond = 1
+[   46.610703] read_etxbf: More BSSID[6]
+[   46.610706] read_etxbf: More MBSS[6] ETxBfEnCond = 1
+[   46.610710] read_etxbf: More BSSID[7]
+[   46.610713] read_etxbf: More MBSS[7] ETxBfEnCond = 1
+[   46.634207] If/wds0 - PeerPhyOpMode=255
+[   46.634753] APWdsInitialize():WdsEntry Number=4
+[   46.634757] WDS-Enable mode=0
+[   46.634845] AndesSendCmdMsg: Could not send in band command due to diablefRTMP_ADAPTER_MCU_SEND_IN_BAND_CMD
+[   46.634849] AndesSendCmdMsg: Command type = ed, Extension command type = 48
+[   46.636356] HT: WDEV[0] Ext Channel = ABOVE
+[   46.636496] ChipI=7622, Value=0, pcie_aspm in profile=0
+[   46.642921] BSS0 MinPhyDataRate=0
+[   46.642925] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   46.642929] BSS1 MinPhyDataRate=0
+[   46.642932] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   46.642936] BSS2 MinPhyDataRate=0
+[   46.642939] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   46.642942] BSS3 MinPhyDataRate=0
+[   46.642945] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   46.642949] BSS4 MinPhyDataRate=0
+[   46.642952] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   46.642955] BSS5 MinPhyDataRate=0
+[   46.642958] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   46.642962] BSS6 MinPhyDataRate=0
+[   46.642965] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   46.642968] BSS7 MinPhyDataRate=0
+[   46.642971] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   46.643114] BSS0 MinPhyBeaconRate=0
+[   46.643118] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   46.643121] BSS1 MinPhyBeaconRate=0
+[   46.643125] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   46.643128] BSS2 MinPhyBeaconRate=0
+[   46.643131] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   46.643134] BSS3 MinPhyBeaconRate=0
+[   46.643138] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   46.643141] BSS4 MinPhyBeaconRate=0
+[   46.643144] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   46.643148] BSS5 MinPhyBeaconRate=0
+[   46.643151] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   46.643154] BSS6 MinPhyBeaconRate=0
+[   46.643157] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   46.643161] BSS7 MinPhyBeaconRate=0
+[   46.643164] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   46.643308] BSS0 MinPhyMgmtRate=0
+[   46.643311] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   46.643314] BSS1 MinPhyMgmtRate=0
+[   46.643318] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   46.643321] BSS2 MinPhyMgmtRate=0
+[   46.643324] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   46.643328] BSS3 MinPhyMgmtRate=0
+[   46.643331] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   46.643334] BSS4 MinPhyMgmtRate=0
+[   46.643337] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   46.643340] BSS5 MinPhyMgmtRate=0
+[   46.643344] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   46.643347] BSS6 MinPhyMgmtRate=0
+[   46.643350] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   46.643354] BSS7 MinPhyMgmtRate=0
+[   46.643357] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   46.643500] BSS0 MinPhyBcMcRate=0
+[   46.643503] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   46.643507] BSS1 MinPhyBcMcRate=0
+[   46.643510] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   46.643513] BSS2 MinPhyBcMcRate=0
+[   46.643516] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   46.643519] BSS3 MinPhyBcMcRate=0
+[   46.643523] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   46.643526] BSS4 MinPhyBcMcRate=0
+[   46.643529] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   46.643532] BSS5 MinPhyBcMcRate=0
+[   46.643535] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   46.643541] BSS6 MinPhyBcMcRate=0
+[   46.643545] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   46.643548] BSS7 MinPhyBcMcRate=0
+[   46.643551] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   46.643696] BSS0 LimitClientSupportRate=0
+[   46.643699] BSS1 LimitClientSupportRate=0
+[   46.643703] BSS2 LimitClientSupportRate=0
+[   46.643706] BSS3 LimitClientSupportRate=0
+[   46.643709] BSS4 LimitClientSupportRate=0
+[   46.643712] BSS5 LimitClientSupportRate=0
+[   46.643716] BSS6 LimitClientSupportRate=0
+[   46.643719] BSS7 LimitClientSupportRate=0
+[   46.643864] BSS0 DisableCCKRate=0
+[   46.643867] BSS1 DisableCCKRate=0
+[   46.643870] BSS2 DisableCCKRate=0
+[   46.643874] BSS3 DisableCCKRate=0
+[   46.643877] BSS4 DisableCCKRate=0
+[   46.643880] BSS5 DisableCCKRate=0
+[   46.643883] BSS6 DisableCCKRate=0
+[   46.643887] BSS7 DisableCCKRate=0
+[   46.661852] ICapMode = 0
+[   46.666242] MinRSSI=0
+[   46.666399] WtcSetMaxStaNum: BssidNum:8, MaxStaNum:118 (WdsNum:4, ApcliNum:1, MaxNumChipRept:32), MinMcastWcid:119
+[   46.666539] Top Init Done!
+[   46.666546] Use dev_alloc_skb
+[   46.666923] RX[0] DESC ffffffc00588c000 size = 8192
+[   46.667066] RX[1] DESC ffffffc00588e000 size = 8192
+[   46.667159] cut_through_init(): ct sw token number = 4095
+[   46.667311] cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+[   46.667316] cut_through_token_list_init(): ffffffc015f0e410,ffffffc015f0e410
+[   46.667466] cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+[   46.667470] cut_through_token_list_init(): ffffffc015f0e430,ffffffc015f0e430
+[   46.667558] Hif Init Done!
+[   46.667565] ctl->txq = ffffff800bed9060
+[   46.667569] ctl->rxq = ffffff800bed9078
+[   46.667572] ctl->ackq = ffffff800bed9090
+[   46.667575] ctl->kickq = ffffff800bed90a8
+[   46.667578] ctl->tx_doneq = ffffff800bed90c0
+[   46.667582] ctl->rx_doneq = ffffff800bed90d8
+[   46.667748] mt_rbus 0000:00:00.0: Direct firmware load for mt7622_patch_e2_hdr.bin failed with error -2
+[   46.667759] Parsing patch header
+[   46.667763] 	Built date: 20191218025902a
+[   46.667777] 
+[   46.667779] 	Platform: ALPS
+[   46.667785] 	HW/SW version: 0x8a108a10
+[   46.667791] 	Patch version: 0x00000010
+[   46.667800] 	Target address: 0x9c000, length: 82080
+[   46.667873] patch is ready, continue to ILM/DLM DL
+[   46.667880] WfMcuHwInit: Before NICLoadFirmware, check ICapMode = 0
+[   46.667889] Parsing CPU 0 fw tailer
+[   46.667892] 	Chip ID: 0x06
+[   46.667896] 	Eco version: 0x00
+[   46.667901] 	Region number: 0x00
+[   46.667906] 	Format version: 0x00
+[   46.667910] 	Ram version: _reserved_
+[   46.667919] 	Built date: 20191218030115�
+[   46.667932] 	Common crc: 0x0
+[   46.667936] Parsing tailer region 0
+[   46.667938] 	Feature set: 0x01
+[   46.667944] 	Target address: 0xb7000, Download size: 249856
+[   46.667947] Parsing tailer region 1
+[   46.667949] 	Feature set: 0x01
+[   46.667954] 	Target address: 0x203dc00, Download size: 50144
+[   46.667994] EventGenericEventHandler: CMD Success
+[   46.672100] EventGenericEventHandler: CMD Success
+[   46.672487] MtCmdFwStartReq: override = 0x0, address = 0x0
+[   46.714845] EventGenericEventHandler: CMD Success
+[   46.714890] MCU Init Done!
+[   46.714898] efuse_probe: efuse = 2
+[   46.714903] RtmpChipOpsEepromHook::e2p_type=2, inf_Type=4
+[   46.714906] RtmpEepromGetDefault::e2p_dafault=2
+[   46.714911] RtmpChipOpsEepromHook: E2P type(2), E2pAccessMode = 2, E2P default = 2
+[   46.714918] NVM is FLASH mode. dev_idx [0] FLASH OFFSET [0x0]
+[   46.747649] [34mNICReadEEPROMParameters: EEPROM 0x52 bb08[m
+[   46.747713] MtCmdSetTxLpfCal_7622:(ret = 0)
+[   46.747739] MtCmdSetTxDcIqCal_7622:(ret = 0)
+[   46.747753] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.747772] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.747782] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.747791] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.747801] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.747810] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.747878] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.748152] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.748162] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.748202] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.748212] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.748427] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.748440] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   46.748447] mt7622_pa_lna_set(): read antCtrl = 0, polCtrl = 4, wifiStreams = 44
+[   46.748453] mt7622_tssi_set(): nic_cfg1=20, mode=1
+[   47.714663] Country Region from e2p = 0
+[   47.714689] read sub id = 1
+[   47.714698] RcRadioInit(): DbdcMode=0, ConcurrentBand=1
+[   47.714705] RcRadioInit(): pRadioCtrl=ffffffc005b1cda0,Band=0,rfcap=1,channel=1,PhyMode=2 extCha=0xf
+[   47.714719] ubnt_load_sku_data: UBNT MT_SOC RF_LOCKDOWN Feature ON !!!
+[   47.714729] --> Using builtin MT_SOC SKU table for US
+[   47.715267] MtBfBackOffLoadParam: RF_LOCKDOWN Feature OFF !!!
+[   47.715422] EEPROM Init Done!
+[   47.715430] mt_mac_init()-->
+[   47.715442] mt7622_init_mac_cr(): TMAC_TRCR0=0x82783c8c
+[   47.715458] <--mt_mac_init()
+[   47.734043] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   47.744667] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   47.755294] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   47.755359] MAC Init Done!
+[   47.755365] MT7622BBPInit() todo
+[   47.755368] PHY Init Done!
+[   47.755913] MtCmdSetMacTxRx:(ret = 0)
+[   47.756070] ap_ftkd> Initialize FT KDP Module...
+[   47.756081] Main bssid = 24:5a:4c:6e:fc:72
+[   47.765009] MtCmdSetMacTxRx:(ret = 0)
+[   47.772346] MtCmdSetMacTxRx:(ret = 0)
+[   47.772376] <==== mt_wifi_init, Status=0
+[   47.772380] TxBfModuleEnCtrl:It's not DBDC mode
+[   47.772430] MtCmdEDCCACtrl: BandIdx: 0, EDCCACtrl: 1
+[   47.772473] 80211> re-init bands...
+[   47.772477] 80211> RFICType= 1, NumOfChan= 14
+[   47.772480] 80211> Number of rate = 12
+[   47.772484] 80211> CurTxPower = 0 dBm
+[   47.772490] 80211> TxStream = 4
+[   47.772497] WtcSetMaxStaNum: BssidNum:8, MaxStaNum:118 (WdsNum:4, ApcliNum:1, MaxNumChipRept:32), MinMcastWcid:119
+[   47.797517] RedInit: set Driver/N9 RED Enable to 1.
+[   47.797542] RedInit: RED Initiailize Done.
+[   47.797547] cp_support_is_enabled: set Driver CP_SUPPORT to Mode 2.
+[   47.797554] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_UP
+[   47.797561] wifi_sys_open(), wdev idx = 0
+[   47.797568] wdev_attr_update(): wdevId0 = 24:5a:4c:6e:fc:72
+[   47.797574] [RcGetHdevByPhyMode] channel 0 fix for rdev fetching
+[   47.797648] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   47.797653] phy_freq_adjust : no prim_ch value for adjust!
+[   47.797880] Caller: wlan_operate_init+0xe8/0x118 [mt_soc_wifi]
+[   47.797903] phy_mode=14, ch=0, wdev_type=1
+[   47.797917] ht_cap->HtCapInfo: ldpc=1,ch_width=0,gf=0,sgi20=1,sgi40=0,tx_stbc=1,rx_stbc=1,amsdu_size=0
+[   47.797921] ht_cap->HtCapParm: mdpu_density=5, ampdu_factor=3
+[   47.800666] AP inf up for ra_0(func_idx) OmacIdx=0
+[   47.803063] mtd_isr::DriverOwn = TRUE
+[   47.803706] AsicRadioOnOffCtrl(): DbdcIdx=0 RadioOn
+[   47.810253] ApAutoChannelAtBootUp----------------->
+[   47.810259] ApAutoChannelAtBootUp: AutoChannelBootup[0] = 1
+[   47.810431] MtCmdSetMacTxRx:(ret = 0)
+[   47.810458] MtCmdChannelSwitch: control_chl = 1,control_ch2=0, central_chl = 1 DBDCIdx= 0, Band= 0
+[   47.810462] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   48.032192] MtCmdChannelSwitch: control_chl = 6,control_ch2=0, central_chl = 6 DBDCIdx= 0, Band= 0
+[   48.032199] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   48.248206] MtCmdChannelSwitch: control_chl = 11,control_ch2=0, central_chl = 11 DBDCIdx= 0, Band= 0
+[   48.248218] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   48.448198] ====================================================================
+[   48.448210] Channel   1 : Busy Time =    518, Skip Channel = FALSE, BwCap = TRUE
+[   48.448215] Channel   6 : Busy Time =   3062, Skip Channel = FALSE, BwCap = TRUE
+[   48.448219] Channel  11 : Busy Time =   3636, Skip Channel = FALSE, BwCap = TRUE
+[   48.448222] ====================================================================
+[   48.448229] Rule 3 Channel Busy time value : Select Primary Channel 1
+[   48.448233] Rule 3 Channel Busy time value : Min Channel Busy = 518
+[   48.448237] Rule 3 Channel Busy time value : BW = 20
+[   48.448241] [SelectClearChannelBusyTime] - band0 END
+[   48.448246] ApAutoChannelAtBootUp : Auto channel selection: Selected channel = 1, IsAband = 0
+[   48.448252] [41m AutoChSelUpdateChannel(): Update channel for wdev for this band PhyMode = 14, Channel = 1 [m
+[   48.448258] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   48.448276] MtCmdChannelSwitch: control_chl = 1,control_ch2=0, central_chl = 1 DBDCIdx= 0, Band= 0
+[   48.448280] BW = 0,TXStream = 4, RXStream = 4, scan(0)
+[   48.467316] [DfsCacNormalStart] Normal start. Enable MAC TX
+[   48.540981] ApAutoChannelAtBootUp<-----------------
+[   48.541019] [PMF]APPMFInit:: apidx=0, MFPC=1, MFPR=0, SHA256=0
+[   48.541027] [RSN IE CAP] WPAMakeRsnIeCap RSN CAP 00 00 
+[   48.541032] [PMF]PMF_MakeRsnIeGMgmtCipher: Insert BIP to the group management cipher of RSNIE
+[   48.541076] wifi_sys_linkup(), wdev idx = 0
+[   48.541086] wtc_acquire_groupkey_wcid: Found a non-occupied wtbl_idx:127 for WDEV_TYPE:1
+[   48.541086]  LinkToOmacIdx = 0, LinkToWdevType = 1
+[   48.590435] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 0, CmdBssInfoBmcRate.u2McTransmit = 0
+[   48.638607] UpdateBeaconHandler, BCN_UPDATE_INIT, OmacIdx = 0
+[   48.638676] APStartUpForMbss: BssIndex = 0 channel = 1
+[   48.638708] TxCCKStreamCtrl: set wrong parameters
+[   48.643383] apidx 0 for WscUUIDInit
+[   48.643389] Generate UUID for apidx(0)
+[   48.643597] br0: port 2(ra0) entered blocking state
+[   48.643604] br0: port 2(ra0) entered forwarding state
+[   48.643638] 8021q: adding VLAN 0 to HW filter on device ra0
+[   48.643644] ra0: add static VID[0]!
+[   48.644485] ra0: ===> main_virtual_if_close
+[   48.644508] ra0: VLAN features updated vwire/vport[0]!
+[   48.644557] wifi_sys_linkdown(), wdev idx = 0
+[   48.722965] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 0, CmdBssInfoBmcRate.u2McTransmit = 0
+[   48.756422] wifi_sys_close(), wdev idx = 0
+[   48.759204] APStop(), oper(0) bssid(0)=24:5a:4c:6e:fc:72
+[   48.759222] wifi_sys_close(), wdev idx = 0
+[   48.759243] ap_ftkd> Release FT KDP Module...
+[   48.759255] wifi_sys_close(), wdev idx = 1
+[   48.759265] wifi_sys_close(), wdev idx = 2
+[   48.759273] wifi_sys_close(), wdev idx = 3
+[   48.759282] wifi_sys_close(), wdev idx = 4
+[   48.759291] wifi_sys_close(), wdev idx = 5
+[   48.759299] wifi_sys_close(), wdev idx = 6
+[   48.759308] wifi_sys_close(), wdev idx = 7
+[   48.759317] <=== APStop()
+[   48.767515] CmdReStartDLRsp: WiFI FW Download Success
+[   48.768783] tx_kickout_fail_count = 0
+[   48.768788] tx_timeout_fail_count = 0
+[   48.768791] rx_receive_fail_count = 0
+[   48.768794] alloc_cmd_msg = 1140
+[   48.768797] free_cmd_msg = 1140
+[   48.769192] cut_through_token_list_destroy(): ffffffc015f0e410,ffffffc015f0e410
+[   48.769448] cut_through_token_list_destroy(): ffffffc015f0e430,ffffffc015f0e430
+[   49.072698] RTMP_AllTimerListRelease: Size=35
+[   49.072710] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bd99f78!
+[   49.072897] RTMP_AllTimerListRelease: Timer is allocated by APOneShotSettingInitialize+0xa4/0x180 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:1
+[   49.072903] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bd99fd8!
+[   49.073010] RTMP_AllTimerListRelease: Timer is allocated by APOneShotSettingInitialize+0xc8/0x180 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:1
+[   49.073015] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc5d9b0!
+[   49.073131] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.073136] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc5da10!
+[   49.073250] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.073255] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc65f88!
+[   49.073369] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.073374] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc65fe8!
+[   49.073489] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.073493] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc6e560!
+[   49.073607] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.073612] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc6e5c0!
+[   49.073726] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.073730] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc76b38!
+[   49.073844] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.073849] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc76b98!
+[   49.073963] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.073967] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc7f110!
+[   49.074082] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.074086] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc7f170!
+[   49.074200] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.074204] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc876e8!
+[   49.074318] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.074323] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc87748!
+[   49.074437] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.074441] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc8fcc0!
+[   49.074554] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.074559] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc8fd20!
+[   49.074673] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.074677] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc98298!
+[   49.074792] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.074796] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bc982f8!
+[   49.074911] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.074916] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca0870!
+[   49.075030] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.075035] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca08d0!
+[   49.075149] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.075153] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca8e48!
+[   49.075267] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.075272] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bca8ea8!
+[   49.075386] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.075390] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb1420!
+[   49.075504] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.075509] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb1480!
+[   49.075623] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.075628] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb99f8!
+[   49.075742] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.075746] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcb9a58!
+[   49.075860] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.075864] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcc1fd0!
+[   49.075978] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.075983] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcc2030!
+[   49.076097] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.076102] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcca5a8!
+[   49.076216] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.076243] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcca608!
+[   49.076359] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.076370] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcd2b80!
+[   49.076491] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.076501] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcd2be0!
+[   49.076621] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.076631] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcdb158!
+[   49.076751] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x58/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.076761] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bcdb1b8!
+[   49.076881] RTMP_AllTimerListRelease: Timer is allocated by RRM_CfgInit+0x70/0x130 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.076891] RTMP_AllTimerListRelease: Cancel timer obj ffffff800bede490!
+[   49.077005] RTMP_AllTimerListRelease: Timer is allocated by RedInit+0x118/0x190 [mt_soc_wifi],Valid:1,Lock:ffffff800bede950,State:0
+[   49.078046] <---HwCtrlThread
+[   49.079922] br0: port 2(ra0) entered disabled state
+[   49.081166] Unkown frame_type = 20, req = 1
+[   49.081195] Unkown frame_type = 0, req = 1
+[   49.081262] ra0: ===> main_virtual_if_open
+[   49.081424] load l1profile succeed!
+[   49.382552] APWdsInitialize():WdsEntry Number=4
+[   49.383324] BSS0 MinPhyDataRate=0
+[   49.383329] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   49.383334] BSS0 MinPhyBeaconRate=0
+[   49.383338] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   49.383342] BSS0 MinPhyMgmtRate=0
+[   49.383346] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   49.383350] BSS0 MinPhyBcMcRate=0
+[   49.383353] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   49.383357] BSS0 LimitClientSupportRate=0
+[   49.383361] BSS0 DisableCCKRate=0
+[   49.384763] E2pAccessMode=2
+[   49.385176] SSID[0]=40e5756b1cb2943e, EdcaIdx=0
+[   49.385262] SSID[1]=, EdcaIdx=0
+[   49.385348] SSID[2]=, EdcaIdx=0
+[   49.385434] SSID[3]=, EdcaIdx=0
+[   49.385521] SSID[4]=, EdcaIdx=0
+[   49.385607] SSID[5]=, EdcaIdx=0
+[   49.385694] SSID[6]=, EdcaIdx=0
+[   49.385781] SSID[7]=, EdcaIdx=0
+[   49.386142] BSS0 PhyMode=14
+[   49.386149] wmode_band_equal(): Band Equal!
+[   49.386188] auto_ch_select_set_cfg(): BandIdx0, AutoChannelAtBootup=1, AutoChannelAlg = 3
+[   49.386944] BandSteering=0
+[   49.386983] BndStrgBssIdx=
+[   49.387373] [TxPower] BAND0: 100 
+[   49.387619] [CCKTxStream] BAND0: 4
+[   49.387702] [PERCENTAGEenable] BAND0: 1 
+[   49.387740] [BFBACKOFFenable] BAND0: 0 
+[   49.388243] FragThreshold[0]=2346
+[   49.394505] DfsZeroWait Support=0/0
+[   49.395023] DfsZeroWaitCacTime=255/255
+[   49.395936] read_etxbf: ETxBfEnCond = 1
+[   49.395939] read_etxbf: BSSID[0]
+[   49.395943] read_etxbf: MBSS[0] ETxBfEnCond = 1
+[   49.395946] read_etxbf: More BSSID[1]
+[   49.395950] read_etxbf: More MBSS[1] ETxBfEnCond = 1
+[   49.395953] read_etxbf: More BSSID[2]
+[   49.395956] read_etxbf: More MBSS[2] ETxBfEnCond = 1
+[   49.395959] read_etxbf: More BSSID[3]
+[   49.395963] read_etxbf: More MBSS[3] ETxBfEnCond = 1
+[   49.395966] read_etxbf: More BSSID[4]
+[   49.395969] read_etxbf: More MBSS[4] ETxBfEnCond = 1
+[   49.395972] read_etxbf: More BSSID[5]
+[   49.395976] read_etxbf: More MBSS[5] ETxBfEnCond = 1
+[   49.395979] read_etxbf: More BSSID[6]
+[   49.395982] read_etxbf: More MBSS[6] ETxBfEnCond = 1
+[   49.395986] read_etxbf: More BSSID[7]
+[   49.395989] read_etxbf: More MBSS[7] ETxBfEnCond = 1
+[   49.419295] If/wds0 - PeerPhyOpMode=255
+[   49.419836] APWdsInitialize():WdsEntry Number=4
+[   49.419840] WDS-Enable mode=0
+[   49.419928] AndesSendCmdMsg: Could not send in band command due to diablefRTMP_ADAPTER_MCU_SEND_IN_BAND_CMD
+[   49.419932] AndesSendCmdMsg: Command type = ed, Extension command type = 48
+[   49.421426] HT: WDEV[0] Ext Channel = ABOVE
+[   49.421564] ChipI=7622, Value=0, pcie_aspm in profile=0
+[   49.427963] BSS0 MinPhyDataRate=0
+[   49.427967] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   49.427971] BSS1 MinPhyDataRate=0
+[   49.427974] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   49.427978] BSS2 MinPhyDataRate=0
+[   49.427981] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   49.427984] BSS3 MinPhyDataRate=0
+[   49.427988] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   49.427991] BSS4 MinPhyDataRate=0
+[   49.427994] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   49.427998] BSS5 MinPhyDataRate=0
+[   49.428001] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   49.428005] BSS6 MinPhyDataRate=0
+[   49.428008] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   49.428011] BSS7 MinPhyDataRate=0
+[   49.428014] RTMPMinPhyDataRateCfg MinPhyDataRateTransmit = 0x2000
+[   49.428157] BSS0 MinPhyBeaconRate=0
+[   49.428160] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   49.428164] BSS1 MinPhyBeaconRate=0
+[   49.428167] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   49.428170] BSS2 MinPhyBeaconRate=0
+[   49.428187] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   49.428191] BSS3 MinPhyBeaconRate=0
+[   49.428197] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   49.428208] BSS4 MinPhyBeaconRate=0
+[   49.428220] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   49.428233] BSS5 MinPhyBeaconRate=0
+[   49.428244] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   49.428253] BSS6 MinPhyBeaconRate=0
+[   49.428262] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   49.428271] BSS7 MinPhyBeaconRate=0
+[   49.428282] RTMPMinPhyBeaconRateCfg MinPhyBeaconRateTransmit = 0x2000
+[   49.428427] BSS0 MinPhyMgmtRate=0
+[   49.428430] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   49.428434] BSS1 MinPhyMgmtRate=0
+[   49.428437] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   49.428441] BSS2 MinPhyMgmtRate=0
+[   49.428444] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   49.428447] BSS3 MinPhyMgmtRate=0
+[   49.428451] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   49.428454] BSS4 MinPhyMgmtRate=0
+[   49.428457] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   49.428461] BSS5 MinPhyMgmtRate=0
+[   49.428464] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   49.428467] BSS6 MinPhyMgmtRate=0
+[   49.428470] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   49.428474] BSS7 MinPhyMgmtRate=0
+[   49.428477] RTMPMinPhyMgmtRateCfg MinPhyMgmtRateTransmit = 0x2000
+[   49.428620] BSS0 MinPhyBcMcRate=0
+[   49.428623] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   49.428627] BSS1 MinPhyBcMcRate=0
+[   49.428630] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   49.428634] BSS2 MinPhyBcMcRate=0
+[   49.428637] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   49.428640] BSS3 MinPhyBcMcRate=0
+[   49.428643] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   49.428647] BSS4 MinPhyBcMcRate=0
+[   49.428650] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   49.428653] BSS5 MinPhyBcMcRate=0
+[   49.428657] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   49.428660] BSS6 MinPhyBcMcRate=0
+[   49.428663] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   49.428667] BSS7 MinPhyBcMcRate=0
+[   49.428670] RTMPMinPhyBcMcRateCfg MinPhyBcMcRateTransmit = 0x2000
+[   49.428814] BSS0 LimitClientSupportRate=0
+[   49.428817] BSS1 LimitClientSupportRate=0
+[   49.428821] BSS2 LimitClientSupportRate=0
+[   49.428824] BSS3 LimitClientSupportRate=0
+[   49.428827] BSS4 LimitClientSupportRate=0
+[   49.428831] BSS5 LimitClientSupportRate=0
+[   49.428834] BSS6 LimitClientSupportRate=0
+[   49.428838] BSS7 LimitClientSupportRate=0
+[   49.428982] BSS0 DisableCCKRate=0
+[   49.428986] BSS1 DisableCCKRate=0
+[   49.428989] BSS2 DisableCCKRate=0
+[   49.428992] BSS3 DisableCCKRate=0
+[   49.428995] BSS4 DisableCCKRate=0
+[   49.428999] BSS5 DisableCCKRate=0
+[   49.429002] BSS6 DisableCCKRate=0
+[   49.429005] BSS7 DisableCCKRate=0
+[   49.446822] ICapMode = 0
+[   49.451135] MinRSSI=0
+[   49.451288] WtcSetMaxStaNum: BssidNum:8, MaxStaNum:118 (WdsNum:4, ApcliNum:1, MaxNumChipRept:32), MinMcastWcid:119
+[   49.451432] Top Init Done!
+[   49.451439] Use dev_alloc_skb
+[   49.451827] RX[0] DESC ffffffc00588c000 size = 8192
+[   49.451989] RX[1] DESC ffffffc00588e000 size = 8192
+[   49.452085] cut_through_init(): ct sw token number = 4095
+[   49.452368] cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+[   49.452374] cut_through_token_list_init(): ffffffc0147f5a90,ffffffc0147f5a90
+[   49.452532] cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+[   49.452536] cut_through_token_list_init(): ffffffc0147f5ab0,ffffffc0147f5ab0
+[   49.452630] Hif Init Done!
+[   49.452636] ctl->txq = ffffff800bed9060
+[   49.452640] ctl->rxq = ffffff800bed9078
+[   49.452643] ctl->ackq = ffffff800bed9090
+[   49.452646] ctl->kickq = ffffff800bed90a8
+[   49.452650] ctl->tx_doneq = ffffff800bed90c0
+[   49.452653] ctl->rx_doneq = ffffff800bed90d8
+[   49.452801] mt_rbus 0000:00:00.0: Direct firmware load for mt7622_patch_e2_hdr.bin failed with error -2
+[   49.452808] Parsing patch header
+[   49.452812] 	Built date: 20191218025902a
+[   49.452826] 
+[   49.452828] 	Platform: ALPS
+[   49.452834] 	HW/SW version: 0x8a108a10
+[   49.452841] 	Patch version: 0x00000010
+[   49.452849] 	Target address: 0x9c000, length: 82080
+[   49.452912] patch is ready, continue to ILM/DLM DL
+[   49.452918] WfMcuHwInit: Before NICLoadFirmware, check ICapMode = 0
+[   49.452928] Parsing CPU 0 fw tailer
+[   49.452931] 	Chip ID: 0x06
+[   49.452935] 	Eco version: 0x00
+[   49.452940] 	Region number: 0x00
+[   49.452944] 	Format version: 0x00
+[   49.452949] 	Ram version: _reserved_
+[   49.452958] 	Built date: 20191218030115�
+[   49.452971] 	Common crc: 0x0
+[   49.452975] Parsing tailer region 0
+[   49.452977] 	Feature set: 0x01
+[   49.452983] 	Target address: 0xb7000, Download size: 249856
+[   49.452986] Parsing tailer region 1
+[   49.452988] 	Feature set: 0x01
+[   49.452993] 	Target address: 0x203dc00, Download size: 50144
+[   49.453035] EventGenericEventHandler: CMD Success
+[   49.456963] EventGenericEventHandler: CMD Success
+[   49.457330] MtCmdFwStartReq: override = 0x0, address = 0x0
+[   49.499424] EventGenericEventHandler: CMD Success
+[   49.499452] MCU Init Done!
+[   49.499461] efuse_probe: efuse = 2
+[   49.499466] RtmpChipOpsEepromHook::e2p_type=2, inf_Type=4
+[   49.499469] RtmpEepromGetDefault::e2p_dafault=2
+[   49.499474] RtmpChipOpsEepromHook: E2P type(2), E2pAccessMode = 2, E2P default = 2
+[   49.499482] NVM is FLASH mode. dev_idx [0] FLASH OFFSET [0x0]
+[   49.532061] [34mNICReadEEPROMParameters: EEPROM 0x52 bb08[m
+[   49.532091] MtCmdSetTxLpfCal_7622:(ret = 0)
+[   49.532103] MtCmdSetTxDcIqCal_7622:(ret = 0)
+[   49.532123] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532141] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532150] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532160] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532168] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532393] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532413] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532424] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532434] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532649] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532662] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532675] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532684] MtCmdSetTxDpdCal_7622:(ret = 0)
+[   49.532691] mt7622_pa_lna_set(): read antCtrl = 0, polCtrl = 4, wifiStreams = 44
+[   49.532698] mt7622_tssi_set(): nic_cfg1=20, mode=1
+[   50.497899] Country Region from e2p = 0
+[   50.497925] read sub id = 1
+[   50.497934] RcRadioInit(): DbdcMode=0, ConcurrentBand=1
+[   50.497941] RcRadioInit(): pRadioCtrl=ffffffc005b1cda0,Band=0,rfcap=1,channel=1,PhyMode=2 extCha=0xf
+[   50.497956] ubnt_load_sku_data: UBNT MT_SOC RF_LOCKDOWN Feature ON !!!
+[   50.497966] --> Using builtin MT_SOC SKU table for US
+[   50.498501] MtBfBackOffLoadParam: RF_LOCKDOWN Feature OFF !!!
+[   50.498657] EEPROM Init Done!
+[   50.498665] mt_mac_init()-->
+[   50.498677] mt7622_init_mac_cr(): TMAC_TRCR0=0x82783c8c
+[   50.498693] <--mt_mac_init()
+[   50.517272] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   50.527897] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   50.538523] CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+[   50.538582] MAC Init Done!
+[   50.538588] MT7622BBPInit() todo
+[   50.538591] PHY Init Done!
+[   50.539155] MtCmdSetMacTxRx:(ret = 0)
+[   50.539308] ap_ftkd> Initialize FT KDP Module...
+[   50.539319] Main bssid = 24:5a:4c:6e:fc:72
+[   50.548066] MtCmdSetMacTxRx:(ret = 0)
+[   50.555387] MtCmdSetMacTxRx:(ret = 0)
+[   50.555402] <==== mt_wifi_init, Status=0
+[   50.555407] TxBfModuleEnCtrl:It's not DBDC mode
+[   50.555429] MtCmdEDCCACtrl: BandIdx: 0, EDCCACtrl: 1
+[   50.555462] 80211> re-init bands...
+[   50.555466] 80211> RFICType= 1, NumOfChan= 14
+[   50.555469] 80211> Number of rate = 12
+[   50.555473] 80211> CurTxPower = 0 dBm
+[   50.555478] 80211> TxStream = 4
+[   50.555484] WtcSetMaxStaNum: BssidNum:8, MaxStaNum:118 (WdsNum:4, ApcliNum:1, MaxNumChipRept:32), MinMcastWcid:119
+[   50.580117] RedInit: set Driver/N9 RED Enable to 1.
+[   50.580134] RedInit: RED Initiailize Done.
+[   50.580139] cp_support_is_enabled: set Driver CP_SUPPORT to Mode 2.
+[   50.580147] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_UP
+[   50.580153] wifi_sys_open(), wdev idx = 0
+[   50.580160] wdev_attr_update(): wdevId0 = 24:5a:4c:6e:fc:72
+[   50.580165] [RcGetHdevByPhyMode] channel 0 fix for rdev fetching
+[   50.580253] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   50.580258] phy_freq_adjust : no prim_ch value for adjust!
+[   50.580474] Caller: wlan_operate_init+0xe8/0x118 [mt_soc_wifi]
+[   50.580479] phy_mode=14, ch=0, wdev_type=1
+[   50.580485] ht_cap->HtCapInfo: ldpc=1,ch_width=0,gf=0,sgi20=1,sgi40=0,tx_stbc=1,rx_stbc=1,amsdu_size=0
+[   50.580488] ht_cap->HtCapParm: mdpu_density=5, ampdu_factor=3
+[   50.583605] AP inf up for ra_0(func_idx) OmacIdx=0
+[   50.586009] mtd_isr::DriverOwn = TRUE
+[   50.586663] AsicRadioOnOffCtrl(): DbdcIdx=0 RadioOn
+[   50.593199] ApAutoChannelAtBootUp----------------->
+[   50.593205] ApAutoChannelAtBootUp: AutoChannelBootup[0] = 1
+[   50.593365] MtCmdSetMacTxRx:(ret = 0)
+[   50.593391] MtCmdChannelSwitch: control_chl = 1,control_ch2=0, central_chl = 1 DBDCIdx= 0, Band= 0
+[   50.593395] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   50.812205] MtCmdChannelSwitch: control_chl = 6,control_ch2=0, central_chl = 6 DBDCIdx= 0, Band= 0
+[   50.812216] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   51.028202] MtCmdChannelSwitch: control_chl = 11,control_ch2=0, central_chl = 11 DBDCIdx= 0, Band= 0
+[   51.028212] BW = 0,TXStream = 4, RXStream = 4, scan(1)
+[   51.228206] ====================================================================
+[   51.228221] Channel   1 : Busy Time =   1128, Skip Channel = FALSE, BwCap = TRUE
+[   51.228225] Channel   6 : Busy Time =   2383, Skip Channel = FALSE, BwCap = TRUE
+[   51.228230] Channel  11 : Busy Time =   3434, Skip Channel = FALSE, BwCap = TRUE
+[   51.228233] ====================================================================
+[   51.228240] Rule 3 Channel Busy time value : Select Primary Channel 1
+[   51.228244] Rule 3 Channel Busy time value : Min Channel Busy = 1128
+[   51.228248] Rule 3 Channel Busy time value : BW = 20
+[   51.228251] [SelectClearChannelBusyTime] - band0 END
+[   51.228257] ApAutoChannelAtBootUp : Auto channel selection: Selected channel = 1, IsAband = 0
+[   51.228263] [41m AutoChSelUpdateChannel(): Update channel for wdev for this band PhyMode = 14, Channel = 1 [m
+[   51.228269] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   51.228289] MtCmdChannelSwitch: control_chl = 1,control_ch2=0, central_chl = 1 DBDCIdx= 0, Band= 0
+[   51.228294] BW = 0,TXStream = 4, RXStream = 4, scan(0)
+[   51.247324] [DfsCacNormalStart] Normal start. Enable MAC TX
+[   51.320986] ApAutoChannelAtBootUp<-----------------
+[   51.321026] [PMF]APPMFInit:: apidx=0, MFPC=1, MFPR=0, SHA256=0
+[   51.321035] [RSN IE CAP] WPAMakeRsnIeCap RSN CAP 00 00 
+[   51.321040] [PMF]PMF_MakeRsnIeGMgmtCipher: Insert BIP to the group management cipher of RSNIE
+[   51.321085] wifi_sys_linkup(), wdev idx = 0
+[   51.321094] wtc_acquire_groupkey_wcid: Found a non-occupied wtbl_idx:127 for WDEV_TYPE:1
+[   51.321094]  LinkToOmacIdx = 0, LinkToWdevType = 1
+[   51.370402] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 0, CmdBssInfoBmcRate.u2McTransmit = 0
+[   51.418595] UpdateBeaconHandler, BCN_UPDATE_INIT, OmacIdx = 0
+[   51.418664] APStartUpForMbss: BssIndex = 0 channel = 1
+[   51.418698] TxCCKStreamCtrl: set wrong parameters
+[   51.423368] apidx 0 for WscUUIDInit
+[   51.423373] Generate UUID for apidx(0)
+[   51.423557] br0: port 2(ra0) entered blocking state
+[   51.423564] br0: port 2(ra0) entered forwarding state
+[   51.423596] 8021q: adding VLAN 0 to HW filter on device ra0
+[   51.423602] ra0: add static VID[0]!
+[   51.423828] set_thermal_protection_criteria_proc: fgHighEn: 1, fgLowEn: 1, fgRFOffEn: 1, cHighTempTh: 120, cLowTempTh: 105, cRFOffTh: 125
+[   51.423833] set_thermal_protection_criteria_proc: u4RechkTimer: 10, ucType: Duty Cycle
+[   51.423840] MtCmdThermalProtect: HighEn: 1, HighTempTh: 120, LowEn: 1, LowTempTh: 105, RechkTimer: 10
+[   51.423844] MtCmdThermalProtect: RFOffEn: 1, RFOffTh: 125, ucType: 1
+[   51.501936] 80211> CFG80211_OpsStaDel ==> for bssid (24:5A:4C:6E:FC:72)
+[   51.501978] 80211> CFG80211_OpsStaDel <==80211> CFG80211_OpsStaDel ==> for bssid (24:5A:4C:6E:FC:72)
+[   51.502018] 80211> Delete STA(FF:FF:FF:FF:FF:FF) ==>
+[   51.502023] Can't find pEntry in ApStaDel
+[   51.502034] 80211> CFG80211_OpsStaDel <==
+[   51.504143] Setting 4 Addr Hdr Translation for 127 Bcast Entry 
+[   51.504162] WDS AP 4 Address Mode set to  0 for Mbss 0 
+[   51.504168] ra0: VLAN features updated vwire/vport[0]!
+[   51.513613] Set ra0 No2ghzOui=0
+[   51.514337] ra0: Set DVLAN[0]!
+[   51.542222] set_thermal_protection_admin_ctrl_duty_proc: u4Lv0Duty: 100, u4Lv1Duty: 80, u4Lv2Duty: 50, u4Lv3Duty: 20
+[   51.549163] set_thermal_protection_criteria_proc: fgHighEn: 1, fgLowEn: 1, fgRFOffEn: 1, cHighTempTh: 120, cLowTempTh: 105, cRFOffTh: 125
+[   51.549175] set_thermal_protection_criteria_proc: u4RechkTimer: 10, ucType: Duty Cycle
+[   51.549182] MtCmdThermalProtect: HighEn: 1, HighTempTh: 120, LowEn: 1, LowTempTh: 105, RechkTimer: 10
+[   51.549186] MtCmdThermalProtect: RFOffEn: 1, RFOffTh: 125, ucType: 1
+[   51.560900] Set_Ft_Param: ownmac: 245a4c6efc72
+[   51.560911] 11R disabled in driver
+[   51.560990] 80211> Channel = 6, CenterChanId = 6
+[   51.560994] 80211> ChanInfo.IfType == 9!
+[   51.560998] 80211> ChanInfo.ChanType == 0!
+[   51.561002] HOSTAPD AUTO_CH_SUPPORT Ignore Channel 6 from HostAPD 
+[   51.561008] 80211> CFG80211DRV_OpsBeaconAdd ==>
+[   51.561014] 
+[   51.561014] CFG : SSID: MT7622_2G, 9
+[   51.561019] CFG80211DRV_UpdateApSettingFromBeacon:MDIE is NULL
+[   51.561024] 80211> pBeacon->privacy = 1
+[   51.561029] CFG80211_ParseBeaconIE:: WPA case
+[   51.561033]  Group Ndis802_11AESEnable
+[   51.561037] AuthMode = 0x10
+[   51.561041] CFG80211_ParseBeaconIE:: WPA2 case
+[   51.561045]  Group Ndis802_11AESEnable
+[   51.561050] AuthMode = 0x90
+[   51.561057] 
+[   51.561057] CFG80211 BEACON => bwpa2 1, bwpa 1, bmix 0,AuthMode = WPAPSKWPA2PSK ,wdev->PairwiseCipher = AES wdev->SecConfig.GroupCipher = AES
+[   51.561084] [PMF]APPMFInit:: apidx=0, MFPC=1, MFPR=0, SHA256=0
+[   51.561094] [RSN IE CAP] WPAMakeRsnIeCap RSN CAP 00 00 
+[   51.561098] [PMF]PMF_MakeRsnIeGMgmtCipher: Insert BIP to the group management cipher of RSNIE
+[   51.610386] wdev_attr_update(): wdevId0 = 24:5a:4c:6e:fc:72
+[   51.610508] [DfsCacNormalStart] Normal start. Enable MAC TX
+[   51.614283] Caller: wlan_operate_init+0xe8/0x118 [mt_soc_wifi]
+[   51.614290] phy_mode=14, ch=1, wdev_type=1
+[   51.614295] ht_cap->HtCapInfo: ldpc=1,ch_width=0,gf=0,sgi20=1,sgi40=0,tx_stbc=1,rx_stbc=1,amsdu_size=0
+[   51.614299] ht_cap->HtCapParm: mdpu_density=5, ampdu_factor=3
+[   51.839424] 80211> AP Key Add
+[   51.839490] Set Ap Default Key: 1
+[   51.842969] Setting 4 Addr Hdr Translation for 127 Bcast Entry 
+[   51.842984] WDS AP 4 Address Mode set to  0 for Mbss 0 
+[   51.842990] ra0: VLAN features updated vwire/vport[0]!
+[   51.853539] Set ra0 No2ghzOui=0
+[   51.854318] ra0: Set DVLAN[0]!
+[   56.280704] SetThermalProtectEnable(): band_idx: 0, protection_type: 2, trigger_type: 1
+[   56.280716] SetThermalProtectEnable(): trigger_temp: 125, restore_temp: 0, recheck_time: 5
+[   56.280721] MtCmdThermalProtectEnable: band_idx: 0, protect_type: 2
+[   56.280725] MtCmdThermalProtectEnable: trigger_type: 1, trigger_temp: 125
+[   56.280729] MtCmdThermalProtectEnable: restore_temp: 0, recheck_time: 5
+[   56.281692] SetThermalProtectEnable(): band_idx: 1, protection_type: 2, trigger_type: 1
+[   56.281703] SetThermalProtectEnable(): trigger_temp: 125, restore_temp: 0, recheck_time: 5
+[   56.281708] MtCmdThermalProtectEnable: band_idx: 1, protect_type: 2
+[   56.281712] MtCmdThermalProtectEnable: trigger_type: 1, trigger_temp: 125
+[   56.281716] MtCmdThermalProtectEnable: restore_temp: 0, recheck_time: 5
+[   56.282616] SetThermalProtectEnable(): band_idx: 0, protection_type: 1, trigger_type: 1
+[   56.282627] SetThermalProtectEnable(): trigger_temp: 121, restore_temp: 100, recheck_time: 5
+[   56.282632] MtCmdThermalProtectEnable: band_idx: 0, protect_type: 1
+[   56.282636] MtCmdThermalProtectEnable: trigger_type: 1, trigger_temp: 121
+[   56.282640] MtCmdThermalProtectEnable: restore_temp: 100, recheck_time: 5
+[   56.282822] (Thermal Protect) Radio Notify.
+[   56.282828] band_idx: 0, level_idx: 0
+[   56.283569] SetThermalProtectEnable(): band_idx: 1, protection_type: 1, trigger_type: 1
+[   56.283577] SetThermalProtectEnable(): trigger_temp: 121, restore_temp: 100, recheck_time: 5
+[   56.283582] MtCmdThermalProtectEnable: band_idx: 1, protect_type: 1
+[   56.283586] MtCmdThermalProtectEnable: trigger_type: 1, trigger_temp: 121
+[   56.283590] MtCmdThermalProtectEnable: restore_temp: 100, recheck_time: 5
+[   56.284748] SetThermalProtectDutyCfg(): band_idx: 1, level_idx: 0, duty: 99
+[   56.284757] MtCmdThermalProtectDutyCfg: band_idx: 1, level_idx: 0
+[   56.284760] MtCmdThermalProtectDutyCfg: duty: 99
+[   56.284818] (Thermal Protect) Radio Notify.
+[   56.284822] band_idx: 1, level_idx: 0
+[   56.285859] SetThermalProtectDutyCfg(): band_idx: 1, level_idx: 1, duty: 60
+[   56.285869] MtCmdThermalProtectDutyCfg: band_idx: 1, level_idx: 1
+[   56.285873] MtCmdThermalProtectDutyCfg: duty: 60
+[   56.286901] SetThermalProtectDutyCfg(): band_idx: 1, level_idx: 2, duty: 40
+[   56.286913] MtCmdThermalProtectDutyCfg: band_idx: 1, level_idx: 2
+[   56.286916] MtCmdThermalProtectDutyCfg: duty: 40
+[   56.287829] SetThermalProtectDutyCfg(): band_idx: 1, level_idx: 3, duty: 30
+[   56.287840] MtCmdThermalProtectDutyCfg: band_idx: 1, level_idx: 3
+[   56.287843] MtCmdThermalProtectDutyCfg: duty: 30
+[   56.288861] SetThermalProtectDutyCfg(): band_idx: 0, level_idx: 0, duty: 99
+[   56.288871] MtCmdThermalProtectDutyCfg: band_idx: 0, level_idx: 0
+[   56.288875] MtCmdThermalProtectDutyCfg: duty: 99
+[   56.289892] SetThermalProtectDutyCfg(): band_idx: 0, level_idx: 1, duty: 60
+[   56.289902] MtCmdThermalProtectDutyCfg: band_idx: 0, level_idx: 1
+[   56.289906] MtCmdThermalProtectDutyCfg: duty: 60
+[   56.290838] SetThermalProtectDutyCfg(): band_idx: 0, level_idx: 2, duty: 40
+[   56.290848] MtCmdThermalProtectDutyCfg: band_idx: 0, level_idx: 2
+[   56.290851] MtCmdThermalProtectDutyCfg: duty: 40
+[   56.291732] SetThermalProtectDutyCfg(): band_idx: 0, level_idx: 3, duty: 30
+[   56.291742] MtCmdThermalProtectDutyCfg: band_idx: 0, level_idx: 3
+[   56.291746] MtCmdThermalProtectDutyCfg: duty: 30
+[   56.292697] Set_SCSEnable_Proc(): BandIdx=0, SCSEnable=0
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x410fd034]
+[    0.000000] Linux version 5.4.124 (builder@buildhost) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r16172-2aba3e9784)) #0 SMP Sun Jun 13 22:02:19 2021
+[    0.000000] Machine model: Ubiquiti UniFi 6 LR
+[    0.000000] Memory limited to 495MB
+[    0.000000] On node 0 totalpages: 126895
+[    0.000000]   DMA32 zone: 1984 pages used for memmap
+[    0.000000]   DMA32 zone: 0 pages reserved
+[    0.000000]   DMA32 zone: 126895 pages, LIFO batch:31
+[    0.000000] psci: probing for conduit method from DT.
+[    0.000000] psci: PSCIv0.2 detected in firmware.
+[    0.000000] psci: Using standard PSCI v0.2 function IDs
+[    0.000000] psci: Trusted OS migration not required
+[    0.000000] percpu: Embedded 20 pages/cpu s43864 r8192 d29864 u81920
+[    0.000000] pcpu-alloc: s43864 r8192 d29864 u81920 alloc=20*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 
+[    0.000000] Detected VIPT I-cache on CPU0
+[    0.000000] CPU features: detected: ARM erratum 845719
+[    0.000000] CPU features: kernel page table isolation disabled by kernel configuration
+[    0.000000] CPU features: detected: ARM erratum 843419
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 124911
+[    0.000000] Kernel command line: ubootver= ramoops.mem_address=0x5efe0000 ramoops.mem_size=131072 ramoops.ecc=1 console=ttyS0,115200n1 mem=507775K ubntbootid=0
+[    0.000000] Dentry cache hash table entries: 65536 (order: 7, 524288 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 32768 (order: 6, 262144 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 479932K/507580K available (6718K kernel code, 432K rwdata, 1260K rodata, 384K init, 304K bss, 27648K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu: 	CONFIG_RCU_FANOUT set to non-default value of 32.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[    0.000000] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[    0.000000] GIC: GICv2 detected, but range too small and irqchip.gicv2_force_probe not set
+[    0.000000] random: get_random_bytes called from 0xffffffc010860b88 with crng_init=0
+[    0.000000] arch_timer: cp15 timer(s) running at 12.50MHz (phys).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x2e2049cda, max_idle_ns: 440795202628 ns
+[    0.000002] sched_clock: 56 bits at 12MHz, resolution 80ns, wraps every 4398046511080ns
+[    0.000150] Calibrating delay loop (skipped), value calculated using timer frequency.. 25.00 BogoMIPS (lpj=50000)
+[    0.000157] pid_max: default: 32768 minimum: 301
+[    0.000234] Mount-cache hash table entries: 1024 (order: 1, 8192 bytes, linear)
+[    0.000242] Mountpoint-cache hash table entries: 1024 (order: 1, 8192 bytes, linear)
+[    0.001118] ASID allocator initialised with 65536 entries
+[    0.001166] rcu: Hierarchical SRCU implementation.
+[    0.001416] smp: Bringing up secondary CPUs ...
+[    0.001719] Detected VIPT I-cache on CPU1
+[    0.001755] CPU1: Booted secondary processor 0x0000000001 [0x410fd034]
+[    0.001809] smp: Brought up 1 node, 2 CPUs
+[    0.001815] SMP: Total of 2 processors activated.
+[    0.001819] CPU features: detected: 32-bit EL0 Support
+[    0.001822] CPU features: detected: CRC32 instructions
+[    0.001882] CPU: All CPU(s) started at EL2
+[    0.001892] alternatives: patching kernel code
+[    0.004602] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.004615] futex hash table entries: 512 (order: 3, 32768 bytes, linear)
+[    0.004686] pinctrl core: initialized pinctrl subsystem
+[    0.005221] NET: Registered protocol family 16
+[    0.005704] DMA: preallocated 256 KiB pool for atomic allocations
+[    0.026985] SCSI subsystem initialized
+[    0.027095] libata version 3.00 loaded.
+[    0.027246] usbcore: registered new interface driver usbfs
+[    0.027275] usbcore: registered new interface driver hub
+[    0.027297] usbcore: registered new device driver usb
+[    0.027313] videodev: Linux video capture interface: v2.00
+[    0.027748] workqueue: max_active 576 requested for napi_workq is out of range, clamping between 1 and 512
+[    0.028692] clocksource: Switched to clocksource arch_sys_counter
+[    0.029132] thermal_sys: Registered thermal governor 'fair_share'
+[    0.029134] thermal_sys: Registered thermal governor 'bang_bang'
+[    0.029140] thermal_sys: Registered thermal governor 'step_wise'
+[    0.029143] thermal_sys: Registered thermal governor 'user_space'
+[    0.029146] thermal_sys: Registered thermal governor 'power_allocator'
+[    0.029391] NET: Registered protocol family 2
+[    0.029474] IP idents hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.029819] tcp_listen_portaddr_hash hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.029832] TCP established hash table entries: 4096 (order: 3, 32768 bytes, linear)
+[    0.029862] TCP bind hash table entries: 4096 (order: 4, 65536 bytes, linear)
+[    0.029913] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.029973] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.029987] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.030071] NET: Registered protocol family 1
+[    0.030090] PCI: CLS 0 bytes, default 64
+[    0.030790] workingset: timestamp_bits=46 max_order=17 bucket_order=0
+[    0.033642] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.033652] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.046745] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 250)
+[    0.049845] mt-pmic-pwrap 10001000.pwrap: unexpected interrupt int=0x1
+[    0.063746] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.065606] printk: console [ttyS0] disabled
+[    0.085787] 11002000.serial: ttyS0 at MMIO 0x11002000 (irq = 117, base_baud = 1562500) is a ST16650V2
+[    0.624614] printk: console [ttyS0] enabled
+[    0.649362] 11005000.serial: ttyS1 at MMIO 0x11005000 (irq = 118, base_baud = 1562500) is a ST16650V2
+[    0.659096] mtk_rng 1020f000.rng: registered RNG driver
+[    0.659225] random: fast init done
+[    0.664442] cacheinfo: Unable to detect cache hierarchy for CPU 0
+[    0.667867] random: crng init done
+[    0.673905] Loading iSCSI transport class v2.0-870.
+[    0.682708] mtk-ecc 1100e000.ecc: probed
+[    0.687102] mtk-spi-nor 11014000.spi: IRQ not available.
+[    0.692426] mtk-spi-nor 11014000.spi: spi frequency: 46666653 Hz
+[    0.717747] spi-nor spi0.0: w25q512jv (65536 Kbytes)
+[    0.722803] 10 fixed-partitions partitions found on MTD device spi0.0
+[    0.729245] Creating 10 MTD partitions on "spi0.0":
+[    0.734120] 0x000000000000-0x000000040000 : "preloader"
+[    0.739803] 0x000000040000-0x000000060000 : "atf"
+[    0.744878] 0x000000060000-0x0000000c0000 : "u-boot"
+[    0.750177] 0x0000000c0000-0x0000000d0000 : "u-boot-env"
+[    0.755835] 0x0000000d0000-0x000000110000 : "factory"
+[    0.761221] 0x000000110000-0x000000120000 : "eeprom"
+[    0.766541] 0x000000120000-0x000000130000 : "bs"
+[    0.771525] 0x000000130000-0x000000230000 : "cfg"
+[    0.776565] 0x000000230000-0x000002110000 : "firmware"
+[    0.782174] 2 fit-fw partitions found on MTD device firmware
+[    0.787855] Creating 2 MTD partitions on "firmware":
+[    0.792822] 0x000000000000-0x000000300000 : "kernel"
+[    0.798150] 0x000000300000-0x000001ee0000 : "rootfs"
+[    0.803462] mtd: device 10 (rootfs) set to be root filesystem
+[    0.809233] 1 squashfs-split partitions found on MTD device rootfs
+[    0.815418] 0x000000770000-0x000001ee0000 : "rootfs_data"
+[    0.821173] 0x000002110000-0x000003ff0000 : "kernel1"
+[    0.826853] libphy: Fixed MDIO Bus: probed
+[    0.854247] libphy: mdio: probed
+[    0.858280] mtk_soc_eth 1b100000.ethernet eth0: mediatek frame engine at 0xffffffc0115a0000, irq 125
+[    0.867979] rtc_mt7622 10212800.rtc: registered as rtc0
+[    0.873272] i2c /dev entries driver
+[    0.877348] mtk-thermal 1100b000.thermal: Device not calibrated, using default calibration values
+[    0.886515] mtk-wdt 10212000.watchdog: Watchdog enabled (timeout=31 sec, nowayout=0)
+[    0.938459] NET: Registered protocol family 10
+[    0.943863] Segment Routing with IPv6
+[    0.947574] NET: Registered protocol family 17
+[    0.952044] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    0.965066] 8021q: 802.1Q VLAN Support v1.8
+[    0.978856] mtk-pcie 1a143000.pcie: host bridge /pcie@1a143000 ranges:
+[    0.985420] mtk-pcie 1a143000.pcie: Parsing ranges property...
+[    0.991274] mtk-pcie 1a143000.pcie:   MEM 0x20000000..0x27ffffff -> 0x20000000
+[    1.024932] mtk-pcie 1a143000.pcie: PCI host bridge to bus 0000:00
+[    1.031114] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    1.036596] pci_bus 0000:00: root bus resource [mem 0x20000000-0x27ffffff]
+[    1.043466] pci_bus 0000:00: scanning bus
+[    1.047503] pci 0000:00:00.0: [14c3:3258] type 01 class 0x060400
+[    1.053545] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x1ffffffff 64bit pref]
+[    1.062033] pci_bus 0000:00: fixups for bus
+[    1.066217] pci 0000:00:00.0: scanning [bus 00-00] behind bridge, pass 0
+[    1.072913] pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    1.080921] pci 0000:00:00.0: scanning [bus 00-00] behind bridge, pass 1
+[    1.087704] pci_bus 0000:01: scanning bus
+[    1.091813] pci 0000:01:00.0: [14c3:7915] type 00 class 0x000280
+[    1.098101] pci 0000:01:00.0: reg 0x10: [mem 0x00000000-0x000fffff 64bit pref]
+[    1.105425] pci 0000:01:00.0: reg 0x18: [mem 0x00000000-0x00003fff 64bit pref]
+[    1.112755] pci 0000:01:00.0: reg 0x20: [mem 0x00000000-0x00000fff 64bit pref]
+[    1.120675] pci 0000:01:00.0: supports D1 D2
+[    1.124943] pci 0000:01:00.0: PME# supported from D0 D1 D2 D3hot D3cold
+[    1.131576] pci 0000:01:00.0: PME# disabled
+[    1.135962] pci 0000:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s x1 link at 0000:00:00.0 (capable of 4.000 Gb/s with 5 GT/s x1 link)
+[    1.161710] pci_bus 0000:01: fixups for bus
+[    1.165894] pci_bus 0000:01: bus scan returning with max=01
+[    1.171465] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    1.178078] pci_bus 0000:00: bus scan returning with max=01
+[    1.183660] pci 0000:00:00.0: BAR 0: no space for [mem size 0x200000000 64bit pref]
+[    1.191311] pci 0000:00:00.0: BAR 0: failed to assign [mem size 0x200000000 64bit pref]
+[    1.199310] pci 0000:00:00.0: BAR 8: assigned [mem 0x20000000-0x201fffff]
+[    1.206098] pci 0000:01:00.0: BAR 0: assigned [mem 0x20000000-0x200fffff 64bit pref]
+[    1.213921] pci 0000:01:00.0: BAR 2: assigned [mem 0x20100000-0x20103fff 64bit pref]
+[    1.221743] pci 0000:01:00.0: BAR 4: assigned [mem 0x20104000-0x20104fff 64bit pref]
+[    1.229564] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    1.234530] pci 0000:00:00.0:   bridge window [mem 0x20000000-0x201fffff]
+[    1.241382] pcieport 0000:00:00.0: of_irq_parse_pci: failed with rc=-22
+[    1.247992] pcieport 0000:00:00.0: assign IRQ: got 0
+[    1.252965] pcieport 0000:00:00.0: enabling device (0000 -> 0002)
+[    1.259068] pcieport 0000:00:00.0: enabling bus mastering
+[    1.264754] mtk_hsdma 1b007000.dma-controller: Using 3 as missing dma-requests property
+[    1.272910] mtk_hsdma 1b007000.dma-controller: MediaTek HSDMA driver registered
+[    1.280508] rtc_mt7622 10212800.rtc: setting system clock to 2000-01-01T00:00:00 UTC (946684800)
+[    1.291412] VFS: Mounted root (squashfs filesystem) readonly on device 31:10.
+[    1.298724] Freeing unused kernel memory: 384K
+[    1.312717] Run /sbin/init as init process
+[    1.491114] init: Console is alive
+[    1.494627] init: - watchdog -
+[    1.736091] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    1.752153] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    1.759735] init: - preinit -
+[    2.029760] mtk_soc_eth 1b100000.ethernet eth0: configuring for fixed/2500base-x link mode
+[    2.038201] mtk_soc_eth 1b100000.ethernet eth0: Link is Up - 2.5Gbps/Full - flow control off
+[    6.175229] jffs2: notice: (766) jffs2_build_xattr_subsystem: complete building xattr subsystem, 9 of xdatum (0 unchecked, 1 orphan) and 10 of xref (1 dead, 0 orphan) found.
+[    6.192080] mount_root: switching to jffs2 overlay
+[    6.213061] overlayfs: upper fs does not support tmpfile.
+[    6.222192] overlayfs: "xino" feature enabled using 32 upper inode bits.
+[    6.232326] urandom-seed: Seeding with /etc/urandom.seed
+[    6.285068] mtk_soc_eth 1b100000.ethernet eth0: Link is Down
+[    6.294096] procd: - early -
+[    6.297057] procd: - watchdog -
+[    6.831439] procd: - watchdog -
+[    6.835455] procd: - ubus -
+[    6.888818] procd: - init -
+[    7.037128] kmodloader: loading kernel modules from /etc/modules.d/*
+[    7.056021] urngd: v1.0.2 started.
+[    7.059690] Loading modules backported from Linux version v5.10.42-0-g65859eca4dff
+[    7.067277] Backport generated by backports.git v5.10.42-1-0-gbee5c545
+[    7.087094] xt_time: kernel timezone is -0000
+[    7.148772] mtk-spi-nor 11014000.spi: dma read timeout.
+[    7.156239] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[    7.166820] mt7915e 0000:01:00.0: assign IRQ: got 130
+[    7.171933] pci 0000:00:00.0: enabling bus mastering
+[    7.176950] mt7915e 0000:01:00.0: enabling device (0000 -> 0002)
+[    7.183065] mt7915e 0000:01:00.0: enabling bus mastering
+[    7.224860] mt7622-wmac 18000000.wmac: HW/SW Version: 0x8a108a10, Build Time: 20190801210006a
+[    7.224860] 
+[    7.279741] mt7915e 0000:01:00.0: HW/SW Version: 0x8a108a10, Build Time: 20200819112315a
+[    7.279741] 
+[    7.336212] mt7622-wmac 18000000.wmac: N9 Firmware Version: 2.0, Build Time: 20200131180931
+[    7.415217] mt7915e 0000:01:00.0: WM Firmware Version: ____000000, Build Time: 20200819112349
+[    7.464636] mt7915e 0000:01:00.0: WA Firmware Version: DEV_000000, Build Time: 20200819112407
+[    7.591359] PPP generic driver version 2.4.2
+[    7.596814] NET: Registered protocol family 24
+[    7.607151] kmodloader: done loading kernel modules from /etc/modules.d/*
+[    9.360600] mtk_soc_eth 1b100000.ethernet eth0: configuring for fixed/2500base-x link mode
+[    9.369130] mtk_soc_eth 1b100000.ethernet eth0: Link is Up - 2.5Gbps/Full - flow control off
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * ...
+
+===== Tags =====
+{{tag>mediatek MT7622 64NAND 512RAM 1port GigabitEthernet u-boot 2core ARMv8 1NIC 802.3bz 802.11bgn 802.11ax mt7915 SERIAL 1Button ceiling PoE }}

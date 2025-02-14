@@ -1,0 +1,105 @@
+====== Mercury MW150R ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+  * low-cost router, sold for ~20$ in several flavors, sometimes locally-rebranded.
+  * based on the [[docs:techref:hardware:soc:soc.qualcomm.ar71xx#ar9331|Qualcomm Atheros AR9331]] chipset. Thus lot of general information overlaps with the Wiki pages of other [[docs:techref:hardware:soc:soc.qualcomm.ar71xx#ar9331_based_devices|AR9331-based devices]]
+  * Some of the flavors can run OpenWrt. Some (from taobao) even have OpenWrt preinstalled. 
+  * flash ranging from 2MiB to 8MiB. The worst case are the routers that have only 2MiB flash and 8MiB DDR RAM shipped with VxWorks preinstalled. All with at least 4 MB flash can run OpenWrt. If the router you got already runs some linux with 4 megs of flash or more, skip the scary RAM/Flash upgrade part and try the web upgrade.
+  * To run properly with all the blows&whistles you may need these patches (at the time of writing not on the trunk): [[https://lists.openwrt.org/pipermail/openwrt-devel/2012-July/016070.html]]
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^MW150R$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^MW150R$"}
+} -->
+
+FIXME: merge this into device database:
+
+
+
+^ CPU ^ Ram ^ Flash ^ Network ^ USB ^ Serial ^ JTag ^
+| Atheros AR9331 @ 400 MHz | 8-64 MiB | 2-16 MiB | 4 x 1| Mod | Mod | No |
+
+
+^ Model Version ^ OpenWrt Version Supported ^ Model Specific Notes ^
+| v8.5/v10.2 | {{:meta:icons:tango:dialog-error.png?nolink&24 | Test at your own risk }} trunk (r28271) |Basically same board as [[toh:tp-link:tl-wr745n|TP-Link TL-WR745N]] similar to [[toh:tp-link:tl-wr741nd|TP-Link TL-WR741ND]] or [[toh:tp-link:tl-wr703n|TP-Link TL-WR703N]] |
+
+
+===== Big Fat Warning =====
+
+This can be VERY rough for newbies. Web update is NOT tested and (likely) will not work if you have a VxWorks one. On the contarary, upgrade via web might work if you have a brick running proper linux. 
+
+
+===== Hardware mods =====
+
+see also [[https://ncrmnt.org/2012/07/29/mercury-mw150r-turning-an-epic-fail-to-an-epic-win/]]
+
+
+==== RAM ====
+
+  * Prereqs: 
+    * soldering skills
+    * smt rework station with hot air gun
+    * some coffee
+  * This router can have up to 64MiB of RAM making it ideal for running some more services. However, this will require some soldering skills. 
+  * First, identify how much RAM you have. If you are running on 8MiB RAM, you'll need one 22 Ohm resistor. 0402 is what they usually expect, 0603 also fits nicely. 
+  * You can get a list of compatible RAM chips from [[toh:tp-link:tl-wr703n|tl-wr703n]]
+  * Once replaced, the router should boot. VxWorks bootloader will ALWAYS detect 8MiB of RAM.  
+
+==== Flash ==== 
+
+The biggest flash upgrade possible (and tested my me) is 16 Megs. You'll need:
+  - Soldering skills 
+  - Some AR9331 router with u-boot. WR703 fits in nicely. 
+  - A spare flash chip of 4 8 or 16 megs (some 16 megs will require a diy adapter due to a different footprint.
+  - A linux box with dd, flashrom 
+  - A programmer supported by flashrom. I used buspirate
+  - Optional flash adapters for easier connections
+
+So, let's start. 
+
+  - Desolder the flash chip from the mercury and place it into the programmer. I used bus pirate+a diy converter board. 
+  - Use flashrom to dump the chip. e.g. <code>
+flashrom -p buspirate_spi:dev=/dev/ttyUSB0 -r factory_2MiB_vxworks.bin
+</code>
+  - Extract the "art" section from the image. This is 'atheros radio test', with wireless calibration data that is HARDWARE specific. Failing to do so will bring you router to FCC regulators incompliance, or, what is worse - to shitty wireless performance. ART is usually the last 64KiB of the chip, so this will give you a good result: <code>
+dd if=./factory_2MiB_vxworks.bin of=art.bin skip=2031616 bs=1
+</code>
+  - Now, grab a chip from WR703N (stock firmware will do nicely as well) and dump it as well. 
+  - Place the spare chip into the programmer, and do the following.
+      - If you are good with 4MiB - just copy it and proceed to copying the ART section.  
+      - Depending on the size of chip create a dummy empty file with dd <code>
+dd if=/dev/zero of=./target.bin count=16384 bs=1024
+</code> for the 16MiB flash. Use ''count=8192'' for 8MiB flash chip. 
+      - Copy the bootloader and firmware over it:<code>
+dd if=./wr703ndump.bin of=./target.bin conv=notrunc
+</code>
+      - Write the ART section over it: <code>
+dd if=./art.bin of=./target.bin conv=notrunc seek=16711680 bs=1
+</code>
+      - Burn the image to the chip: <code>
+flashrom -p buspirate_spi:dev=/dev/ttyUSB0 -r target.bin
+</code>
+  - Solder the chip into the router and see if it boots. If it boots, and whatever firmware you put in there started the wireless - then you're lucky. You can not proceed to compiling and setting up OpenWrt as usual
+
+You can grab the layouts of the flash adapters I used (as seen on the photos) at my github repo: [[https://github.com/nekromant/flashadapters]]
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR9331 4Flash 8Flash 32RAM}}

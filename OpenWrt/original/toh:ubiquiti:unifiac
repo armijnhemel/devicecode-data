@@ -1,0 +1,1266 @@
+====== Ubiquiti UniFi AP AC ======
+
+Ubiquiti has released a new series of UniFi APs supporting AC in Q4/2015 and two similar devices under the "Mesh" label in 2017.
+
+  * UniFi AP AC Lite
+  * UniFi AC Mesh (indoor/outdoor)
+  * UniFi AP AC Pro
+  * UniFi AC Mesh Pro (indoor/outdoor)
+  * UniFi AP AC LR (Long Range)
+  * UniFi AP AC EDU
+  * UniFi AP AC IW (In Wall)
+  * UniFi AP AC IW Pro
+
+From what is known of the official firmware releases, these devices use the same platform.
+
+:!: The very first UAP-AC models, now called "Gen1," used a Broadcom ac chipset and are not supported by OpenWrt.  Those models include:
+
+  * UniFi AP AC Gen1 (square case, indoor wall or ceiling mount)  -- NOT SUPPORTED 
+  * UniFi AP AC Outdoor (rectangular case with internal antennas, outdoor mount, two GbE ports, single LED on front)  -- NOT SUPPORTED
+
+
+:!: For OpenWrt/LEDE on the Unifi AP AC Pro/Mesh Pro, LAN and WAN port assignment is "unexpected." LAN is on the port labeled "Secondary", whereas the port labeled "Main" is WAN.
+
+==== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^UniFi AC Mesh|UniFi AP AC Lite|UniFi AP AC LR|UniFi AP AC Pro$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet1gports", "usbports"],
+  "filterColumns": {"model": "^UniFi AC Mesh|UniFi AP AC Lite|UniFi AP AC LR|UniFi AP AC Pro$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^UniFi AC Mesh|UniFi AP AC Lite|UniFi AP AC LR|UniFi AP AC Pro$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+==== Non-invasive method using dd ====
+This method does not require physically opening the device and **works without downgrading the firmware**. It works at least with the Unifi AC Pro with firmware 6.5.28 (February 2023).
+
+In short, the required steps are:
+  * Obtain the matching OpenWrt Firmware for your device.
+  * Directly connect Linux-PC and Unifi-device. If your device is powered through PoE insert just this PoE injector in between and keep the setup very simple.
+  * Configure your PC to a static IP (192.168.1.0/24, do not use IP 192.168.1.20 or 192.168.1.1 for the computer, if unsure use IP 192.168.1.10, netmask 255.255.255.0, default gateway 192.168.1.1 for your PC)
+  * Power on the Unifi-device and wait until you can ''ping 192.168.1.20'' from your PC.
+  * Try SSH into the Unifi-device ''ssh ubnt@192.168.1.20'' (password is also ubnt), if it succeeds fine, otherwise try it with a hardreset as follows:
+    * Power off the device, press the reset button and power it back on, keep the reset button pressed until its lights cycle through their colours. This takes several seconds (~20-30). After this, the device might need to be power cycled again to be reachable via ssh.
+  * scp the OpenWrt-Firmware to the Unifi-device ''scp -O openwrt-ath79-generic-ubnt_unifiac-XXX-squashfs-sysupgrade.bin ubnt@192.168.1.20:/tmp/sysupgrade.bin''
+    * Alternative approach, if scp errors out with ''/usr/libexec/sftp-server: not found'': Use this command ''cat openwrt-ath79-generic-ubnt_unifiac-XXX-squashfs-sysupgrade.bin | ssh ubnt@192.168.1.20 "cat > /tmp/sysupgrade.bin"''
+  * If your are not already logged in, SSH into the Unifi device again.
+  * Unlock mtd partitions with some magic <code>echo "5edfacbf" > /proc/ubnthal/.uf</code>
+    * If you get the error `can't create /proc/ubnthal/.uf: nonexistent directory`, simply continue with the next step
+  * Show all flash partitions ''cat /proc/mtd''. This should resolve in something like this: <code>BZ.v6.5.28# cat /proc/mtd 
+dev:    size   erasesize  name
+mtd0: 00060000 00010000 "u-boot"
+mtd1: 00010000 00010000 "u-boot-env"
+mtd2: 00790000 00010000 "kernel0"
+mtd3: 00790000 00010000 "kernel1"
+mtd4: 00020000 00010000 "bs"
+mtd5: 00040000 00010000 "cfg"
+mtd6: 00010000 00010000 "EEPROM"
+</code>
+  * Write OpenWrt image to kernel0 (here mtd2) ''dd if=/tmp/sysupgrade.bin of=/dev/mtdblock2''
+  * Write OpenWrt image to kernel1 (here mtd3) ''dd if=/tmp/sysupgrade.bin of=/dev/mtdblock3''
+    * Alternatively, delete kernel1 ''dd if=/dev/zero of=/dev/mtdblock3''
+  * Boot form kernel0 ''dd if=/dev/zero bs=1 count=1 of=/dev/mtdblock4''
+  * Reboot with ''reboot''
+  * That's it! On the next boot, you will see the OpenWrt firmware. (visit http://192.168.1.1)
+  * Optional: Do a sysupgrade on the fresh install with the same image to extend the available flash storage.
+
+
+==== Non-invasive method using mtd ====
+This method does not require physically opening the device.
+
+In short, the required steps are:
+  * Obtain the Unifi Firmware version 3.7.58 for your device: 
+    * Either ''wget https://dl.ui.com/unifi/firmware/U7PG2/3.7.58.6385/BZ.qca956x.v3.7.58.6385.170508.0957.bin''
+    * or ''wget https://web.archive.org/web/20201011085042/https://dl.ui.com/unifi/firmware/U7PG2/3.7.58.6385/BZ.qca956x.v3.7.58.6385.170508.0957.bin''
+    * Verify the Firmware file has not been tampered with: ''md5sum BZ*.bin'' should return: ''5bb23b387defcbd1f6cda5819c7905e5'', if you trust a SHA-512 checksum more: ''sha512sum BZ*.bin'' should return ''850921008ffa17450dd3ca235ab933a7d50e048bc103e8b27c78ddb35578be6a9a50fb20194a3198913ed370872142ae5f93e0026d84cc299b558ff8073cc6e7''
+    * for your convenience rename the Unifi-firmware to something simple like ubnt.bin by running this command ''mv BZ*.bin ubnt.bin''
+  * Obtain the matching OpenWrt Firmware for your device.
+  * Directly connect Linux-PC and Unifi-device. If your device is powered through PoE insert just this PoE injector in between and keep the setup very simple.
+  * Configure your PC to a static IP (192.168.1.0/24, do not use IP 192.168.1.20 or 192.168.1.1 for the computer, if unsure use IP 192.168.1.10, netmask 255.255.255.0, default gateway 192.168.1.1 for your PC)
+  * Power on the Unifi-device and wait until you can ''ping 192.168.1.20'' from your PC.
+  * Try SSH into the Unifi-device ''ssh ubnt@192.168.1.20'' (password is also ubnt), if it succeeds fine, otherwise try it with a hardreset as follows:
+    * Power off the device, press the reset button and power it back on, keep the reset button pressed until its lights cycle through their colours. This takes several seconds (~20-30).
+    * Ping will not work in this state, but the Unifi-device will activate an internal TFTP server for a few minutes and accept TFTP uploads.
+    * Upload the Unifi Firmware 3.7.58 via TFTP. Easiest TFTP-client to use for this case is atftp: <code>atftp --trace --option "timeout 1" --option "mode octet" --put --local-file ubnt.bin 192.168.1.20</code>
+    * Wait till the Unifi-device has rebooted and responds to ping again. Now you should be able to SSH into the Unifi-device and proceed with replacing the firmware.
+  * SSH into the Unifi-device, the prompt states the firmware version and it must indicate version <color #22b14c>3.7.58</color>. If this is not the case redo the steps above. Below the green commands must be entered in the SSH session with the Unifi-device.
+  * Copy the Unifi-Firmware from your Linux-PC to the Unifi-device: ''scp -O ubnt.bin ubnt@192.168.1.20:/tmp/''.
+    * If SFTP is unsupported on the Unifi-device (e.g., with Unifi Firmware 4.3.31) try <code>tar cpf - ubnt.bin | ssh ubnt@192.168.1.20 "tar xpf - -C /tmp/"</code>
+  * At your Unifi-device issue the command ''<color #22b14c>fwupdate.real -m /tmp/ubnt.bin</color>'' to ensure the bootloader of the Unifi-device is based on version 3.7.58. Let the Unifi-device reboot.
+    * An alternative way (https://wiki.freifunk.net/Ubiquiti_Unifi_AC/Flash-Anleitung_mit_mtd) to install version 3.7.58 is to rename the file ''<color #22b14c>mv /tmp/ubnt.bin /tmp/fwupdate.bin</color>'', and then to run ''<color #22b14c>syswrapper.sh upgrade2 &</color>''. Note that the shell script assumes that the installation binary is located at ''<color #22b14c>/tmp/fwupdate.bin</color>''.
+  * scp the OpenWrt-Firmware to the Unifi-device ''scp -O openwrt-ath79-generic-ubnt_unifiac-XXX-squashfs-sysupgrade.bin ubnt@192.168.1.20:/tmp/''
+  * SSH into the Unifi-device and: ''<color #22b14c>mtd write /tmp/openwrt-xxxxx-squashfs-sysupgrade.bin kernel0</color>'', afterwards also erase the now unused partition ''<color #22b14c>mtd erase kernel1</color>''
+  * Find out which partition is named "bs": ''<color #22b14c>cat /proc/mtd</color>'', expected result is "mtd4". Then issue this command in the Unifi-device (use the obtained partition name for bs): ''<color #22b14c>dd if=/dev/zero bs=1 count=1 of=/dev/mtd4</color>''
+  * That's it. On next reboot you will see an openwrt firmware. If you flashed a stable release the webinterface is included in OpenWrt and should now be reachable at ''http://192.168.1.1''.
+
+In detail and with explanations read the following steps:
+Connect only the Unifi to your PC.  Configure the PC with a static IP such as 192.168.1.25/24.  The Unifi will have IP address 192.168.1.20.
+
+The ''mtd'' helper program, which writes directly to flash, has been removed from later versions of the stock firmware.  These instructions assume that version 3.7.58 is running, which does include ''mtd''.  The stock firmware can be upgraded / downgraded using the CLI and ''fwupdate.real -m''  Copy using scp the 3.7.58 firmware to /tmp (see below), log in with ssh, and run fwupdate.real -m //filename// to flash it.  
+(Alternatively you can try to install the mtd for a specific OpenWrt release the firmware is based on. Look at /etc/openwrt_release on the device to check. e.g. For UniFi AC Pro device firmware (4.3.13.11253) (May 2020), you can install the mtd package from 17.01.6 [[https://downloads.openwrt.org/releases/17.01.6/targets/ar71xx/generic/packages/mtd_23.1_mips_24kc.ipk]].  This method is not as certain to work as starting from the 3.7.58 firmware.)
+
+Stock firmware usually also includes a new bootloader.  ''fwupdate.real -m'' will replace the bootloader with the version in the firmware file, but TFTP recovery (see below) does not.  Check the md5 of the installed bootloader to confirm it has also been downgraded to the 3.7.58 version.  Other versions may not work properly with OpenWrt.-
+<code>
+BZ.v3.7.58:# cat /dev/mtd0 | md5sum
+88f66a79f671383eda6512d29aa1b804  -
+
+#Ubiquiti UniFi AC Mesh downgraded from UAP-AC-Mesh-BZ.6.0.14 also works with OpenWrt 21.02.2 using undermentioned hash!
+BZ.v3.7.58# cat /dev/mtd0 | md5sum
+d0f1e59ea240c7cfff0d2cecc7481d0a  -
+</code>
+If the bootloader partition md5 is not as above, re-flash 3.7.58 using fwupdate.real.  That should only be necessary if you used TFTP recovery.
+
+Next scp the OpenWrt //sysupgrade// to the RAM disk in preparation for flashing.  "Factory" headers are not necessary for this process, thus no "factory" OpenWrt binaries exist.
+
+Though originally an ar71xx target, these models have been ported to ath79 and ath79 is recommended for these models. Notice that there are different builds for the different models (Lite, Mesh, Pro, etc).
+<code>
+scp openwrt-ath79-generic-ubnt_unifiac-XXX-squashfs-sysupgrade.bin ubnt@192.168.1.20:/tmp/
+</code>
+
+Original firmware uses a flip-flop flash layout where two complete copies of firmware exist in the flash, one being an older version as a backup in case the new one fails to boot. The bootloader checks the ''bs'' partition to determine whether to boot ''kernel0'' or ''kernel1''. If one partition holds a signed image and the other does not it will always prefer the signed one. If the selected partition is corrupted (unable to decompress kernel) or blank it will boot the other one.  
+
+OpenWrt does not use the "flip flop" process, it always must be installed in the kernel0 partition, and the kernel1 partition becomes reserved space.  Thus we will erase the kernel1 partition to ensure that nothing can boot from there. As of 2018/02 sysupgrade does not yet support the flip-flop layout for these devices.
+
+Connect to the device at ''ubnt@192.168.1.20'' and run the following commands to install OpenWrt to kernel0 and erase kernel1:
+
+<code>
+# (replace xxxxx with your actual version and model specific filename)
+BZ.v3.7.58# mtd write /tmp/openwrt-xxxxx-squashfs-sysupgrade.bin kernel0
+Unlocking kernel0 ...
+Erasing kernel0 ...
+Writing from /tmp/openwrt-ath79-generic-ubnt_unifiac-lite-squashfs-sysupgrade.bin to kernel0 ...  [e/w]
+
+BZ.v3.7.58# mtd erase kernel1
+Unlocking kernel1 ...
+Erasing kernel1 ...
+</code>
+
+Though not strictly necessary, it is a very good idea to write a zero to the first byte of the ''bs'' partition (check ''/proc/mtd'' for the correct path).  The zero byte will direct the bootloader to try kernel0 first.  A byte of 0x80 will attempt to boot kernel1, but since that partition is erased, the bootloader will revert to kernel0 anyway.
+
+<code>
+BZ.v3.9.19# cat /proc/mtd 
+dev:    size   erasesize  name
+mtd0: 00060000 00010000 "u-boot"
+mtd1: 00010000 00010000 "u-boot-env"
+mtd2: 00790000 00010000 "kernel0"
+mtd3: 00790000 00010000 "kernel1"
+mtd4: 00020000 00010000 "bs"
+mtd5: 00040000 00010000 "cfg"
+mtd6: 00010000 00010000 "EEPROM"
+
+BZ.v3.9.19# dd if=/dev/zero bs=1 count=1 of=/dev/mtd4
+1+0 records in
+1+0 records out
+1 byte copied, 7.3437e-05 s, 13.6 kB/s
+</code>
+
+The device is now ready to boot into OpenWrt.  Issue the ''reboot'' command and wait about 2 minutes until the LED lights steady white.  As is conventional, it will have a LAN network at ''192.168.1.1'' with a DHCP server and no WLANs activated. Manually setting your IP-address to the same subnet and connecting directly via LAN-cable will get you to LuCI or SSH.
+
+This script can follow the steps automatically for you: [[https://github.com/damadmai/unifi_openwrt]]
+
+
+==== Non-invasive method using mtd-tools from OpenWrt ====
+
+Note that it's always a good idea to backup your flash before proceeding. If you're currently using a controller, you can find SSH credentials under Settings, System Settings, Controller Configuration, Device SSH Authentication.
+
+The following process will not work on latest official Unifi firmwares, please downgrade to 4.3.28 or similar version before you begin. Otherwise you will end up with message //can't write to kernel0//.
+
+  * SSH to your UniFi:
+    * default ip address is ''192.168.1.20''
+    * default login is ''ubnt''
+    * default password is ''ubnt''
+  * Create a working directory: ''mkdir /tmp/flash''
+  * Copy these files to ''/tmp/flash''
+    * ''openwrt-XXX-squashfs-sysupgrade.bin'' (from https://downloads.openwrt.org/releases/XXX/targets/ath79/generic/)
+    * https://downloads.openwrt.org/releases/21.02.0/targets/ath79/generic/packages/mtd_26_mips_24kc.ipk
+    * https://downloads.openwrt.org/releases/21.02.0/targets/ath79/generic/packages/libc_1.1.24-3_mips_24kc.ipk
+    * https://downloads.openwrt.org/releases/21.02.0/packages/mips_24kc/base/libubox20210516_2021-05-16-b14c4688-2_mips_24kc.ipk
+    * You can use tools such as ''scp'' to transfer files or use ''wget'' if the device has internet access
+  * Enter working directory: ''cd /tmp/flash''
+  * Unpack required packages
+    * ''tar -xzOf libc_1.1.24-3_mips_24kc.ipk  ./data.tar.gz | tar -xvz''
+    * ''tar -xzOf mtd_26_mips_24kc.ipk ./data.tar.gz | tar -xvz''
+    * ''tar -xzOf libubox20210516_2021-05-16-b14c4688-2_mips_24kc.ipk ./data.tar.gz | tar -xvz''
+  * Flash new firmware:
+    * ''LD_LIBRARY_PATH=${PWD}/lib lib/ld-musl-mips-sf.so.1 sbin/mtd write openwrt-*.bin kernel0''
+  * Erase kernel1:
+    * ''LD_LIBRARY_PATH=${PWD}/lib lib/ld-musl-mips-sf.so.1 sbin/mtd erase kernel1''
+  * Set bootloader to boot from ''kernel0''
+    * Ensure that ''bs'' partition is ''mtd4'':
+      * ''grep bs /proc/mtd''
+    * ''hexdump -C /dev/mtd4 | head''
+    * If the first byte is not ''0x00'' overwrite it:
+      * ''dd if=/dev/zero bs=1 count=1 of=/dev/mtd4''
+  * Reboot the device
+
+Note: There have been [[https://forum.openwrt.org/t/uap-ac-lr-openwrt-install/163143/3|reports]] that, like the [[:toh:ubiquiti:unifi_6_lr|UniFi 6LR]], some mtd partitions are locked by some stock firmwares.  If you encounter an error message like "//can't write to kernel0//" then it's possible the mtd can be unlocked with: 
+<code># #Unlock mtd partitions with some magic:
+# echo "5edfacbf" > /proc/ubnthal/.uf</code>
+
+==== Non-invasive method using mtd from unifi ====
+Note, if you are using the Unifi AP AC PRO, the above instruction might fail. One can can simply use these instructions:
+Note that it's always a good idea to backup your flash before proceeding.
+
+Assumption: you are using the first available firmware of the AP AC PRO possibly flashed using the tftp method 3.7.58.6385 https://www.ui.com/download/unifi/unifi-ap-ac-pro/default/unifi-firmware-3758-uap-ac-litelrproedumm-proiwiw-pro
+
+  * SSH to your UniFi:
+    * default ip address is ''192.168.1.20''
+    * default login is ''ubnt''
+    * default password is ''ubnt''
+  * Copy this fils to ''/tmp''
+    * ''openwrt-*-squashfs-sysupgrade.bin''
+    * You can use tools such as ''nc'' or ''scp'' to transfer files
+  * Flash new firmware:
+    * ''mtd write /tmp/openwrt-*-squashfs-sysupgrade.bin kernel0''
+  * Erase kernel1:
+    * ''mtd erase kernel1''
+  * Set bootloader to boot from ''kernel0''
+      * ''dd if=/dev/zero bs=1 count=1 of=/dev/mtd4''
+  * Reboot the device
+
+
+
+==== Using U-Boot with serial console ====
+Another way to install OpenWrt is using the serial console, U-Boot and a tftp-server.
+Enter U-Boot by hitting a key to interrupt autoboot. Then enter the following commands.
+This will wipe the primary firmware partition and install OpenWrt there.
+
+UBoot saves the size of the file which is copied over in a variable 'filesize'.
+
+<code>
+tftpboot 0x80000000 openwrt-ar71xx-generic-ubnt-unifiac-squashfs-sysupgrade.bin
+erase 0x9f070000 +$filesize
+cp.b 0x80000000 0x9f070000 $filesize
+bootm 0x9f070000
+</code>
+
+If the 'filesize' variable is not set or seems to be wrong try to do it manually:
+
+<code>
+tftpboot 0x80000000 openwrt-ar71xx-generic-ubnt-unifiac-squashfs-sysupgrade.bin
+</code>
+Please note how many bytes (in hexadecimal) were copied over e.g. 0x3F0004. It is stated after the file transfer is complete.
+<code>
+erase 0x9f070000 +0x790000
+cp.b 0x80000000 0x9f070000 0xXXXXXX
+bootm 0x9f070000
+</code>
+Replace 0xXXXXXX with the number of bytes copied over.
+
+The OEM firmware, which is still on the secondary firmware partition can be later booted
+either automatically as failover, or manually in U-Boot:
+<code>
+bootm 0x9f800000
+</code>
+
+==== Other ways ====
+Since the UniFi series by design have no webserver-GUI at all, there won't be way to upload the file
+to the device in a browser. The usual Ubiquiti upgrade procedure (using syswrapper.sh or fwupdate.real) will not
+work here, as the images seem to be RSA-signed and these utilities complain: "FW Image partition 2 header or signature truncated."
+
+Pushing and holding down the reset button (either on the device itself or on the PoE injector)
+while powering up the device leads to following behaviour:
+  * after about 5 seconds the blue LED will light up and U-Boot erases the cfg-partition (which is only used in the original firmware). If you released the button by now, that's all, what happens.
+  * keeping the button pushed for //additional// 8 seconds, it will also replace the U-Boot environment with a default one (which slightly differs from the shipped environment). However, this does not make much difference at all. As a result the unit starts a TFTP server on its default IP 192.168.1.20 and waits for a new firmware to be installed. The LEDs flash in a sequence (blue, white, pause, ...). A binary which can be PUT (tftp client) to the device from 192.168.1.254 has to have a firmware header (a sysupgrade.bin will fail immediately). Currently it is not known which format (checksums or even signatures) the file should have. After loading a file with an appropriate header U-Boot tries to execute it (which in my case immediately returned and booted from the primary firmware partition).
+
+This means that at the moment the only way of installing OpenWrt to the device without access to the serial console is
+by using the //mtd// method as described above.
+
+==== OEM Firmware ====
+You can download the official firmware archives for example at [[https://www.ui.com/download/software/uap-ac-lite]], since the same firmware is used for UAP-AC-Lite/AC-LR/AC-Pro/AC-EDU devices.
+
+Going back to the original firmware is no problem at all.
+
+=== Flashing via TFTP (TFTP recovery)===
+OpenWrt cannot be flashed this way since the firmware must be signed.  Any version of the official firmware should work though.
+  - Keep the reset button pressed while powering on the AP
+  - Wait until the LED ring is blinking white/blue/off (ca. 15 sec.) then release the button.  The UAP is now a TFTP server at 192.168.1.20.  It will not respond to pings or serve DHCP, so you must static IP your PC.
+  - TFTP PUT the image to 192.168.1.20.  This should be done promptly, since although the LEDs continue to blink indefinitely, after a few minutes the UAP will stop responding to TFTP.  If the TFTP put attempt times out, repeat the power up reset process and try again.
+  - Further TFTP client instructions in [[docs:guide-user:installation:generic.flashing.tftp#bootloader_contains_tftp_server|here]].
+  - If successful, the TFTP transfer will complete in a few seconds, then the LEDs will flash in various patterns.  Leave the UAP alone (powered up) until the LED lights steady white, which may take several minutes.
+
+:!: Be aware that this procedure overwrites both primary and secondary image and sets the boot select bit to 0, but does not update / upgrade the bootloader.  Thus if you intend to continue use of Unifi firmware it is recommended to log into the new firmware and flash the same version again using ''fwupdate.real -m''
+
+This manual [[https://support.purplewifi.net/en/support/solutions/articles/1000186071-using-unifi-recovery-mode-via-tftp]] tester for AP AC PRO (at least) - work fine to restore OEM firmware from openwrt (exactly for AP AC PRO used firmware from https://www.ubnt.com/download/unifi)
+
+=== Installing from OpenWrt ===
+
+This is not very practical but it may be possible to extract the kernel/rootfs from an official image and use it as a sysupgrade.  Realize that though /dev/mtd6 is still partitioned as "ubnt-airos" under OpenWrt, it is no longer a backup of the original firmware.  When OpenWrt has been installed according to the directions above, this partition will be blank, as is necessary to prevent it from booting.
+
+===== Hardware =====
+^ Version                                    ^ Lite / Mesh                        ^ LR                                 ^ Pro                                 ^ EDU   ^
+^ [[wp>Instruction set]]                |   [[wp>MIPS architecture|MIPS]]    |   [[wp>MIPS architecture|MIPS]]    |  [[wp>MIPS architecture|MIPS]]         |  [[wp>MIPS architecture|MIPS]]   |
+^ Vendor                                |         Qualcomm / Atheros         |         Qualcomm / Atheros         |  Qualcomm / Atheros                   |  Qualcomm / Atheros   |
+^ [[docs:techref:bootloader]]           |  [[docs:techref:bootloader:uboot]]  |   [[docs:techref:bootloader:uboot]]  |  [[docs:techref:bootloader:uboot]]   |   [[docs:techref:bootloader:uboot]]   |
+^ [[docs:techref:hardware:soc|System-On-Chip]]   |  QCA9563-AL3A                      |  QCA9563-AL3A                         |  QCA9563-AL3A               |  QCA9563-AL3A   |
+^ [[docs:techref:hardware:cpu]] Frq              |  775 MHz                           |  775 MHz                           |  775 MHz                       |  775 MHz   |
+^ BogoMIPS                              |  385.84                            |  385.84                            |  385.84                                 |  385.84   |
+^ Flash-Chip                            |  Macronix MX25L12835FMI            |  Macronix MX25L12835FMI            |  Macronix MX25L12835FMI                 |  Macronix MX25L12835FMI   |
+^ Flash size                            |  16 MiB                            |  16 MiB                            |  16 MiB                                 |  16 MiB   |
+^ RAM-Chip                              |  Winbond W971GG6KB-25              |  Winbond W971GG6KB-25              |  Winbond W971GG6KB-25                   |  Winbond W971GG6KB-25   |
+^ RAM size                              |  128 MiB                           |  128 MiB                           |  128 MiB                                |  128 MiB   |
+^ Wireless 1 (2.4 GHz)                  |  QCA9563 built-in 2x2 MIMO         |  QCA9563 built-in 3x3 MIMO         |  QCA9563 built-in 3x3 MIMO              |  QCA9563 built-in 3x3 MIMO  |
+^ Wireless 2 (5 GHz)                    |  U-AME-G1-BR4A 2x2 MIMO            |  U-AME-G1-BR4A 2x2 MIMO            |  QCA9880-BR4A 3x3 MIMO                  |  QCA9880-BR4A 3x3 MIMO  |
+^ Eth Phy                               |  Atheros AR8033-AL1A               |  Atheros AR8033-AL1A               |  QCA8334-AL3C                           |  QCA8334-AL3C   |
+^ USB                                   |  None                              |  None                              |  USB 2.0                                |  USB 2.0   |
+^ [[docs:techref:hardware:port.serial|Serial]]   |  Yes, for U-Boot                   |  Same as the AC Lite               |  Same as the AC Lite          |  Same as the AC Lite   |
+^ [[docs:techref:hardware:port.jtag|JTAG]]       |  N/A                               |  N/A                                 |   N/A                            |   N/A   |
+
+==== 5 GHz Wireless Phy ====
+
+The chip //Ubiquiti U-AME-G1-BR4A// seems to be a custom labeled QCA9882-BR4A (2x2:2 MIMO). It is detected as QCA988X/hw2.0 and supported by the ath10k driver.
+
+Depending on where you get the images you may have to install ''kmod-ath10k'' and ''ath10k-firmware-qca988x'' afterwards.
+
+
+===== Specific Configuration =====
+==== All UniFi AP AC devices: LEDs ====
+The UniFi AP AC has two LEDs, they can be configured by adding something like:
+<code>
+config 'led'
+	option 'name' 'lan'
+	# option 'sysfs' 'ubnt:white:dome'
+	option 'sysfs' 'ubnt:blue:dome'
+	option 'trigger' 'netdev'
+	option 'dev' 'br-lan'
+	option 'mode' 'tx rx'
+</code>
+at the end of ///etc/config/system//.
+
+==== UniFi AP AC PRO: Switch ====
+The UniFi AP AC PRO has a built-in switch and two external Ethernet ports.
+Port 2 on the switch corresponds to the primary Ethernet connector, Port 3 to the secondary.
+In their default configuration primary/secondary are assigned LAN/WAN interface.
+
+
+NB to get multiple VLAN's to work on a single physical port, remove the '**vid**' options. Mind the WAN port that has a default assignment of VLAN 2 (eth0.2 refers to VLAN 2). And add the vlan's to the switch like so. In the example use case the openwrt access point is mearly that, DHCP is served from another device.
+
+
+==== UniFi nanoHD: VLANS using DSA ====
+To get VLANs to work under the Distributed Switch Architecture (DSA) an example on a simple device with only one physical port. If you wish to use VLAN 2, one would normally use eth0.2. Now you can use lan.2 for the device name. If you wish to use WLANs as well, simply bridge them as one normally would. 
+
+NB in this example another device provides DHCP, hence the proto 'none'.
+
+Example /etc/config/network
+<code>
+config interface 'loopback'
+        option ifname 'lo'
+        option proto 'static'
+        option ipaddr '127.0.0.1'
+        option netmask '255.0.0.0'
+
+config globals 'globals'
+        option packet_steering '1'
+        option ula_prefix 'fdfe:bdca:64ed::/48'
+
+config interface 'lan'
+        option type 'bridge'
+        option ifname 'lan'
+        option proto 'dhcp'
+
+config interface 'iot'
+        option type 'bridge'
+        option ifname 'lan.2'
+        option proto 'none'
+
+config interface 'guest'
+        option type 'bridge'
+        option ifname 'lan.3'
+        option proto 'none'
+</code>
+
+For completeness sake, the output of brctl show:
+<code>
+bridge name     bridge id               STP enabled     interfaces
+br-lan          7fff.74acb915dd14       no              lan
+                                                        wlan0
+                                                        wlan1
+br-guest        7fff.74acb915dd14       no              lan.3
+br-iot          7fff.74acb915dd14       no              wlan0-1
+                                                        lan.2
+                                                        wlan1-1
+</code>
+
+==== 802.11s Mesh ====
+As of OpenWrt 19.07 802.11s meshing is broken on Qualcomm AC Wave1 chipsets. The reason is the wifi chipset firmware made by Candela Technologies (-ct firmware and kmod). If one wants to use meshing, firmware and kernel module from Candela Technologies have to be removed and the normal upstream firmware and kmod (without -ct at the end) must be installed.
+
+==== UniFi AP AC IW ====
+As of 19.07.02 this is not officially supported but the hardware is similar enough to the Pro that the same firmware can be used. The installation is the same as all other Unifi AP AC products and there is a serial port header on the board for recovery.
+
+The main jack on back, Port 1, does not function properly on the network with the default setup. After flashing the firmware, connect to Port 3 (the non-POE port on the bottom) to access the device at 192.168.1.1. Port 1 needs to be set to an appropriate VLAN and that must be done manually. Edit /etc/config/network and add Port 1 like this
+
+<code>
+config switch_vlan
+	option device 'switch0'
+	option vlan '1'
+	option ports '0t 1 2 3'
+</code>
+
+and after a reboot Port 1 should work as expected but will not be accessible via the Luci switch interface.
+
+Both 2.4 and 5 GHz radios work fine with the default setup.
+
+:!: Note the POE power on Port 2 (bottom left) is always on and cannot be toggled off at the moment. Do not plug anything into this port that cannot handle the voltage.
+===== Photos =====
+
+The thinner front part can be separated with one's fingernails. At five equally distributed locations at the outer ring it snaps from the outside into the main back part. No twisting/turning. Sharp tools are likely to damage the plastic. The platine is held with three easily reachable screws. 
+
+**Unifi AP AC Lite**\\
+{{media:ubiquiti:unifi-apac-lite_pcb_front.jpg?400}}
+{{media:ubiquiti:unifi-apac-lite_pcb_back.jpg?400}}
+
+{{media:ubiquiti:unifi-apac-lite-qca9563.jpg?200}}
+{{media:ubiquiti:unifi-apac-lite-wifi.jpg?200}}
+
+**Unifi AP AC Pro**\\
+{{media:ubiquiti:unifi-apac-pro_pcb_front.jpg?400}}
+{{media:ubiquiti:unifi-apac-pro_pcb_back.jpg?400}}
+
+**Unifi AC Mesh**\\
+{{media:ubiquiti:ubiquiti:unifi_ac_mesh_antenna.jpg?200}}
+{{media:ubiquiti:ubiquiti:unifi_ac_mesh_front.jpg?300}}
+{{media:ubiquiti:ubiquiti:unifi_ac_mesh_pcb_bottom.jpg?200}}
+{{media:ubiquiti:ubiquiti:unifi_ac_mesh_pcb_bottom_uncovered.jpg?200}}
+{{media:ubiquiti:ubiquiti:unifi_ac_mesh_pcb_top.jpg?200}}
+
+**Unifi AC LR**\\
+{{:media:ubiquiti:ubiquiti:unifi_ac_lr_fl.jpg?200}}
+{{:media:ubiquiti:ubiquiti:unifi_ac_lr_fr.jpg?200}}
+{{:media:ubiquiti:ubiquiti:unifi_ac_lr_rl.jpg?200}}
+{{:media:ubiquiti:ubiquiti:unifi_ac_lr_rr.jpg?200}}
+===== Serial console =====
+The device has two pinheaders with serial ports. Both ports operate at 3.3V level, 115200 Baud, 8N1 and have the pinout +3,3V - RX - TX - GND.
+
+The port to the left (shown red) gives access to U-Boot and OpenWrt's console. The purpose of the other port (shown blue) is not identified yet.
+
+Using the default/factory U-Boot environment there are no outputs from the kernel during booting.
+Instead, one has to send a newline at 9600 Baud (to activate the console) and then login at 115200 Baud again.
+To overcome this, one can alter the //bootargs// environment variable in U-Boot:
+<code>
+setenv bootargs 'console=ttyS0,115200 panic=3'
+saveenv
+</code>
+Having it set that way, one can follow the kernel booting and can then directly login without switching Baudrates.
+
+{{media:ubiquiti:unifi-apac-lite_serial.jpg?400}}
+
+==== Serial port outputs on OEM firmware ====
+
+=== Serial Port 1 (left) on LITE ===
+The output shown has a patched //bootargs// variable. Otherwise it would stop at //Starting kernel...//
+
+<WRAP bootlog>
+<nowiki>U-Boot unifi-v1.6.2.235-g1aad87ce (Jun 30 2015 - 21:30:38)
+
+DRAM:  
+sri
+ath_ddr_initial_config(278): (ddr2 init)
+ath_sys_frequency: cpu 775 ddr 650 ahb 258
+Tap values = (0xf, 0xf, 0xf, 0xf)
+128 MB
+Top of RAM usable for U-Boot at: 88000000
+Reserving 231k for U-Boot at: 87fc4000
+Reserving 192k for malloc() at: 87f94000
+Reserving 44 Bytes for Board Info at: 87f93fd4
+Reserving 36 Bytes for Global Data at: 87f93fb0
+Reserving 128k for boot params() at: 87f73fb0
+Stack Pointer at: 87f73f98
+Now running in RAM - U-Boot at: 87fc4000
+Flash: 16 MB
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ath_gmac_enet_initialize...
+No valid address in Flash. Using fixed address
+ath_gmac_enet_initialize: reset mask:c02200 
+athr_mgmt_init ::done
+Dragonfly  ----> S17 PHY *
+ ath_gmac_enet_initialize: is_s17()=0, is_ar8033()=1, phy id1=4d phy_id2=d074 
+WAN AR8033 PHY init 
+athrs_ar8033_reg_init: Done 111 
+Max resets limit reached exiting...
+athr_gmac_sgmii_setup SGMII done
+: cfg1 0x80000000 cfg2 0x7114
+eth0: 00:03:7f:__:__:__
+eth0 up
+eth0
+Setting 0x181162c0 to 0x1c382100
+Board: Copyright Ubiquiti Networks Inc. 2014
+Hit any key to stop autoboot:  2 1 0
+## Starting application at 0x80200020 ...
+Board: Ubiquiti Networks AR956X board (e517-18.1150.0030.0040)
+ 0. Name = u-boot, offset = 0, start_addr=9f000000, size=393216,start_sector=0, end_sector=5 
+ 1. Name = u-boot-env, offset = 60000, start_addr=9f060000, size=65536,start_sector=6, end_sector=6 
+ 2. Name = kernel0, offset = 70000, start_addr=9f070000, size=7929856,start_sector=7, end_sector=127 
+ 3. Name = kernel1, offset = 800000, start_addr=9f800000, size=7929856,start_sector=128, end_sector=248 
+ 4. Name = bs, offset = f90000, start_addr=9ff90000, size=131072,start_sector=249, end_sector=250 
+ 5. Name = cfg, offset = fb0000, start_addr=9ffb0000, size=262144,start_sector=251, end_sector=254 
+ 6. Name = EEPROM, offset = ff0000, start_addr=9fff0000, size=65536,start_sector=255, end_sector=255 
+get_mtd_params: name=bs
+ubnt_flash_read: addr=8023b480, sa=9ff90000, sz=131072 
+ubnt_bootsel_init: bootsel magic=a34de82b, bootsel = 0 
+UBNT application initialized 
+## Application terminated, rc = 0x0
+## Starting application at 0x80200020 ...
+keep cfg partition. 
+## Application terminated, rc = 0x0
+## Starting application at 0x80200020 ...
+ubnt_uwrite: Nothing to flash, exiting 
+## Application terminated, rc = 0x0
+## Starting application at 0x80200020 ...
+Number of boot partitions = 2 
+get_mtd_params: name=bs
+ubnt_flash_read: addr=8023b480, sa=9ff90000, sz=131072 
+ubnt_get_bootsel: Boot partition selected = 0 
+Loading Kernel Image @ 81000000, size = 7929856 
+Verifying 'kernel0' parition:OK
+## Application terminated, rc = 0x0
+## Booting image at 9f070000 ...
+   Image Name:   MIPS OpenWrt Linux-3.3.8
+   Created:      2015-09-12   0:03:12 UTC
+   Image Type:   MIPS Linux Multi-File Image (lzma compressed)
+   Data Size:    6877256 Bytes =  6.6 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Contents:
+   Image 0:  6877248 Bytes =  6.6 MB
+   Verifying Checksum at 0x9f070040 ...OK
+   Uncompressing Multi-File Image ... OK
+No initrd
+## Transferring control to Linux (at address 80060000) ...
+## Giving linux memsize in bytes, 134217728
+
+Starting kernel ...
+
+[    0.000000] Linux version 3.3.8 (build-unifi@ubnt-builder3) (gcc version 4.6.3 20120201 (prerelease) (Linaro GCC 4.6-2012.02) ) #1 Fri Sep 11 17:02:52 PDT 2015
+[    0.000000] CPU revision is: 00019750 (MIPS 74Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA956X rev 0
+[    0.000000] Clocks: CPU:775.000MHz, DDR:650.000MHz, AHB:258.333MHz, Ref:25.000MHz
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00008000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] Early memory PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00008000
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line:  console=ttyS0,115200 panic=3 ubntbootid=0 mtdparts=ath-nor0:384k(u-boot),64k(u-boot-env),7744k(kernel0),7744k(kernel1),128k(bs),256k(cfg),64k(EEPROM) mem=128M ubootver=unifi-v1.6.2.235-g1aad87ce  board=UBNTGen2 
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 104484k/131072k available (2372k kernel code, 26588k reserved, 578k data, 21808k init, 0k highmem)
+[    0.000000] SLUB: Genslabs=9, HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:83
+[    0.000000] Console: colour dummy device 80x25
+[    0.000000] Calibrating delay loop... 385.84 BogoMIPS (lpj=1929216)
+[    0.050000] pid_max: default: 32768 minimum: 301
+[    0.060000] Mount-cache hash table entries: 512
+[    0.060000] Initialized recycle list for cpu 0.
+[    0.060000] NET: Registered protocol family 16
+[    0.060000] gpiochip_add: registered GPIOs 0 to 22 on device: ath79
+[    0.060000] MIPS: machine is Ubiquiti Networks Inc. (c) 2015
+[    0.060000] ubnt_gen2_setup: Board ID = e517 
+[    0.100000] registering PCI controller with io_map_base unset
+[    0.310000] bio: create slab <bio-0> at 0
+[    0.310000] Advanced Linux Sound Architecture Driver Version 1.0.24.
+[    0.310000] PCI host bridge to bus 0000:00
+[    0.310000] pci_bus 0000:00: root bus resource [mem 0x12000000-0x13ffffff]
+[    0.310000] pci_bus 0000:00: root bus resource [io  0x0001]
+[    0.310000] pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    0.310000] pci 0000:00:00.0: BAR 6: assigned [mem 0x12200000-0x1220ffff pref]
+[    0.310000] pci 0000:00:00.0: using irq 40 for pin 1
+[    0.310000] Switching to clocksource MIPS
+[    0.320000] NET: Registered protocol family 2
+[    0.320000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.320000] TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.320000] TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.320000] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.320000] TCP reno registered
+[    0.320000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.320000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.320000] NET: Registered protocol family 1
+[    0.520000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.520000] JFFS2 version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.520000] msgmni has been set to 204
+[    0.520000] io scheduler noop registered
+[    0.520000] io scheduler deadline registered (default)
+[    0.520000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.550000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11) is a 16550A
+[    0.920000] console [ttyS0] enabled
+[    0.920000] 7 cmdlinepart partitions found on MTD device ath-nor0
+[    0.930000] Creating 7 MTD partitions on "ath-nor0":
+[    0.930000] 0x000000000000-0x000000060000 : "u-boot"
+[    0.940000] 0x000000060000-0x000000070000 : "u-boot-env"
+[    0.950000] 0x000000070000-0x000000800000 : "kernel0"
+[    0.950000] 0x000000800000-0x000000f90000 : "kernel1"
+[    0.960000] 0x000000f90000-0x000000fb0000 : "bs"
+[    0.970000] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.970000] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.980000]  ath_flash_init: init ath_flash driver, res=0 
+[    0.990000] ag71xx_mdio: probed
+[    0.990000] eth0: Atheros AG71xx at 0xb9000000, irq 4
+[    1.550000] ag71xx ag71xx.0: eth0: connected to PHY at ag71xx-mdio.0:04 [uid=004dd074, driver=Qualcomm Atheros AR8033 PHY]
+[    1.560000] ALSA device list:
+[    1.560000]   No soundcards found.
+[    1.570000] u32 classifier
+[    1.570000]     Performance counters on
+[    1.570000]     input device check on
+[    1.580000]     Actions configured
+[    1.580000] TCP cubic registered
+[    1.590000] NET: Registered protocol family 17
+[    1.590000] Bridge firewalling registered
+[    1.590000] 8021q: 802.1Q VLAN Support v1.8
+[    1.600000] ### of_selftest(): No testcase data in device tree; not running tests
+[    1.730000] Freeing unused kernel memory: 21808k freed
+[    1.760000] ubnthal: module license 'Proprietary' taints kernel.
+[    1.770000] Disabling lock debugging due to kernel taint
+[    1.780000] Init caladdr[0]=0xbfff1000 caladdr[1]=0xbfff5000
+[    1.780000] 
+[    1.790000] Init caladdr[0]=0xbfff1000 caladdr[1]=0xbfff5000
+[    1.790000] 
+[    1.800000] ubnthal: Ubiquiti UAP-AC-Lite
+[    1.800000] ubnthal: Dragonfly: maxPower 20 powerOffset 0 txmask 3 antenna 4 [0] gain 0 caps 0x4014
+[    1.810000] ubnthal: Peregrine: maxPower 20 powerOffset 0 txmask 3 antenna 4 [0] gain 0 caps 0x4014
+[    1.820000] gpiodev: (reset_timeout=3 factory_countdown=1000000)
+...running /sbin/init
+
+init started: BusyBox v1.19.4 (2015-09-11 16:51:29 PDT)
+[    3.130000] NET: Registered protocol family 10
+[    3.190000] usbcore: registered new interface driver usbfs
+[    3.190000] usbcore: registered new interface driver hub
+[    3.200000] usbcore: registered new device driver usb
+[    3.270000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    3.280000] ehci-platform ehci-platform.0: Generic Platform EHCI Controller
+[    3.280000] ehci-platform ehci-platform.0: new USB bus registered, assigned bus number 1
+[    3.320000] ehci-platform ehci-platform.0: irq 48, io mem 0x1b000000
+[    3.340000] ehci-platform ehci-platform.0: USB 2.0 started, EHCI 1.00
+[    3.340000] hub 1-0:1.0: USB hub found
+[    3.350000] hub 1-0:1.0: 1 port detected
+[    3.350000] ehci-platform ehci-platform.1: Generic Platform EHCI Controller
+[    3.360000] ehci-platform ehci-platform.1: new USB bus registered, assigned bus number 2
+[    3.400000] ehci-platform ehci-platform.1: irq 49, io mem 0x1b400000
+[    3.420000] ehci-platform ehci-platform.1: USB 2.0 started, EHCI 1.00
+[    3.420000] hub 2-0:1.0: USB hub found
+[    3.430000] hub 2-0:1.0: 1 port detected
+[    3.470000] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    3.510000] usbcore: registered new interface driver snd-usb-audio
+UBNT load board.bin file
++ exec
+[    5.280000] ****Address of trace_timer :85dd2620 
+[    5.560000] ath_hal: 0.9.17.1 (AR9380, DEBUG, REGOPS_FUNC, WRITE_EEPROM, TX_DATA_SWAP, RX_DATA_SWAP, 11D)
+[    5.820000] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+[    5.840000] ath_dfs: Version 2.0.0
+[    5.840000] Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+[    5.860000] ath_spectral: Version 2.0.0
+[    5.860000] Copyright (c) 2005-2009 Atheros Communications, Inc. All Rights Reserved
+[    5.870000] SPECTRAL module built on Sep 11 2015 16:58:22
+[    6.140000] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+[    6.500000] __ath_attach: Set global_scn[0]
+[    6.510000] *** All the minfree values should be <= ATH_TXBUF-32, otherwise default value will be used instead ***
+[    6.520000] ACBKMinfree = 48
+[    6.520000] ACBEMinfree = 32
+[    6.520000] ACVIMinfree = 16
+[    6.530000] ACVOMinfree = 0
+[    6.530000] CABMinfree = 48
+[    6.530000] UAPSDMinfree = 0
+[    6.540000] ATH_TXBUF=4096
+[    6.540000] register caladdr[0]=0x8032e1d4 caladdr[1]=0xbfff5000
+[    6.540000] 
+[    6.550000] Bootstrap clock 25MHz
+[    6.560000] Enterprise mode: 0x03bda000
+[    6.560000] Restoring Cal data from DRAM
+[    6.570000] 
+[    6.570000] ART Version : -48.0.0
+[    6.570000] SW Image Version : -48.0.0.0.0
+[    6.580000] Board Revision :  
+[    6.580000] ath_hal: Ubiquiti Dragonfly
+[    6.580000] ath_hal: maxPower 40 minPower 0 powerOffset 0
+[    6.590000] ar9300_attach: nf_2_nom -110 nf_2_max -60 nf_2_min -125 
+[    6.600000] SPECTRAL : get_capability not registered
+[    6.600000] HAL_CAP_PHYDIAG : Capable
+[    6.610000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 231)
+[    6.610000] SPECTRAL : get_capability not registered
+[    6.620000] HAL_CAP_RADAR   : Capable
+[    6.620000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[    6.620000]  (spectral_attach : 236)
+[    6.630000] SPECTRAL : get_capability not registered
+[    6.640000] HAL_CAP_SPECTRAL_SCAN : Capable
+[    6.640000] SPECTRAL : get_tsf64 not registered
+[    6.650000] spectral_init_netlink 65 NULL SKB
+[    6.650000] SPECTRAL : No ADVANCED SPECTRAL SUPPORT
+[    6.660000] SPECTRAL :----- module attached
+[    6.660000] Green-AP : Green-AP : Attached
+[    6.660000] 
+[    6.670000] ath_get_caps[6202] rx chainmask mismatch actual 3 sc_chainmak 0
+[    6.680000] ath_get_caps[6177] tx chainmask mismatch actual 3 sc_chainmak 0
+[    6.690000] ath_attach_dfs[12869] dfsdomain 0
+[    6.700000] SPECTRAL : module already attached
+[    6.720000] ath_tx_paprd_init sc 85e80000 PAPRD disabled in HAL
+[    6.730000] wifi0: Atheros 956X: mem=0xb8100000, irq=47
+[    6.730000] ath_pci: 10.2.r2-00013-4 (Atheros/multi-bss)
+[    6.740000] wevent: registered
+[    6.750000] qos: registered
+[    6.750000] ath_pci_probe
+[    6.750000] PCI device id is 003c :003c
+[    6.760000] ath_pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    6.770000] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[    6.770000] ath_pci 0000:00:00.0: ath DEBUG: sc=0x81655000
+[    6.780000] 
+[    6.780000]  ol_ath_pci_configure : num_desired MSI set to 0
+[    6.790000] 
+[    6.790000]  Using PCI Legacy Interrupt
+[    7.790000] CE_per_engine_handler_adjust, base=81655000 offset=00057400 
+[    7.790000] CE_per_engine_handler_adjust, base=81655000 offset=00057800 
+[    7.810000] __ol_ath_attach: ath_attach TODO
+[    7.820000] __ol_ath_attach: dev name wifi1
+[    7.820000] ol_ath_set_default_tgt_config : AC Minfree buffer allocation through module param (umac.ko)
+[    7.830000]  OL_ACBKMinfree : 0
+[    7.830000]  OL_ACBEMinfree : 0
+[    7.840000]  OL_ACVIMinfree : 0
+[    7.840000]  OL_ACVOMinfree : 0
+[    7.840000] ol_ath_attach() BMI inited.
+[    7.850000] ol_ath_attach() BMI Get Target Info.
+[    7.850000] ol_ath_attach() TARGET TYPE: 7 Vers 0x4100016c
+[    7.860000] NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+[    7.860000] ol_ath_attach() configure Target .
+[    7.870000] register caladdr[0]=0x8032e1d4 caladdr[1]=0xc06f8000
+[    7.870000] 
+[    7.880000] qc98xx_verify_checksum: flash checksum passed: 0xa4f3
+[    7.880000] ol_transfer_bin_file 2319: Download Flash data len 2116
+[    7.900000] ol_ath_hal: Ubiquiti Peregrine
+[    7.900000] ol_ath_hal: maxPower 40 minPower 0 powerOffset 0
+[    7.910000] ol_transfer_bin_file 2374: Download UBNT card data len 36
+[    7.910000]  Download AR9888v2_bin
+[    7.920000] ol_transfer_bin_file 2231: Download Firmware data len 239024
+[    8.940000] ol_ath_attach() Download FW. 
+[    8.940000] ol_ath_attach() HT Create .
+[    8.940000] ol_ath_attach() HIF Claim.
+[    8.950000] ol_ath_attach() BMI Done. 
+[    8.950000] ol_ath_attach() WMI attached. wmi_handle 80c50000 
+[    8.960000] +HWT
+[    8.960000] SOC_RESET_CONTROL_ADDRESS : 800
+[    8.960000] CPU_INTR_ADDRESS = [0]
+[    8.970000] SOC_GLOBAL_RESET_ADDRESS = [0]
+[    8.970000] Rx_Filter : [0]
+[    8.980000] CE_per_engine_handler_adjust, base=81655000 offset=00057400 
+[    8.980000] CE_per_engine_handler_adjust, base=81655000 offset=00057800 
+[    8.990000] CE_per_engine_handler_adjust, base=81655000 offset=00057c00 
+[    9.000000] CE_per_engine_handler_adjust, base=81655000 offset=00058000 
+[    9.000000] CE_per_engine_handler_adjust, base=81655000 offset=00058400 
+[    9.010000] CE_per_engine_handler_adjust, base=81655000 offset=00058800 
+[    9.020000] CE_recv_buf_enqueue 653 Populate last entry 512 for CE 5
+[    9.030000] CE_recv_buf_enqueue 662 CE 5 wi 511 dest_ptr 0x925020 nbytes 0 recv_ctxt 0x85ca4840
+[    9.040000] Target:85de4000 HTC Service:0x0001, ULpipe:0 DLpipe:1 id:0 Ready
+[    9.040000] -HWT
+[    9.050000] Target:85de4000 HTC Service:0x0300, ULpipe:4 DLpipe:5 id:1 Ready
+[    9.050000] HTC Service:0x0300 ep:1 TX flow control disabled
+[    9.060000] CE_pkt_dl_len_set CE 4 Pkt download length 64
+[    9.070000] ol_txrx_pdev_attach: 1424 tx desc's allocated ; range starts from 80580000
+[    9.080000] Target:85de4000 HTC Service:0x0100, ULpipe:3 DLpipe:2 id:2 Ready
+[    9.080000] HTC Service:0x0100 ep:2 TX flow control disabled
+[    9.090000] wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event 
+[    9.100000] num_rf_chain : 00000002
+[    9.100000] ht_cap_info: : 0000085b
+[    9.100000] vht_cap_info : 338001b2
+[    9.110000] vht_supp_mcs : 0000fffa
+[    9.110000] LARGE_AP enabled. num_peers 136, num_vdevs 8, num_tids 256, lteu_support 0
+[    9.120000] idx 0 req 1  num_units 0 num_unit_info 2 unit size 440 actual units 137 
+[    9.130000] chunk 0 len 60280 requested ,ptr  0x590000 
+[    9.140000] FIRMWARE:P 137 V 8 T 419
+[    9.140000]  
+[    9.150000] FIRMWARE:_wlan_rtt_enable 
+[    9.150000] wmi_ready_event_rx:  WMI UNIFIED READY event 
+[    9.160000] ol_ath_connect_htc() WMI is ready
+[    9.160000] ol_ath_set_host_app_area TODO
+[    9.170000] target uses HTT version 2.1; host uses 2.1
+[    9.180000] ol_ath_attach() connect HTC. 
+[    9.180000] bypasswmi : 0
+[    9.190000] ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+[    9.200000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x2) flags 0x2150
+[    9.210000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x4) flags 0xa0
+[    9.210000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x8) flags 0xc0
+[    9.220000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x20) flags 0xd0
+[    9.230000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x40) flags 0x150
+[    9.230000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x800) flags 0x10080
+[    9.240000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x2000) flags 0x20080
+[    9.250000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x4000) flags 0x40080
+[    9.260000] Add VHT80 channel: 5210
+[    9.260000] Add VHT80 channel: 5290
+[    9.260000] Add VHT80 channel: 5530
+[    9.270000] Add VHT80 channel: 5775
+[    9.270000] Skipping VHT80 channel 5580
+[    9.280000] Skipping VHT80 channel 5660
+[    9.280000] Skipping VHT80 channel 5680
+[    9.280000] Skipping VHT80 channel 5700
+[    9.290000] Skipping VHT80 channel 5825
+[    9.290000] ol_ath_phyerr_attach: called
+[    9.300000] OL Resmgr Init-ed
+[    9.300000] ol_if_spectral_setup
+[    9.300000] SPECTRAL : get_capability not registered
+[    9.310000] HAL_CAP_PHYDIAG : Capable
+[    9.310000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 231)
+[    9.320000] SPECTRAL : get_capability not registered
+[    9.320000] HAL_CAP_RADAR   : Capable
+[    9.330000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[    9.330000]  (spectral_attach : 236)
+[    9.340000] SPECTRAL : get_capability not registered
+[    9.340000] HAL_CAP_SPECTRAL_SCAN : Capable
+[    9.350000] SPECTRAL : get_tsf64 not registered
+[    9.350000] spectral_init_netlink 65 NULL SKB
+[    9.360000] Green-AP : Green-AP : Attached
+[    9.360000] 
+[    9.360000] Green-AP : Attached
+[    9.370000] ol_if_dfs_setup: called 
+[    9.370000] ol_if_dfs_attach: called; ptr=805c1974, radar_info=85d7fb70
+[    9.380000] ol_ath_rtt_meas_report_attach: called
+[    9.380000] ol_ath_attach() UMAC attach . 
+[    9.390000] ol_if_dfs_configure: called
+[    9.390000] ol_if_dfs_configure: FCC domain
+[    9.400000] ol_if_dfs_disable: called
+[    9.400000] ol_ath_attach: Calling ol_if_dfs_configure
+[    9.410000] __ol_ath_attach: init tx/rx TODO
+[    9.410000] __ol_ath_attach: hard_header_len reservation 58
+[    9.420000] Initializing Pktlogs for 11ac
+[    9.950000] [wifi1] FWLOG: [27541] WAL_DBGID_TX_AC_BUFFER_SET ( 0x3, 0x1e, 0x460, 0x460, 0x0 )
+[    9.960000] [wifi1] FWLOG: [27541] WAL_DBGID_TX_AC_BUFFER_SET ( 0x12, 0x1e, 0x460, 0x460, 0x0 )
+[    9.970000] [wifi1] FWLOG: [27541] WAL_DBGID_TX_AC_BUFFER_SET ( 0x45, 0x1e, 0x460, 0x460, 0x0 )
+[    9.980000] [wifi1] FWLOG: [27541] WAL_DBGID_TX_AC_BUFFER_SET ( 0x67, 0x1e, 0x460, 0x460, 0x0 )
+[    9.990000] [wifi1] FWLOG: [27546] WHAL_ERROR_RECV_STOPPCU ( 0x110298a, 0x3 )
+[   10.000000] [wifi1] FWLOG: [27546] WHAL_ERROR_RESET_PM (  )
+[   10.000000] [wifi1] FWLOG: [27554] WAL_DBGID_DEV_RESET ( 0x1, 0x1, 0x1 )
+[   10.010000] [wifi1] FWLOG: [27811] ANI Enable:  1
+[   10.020000] [wifi1] FWLOG: [27819] WAL_DBGID_DEV_RESET ( 0x1, 0x1, 0x1 )
+[   11.510000] ath_attach_dfs[12869] dfsdomain 0
+[   11.530000] wlan_vap_create : enter. devhandle=0x81640380, opmode=IEEE80211_M_HOSTAP, flags=0x1
+[   11.540000] wlan_vap_create : exit. devhandle=0x81640380, opmode=IEEE80211_M_HOSTAP, flags=0x1.
+[   11.550000] VAP device ath0 created osifp: (85d81380) os_if: (85e90000)
+[   11.590000] setting antenna gain to 0
+[   11.630000] Set freq vap 0 stop send + 85e90000
+[   11.630000] Set freq vap 0 stop send -85e90000
+[   11.770000] Set wait done --85e90000
+[   11.780000] WARNING: Fragmentation with HT mode NOT ALLOWED!!
+[   11.840000] isCountryCodeValid: EEPROM regdomain 0x0
+[   11.850000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x2) flags 0x2150
+[   11.860000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x4) flags 0xa0
+[   11.860000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x8) flags 0xc0
+[   11.870000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x20) flags 0xd0
+[   11.880000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x40) flags 0x150
+[   11.890000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x800) flags 0x10080
+[   11.890000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x2000) flags 0x20080
+[   11.900000] ol_regdmn_init_channels: !avail mode 0x1f9001 (0x4000) flags 0x40080
+[   11.910000] Add VHT80 channel: 5210
+[   11.910000] Add VHT80 channel: 5290
+[   11.920000] Add VHT80 channel: 5530
+[   11.920000] Add VHT80 channel: 5775
+[   11.920000] Skipping VHT80 channel 5580
+[   11.930000] Skipping VHT80 channel 5660
+[   11.930000] Skipping VHT80 channel 5680
+[   11.930000] Skipping VHT80 channel 5700
+[   11.940000] Skipping VHT80 channel 5825
+[   11.950000] ath_ioctl: SIOC80211IFCREATE CALLED
+[   11.950000] wmi_unified_vdev_create_send: ID = 0 VAP Addr = 44:d9:e7:__:__:__:
+[   11.960000] wmi_unified_set_psmode:set psmode=1
+[   11.960000] Setting dscp for vap id: 0
+[   11.970000] VAP device ath1 created osifp: (80674380) os_if: (80660000)
+[   12.060000] WARNING: Fragmentation with HT mode NOT ALLOWED!!
+[   12.260000] ol_ath_desc_alloc_and_mark_for_mcast_clone: VAP Mcast to Unicast buffer allocated: 400
+[   12.270000] ol_ath_vap_set_param: VAP param is now supported param:68 value:2
+[   12.320000] wmi_unified_set_psmode:set psmode=0
+[   12.320000] wmi_unified_set_psmode:set psmode=0
+[   12.360000] Ebtables v2.0 registered
+[   12.600000] device eth0 entered promiscuous mode
+[   12.610000] device ath0 entered promiscuous mode
+[   12.620000] device ath1 entered promiscuous mode
+[   12.640000] ADDRCONF(NETDEV_UP): br0: link is not ready
+[   12.650000] ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   12.740000]  ieee80211_ioctl_siwmode: imr.ifm_active=131712, new mode=3, valid=1 
+
+Please press Enter to activate this console.
+
+[   12.800000]  DEVICE IS DOWN ifname=ath0
+[   12.800000]  DEVICE IS DOWN ifname=ath0
+[   12.960000] [wifi1] FWLOG: [30482] WAL_DBGID_DEV_RESET ( 0x1, 0x1, 0x1 )
+[   13.320000] br0: port 2(ath0) entered forwarding state
+[   13.320000] br0: port 2(ath0) entered forwarding state
+[   13.330000] 8021q: adding VLAN 0 to HW filter on device ath0
+[   13.340000] ADDRCONF(NETDEV_CHANGE): br0: link becomes ready
+[   13.480000] br0: port 3(ath1) entered forwarding state
+[   13.480000] br0: port 3(ath1) entered forwarding state
+[   13.490000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   13.490000] 8021q: adding VLAN 0 to HW filter on device ath1
+[   13.600000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   13.710000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   13.820000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   13.930000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   14.040000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   14.150000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   14.260000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   14.320000] br0: port 2(ath0) entered forwarding state
+[   14.370000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   14.480000] br0: port 3(ath1) entered forwarding state
+[   14.480000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   14.580000] br0: port 3(ath1) entered disabled state
+[   14.600000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   14.710000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   14.820000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   14.930000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   15.040000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   15.150000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   15.260000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   15.370000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   15.480000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   15.590000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   15.700000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   15.810000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   15.920000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   16.030000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   16.140000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   16.250000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   16.360000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   16.470000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   16.580000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   16.600000] eth0: link up (1000Mbps/Full duplex)
+[   16.600000] br0: port 1(eth0) entered forwarding state
+[   16.610000] br0: port 1(eth0) entered forwarding state
+[   16.610000] ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   16.690000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   16.800000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   16.910000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.020000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.130000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.240000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.350000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.460000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.570000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.610000] br0: port 1(eth0) entered forwarding state
+[   17.680000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.790000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.900000] wmi_unified_scan_start_send for vap 0 (80c50000)
+[   17.970000]  Scan in progress.. Cancelling it 
+[   17.970000] ol_scan_cancel for (80c50000)
+[   21.580000] br0: port 3(ath1) entered disabled state
+[   23.740000] br0: no IPv6 routers present
+[   24.070000] ath0: no IPv6 routers present
+[   26.870000] eth0: no IPv6 routers present
+
+UBNT login: ubnt
+Password: 
+
+
+BusyBox v1.19.4 (2015-09-11 16:51:29 PDT) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+BZ.v3.4.7#</nowiki>
+</WRAP>\\
+
+=== Serial Port 1, U-Boot commands/environment ===
+The environment variables here reflect the default/factory configuration. (//bootargs// is not changed yet)
+<code>
+Hit any key to stop autoboot:  0 
+ath> help
+
+?       - alias for 'help'
+base    - print or set address offset
+boot    - boot default, i.e., run 'bootcmd'
+bootd   - boot default, i.e., run 'bootcmd'
+bootm   - boot application image from memory
+bootp	- boot image via network using BootP/TFTP protocol
+chpart	- change active partition
+cmp     - memory compare
+cp      - memory copy
+crc32   - checksum calculation
+dhcp	- invoke DHCP client to obtain IP/boot params
+erase   - erase FLASH memory
+exit    - exit script
+flinfo  - print FLASH memory information
+fsinfo	- print information about filesystems
+fsload	- load binary file from a filesystem image
+go      - start application at address 'addr'
+help    - print online help
+loop    - infinite loop on address range
+ls	- list files in a directory (default /)
+md      - memory display
+mii     - MII utility commands
+mm      - memory modify (auto-incrementing)
+mtdparts- define flash/nand partitions
+mtest   - simple RAM test
+mw      - memory write (fill)
+nm      - memory modify (constant address)
+pci     - list and access PCI Configuration Space
+ping	- send ICMP ECHO_REQUEST to network host
+pll cpu-pll dither ddr-pll dither - Set to change CPU & DDR speed
+pll erase
+pll get
+printenv- print environment variables
+progmac - Set ethernet MAC addresses
+protect - enable or disable FLASH write protection
+rarpboot- boot image via network using RARP/TFTP protocol
+reset   - Perform RESET of the CPU
+run     - run commands in an environment variable
+saveenv - save environment variables to persistent storage
+setenv  - set environment variables
+test    - minimal test like /bin/sh
+tftpboot- boot image via network using TFTP protocol
+ubntfsboot  - UBNT fsboot command
+urescue	- start TFTP server and wait for firmware
+version - print monitor version
+ath> printenv
+
+bootargs=console=tty0 panic=3
+bootcmd=run ubntappinit; go $ubntaddr ubntboot;bootm $flash_boot_addr
+bootdelay=2
+baudrate=115200
+ethaddr=0x00:0xaa:0xbb:0xcc:0xdd:0xee
+ipaddr=192.168.1.20
+serverip=192.168.1.254
+ubntappinit=go ${ubntaddr} uappinit;go ${ubntaddr} ureset_button;urescue;go ${ubntaddr} uwrite
+mtdparts=mtdparts=ath-nor0:384k(u-boot),64k(u-boot-env),7744k(kernel0),7744k(kernel1),128k(bs),256k(cfg),64k(EEPROM)
+stdin=serial
+stdout=serial
+stderr=serial
+ethact=eth0
+ubntaddr=80200020
+</code>
+
+=== Serial Port 2 (right) ===
+The following lines immediately show up after supplying power to the board.
+<code>
+CLI>build_version=0x11, rom_version=0x41020000, ram_version=0x11, stack_size=6348
+reset reason=0x0
+
+Image startup of Normal mode
+</code>
+
+
+==== Serial port output with OpenWrt on LITE ====
+<WRAP bootlog>
+<nowiki>[U-Boot, as in OEM firmware]
+Loading Kernel Image @ 81000000, size = 7929856 
+Verifying 'kernel0' parition:OK
+## Application terminated, rc = 0x0
+## Booting image at 9f070000 ...
+   Image Name:   MIPS OpenWrt Linux-4.1.13
+   Created:      2015-12-21  22:27:04 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1257815 Bytes =  1.2 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum at 0x9f070040 ...OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 80060000) ...
+## Giving linux memsize in bytes, 134217728
+
+Starting kernel ...
+
+[    0.000000] Linux version 4.1.13 (______@______) (gcc version 5.2.0 (OpenWrt GCC 5.2.0 r47954) ) #10 Mon Dec 21 23:26:13 CET 2015
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019750 (MIPS 74Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA956X ver 1 rev 0
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line:  board=UBNT-UF-AC mtdparts=spi0.0:384k(u-boot)ro,64k(u-boot-env)ro,7744k(firmware),7744k(ubnt-airos)ro,128k(bs)ro,256k(cfg)ro,64k(EEPROM)ro console=ttyS0,115200 rootfstype=squashfs,jffs2 noinitrd
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 125532K/131072K available (2799K kernel code, 140K rwdata, 572K rodata, 252K init, 195K bss, 5540K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:83
+[    0.000000] Clocks: CPU:775.000MHz, DDR:650.000MHz, AHB:258.333MHz, Ref:25.000MHz
+[    0.000000] clocksource MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 4932285024 ns
+[    0.000006] sched_clock: 32 bits at 387MHz, resolution 2ns, wraps every 5541893118ns
+[    0.007430] Calibrating delay loop... 385.84 BogoMIPS (lpj=1929216)
+[    0.069910] pid_max: default: 32768 minimum: 301
+[    0.074416] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.080682] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.089614] clocksource jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.099435] NET: Registered protocol family 16
+[    0.104709] MIPS: machine is Ubiquiti UniFi-AC
+[    0.333545] registering PCI controller with io_map_base unset
+[    0.346460] PCI host bridge to bus 0000:00
+[    0.350355] pci_bus 0000:00: root bus resource [mem 0x12000000-0x13ffffff]
+[    0.356883] pci_bus 0000:00: root bus resource [io  0x0001]
+[    0.362216] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.368699] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.376326] pci 0000:00:00.0: invalid calibration data
+[    0.381523] pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    0.388489] pci 0000:00:00.0: BAR 6: assigned [mem 0x12200000-0x1220ffff pref]
+[    0.395361] pci 0000:00:00.0: using irq 40 for pin 1
+[    0.400718] Switched to clocksource MIPS
+[    0.405429] NET: Registered protocol family 2
+[    0.410258] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.416892] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.422956] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.429083] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.434636] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.440861] NET: Registered protocol family 1
+[    0.445829] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.465164] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.470688] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.482326] io scheduler noop registered
+[    0.486013] io scheduler deadline registered (default)
+[    0.491137] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.520916] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 1562500) is a 16550A
+[    0.529105] console [ttyS0] enabled
+[    0.529105] console [ttyS0] enabled
+[    0.536272] bootconsole [early0] disabled
+[    0.536272] bootconsole [early0] disabled
+[    0.546681] m25p80 spi0.0: mx25l12805d (16384 Kbytes)
+[    0.551980] 7 cmdlinepart partitions found on MTD device spi0.0
+[    0.558088] Creating 7 MTD partitions on "spi0.0":
+[    0.563058] 0x000000000000-0x000000060000 : "u-boot"
+[    0.568883] 0x000000060000-0x000000070000 : "u-boot-env"
+[    0.575040] 0x000000070000-0x000000800000 : "firmware"
+[    0.595672] 2 uimage-fw partitions found on MTD device firmware
+[    0.601819] 0x000000070000-0x0000001b0000 : "kernel"
+[    0.607564] 0x0000001b0000-0x000000800000 : "rootfs"
+[    0.613337] mtd: device 4 (rootfs) set to be root filesystem
+[    0.619226] 1 squashfs-split partitions found on MTD device rootfs
+[    0.625645] 0x0000003c0000-0x000000800000 : "rootfs_data"
+[    0.631880] 0x000000800000-0x000000f90000 : "ubnt-airos"
+[    0.637992] 0x000000f90000-0x000000fb0000 : "bs"
+[    0.643424] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.648898] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.664040] libphy: ag71xx_mdio: probed
+[    1.331534] ag71xx ag71xx.0: connected to PHY at ag71xx-mdio.0:04 [uid=004dd074, driver=Atheros 8031/8033 ethernet]
+[    1.342870] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:SGMII
+[    1.350822] NET: Registered protocol family 10
+[    1.358102] NET: Registered protocol family 17
+[    1.362811] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    1.375962] 8021q: 802.1Q VLAN Support v1.8
+[    1.386828] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    1.395519] Freeing unused kernel memory: 252K (803d1000 - 80410000)
+[    2.238185] init: Console is alive
+[    2.241936] init: - watchdog -
+[    3.160919] usbcore: registered new interface driver usbfs
+[    3.166655] usbcore: registered new interface driver hub
+[    3.172239] usbcore: registered new device driver usb
+[    3.181850] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    3.189727] ehci-platform: EHCI generic platform driver
+[    3.197505] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    3.204931] ohci-platform: OHCI generic platform driver
+[    3.245706] init: - preinit -
+[    3.848749] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[    3.871621] random: procd urandom read with 6 bits of entropy available
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    5.402443] eth0: link up (1000Mbps/Full duplex)
+[    5.407060] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    7.074771] jffs2: notice: (342) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[    7.092542] mount_root: switching to jffs2 overlay
+[    7.121684] eth0: link down
+[    7.133828] procd: - early -
+[    7.136887] procd: - watchdog -
+[    7.797637] procd: - ubus -
+[    8.858792] procd: - init -
+Please press Enter to activate this console.
+[    9.363733] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    9.379385] Loading modules backported from Linux version master-2015-12-03-0-g1677f62
+[    9.387602] Backport generated by backports.git backports-20151120-0-g906a6b3
+[    9.410832] cfg80211: World regulatory domain updated:
+[    9.416154] cfg80211:  DFS Master region: unset
+[    9.420649] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[    9.430743] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[    9.439002] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[    9.447270] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[    9.455541] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (N/A)
+[    9.465334] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[    9.475127] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[    9.483486] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[    9.491755] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[    9.566470] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[    9.572899] ath10k_pci 0000:00:00.0: pci irq legacy interrupts 0 irq_mode 0 reset_mode 0
+[    9.914407] ath10k_pci 0000:00:00.0: qca988x hw2.0 target 0x4100016c chip_id 0x043222ff sub 0000:0000
+[    9.923974] ath10k_pci 0000:00:00.0: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 1
+[    9.936952] ath10k_pci 0000:00:00.0: firmware ver 10.2.4.70.12-2 api 5 features no-p2p,raw-mode crc32 cc3fb466
+[    9.987472] ath10k_pci 0000:00:00.0: Direct firmware load for ath10k/QCA988X/hw2.0/board-2.bin failed with error -2
+[    9.998271] ath10k_pci 0000:00:00.0: Falling back to user helper
+[   10.072738] firmware ath10k!QCA988X!hw2.0!board-2.bin: firmware_loading_store: map pages failed
+[   10.082186] ath10k_pci 0000:00:00.0: board_file api 1 bmi_id N/A crc32 bebc7c08
+[   11.128959] ath10k_pci 0000:00:00.0: htt-ver 2.1 wmi-op 5 htt-op 2 cal file max-sta 128 raw 0 hwcrypto 1
+[   11.250990] cfg80211: Regulatory domain changed to country: US
+[   11.257020] cfg80211:  DFS Master region: FCC
+[   11.261363] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   11.271432] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 3000 mBm), (N/A)
+[   11.279692] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2300 mBm), (N/A)
+[   11.289486] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2300 mBm), (0 s)
+[   11.299276] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2300 mBm), (0 s)
+[   11.307633] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 3000 mBm), (N/A)
+[   11.315905] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+[   11.387131] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   11.408716] nf_conntrack version 0.5.0 (1965 buckets, 7860 max)
+[   11.462600] xt_time: kernel timezone is -0000
+[   11.504975] ieee80211 phy1: Atheros AR9561 Rev:0 mem=0xb8100000, irq=47
+[   16.940016] device eth0 entered promiscuous mode
+[   16.957560] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   18.462444] eth0: link up (1000Mbps/Full duplex)
+[   18.467073] br-lan: port 1(eth0) entered forwarding state
+[   18.472696] br-lan: port 1(eth0) entered forwarding state
+[   18.479449] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   20.470726] br-lan: port 1(eth0) entered forwarding state
+
+
+
+BusyBox v1.24.1 (2015-12-20 22:47:10 CET) built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ DESIGNATED DRIVER (Bleeding Edge, r47954)
+ -----------------------------------------------------
+  * 2 oz. Orange Juice         Combine all juices in a
+  * 2 oz. Pineapple Juice      tall glass filled with
+  * 2 oz. Grapefruit Juice     ice, stir well.
+  * 2 oz. Cranberry Juice
+ -----------------------------------------------------
+root@OpenWrt:/#</nowiki>
+</WRAP>\\
+
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>GigabitEthernet 1Port Serial integrated 802.11ac 802.11abgn_simultan 2WNIC 2Ant 128RAM 16Flash MIPS MIPS32 2x2 QCA9563 QCA956x outdoor}}

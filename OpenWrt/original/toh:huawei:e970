@@ -1,0 +1,261 @@
+====== Huawei E970 / T-Mobile web'n'walk Box IV ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+As of now, this document covers an E970 labelled as T-Mobile web'n'walk Box IV. Please upgrade the document in case other devices differ.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^E970$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^E970$"}
+} -->
+
+Additionally, the device has a built-in 3G modem. Drivers are available in OpenWrt.
+
+The modem can also be accessed independently via a USB 2.0 device port
+(router is disabled while USB is connected). Info from lsusb:
+<code>
+ID 12d1:1003 Huawei Technologies Co., Ltd. E220 HSDPA Modem / E230/E270/E870 HSDPA/HSUPA Modem
+</code>
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^E970$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Flash Layout ====
+This device uses CFE as boot loader. For generic info about flash layouts, see [[docs:techref:flash.layout]].
+
+^   Huawei E970  Flash Layout           ^^^^^^^
+^ Layer0       |                       Physically mapped flash -- total: 4096KiB                                                                                            ||||||
+^ Layer1       |  mtd0 **//cfe//** 256KiB  |  mtd1 **//linux//** 3712KiB                                     |||  mtd5 **//factory//** 64KiB        |  mtd4 **//nvram//** 64KiB  |
+^ Layer2       |                           |            |  mtd2 **//rootfs//**                                ||                                    |                            |
+^ Layer3       |                           |            |                       |  mtd3 **//rootfs_data//**    |                                    |                            |
+^ description  |  boot loader              |  kernel    |  read-only part       |  writeable part              |  factory data, see below           |  cfe configuration         |
+^ mountpoint   |  //none//                 |  //none//  |  ''/rom''             |  ''/overlay''                                        |  //none//  |  //none//                  |
+^ filesystem   |  //none//                 |  //none//  |  [[docs:techref:filesystems#SquashFS]]  |  [[docs:techref:filesystems#JFFS2]]  |  //none//  |  //none//                  |
+
+Sizes of kernel, mtd2 and mtd3 depend on the actual image being used (which kernel modules and packages are installed, ...).
+
+Note that this device has an additional partition called factory, located right in front of
+the nvram partition. It contains device-specific data such as MAC addresses and serial numbers,
+and is used by CFE to perform a factory reset. If this partition gets corrupt, on factory reset
+CFE will set a default MAC address which is the same for all devices (00:90:4c:c0:85:59)!
+
+If that happens, restore the factory partition from a backup. If you don't have a backup,
+you'll have to restore this info manually after every factory reset (from the sticker on the case):
+<code>
+nvram set il0macaddr=00:1E:10:xx:yy:zz     # (your MAC address)
+nvram set et0macaddr=00:1E:10:xx:yy:zz     # (usually the same MAC address)
+nvram set serno=<your_serial_number>
+nvram commit
+</code>
+
+==== OEM easy installation ====
+
+  * Browse to your router, login as admin
+  * Go to Advanced Settings/System/Upgrade software
+  * Select the openwrt-.bin for E970 and click Upgrade
+  * Wait for it to reboot
+  * Telnet to 192.168.1.1 and set a root password, or browse to ''%%http://192.168.1.1%%'' if LuCI is installed.
+
+==== OEM installation using telnet ====
+
+  * Telnet to your router, login with username=admin, password=admin
+  * If your OEM firmware doesn't have telnet opened, try a firmware upgrade/downgrade
+  * How to backup mtdblock:
+   * 1. Save mtdblocks to ramfs /tmp:
+<code>
+# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00040000 00010000 "cfe"
+mtd1: 00340000 00010000 "linux"
+mtd2: 00281f40 00010000 "rootfs"
+mtd3: 00060000 00010000 "resource"
+mtd4: 00010000 00010000 "factory"
+mtd5: 00010000 00002000 "nvram"
+#
+cat /dev/mtd/0 > /tmp/3w/0.jpg
+cat /dev/mtd/1 > /tmp/3w/1.jpg
+cat /dev/mtd/2 > /tmp/3w/2.jpg
+cat /dev/mtd/3 > /tmp/3w/3.jpg
+cat /dev/mtd/4 > /tmp/3w/4.jpg
+cat /dev/mtd/5 > /tmp/3w/5.jpg
+</code>
+   * 2. Download mtd blocks(download from a browser or a download manager):
+
+<code>
+http://192.168.1.1/0.jpg 
+   ...
+http://192.168.1.1/5.jpg 
+</code>
+
+   * 3. Rename files:
+<code>
+0.jpg to cfe.bin
+   ...
+5.jpg to nvram.bin
+</code>
+  * [TODO:  describe how to flash openwrt]
+
+==== OEM installation using the TFTP method ====
+
+(Work-in-progress -- currently TFTP upgrade seems not to be possible with the version of CFE used by this device)
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the mtd command line tool. It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== LuCI Web Upgrade Process ===
+
+  * Browse to ''%%http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/%%'' LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+=== Terminal Upgrade Process ===
+
+  * Login as root via SSH on 192.168.1.1
+  * Use the following commands to upgrade.
+
+<code>
+cd /tmp/
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+sysupgrade /tmp/xxx.abc
+</code>
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure 3G connection, etc.
+
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description        ^ Default configuration   ^
+| br-lan           | LAN & WiFi         | 192.168.1.1/24          |
+| vlan0 (eth0.0)   | LAN ports 1 to 3   | None                    |
+| vlan1 (eth0.1)   | LAN port 0         | DHCP(?)                 |
+| wl0              | WiFi               | Disabled                |
+
+==== Switch Ports (for VLANs) ====
+Numbers 0-3 are the 4 LAN ports, with port 0 being the one next to the external 3G antenna connector and port 3 the one next to the telephone connector.
+Switch port 4 is unconnected, and 5 is the internal connection to the router itself.
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+There are two buttons:
+  * Factory reset: connected to GPIO 6
+  * On/Off: implemented in hardware, not usable for user-defined events
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture    | MIPS                    |
+^ Vendor          | Broadcom                |
+^ Bootloader      | CFE                     |
+^ System-On-Chip  | Broadcom BCM5354        |
+^ CPU/Speed       | 3300 V2.9@240MHz        |
+^ Flash-Chip      | Spansion  S29GL032A     |
+^ Flash size      | 4 MiB                   |
+^ RAM-Chip        | Hynix  HY5DU561622ETP   |
+^ RAM             | 32 MiB                  |
+^ Wireless        | Broadcom BCM5354 integrated 2.4GHz 802.11bg               |
+^ Ethernet        | Broadcom 44xx/47xx 10/100BaseT Ethernet w/ vlan support   |
+^ Internet        | 3G HSDPA/HSUPA, 2.5G GPRS/EDGE, wired (via LAN port)      |
+^ USB             | 1x2.0 (internal only, used by modem)   |
+^ Serial          | [[#Serial|Yes]]                        |
+^ JTAG            | [[#JTAG|Probably, not tested]]         |
+
+==== Photos ====
+Model Number
+
+//Front://\\
+{{media:huawei:b970:b970_case_top.jpg?400}}
+
+//Back://\\
+{{media:huawei:b970:b970_case_bottom.jpg?400}}
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+  *Remove the four rubber pads, then unscrew
+
+//Main PCB//\\
+{{media:huawei:b970:b970_main_pcb_t.jpg?400}}
+{{media:huawei:b970:b970_main_pcb_b.jpg?400}}
+
+//Modem PCB//\\
+{{media:huawei:b970:b970_modem_pcb_b.jpg?400}}
+{{media:huawei:b970:b970_modem_pcb_f.jpg?400}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+{{media:huawei:b970:b970_serial.jpg?400}}
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings**
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Bootloader Mods =====
+  - you could read about [[docs:techref:bootloader]] in general
+
+===== Hardware mods =====
+  - as a beginner, you really should inform yourself about [[docs:techref:hardware:soldering]] in general and then obtain some practical experience!
+==== USB Mod ====
+  - Board Connector photo:
+{{media:huawei:b970:b970_bord-connector.jpg|}}
+  - Board Connector Pinout
+
+| ** 1 :**  | Modem Vcc | ** 9 :**  | Modem Vcc  |
+| ** 2 :**  | GND  | ** 10 :**  | GND  |
+| ** 3 :**  | USB host D-   | ** 11 :**  | *UNK   |
+| ** 4 :**  | USB host D+   | ** 12 :**  | Modem LED Signal Red   |
+| ** 5 :**  | Modem antenna SW   | ** 13 :**  | Modem LED Signal Green   |
+| ** 6 :**  | LED Power/Power on Signal   | ** 14 :**  | Modem LED Mode Green   |
+| ** 7 :**  | *UNK   | ** 15 :**  | Modem LED Mode Blue   |
+| ** 8 :**  | *UNK   | ** 16 :**  | Power on/off Button   |
+
+===== Notes =====
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+
+{{tag>FastEthernet 4Port 32RAM 4Flash MIPS MIPS32}}

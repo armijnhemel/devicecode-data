@@ -1,0 +1,284 @@
+====== D-Link DIR-645 ======
+===== Issues =====
+<del>v22.03.0 IS CURRENTLY NOT WORKING:
+Forum post: https://forum.openwrt.org/t/v22-03-0-release-does-not-work-on-d-link-dir-645/136435
+GitHub issue: https://github.com/openwrt/openwrt/issues/10634
+
+Latest working version is 21.02.3:
+
+Firmware OpenWrt install: https://downloads.openwrt.org/releases/21.02.3/targets/ramips/rt3883/openwrt-21.02.3-ramips-rt3883-dlink_dir-645-squashfs-factory.bin
+
+Firmware OpenWrt upgrade: https://downloads.openwrt.org/releases/21.02.3/targets/ramips/rt3883/openwrt-21.02.3-ramips-rt3883-dlink_dir-645-squashfs-sysupgrade.bin</del>
+
+Fixed in v22.03.3: [[:releases:22.03:release notes]]
+
+---
+
+Wireless is not working stable. Connection comes down after a certain time (hours).
+
+See bug reports:
+
+  * 19.07 (open)   https://bugs.openwrt.org/index.php?do=details&task_id=3530
+  * 18.06 (closed) https://bugs.openwrt.org/index.php?do=details&task_id=1568
+  * (archived)     https://dev.archive.openwrt.org/ticket/12523 
+
+Forum discussions:
+  * https://forum.openwrt.org/t/d-link-dir-645-wifi-interface-not-maintaining-connection/6277
+  * https://forum.openwrt.org/t/assistance-needed-debugging-wlan-d-link-dir-645/18664
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^DIR-645$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^DIR-645$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^DIR-645$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Flash Layout ====
+
+^   D-Link DIR-645 Rev.A1  Flash Layout           ^^^^^^^^^
+^ Layer0       |                    MX24L6405D c2 2017c220  (mtd0, mtd6)    8192KiB                                                                 ||||||||
+^ Layer1       |  mtd7\\ **//u-boot//**\\ 192KiB | mtd4\\ **//devdata//**\\ 64KiB || mtd3\\ **//devconf//**\\ 64KiB | mtd2\\ **//upgrade//**\\ 7680KiB  ||| mtd5\\ **//langpack//**\\ 128KiB|
+^ Layer2       |  | mtd8\\ **//boot env//**\\ 32KiB | | |\\ **kernel**\\ 1280.1KiB | mtd1\\ **//rootfs//**\\ 5748KiB | | |
+^ mountpoints  |  | | | | | ''/''   |            |             |
+^ filesystem   |  | | | gzipped xml | | SquashFS | | |
+
+The original firmware in upgrade contains a 96 bytes SEAMA-header followed by the kernel padded to 64KB, followed by the rootfs.  Thus the rootfs is 96 bytes off from a 64 KB boundary.  Note that the SEAMA-header is variable size.
+
+
+  - Download //**Firmware OpenWrt Install**// as shown above (*-squashfs-factory.bin)
+  - Log in your routers admin interface
+  - Tools -> Firmware -> Firmware Upgrade -> Choose the file you just downloaded
+
+==== OEM installation using the TFTP method ====
+
+There may be an easier way to do this but this is what worked for me.
+
+First, get your serial port going.  At the moment the network interfaces aren't coming up so you'll need the console to work with it.
+
+Get the source from D-Link at this address:
+
+[[http://tsd.dlink.com.tw/GPL.asp]]
+
+The file you're looking for is this ''DIR645A1_GPL101.tar.gz''
+
+Read the instructions and follow them till you get a successful build.
+
+Once you get a build of the d-link linux, get your OpenWrt build going for this device (rt3883) but build an initramfs image.
+
+You can use the usual tftp setup to get the initramfs running on there or you can burn it to the flash.  The flash isn't supported out of the box with openwrt (as far as I can tell) so it'll need to be the initramfs kernel so that it loads everything in to ram.  Hopefully someone can get the flash support going.
+
+If you want to burn it in there you'll need to package it properly.  Here's the generic procedure for this device using the dlink source for packaging it.
+
+1. Get a kernel and a rootfs (if you build openwrt from the trunk these files will be in trunk/build_dir/linux-ramips_rt3883 as vmlinux and root.squashfs).
+
+2. run these commands from the dlink directory (DIR645A1_GPL101).
+
+''source ./setupenv''
+
+''tools/lzma/lzma vmlinux''
+
+''tools/building/packimgs -o raw.img -i vmlinux.lzma -i root.squashfs''
+
+''tools/seama/seama -i raw.img -m dev=/dev/mtdblock/2 -m type=firmware''
+
+''tools/seama/seama -s web.img -i raw.img.seama -m signature=wrgn39_dlob.hans_dir645''
+
+''tools/seama/seama -d web.img''
+
+''tools/release.sh web.img DIR645A1_FW101B06_c5fl.bin''
+
+''make sealpac_template''
+
+''tools/release.sh sealpac.slt DIR645A1_FW101B06_c5fl.slt''
+
+
+(replace vmlinux and root.squashfs with correct location and names of appropriate files)
+
+3. your image is in images as ''DIR645A1_FW101B06_c5fl.bin'' use options 2 in the serial console to burn the image to the device.
+
+Again, if you use the kernel that comes from doing an initramfs build you'll be able to get in and work with it in ram and hopefully get the flash suport going so that a regular build can be put on. 
+
+Tftp is simple.  Just set up a tftp server on a computer (probably the one that you built the image on).  When the device boots up hit option 1 or 2 as appropriate (1 for ram image, 2 to burn it).  The first option is the ip address for the device (the address you want the device to have), the second is the ip address of the tftp server and the third is the filename you want to grab (''DIR645A1_FW101B06_c5fl.bin'' if you used the steps above).
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+=== LuCI Web Upgrade Process ===
+
+  - Browse to ''%%http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/%%'' LuCI Upgrade URL
+  - Upload image file for sysupgrade to LuCI
+  - Wait for reboot
+
+=== Terminal Upgrade Process ===
+
+  * Login as root via SSH on 192.168.1.1
+  * Use the following commands to upgrade: <code>
+cd /tmp/
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+sysupgrade /tmp/xxx.abc
+</code>
+  * If sysupgrade does not support this router, use the following commands: <code>
+cd /tmp/
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+mtd write /tmp/xxx.abc linux && reboot</code>
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+From a soft brick:
+Hold down the reset button for about 30 seconds and release. If it reload your firmware and wipe your configurations
+
+From a hard brick:
+Like other D-Link routers it has a built-in firmware recovery mode. 
+
+To access, simply hold down the reset button while powering on the router. The WAN LED should blink. Set your computer with a static IP in the 192.168.0.x range, and open 192.168.0.101 in a web browser. Recovery mode loads up within a few seconds, but doesn't respond to pings. If the power LED is blinking the above page should be accessible.
+
+You will need to flash either a stock firmware image or OpenWrt-factory image, *not* a sysupgrade image.
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| vlan0 (eth0.0)   | LAN ports (1 to 4)   | None                    |
+| vlan1 (eth0.1)   | WAN port             | DHCP                    |
+| wl0              | WiFi                 | Disabled                |
+
+==== Switch Ports (for VLANs) ====
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | 4             |
+| LAN 1            | 3             |
+| LAN 2            | 2             |
+| LAN 3            | 1             |
+| LAN 4            | 0             |
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The DIR-645 has two buttons. They are Reset and WPS. Here, we merely name the buttons, so we can use them in the above Howto:
+
+^ BUTTON                      ^ Event   ^
+| Reset                       | reset   |
+| Wireless Protection Setup   | wps     |
+
+
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set]]  | [[wp>MIPS architecture|MIPS]] |
+^ Vendor                  | [[wp>Ralink]]  |
+^ [[docs:techref:bootloader]]     | [[docs:techref:bootloader:uboot|U-Boot]] |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | Ralink 3883 (MIPS 74Kc) |
+^ [[docs:techref:hardware:cpu|CPU]]/Speed       | 74Kc V4.12 500 Mhz |
+^ Flash-Chip              | MX24L6405D |
+^ Flash size              | 8192 KiB |
+^ RAM                     | 64 MiB   |
+^ Wireless                | RT2860v2_ap 2.4GHz 802.11bgn  |
+^ [[docs:techref:hardware:switch]] | RealTek RTL8367RB Gigabit     |
+^ USB                     | Yes 1 x 2.0     |
+^ [[docs:techref:hardware:port.serial|Serial]]  | Yes  |
+^ [[docs:techref:hardware:port.jtag|JTAG]]      | [[#JTAG|?]]  |
+
+==== Photos ====
+Model Number
+
+^ //Front:// ^ //Back:// ^
+|  {{media:dlink:dir-645:d-link_dir-645_a1.jpg?0x300|Front}}  |  {{media:dlink:dir-645:d-link_dir-645_a1_back.jpg?0x300|Back}}  |
+
+^ //Left:// ^ //Isometric:// ^ //Top:// ^
+|  {{media:dlink:dir-645:d-link_dir-645_a1_left.jpg?0x250|Left}}  |  {{media:dlink:dir-645:d-link_dir-645_a1_isometric.jpg?0x250|Isometric}}  |  {{media:dlink:dir-645:d-link_dir-645_a1_top.jpg?0x250|Top}}  |
+
+<sup>Content up is available under [[http://www.amazon.com/gp/help/customer/display.html?nodeId=508088|Amazon's Conditions of Use]] unless otherwise noted.</sup>
+
+^ //Priorities:// ^ //Inside1:// ^ //Inside2:// ^
+|  {{media:dlink:dir-645:d-link-dir-645-priorities.jpg?0x250|Priorities}}  |  {{media:dlink:dir-645:d-link-dir-645-inside1.jpg?0x250|Inside1}}  |  {{media:dlink:dir-645:d-link-dir-645-inside2.jpg?0x250|Inside2}}  |
+
+^ //Antennas:// ^ //Motherboard:// ^
+|  {{media:dlink:dir-645:d-link-dir-645-antennas.jpg?0x300|Left}}  |  {{media:dlink:dir-645:d-link-dir-645-motherboard.jpg?0x300|Isometric}}  |
+
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+https://www.ifixit.com/Guide/D-Link+dir-645+Disassembly/142139
+
+
+==== Serial ====
+
+The serial port is connected to the header labeled JP1.  The pinout is as follows:
+
+^ JP1 Pins^ Signal ^
+| Pin | Rx |
+| no pin |  |
+| Pin | +3.3v |
+| Pin | Gnd |
+| Pin | Tx |
+ 
+Settings:  57600 8N1
+
+
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:
+
+**Photo of PCB with markings**
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:
+
+**Photo of PCB with markings**
+
+
+===== Notes =====
+
+===== Telnet Login =====
+
+Login: Alphanetworks
+
+Password: Firmware Signatur for example: wrgn39_dlob.hans_dir645
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+
+{{tag>ramips rt3883 GigabitEthernet 5Port USB 802.11bgn rt2860 NonDetachableAntenna 64RAM 8Flash MIPS 74Kc}}

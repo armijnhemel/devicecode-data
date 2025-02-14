@@ -1,0 +1,339 @@
+====== Globalscale MOCHAbin ======
+
+{{:media:globalscale:mochabin:mochabin-casing-front.jpg?nolink&180|}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^Globalscale$", "model": "^MOCHAbin$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "ethernet100mports", "ethernet1gports", "sfp_ports", "sfp_plus_ports", "modem", "sataports", "usbports"],
+  "filterColumns": {"brand": "^Globalscale$", "model": "^MOCHAbin$"}
+} -->
+
+
+===== Installation =====
+/* stable release */
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Globalscale$", "model": "^MOCHAbin$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+==== OEM installation using the TFTP method ====
+
+  - Copy dtb from build_dir to bin/ and run tftpserver there:<code>
+$ cp ./build_dir/target-aarch64_cortex-a72_musl/linux-mvebu_cortexa72/image-armada-7040-mochabin.dtb bin/targets/mvebu/cortexa72/
+$ in.tftpd -L -s bin/targets/mvebu/cortexa72/</code>
+  - Connect to the device UART via microUSB port and power on the device.
+  - Power on the device and hit any key to stop the autoboot.
+  - Set serverip (host IP) and ipaddr (any free IP address on the same subnet), e.g:
+      * Host: <code>$ setenv serverip 192.168.1.10</code>
+      * Device: <code>$ setenv ipaddr 192.168.1.15</code>
+  - Set the ethernet device (Example for the 1G WAN):<code>
+$ setenv ethact mvpp2-2</code>
+  - Ping server to confirm network is working:<code>
+$ ping $serverip
+Using mvpp2-2 device
+host 192.168.1.15 is alive</code>
+  - Tftpboot the firmware:<code>
+$ tftpboot $kernel_addr_r openwrt-mvebu-cortexa72-globalscale_mochabin-initramfs-kernel.bin
+$ tftpboot $fdt_addr_r image-armada-7040-mochabin.dtb</code>
+  - Boot the image: <code>
+$ booti $kernel_addr_r - $fdt_addr_r</code>
+  - Once the initramfs is booted, transfer openwrt-mvebu-cortexa72-globalscale_mochabin-squashfs-sdcard.img.gz to /tmp dir on the device.
+  - Gunzip and dd the image:<code>
+$ gunzip /tmp/openwrt-mvebu-cortexa72-globalscale_mochabin-squashfs-sdcard.img.gz
+$ dd if=/tmp/openwrt-mvebu-cortexa72-globalscale_mochabin-squashfs-sdcard.img of=/dev/mmcblk0 && sync</code>
+  - Reboot the device.
+  - Hit any key to stop the autoboot.
+  - Reset U-boot env and set the bootcmd:<code>
+$ env default -a
+$ setenv bootcmd 'load mmc 0 ${loadaddr} boot.scr && source ${loadaddr}'</code>
+  - Optionally I would advise to edit the console env variable to remove earlycon as that causes the kernel to never use the driver for the serial console. Earlycon should be used only for debugging before the kernel can configure the console and will otherwise cause various issues with the console.<code>
+$ setenv console 'console=ttyS0,115200'</code>
+  - Save and reset<code>
+$ saveenv
+$ reset</code>
+  - OpenWrt should boot from eMMC now.
+
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+<WRAP BOX>
+
+FIXME These are generic instructions. Update with your router's specifics.
+
+==== LuCI Web Upgrade Process ====
+
+  * Browse to ''<nowiki>http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/</nowiki>'' LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+==== Terminal Upgrade Process ====
+
+If you don't have a GUI (LuCI) available, you can alternatively upgrade via the command line.
+There are two command line methods for upgrading:
+
+  * ''sysupgrade''
+  * ''mtd''
+
+Note: It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== sysupgrade ===
+
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+sysupgrade /tmp/xxx.abc
+</code>
+
+=== mtd ===
+
+If ''sysupgrade'' does not support this router, use ''mtd''.
+
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+mtd write /tmp/xxx.abc linux && reboot
+</code>
+
+</WRAP>
+
+===== Using the internal Wifi6 =====
+The Qualcomm (QCA6391) is not yet supported (v22.03.04). To enable Wifi6, if the Qualcomm adapter is built in, the latest snapshot have to be used (https://downloads.openwrt.org/snapshots/targets/mvebu/cortexa72/openwrt-mvebu-cortexa72-globalscale_mochabin-squashfs-sdcard.img.gz, 06/11/23 when writing).
+
+After booting the device, the following commands via SSH need to be executed:
+
+<code>
+opkg update
+opkg install kmod-ath11k kmod-ath11k-pci ath11k-firmware-qca6390
+</code>
+
+===== Expanding the eMMC partition =====
+
+Check your partitions, especially for partition /dev/loop0 having filesystem type f2fs:
+
+<code>
+root@OpenWrt:~# df -Th
+Filesystem           Type            Size      Used Available Use% Mounted on
+/dev/root            squashfs        3.5M      3.5M         0 100% /rom
+tmpfs                tmpfs           3.9G      1.1M      3.9G   0% /tmp
+/dev/loop0           f2fs           98.8M     61.5M     37.3M   62% /overlay
+overlayfs:/overlay   overlay        98.8M     61.5M     37.3M   62% /
+tmpfs                tmpfs         512.0K         0    512.0K   0% /dev
+</code>
+
+Install the following packages:
+<code>
+opkg update
+opkg install losetup e2fsprogs resize2fs block-mount kmod-fs-f2fs f2fs-tools cfdisk kmod-fs-ext4 parted rsync
+</code>
+
+Confirm, that the device /dev/loop0 is located on the 2nd partition of mmcblk0 by checking the back file column:
+<code>
+root@OpenWrt:~# losetup
+NAME       SIZELIMIT  OFFSET AUTOCLEAR RO BACK-FILE  DIO LOG-SEC
+/dev/loop0         0 3604480         1  0 /mmcblk0p2   0     512
+</code>
+
+Resize the partition mmcblk0p2 by using cfdsik:
+<code>
+root@OpenWrt:~# cfdisk /dev/mmcblk0
+</code>
+
+Steps for resizing:
+  - Chose the 2nd partition,
+  - Move the cursor to resize,
+  - Enter the final size you want, default is 14.7GB.
+  - Confirm the change by the menu entry "Write".
+
+Set variables, that are used later:
+<code>
+LOOP="$(losetup -n -O NAME | sort | sed -n -e "1p")"
+ROOT="$(losetup -n -O BACK-FILE ${LOOP} | sed -e "s|^|/dev|")"
+OFFS="$(losetup -n -O OFFSET ${LOOP})"
+</code>
+
+Check the variables withe echo command:
+<code>
+root@OpenWrt:~# echo ${OFFS} ${LOOP} ${ROOT}
+3604480 /dev/loop0 /dev/mmcblk0p2
+</code>
+
+The loop device setup:
+<code>
+LOOP="$(losetup -f)"
+losetup -o ${OFFS} ${LOOP} ${ROOT}
+</code>
+
+Finalize the partition resize:
+<code>
+fsck.f2fs -f ${LOOP}  #and go for default options if given any
+mount ${LOOP} /mnt
+umount ${LOOP}
+resize.f2fs ${LOOP}
+reboot
+</code>
+
+After reboot, you can confirm the full partition size on SSH and LuCi:
+<code>
+root@OpenWrt:~# df -Th
+Filesystem           Type            Size      Used Available Use% Mounted on
+/dev/root            squashfs        3.5M      3.5M         0 100% /rom
+tmpfs                tmpfs           3.9G    240.0K      3.9G   0% /tmp
+/dev/loop0           f2fs           14.7G    609.8M     14.1G   4% /overlay
+overlayfs:/overlay   overlay        14.7G    609.8M     14.1G   4% /
+tmpfs                tmpfs         512.0K         0    512.0K   0% /dev
+</code>
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+
+</WRAP>
+
+==== Switch Ports (for VLANs) ====
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | EXAMPLE 4     |
+| LAN 1            | EXAMPLE 3     |
+| LAN 2            | EXAMPLE 2     |
+| LAN 3            | EXAMPLE 1     |
+| LAN 4            | EXAMPLE 0     |
+
+</WRAP>
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+The Globalscale MOCHAbin has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+
+</WRAP>
+
+===== Hardware =====
+==== Info ====
+<WRAP BOX>
+FIXME
+  - This table is automatically generated, **once the correct filters for Brand and Model are set.**
+  - If you see "Nothing." instead of a table, please **edit this section and adjust the filters with the proper Brand and Model.** Just try, it's easy.
+  - If you still don't see a table here, or a table filled with '¿': [[toh:start|Is there already a Techdata page available]] for Globalscale MOCHAbin ? If not: [[meta:create_new_dataentry_page|Create one]].
+  - If you see a table with the desired device data, everything is OK and you can delete this text and the ''<nowiki><WRAP></nowiki>'' that encloses it.
+  - If it still doesn't work: Don't panic, calm down, take a deep breath and [[:contact|contact a wiki admin]] (tmomas) for help.
+</WRAP>
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Globalscale$", "model": "^MOCHAbin$", "version": "^$"}
+} -->
+
+==== Photos ====
+//Front://\\
+**Insert photo of front of the casing**
+
+//Back://\\
+{{:media:globalscale:mochabin:mochabin-casing-back.jpg?direct&300|}}
+
+==== Opening the case ====
+
+//Main PCB://\\
+{{:media:globalscale:mochabin:mochabin-pcba.jpg?direct&700|}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+  * Connect the micro USB port to the computer. (The UART adapter is integrated on the board)
+
+^ Serial connection parameters\\ for Globalscale MOCHAbin | 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+JTAG schematic:\\
+{{:media:globalscale:mochabin:mochabin-jtag.png?direct&400|}}
+
+===== Bootloader mods =====
+-> [[docs:techref:bootloader]]
+
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>COPY HERE THE BOOTLOG WITH THE ORIGINAL FIRMWARE</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>COPY HERE THE BOOTLOG ONCE OPENWRT IS INSTALLED AND RUNNING</nowiki>
+</WRAP>\\
+
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * ...
+
+===== Tags =====
+
+[[meta:tags|How to add tags]]
+{{tag>mvebu armada7040 8192NAND 4096RAM 6port gigabitethernet 2USB USB3.0 0wnic sfp sfp_plus sata3 MiniPCIexpress m.2 1sim poe rtc}}

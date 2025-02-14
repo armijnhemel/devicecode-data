@@ -1,0 +1,212 @@
+====== NETGEAR FVX538 ======
+
+  * Intel IXP425 based (533MHz)
+  * 2 WAN interfaces:
+    * WAN1 is Realtek RTL8110s (theorically gigabit capable, but connected to a 10/100 Mbps transformer), connected to PCI bus
+    * WAN2 is IXP425 NPE-C (10/100 Mbps)
+  * 9 ports LAN switch: Broadcom BCM5380MKPB (8 x 10/100 Mbps + 1 x 10/100/1000Mbps), connected to IXP425 NPE-B MAC
+  * Nitrox Cavium CN501 encryption accelerator, connected to PCI bus -> up to 200 ipsec VPN (source: Netgear)
+
+===== Supported Versions =====
+^ Version/Model   ^ S/N   ^ OpenWrt Version Supported   ^ Model Specific Notes   ^
+| v1              | -     | WIP                         | -                      |
+| v2              | -     | -                           | -                      |
+
+
+===== Hardware Highlights =====
+^ Version   ^ CPU                   ^ Ram    ^ Flash   ^ Network         ^ USB   ^ Serial   ^ JTag   ^
+| 1         | Intel IXP425@533MHz   | 32MB   | 16MB    | 2 x 1 + 1 x 9   | No    | Yes      | ?      |
+| 2         | Intel IXP425@533MHz   | 64MB   | 32MB    | 2 x 1 + 1 x 9   | No    | Yes      | ?      |
+
+===== Original software =====
+
+{{pagequery>* @toh:netgear:fvx538}}
+
+===== Work in progress =====
+
+I did some patches to run OpenWrt in this box.\\
+
+==== Not working / to do ====
+  * <del>BCM5380 switch works standalone only, it is not usable as a network interface in linux at this time\\ The switch is fully working in Redboot, but we loose the MII connection when loading linux.\\ It seems that the mode of the switch MAC that is connected to the processor changes from "Reverse MII" to "Standard MAC/PHY" when loading linux.\\ Then, the NPE driver always says "MII read failed" when the interface is up.</del>**Works !**
+  * Nitrox Cavium encryption accelerator chip doesn't work as its driver is closed source
+
+==== Links ====
+[[http://www.netgear.com/Products/VPNandSSL/WiredVPNFirewallRouters/FVX538.aspx|Product page]]\\
+[[http://kb.netgear.com/app/answers/detail/a_id/2649|Netgear GPL source code]]
+
+===== Installation =====
+
+This section details what is required to install and upgrade OpenWrt.  First we link to software that you should download before you start reading the instructions on how to install.
+  * Upgrade Tool [[http://downloads.openwrt.org/tools/oem/linksys/flasher.exe|Flasher Windows tool]] 
+  * Installation [[http://downloads.openwrt.org/latest/brcm-2.4/openwrt-wrt54g-squashfs.bin|Latest Install Image to upgrade from OEM firmware]] 
+  * Upgrade [[http://downloads.openwrt.org/latest/brcm-2.4/openwrt-brcm-2.4-squashfs.trx|Latest Upgrade Image for existing OpenWrt systems]]
+
+==== OEM easy installation ====
+This section deals with how you install OpenWrt from a device freshly opened.  Plus the steps required such as reset to factory defaults if the device has already been configured
+
+**Note:** Reset router to factory defaults if it has been previously configured.
+  * Browse to ''%%http://192.168.1.1/Upgrade.asp%%''
+  * Upload .bin file to router
+  * Wait for it to reboot
+  * Telnet to 192.168.1.1 and set a root password, or browse to ''%%http://192.168.1.1%%'' if LuCI is installed.
+
+==== OEM installation using the TFTP method ====
+
+If you want to upgrade using TFTP you follow these steps (as an alternative to the above install process.
+
+==== Upgrading OpenWrt ====
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the mtd command line tool. It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+== LuCI Web Upgrade Process ==
+  * Browse to ''%%http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/%%'' LuCI Upgrade URL
+  * Upload TRX file to LuCI
+  * Wait for reboot
+
+== Terminal Upgrade Process ==
+  * Login as root via SSH on 192.168.1.1
+  * Use the following commands to upgrade.
+
+<code>
+cd /tmp/
+wget http://downloads.openwrt.org/latest/brcm-2.4/openwrt-brcm-2.4-squashfs.trx
+mtd write /tmp/openwrt-brcm-2.4-squashfs.trx linux && reboot</code>
+
+
+===== Failsafe mode =====
+If you forgot your password, broken one of the startup scripts, firewalled yourself or corrupted the JFFS2 partition, you can get back in by using OpenWrt's failsafe mode.
+
+==== Boot into failsafe mode ====
+  * Unplug the router's power cord.
+  * Connect the router's LAN1 port directly to your PC.
+  * Configure your PC with a static IP address between 192.168.1.2 and 192.168.1.254. E. g. 192.168.1.2 (gateway and DNS is not required).
+  * Plug the power on and wait for the DMZ LED to light up.
+  * While the DMZ LED is on immediately press any button (Reset and Secure Easy Setup will work) a few times .
+  * If done right the DMZ LED will quickly flash 3 times every second.
+  * You should be able to telnet to the router at 192.168.1.1 now (no username and password)
+
+==== What to do in failsafe mode? ====
+**NOTE:** The root file system in failsafe mode is the SquashFS partition mounted in readonly mode. To switch to the normal writable root file system run ''mount_root'' and make any changes. Run ''mount_root'' now.
+
+  - Forgot/lost your password and you like to set a new one\\ <code>passwd</code>
+  - Forgot the routers IP address\\ <code>uci get network.lan.ipaddr</code>
+  - You accidentally run 'ipkg upgrade' or filled up the flash by installing to big packages (clean the JFFS2 partition and start over)\\ <code>mtd -r erase rootfs_data</code>
+
+If you are done with failsafe mode power cycle the router and boot in normal mode.
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | ARM                                              |
+^ Vendor           | Intel                                            |
+^ Bootloader       | RedBoot                                          |
+^ System-On-Chip   | Intel IXP425                                     |
+^ CPU Speed        | 533 Mhz                                          |
+^ Flash-Chip       | Intel StrataFlash TE28F128J3C150 (v1) / ? (v2)   |
+^ Flash size       | 16 MiB (v1) / 32 MiB (v2)                        |
+^ RAM              | 32 MiB (v1) / 64 MiB (v2)                        |
+^ Wireless         | -                                                |
+^ Ethernet         | 2 x 10/100Mbps + 1 x Broadcom BCM5380 switch (8 x 10/100Mbps + 1 x 10/100/1000Mbps)   |
+^ USB              | No                |
+^ Serial           | [[#Serial|Yes]]   |
+^ JTAG             | ?                 |
+
+==== Schematics ====
+<code>
+                   |----------------|
+                   |     IXP425     |
+                   |                |
+     --------------| PCI       GPIO |-----
+     |             |                |    |
+     |             | NPE-C   NPE-B  |    |
+     |             |----------------|    |SPI
+     |                 |       |         |MGMT
+ |--------|            /        \MII     |
+ |RTL8110s|           /MII       \       |
+ |--------|          /         |-------| |
+     |            |---|        |BCM5380|-|
+     |            |PHY|        |-------|
+     |            |---|            |
+   |----|           |         |---------|
+   |WAN1|        |WAN2|       |LAN PORTS|
+---|-  -|--------|-  -|-------|-       -|---
+</code>
+
+
+==== Photos ====
+
+//Front://
+
+**Photo of front**
+
+//Back://
+
+**Photo of back**
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+  *To remove the cover simply remove the screws ! 
+
+**Main PCB**\\
+{{media:netgear:fvx538:fvx538v1_inside1.jpg?400}}
+{{media:netgear:fvx538:fvx538v1_inside2.jpg?400|}}
+{{media:netgear:fvx538:fvx538v1_inside3.jpg?400|}}
+{{media:netgear:fvx538:fvx538v1_inside4.jpg?400|}}
+{{media:netgear:fvx538:fvx538v1_inside_bcm5380.jpg?400|}}
+{{media:netgear:fvx538:fvx538v1_inside_flash.jpg?400|}}
+{{media:netgear:fvx538:fvx538v1_inside_nettrans.jpg?400|}}
+{{media:netgear:fvx538:fvx538v1_inside_rtl8110s.jpg?400|}}
+
+==== Serial ====
+The FVX538 has a serial port with its DB9 connector. Levels are 0-5V (null modem cable required).
+
+Serial parameters:\\
+^ Speed          | 115200 bauds   |
+^ Data bits      | 8              |
+^ Stop bits      | 1              |
+^ Parity         | none           |
+^ Flow control   | none           |
+
+==== JTAG ====
+How to connect to JTAG interface, and how to reflash the device with JTAG tools
+
+See [[docs:techref:hardware:port.jtag]] for more JTAG details.
+
+===== Basic configuration =====
+
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Generic basic config secion]]
+
+===== Specific Configuration =====
+==== Interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| vlan0 (eth0.0)   | LAN ports (1 to 4)   | None                    |
+| vlan1 (eth0.1)   | WAN port             | DHCP                    |
+| wl0              | WiFi                 | Disabled                |
+
+==== Switch Ports (for VLANs) ====
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | 4             |
+| LAN 1            | 3             |
+| LAN 2            | 2             |
+| LAN 3            | 1             |
+| LAN 4            | 0             | 
+
+
+==== Buttons ====
+The Netgear FVX538 has one button: "Factory defaults". It is connected to GPIO 11.
+
+===== Hardware mods =====
+
+==== Pimping your router with new LEDs ====
+
+Purchase new blue LEDs from Radio Shack, and replace them with your existing ones.
+
+===== Other Info =====
+
+Anything else we haven't covered yet
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ixp4xx 16flash 32flash 32ram 64ram unsupported}}

@@ -1,0 +1,2196 @@
+====== D-Link DGS-1210 rev G,F (Realtek) ======
+
+/* This template is intended to be used via https://openwrt.org/meta/create_new_device_page ONLY.  */
+/* DO NOT CREATE NEW DEVICEPAGES VIA COPY & PASTE! */
+/* USE https://openwrt.org/meta/create_new_device_page */
+
+D-Link DGS-1210 is a series of smart gigabyte L3 switches running Linux. OpenWrt supports **DGS-1210-10P**, **DGS-1210-16**, **DGS-1210-20**,, **DGS-1210-52** and **DGS-1210-28** of certain newer revisions (F, G and R) with Realtek target. This page discusses those Realtek target devices. For early revisions, please check [[toh:d-link:dgs-1210|D-Link DGS-1210]].
+
+All D-Link switches have a 5-year warranty. Be warned that cables are glued on motherboard. Any attempt to remove the glue may void warranty. Hacking the motherboard or trying to access serial console may damage the board. Make sure you understand what you are doing.
+
+The DGS-1210-16 is a switch with 16 x Gigabit 8P8C ports + 4 x Gigabit 8P8C/SFP Combo ports.
+It has a single core CPU (500 MHz) and 32 MB/128 MB (Flash/RAM), VLAN support and is supported since OpenWrt 21.02.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^D-Link$", "model": "^DGS-1210-.*$", "target": "^realtek$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^D-Link$", "model": "^DGS-1210-.*$", "target": "^realtek$"}
+} -->
+
+==== OpenWrt easy installation ====
+
+Current snapshots provide factory image for all supported DGS-1210 models. That image must be written to image1 slot or it will brick your device.
+
+WebUI installation instructions. 
+
+  * Known working F1 firmware versions for this procedure: [[https://ftp.dlink.de/dgs/dgs-1210/archive/driver_software/|6.20.B009]]
+  * Known broken F1 firmware versions for this procedure: [[https://ftp.dlink.de/dgs/dgs-1210/archive/driver_software/|6.30.016]]
+  * Known working DGS-1210-52 F firmware version for this procedure: [[https://www.dlink.com/de/de/products/dgs-1210-series-gigabit-smart-plus-switches?revision=de_revf#downloads|6.32.008 = 6.32.B008]] Notes: Not (yet) on their FTP server, apparently for all -52 rev. F models. This version has a minor bug: when set to german language, some text labels are displayed in spanish.
+  * Known working G1 firmware versions for this procedure: 7.20.003
+  * Known broken G1 firmware versions for this procedure: not yet known
+
+Some switch models do not seem to support two different image slots. This seems to be at least the case for a DGS-1210-16 G1. In this case, the warnings about the two image slots can be disregarded.
+
+  - Make sure you are booting using OEM in image 2 slot. If not, switch to image2 using the menus
+    - System > Firmware Information > Boot from image2
+    - Tools > reboot
+  - Upload image in vendor firmware via Tools > Backup / Upgrade Firmware > image1 
+  - Toogle startup image via System > Firmware Information > Boot from image1
+  - Tools > reboot
+
+CLI installation instructions:
+  - Make sure you are booting using OEM in image 2 slot. If not switch boot image using these CLI commands:
+    - config firmware image_id 2 boot_up
+    - reboot
+  - Flash the factory_image1.bin to image1. These CLI commands can upload a new firmware to the other image location (not used to boot):
+    - download firmware_fromTFTP <tftpserver> factory_only_for_image1.bin
+    - config firmware image_id 1 boot_up
+    - reboot
+
+
+==== OpenWrt installation using the TFTP method ====
+
+The installation via the OEM tftp routine is currently not supported.
+
+The vendor does provide a firmware recovery procedure (holding RESET for more than 12s) but, at least with "U-Boot 2011.12.(2.1.5.67086)-Candidate1 Aug 24 2021 - 17:33:09", it can only be triggered from a running OEM image. In that case, it is easier to simply use the OEM standard firmware procedures.
+==== OpenWrt installation using the TFTP method and serial console access ====
+
+As a fallback to easy installation one can install OpenWrt over serial console. This means the case needs to be opened, which will void your warranty !
+    - Prepare a TFTP server with the OpenWrt *initramfs-kernel.bin and assign an IP from 10.90.90.0/24 (except 10.90.90.90, which is the switch's IP) to your PC's network port
+    - Connect this network port to one of switch's ports
+    - Connect to the serial console (115200 baud) and power on the switch
+    - Press the ESC key once you see "Hit Esc key to stop autoboot" in the console output
+    - Press CTRL+C keys to get into the real U-Boot prompt
+    - Init the network with the command <code>rtk network on</code>
+    - Load the OpenWrt image with the command <code>tftpboot 0x8f000000 <ipofyournetworkport>:<openwrtimagename></code> (''<ipofyournetworkport''> is your network port's IP, e.g. 10.90.90.100; ''<openwrtimagename>'' is the name of the image provided by the TFTP server)
+    - Boot the OpenWrt image with the command <code>bootm</code>
+    - Browse to ''<nowiki>https://192.168.1.1/cgi-bin/luci/admin/system/flash</nowiki>''
+    - Upload the the OpenWrt ''*squashfs-sysupgrade.bin'' to the switch
+    - Wait for it to reboot
+
+For 21.02, the default network config is broken and you need to change settings after the first boot of each firmwares (initramfs and sysupgrade).
+Currently there is no access to the switch from port 1 (regradless if having it untagged or tagged to the LAN's VLAN100). You can workaround it using the serial console:
+    - First, do not use port 1
+    - Once booted, modify /etc/config/network:
+        * remove the port, where your PC is connected to, from the wan_vlan network (option ports)
+        * add that port to the lan_vlan network (option ports)
+    - Reload the network configuration with the command <code>/etc/init.d/network reload</code>
+    - Assign an IP from 192.168.1.0/24 (except 192.168.1.1, which is the switch's IP) to your PC's network port or use DHCP
+
+==== Dual boot environment (without serial console) ====
+
+DGS-1210 supports dual boot environment. OpenWRT will be installed to the primary partition set and vendor firmware will be left on the secondary partition set.
+
+Switch to OpenWrt primary image from secondary vendor image
+
+<code>
+DGS-1210-20> config firmware image_id 1 boot_up
+DGS-1210-20> reboot
+</code>
+
+Switch to secondary vendor image from primary OpenWrt image
+
+<code>
+root@OpenWrt:/# fw_setenv bootcmd run addargs\; bootm 0xb4e80000
+root@OpenWrt:/# fw_setenv image /dev/mtdblock7
+root@OpenWrt:/# reboot
+</code>
+
+Cleanup inconsistencies after switchover to secondary vendor firmware image
+
+<code>
+DGS-1210-20> config firmware image_id 2 boot_up
+</code>
+
+==== Dual boot environment (with serial console) ====
+
+If things are messed up you can switch the start partition manually in U-Boot.
+
+Switch to primary image (OpenWrt or vendor)
+
+<code>
+u-boot># setenv bootcmd run addargs\; bootm 0xb4100000
+u-boot># setenv image /dev/mtdblock4
+u-boot># saveenv
+u-boot># reset
+</code>
+
+In case primary image is a vendor image use CLI afterwards to remove any inconsistencies.
+
+<code>
+DGS-1210-20> config firmware image_id 1 boot_up
+</code>
+
+Switch to secondary image (vendor)
+<code>
+u-boot># setenv bootcmd run addargs\; bootm 0xb4e80000
+u-boot># setenv image /dev/mtdblock7
+u-boot># saveenv
+u-boot># reset
+</code>
+
+In case secondary image is a vendor image use CLI afterwards to remove any inconsistencies.
+
+<code>
+DGS-1210-20> config firmware image_id 2 boot_up
+</code>
+==== Flash Layout ====
+
+This is the factory image layout:
+^ dev     ^ size       ^ erasesize   ^ name          ^
+| mtd0    | 00080000   | 00010000    | BOOT          |
+| mtd1    | 00040000   | 00010000    | BDINFO        |
+| mtd2    | 00040000   | 00010000    | BDINFO2       |
+| mtd3    | 00180000   | 00010000    | KERNEL1       |
+| mtd4    | 00c00000   | 00010000    | ROOTFS1       |
+| mtd5    | 00180000   | 00010000    | KERNEL2       |
+| mtd6    | 00040000   | 00010000    | SYSINFO       |
+| mtd7    | 00c00000   | 00010000    | ROOTFS2       |
+| mtd8    | 003c0000   | 00010000    | JFFS2         |
+
+After installing OpenWrt, the KERNEL1 and ROOTFS1 partitions are replaced by a new firmware partition, which contains the kernel, rootfs and rootfs_data (all with variable sizes).
+
+The following flash partitions were found on a DGS-1210-16 G1 by inspecting /proc/mtd:
+^ dev     ^ size       ^ erasesize   ^ name          ^
+| mtd0    | 00080000   | 00010000    | u-boot        |
+| mtd1    | 00040000   | 00010000    | u-boot-env    |
+| mtd2    | 00040000   | 00010000    | u-boot-env2   |
+| mtd3    | 00d80000   | 00010000    | firmware      |
+| mtd4    | 002b0000   | 00010000    | kernel        |
+| mtd5    | 00ad0000   | 00010000    | rootfs        |
+| mtd6    | 00870000   | 00010000    | rootfs_data   |
+| mtd7    | 00180000   | 00010000    | kernel2       |
+| mtd8    | 00040000   | 00010000    | sysinfo       |
+| mtd9    | 00c00000   | 00010000    | rootfs2       |
+| mtd10   | 003c0000   | 00010000    | jffs2         |
+
+===== Upgrading OpenWrt =====
+
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+==== LuCI Web Upgrade Process ====
+
+  * Browse to ''<nowiki>https://192.168.1.1/cgi-bin/luci/admin/system/flash</nowiki>'' LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+  * When not keeping the configuration connect via serial and adjust /etc/config/network and restart the network as described in the installation chapter
+
+==== Terminal Upgrade Process ====
+
+If you don't have a GUI (LuCI) available, you can alternatively upgrade via the command line.
+The recommended method is using ''sysupgrade''.
+
+Note: It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== sysupgrade ===
+
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget <sysupgradeimageurl>
+sysupgrade /tmp/<sysupgradeimagefile>
+</code>
+<sysupgradeimageurl> is the direct url to the sysupgrade image file and <sysupgradeimagefile> is its file name.
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+To debrick the device, you'll need serial access. If you want to
+recover to an OpenWrt, you can replay the serial installation
+instructions. For returning to the original firmware, press ESC during
+the boot to trigger the emergency firmware recovery procedure. After
+that, use D-Link Network Assistant v2.0.2.4 to flash a new firmware.
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+Note: the reset button is not configured for most devices.
+
+It is currently only working for device DGS-1012-28 in OpenWrt-22.03.
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+==== Network interfaces ====
+
+The default network for 21.02 configuration is:
+^ Interface Name         ^ Description                    ^ Default configuration   ^
+| vlan100 (switch.100)   | LAN port 1 tagged              | 192.168.1.1/24          |
+| vlan1 (switch.1)       | LAN ports 2 to 20 (untagged)   | EXAMPLE DHCP            |
+
+For 22.03 and on, the defaul configuration is:
+^ Interface Name         ^ Description                    ^ Default configuration   ^
+| vlan1 (switch.1)       | All ports untagged             | 192.168.1.1/24          |
+
+==== Switch Ports (for VLANs) ====
+
+The switches use the new DSA switch configuration.
+
+"eth0" is the internal CPU port. The command "ip a" shows the external ports as "lan#@eth0" with "#" being the numbers as seen on the front panel.
+
+DGS-1210-20:
+^ Port              ^ Switch port   ^
+| LAN 1             | lan1          |
+| LAN 2             | lan2          |
+| LAN 3             | lan3          |
+| LAN 4             | lan4          |
+| LAN 5             | lan5          |
+| LAN 6             | lan6          |
+| LAN 7             | lan7          |
+| LAN 8             | lan8          |
+| LAN 9             | lan9          |
+| LAN 10            | lan10         |
+| LAN 11            | lan11         |
+| LAN 12            | lan12         |
+| LAN 13            | lan13         |
+| LAN 14            | lan14         |
+| LAN 15            | lan15         |
+| LAN 16            | lan16         |
+| LAN 17 / SFP 17   | lan17         |
+| LAN 18 / SFP 18   | lan18         |
+| LAN 19 / SFP 19   | lan19         |
+| LAN 20 / SFP 20   | lan20         |
+
+The DGS-1210-52 uses "lan1" … "lan48" for the 48 common gigabit ethernet ports, the 4 shared SFP/GbE ports are "lan49" … "lan52".
+==== Buttons ====
+
+There are no buttons on the DGS-1210-16 G1.
+
+The reset button is configured for DGS-1210-28 only on 22.03 and newer versions.
+
+===== Hardware =====
+==== Info ====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^D-Link$", "model": "^DGS-1210-.*$", "target": "^realtek$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+//Front://\\
+{{:media:dlink:dgs-1210:dgs-1210-16_front.png?400|DGS-12-10 G1 front}}
+
+//Back://\\
+{{:media:dlink:dgs-1210:dgs-1210-16_back.png?400|DGS-12-10 G1 back}}
+
+//Backside label://\\
+{{:media:dlink:dgs-1210:dgs-1210-16_sticker.jpg?400|DGS-12-10 G1 label}}
+
+==== Opening the case ====
+
+{{page>meta:infobox:high_voltage&noheader&nofooter&noeditbtn}}
+
+**Note:** This will void your warranty!
+===== DGS-1210-16 =====
+Remove the three screws on the bottom of the front cover. Slide the top cover (connected to the front panel) to open the device. Be careful, there is a ribbon cable that connects the front panel LEDs with the main PCB.
+===== DGS-1210-52 =====
+You need a "Phillips" type screwdriver (size 2). If rack mounting "ears" are installed, you must remove those first (4 screws at each side). Now remove the 5 small screws near the front panel: 3 at the bottom of the case, and 2 at the sides. On the side where the power LED is, there are 2 cables attaching the front panel LEDs and reset button to the main board, which is screwed onto the bottom part of the case. So be careful when sliding the top part of the case with the front panel towards the front side of the switch to open it. The plugs at the end of the cables are fixed with glue, so cannot be simply disconnected.
+
+//Main PCB://\\
+
+{{media:dlink:dgs-1210:dgs-1210-16_g1_pcb.jpg?400|DGS-1210-16 G1 PCB}}{{:media:dlink:p1020167.jpg?400|DGS-1210-52 F3 PCB}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+The DGS-1210-16 G1 only has an un-equiped serial port on the PCB named J6.
+Use a [[docs:techref:hardware:port.serial#usb.to.rs232.ttl.converter.module|serial TTL]] adapter to connect.
+
+{{media:dlink:dgs-1210:dgs-1210-16_g1_serial_port.jpg?400|DGS-1210-16 G1 serial port}}
+{{:media:doc:hardware:serial:cp2104.jpg?400|CP2104 TTL}}
+
+^ Serial connection parameters  | 3.3V TTL  | 115200 / 8N1  |
+| Models tested:                |           |               |
+| DGS-1210-16 G1                |           |               |
+| DGS-1210-52 F3                |           |               |
+
+D-Link DGS-1210-28 F1,F2,F3 serial is available in J6
+
+<code>
+     UART pinout 
+     -----------
+    
+      [oooo]J3 [o]ooo|J6
+        |       ^ ||`------ GND
+        |       | |`------- RX
+        |       | `-------- TX
+        |       `---------- Vcc (3V3)
+        |
+        `------------------ J3 is power input connector nearby J6 UART
+</code>
+
+Notes about attaching serial adapters:
+  * When using a common USB-to-serial adapter, like the blue one in the DGS-1210-52 F3 photographs on this page, do not attach the 3,3V pin; those adapters are powered from USB. Their 3,3V line is an output to power also the device attached to it from USB. If you attach it to the switch, the devices' 3,3V levels are probably slightly different, leading to an additional current heating up the components. On the other hand, if using a RS232 level shifter like the model on the other photo with the DE9 plug, this might have to be powered from the switch's side, needing also the 3,3V line. If this is the case, it won't work without it, so always try first with only Tx, Rx, GND attached.
+  * Adapter manufacturers don't agree in their documentation from which "point of view" Rx and Tx are named. If you don't see correct text, first try swapping these. The parameters 115200 8N1 are correct for all DGS-1210 models tested so far, so changing those won't help.
+  * Adapter manufacturers also don't agree on cable colours. While this is often true, never assume without verification black always being GND, or red always being 3.3V.
+==== Serial mod ====
+In order to use the serial console, a 4-pin header or a cable must be soldered onto the board.
+===== DGS-1210-16 G1 =====
+I wanted to share my serial mod. I can now connect to the serial console without having to open the device.
+  - Soldered a pin header (2.54 mm) to the serial port on the main board (J6).
+  - Used a cable tie to fix the serial TTL adapter (there are two holes below the adapter which I used to fix it). I used a CP2102 adapter and bent the pins so they were facing upward.
+  - Connect the adapter with the header.
+  - There is a black tape on the backside of the front bezel, which I removed and to my surprise there was already a cut out in the metal plate. Hence I only had to cut the plastic to fit the USB plug through.
+  - Closed case and enjoyed my mod :)
+
+{{{{:media:dlink:dgs-1210:dgs-1210_serialmod1.jpg?400|header on J6 and serial adapter}}
+{{{{:media:dlink:dgs-1210:dgs-1210_serialmod2.jpg?400|header and adapter connected}}
+{{{{:media:dlink:dgs-1210:dgs-1210_serialmod3.jpg?400|USB port from adapter after step 4}}
+{{{{:media:dlink:dgs-1210:dgs-1210_serialmod4.jpg?400|connected serial port}}
+===== DGS-1210-52 F3 =====
+ Tools needed: "Phillips" type screwdrivers of sizes 1 and 2, soldering iron with small enough tip.
+  - Disconnect all cables from the switch.
+  - Open the case as described above.
+  - Disconnect the internal power cable from the main board.
+  - With the big screwdriver, remove the 9 silver couloured screws fixing the main board to the case.  They are located near the board's edge and between the black ethernet transformers and the RJ45 ports.
+  - With the small screwdriver, remove the 4 black screws holding the heatsink in place.  The heatsink is screwed onto 4 bolts on the bottom of the case, the bolts going through holes in the PCB.  Do **not** pull the board out of the case using the heatsink, it is fixed with pink "heat-conducting glue tape pads" (don't know how they are "officially" called in english…).  Better leave it in place on the chips.  If not, you must make sure that everything remains clean while you work, and be sure to fix the heat sink in the correct position afterwards. 
+  - Lift the board a bit vertically upwards until the holes in the PCB are above the bolt height.
+  - Pull the board out of the case to the front side.
+  - Now you can solder a 4-pin header onto the board.
+I suggest to test the console before closing the case again:
+
+The pin with the small triangular arrow pointing to it is 3,3V, Tx and Rx follow, the pin next to the board's edge is GND. The large arrow on the board is pointing from VCC in GND direction, as seen on the photographs.
+  - Insert the board, connect the internal power cable, but do not yet insert any screws.
+  - Attach a serial adapter to the switch and a PC/Laptop/…, set the parameters to 115200 8N1.
+  - Power up the switch, but be careful to keep your fingers away from 110/230V parts.
+If you don't see it booting up on the console, the order of the pins might be wrong, try swapping Rx and Tx.
+
+If you want to install an adapter permanently, I recommend to use the hole for the anti-theft lock which is located near the serial pins for the cable. The modification of the DGS-1210-16 G1 with the USB plug, which is described above, won't work this way on the DGS-1210-52 F3, because there is no matching hole in the metal case, and the position of the 4 pins on the PCB differs.
+
+{{:media:d-link:dgs-1210-52-f3.p1020168.jpg?400|DGS-1210-52 F3 with RS232 level shifter attached.}}{{:media:d-link:dgs-1210-52-f3.p1020165.jpg?400|DGS-1210-52 F3 with USB adapter attached.}}
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+
+OEM serial boot DGS-1210-F3 after a firmware installation:
+
+<WRAP bootlog>
+<nowiki>
+U-Boot 2011.12.(2.1.5.67086)-Candidate1 (Aug 24 2021 - 17:31:17)
+
+Board: RTL838x CPU:500MHz LXB:200MHz MEM:300MHz
+DRAM:  128 MB
+SPI-F: 1x32 MB
+Loading 1024B env. variables from offset 0x80000
+Board Model = DGS-1210-28-F1 Cameo_bdinfo_get_BoardID [293] 
+Switch Model: RTL8382M_8218D_INTPHY_8218D_8214FC_DEMO (Port Count: 28)
+Switch Chip: RTL8382
+### RTL8218D config - MAC ID = 0 ###
+**************************************************
+#### RTL8218B config - MAC ID = 8 ####
+Now Internal PHY
+### RTL8218D config - MAC ID = 16 ###
+**************************************************
+**** RTL8214FC config - MAC ID = 24 ****
+Now External 8214FC
+Net:   Net Initialization Skipped
+rtl8380#0
+Hit Esc key to stop autoboot:  0 
+auto_update_precode is null!
+
+Loading Runtime Image ......
+## Booting kernel from Legacy Image at b4e80000 ...
+   Image Name:   
+   Created:      2021-08-24  17:43:04 UTC
+   Image Type:   MIPS Linux Kernel Image (gzip compressed)
+   Data Size:    1035511 Bytes = 1011.2 KB
+   Load Address: 80000000
+   Entry Point:  80262000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+Linux version 2.6.19 (simon@208Server) (gcc version 3.4.4 mipssde-6.03.00-20051020) #28 PREEMPT Tue Aug 24 17:42:49 CST 2021
+CPU revision is: 00019070
+Determined physical RAM map:
+ memory: 02000000 @ 00000000 (usable)
+User-defined physical RAM map:
+ memory: 07a00000 @ 00000000 (usable)
+Built 1 zonelists.  Total pages: 30988
+Kernel command line: console=ttyS0,115200 mem=122M noinitrd root=/dev/mtdblock7 rw rootfstype=squashfs csb=0x016C7FAC cso=0x08673EB5 csf=0x5D8CD0C7 sfin=<NULL>,32MB,11735072;11739168 
+Primary instruction cache 16kB, physically tagged, 4-way, linesize 16 bytes.
+Primary data cache 16kB, 2-way, linesize 16 bytes.
+Synthesized TLB refill handler (20 instructions).
+Synthesized TLB load handler fastpath (32 instructions).
+Synthesized TLB store handler fastpath (32 instructions).
+Synthesized TLB modify handler fastpath (31 instructions).
+PID hash table entries: 512 (order: 9, 2048 bytes)
+Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+Memory: 121088k/124928k available (2015k kernel code, 3724k reserved, 421k data, 108k init, 0k highmem)
+Mount-cache hash table entries: 512
+Checking for 'wait' instruction...  available.
+NET: Registered protocol family 16
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 4096 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 4096 bind 2048)
+TCP reno registered
+squashfs: version 3.3 (2007/10/31) Phillip Lougher
+JFFS2 version 2.2. (NAND) (C) 2001-2006 Red Hat, Inc.
+io scheduler noop registered
+io scheduler anticipatory registered
+io scheduler deadline registered
+io scheduler cfq registered (default)
+Serial: 8250/16550 driver $Revision: 1.1.1.1 $ 1 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x0 (irq = 31) is a 16550A
+Probe: SPI CS1 Flash Type MX25L25635F
+Creating 9 MTD partitions on "Total SPI FLASH":
+0x00000000-0x00080000 : "BOOT"
+0x00080000-0x000c0000 : "BDINFO"
+0x000c0000-0x00100000 : "BDINFO2"
+0x00100000-0x00280000 : "KERNEL1"
+0x00280000-0x00e80000 : "ROOTFS1"
+0x00e80000-0x01000000 : "KERNEL2"
+0x01000000-0x01040000 : "SYSINFO"
+0x01040000-0x01c40000 : "ROOTFS2"
+0x01c40000-0x02000000 : "JFFS2"
+IPv4 over IPv4 tunneling driver
+TCP cubic registered
+NET: Registered protocol family 1
+NET: Registered protocol family 10
+lo: Disabled Privacy Extensions
+NET: Registered protocol family 17
+VFS: Mounted root (squashfs filesystem) readonly.
+Freeing unused kernel memory: 108k freed
+init started:  BusyBox v1.00 (2021.08.24-09:41+0000) multi-call binary
+Starting pid 14, console : '/etc/rc'
+Init RTCORE Driver Module....OK
+tun: Universal TUN/TAP device driver, 1.6
+tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+passwd file exit
+ssdh_config file exit
+
+ Complete NpHwInit  
+RTK.0> device TAP0 entered promiscuous mode
+Jan  1 00:00:25 passwd[148]: password for `admin' changed by user `root'
+
+
+
+
+DGS-1210-28 login: 
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlogs ====
+Bootlog for DGS-1210-16:
+<WRAP bootlog>
+<nowiki>
+U-Boot 2011.12.(2.1.5.67086)-Candidate1 (Jul 23 2020 - 13:01:19)
+
+Board: RTL838x CPU:500MHz LXB:200MHz MEM:300MHz
+DRAM:  128 MB
+SPI-F: 1x32 MB
+Loading 1024B env. variables from offset 0x80000
+Board Model = DGS-1210-16-G1 Cameo_bdinfo_get_BoardID [293] 
+Switch Model: RTL8382M_8218B_INTPHY_8214FC_DEMO (Port Count: 20)
+Switch Chip: RTL8382
+**************************************************
+#### RTL8218B config - MAC ID = 0 ####
+Now External 8218B
+**************************************************
+#### RTL8218B config - MAC ID = 8 ####
+Now Internal PHY
+**************************************************
+**** RTL8214FC config - MAC ID = 24 ****
+Now External 8214FC
+Net:   Net Initialization Skipped
+rtl8380#0
+Hit Esc key to stop autoboot:  0 
+
+Loading Runtime Image .OS:...FAILED
+FS:...FAILED!!
+...
+## Booting kernel from Legacy Image at b4100000 ...
+   Image Name:   MIPS OpenWrt Linux-5.4.124
+   Created:      2021-06-13  22:02:19 UTC
+   Image Type:   MIPS Linux Kernel Image (gzip compressed)
+   Data Size:    2814581 Bytes = 2.7 MB
+   Load Address: 80000000
+   Entry Point:  80000400
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+[    0.000000] Linux version 5.4.124 (builder@buildhost) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r16172-2aba3e9784)) #0 Sun Jun 13 22:02:19 2021
+[    0.000000] RTL838X model is 83826800
+[    0.000000] SoC Type: RTL8382
+[    0.000000] Kernel command line: console=ttyS0, mem=122M noinitrd root=/dev/mtdblock7 rw rootfstype=squashfs csb=0x0140AC89 cso=0x08674302 csf=0x54CE9785 sfin=<NULL>,32MB,0;10649632 
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019070 (MIPS 4KEc)
+[    0.000000] MIPS: machine is D-Link DGS-1210-16
+[    0.000000] Registering _machine_restart
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Using appended Device Tree.
+[    0.000000] Primary instruction cache 16kB, VIPT, 4-way, linesize 16 bytes.
+[    0.000000] Primary data cache 16kB, 2-way, VIPT, cache aliases, linesize 16 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000]   Normal zone: 288 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32768 pages, LIFO batch:7
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: console=ttyS0,115200
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 122436K/131072K available (5087K kernel code, 172K rwdata, 636K rodata, 1200K init, 207K bss, 8636K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 32
+[    0.000000] random: get_random_bytes called from 0x805c4a28 with crng_init=0
+[    0.000000] timer_probe: no matching timers found
+[    0.000000] CPU frequency from device tree: 500MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041786 ns
+[    0.000014] sched_clock: 32 bits at 250MHz, resolution 4ns, wraps every 8589934590ns
+[    0.008694] Calibrating delay loop... 497.66 BogoMIPS (lpj=995328)
+[    0.047574] pid_max: default: 32768 minimum: 301
+[    0.053163] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.061300] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.082490] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.093296] futex hash table entries: 256 (order: -1, 3072 bytes, linear)
+[    0.101049] pinctrl core: initialized pinctrl subsystem
+[    0.110465] NET: Registered protocol family 16
+[    0.186382] workqueue: max_active 576 requested for napi_workq is out of range, clamping between 1 and 512
+[    0.208492] clocksource: Switched to clocksource MIPS
+[    0.217052] NET: Registered protocol family 2
+[    0.222341] IP idents hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.231889] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    0.241253] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.249771] TCP bind hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.257603] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.265174] UDP hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.272528] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.280979] NET: Registered protocol family 1
+[    0.299035] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    0.325779] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.332247] jffs2: version 2.2 (NAND) (SUMMARY) (ZLIB) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.396152] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 252)
+[    0.410827] pinctrl-single bb001000.pinmux: 32 pins, size 4
+[    0.417877] Probing RTL838X GPIOs
+[    0.529847] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.543978] printk: console [ttyS0] disabled
+[    0.548842] b8002000.uart: ttyS0 at MMIO 0xb8002000 (irq = 31, base_baud = 12500000) is a 16550A
+[    0.558607] printk: console [ttyS0] enabled
+[    0.558607] printk: console [ttyS0] enabled
+[    0.567919] printk: bootconsole [early0] disabled
+[    0.567919] printk: bootconsole [early0] disabled
+[    0.579911] b8002100.uart: ttyS1 at MMIO 0xb8002100 (irq = 30, base_baud = 12500000) is a 16550A
+[    1.002483] brd: module loaded
+[    1.006887] Initializing rtl838x_nor_driver
+[    1.011738] SPI resource base is b8001200
+[    1.016312] Address mode is 4 bytes
+[    1.020275] rtl838x_nor_init called
+[    1.027071] rtl838x-nor b8001200.spi: mx25l25635e (32768 Kbytes)
+[    1.034027] 8 fixed-partitions partitions found on MTD device rtl838x_nor
+[    1.041709] Creating 8 MTD partitions on "rtl838x_nor":
+[    1.047649] 0x000000000000-0x000000080000 : "u-boot"
+[    1.055690] 0x000000080000-0x0000000c0000 : "u-boot-env"
+[    1.064256] 0x0000000c0000-0x000000100000 : "u-boot-env2"
+[    1.072937] 0x000000100000-0x000000e80000 : "firmware"
+[    1.094449] 2 uimage-fw partitions found on MTD device firmware
+[    1.101196] Creating 2 MTD partitions on "firmware":
+[    1.106850] 0x000000000000-0x0000002b0000 : "kernel"
+[    1.114924] 0x0000002b0000-0x000000d80000 : "rootfs"
+[    1.123021] mtd: device 5 (rootfs) set to be root filesystem
+[    1.129523] 1 squashfs-split partitions found on MTD device rootfs
+[    1.136549] 0x000000510000-0x000000d80000 : "rootfs_data"
+[    1.145196] 0x000000e80000-0x000001000000 : "kernel2"
+[    1.153452] 0x000001000000-0x000001040000 : "sysinfo"
+[    1.161771] 0x000001040000-0x000001c40000 : "rootfs2"
+[    1.170048] 0x000001c40000-0x000002000000 : "jffs2"
+[    1.179441] libphy: Fixed MDIO Bus: probed
+[    1.184544] random: fast init done
+[    1.194499] Probing RTL838X eth device pdev: 87c90800, dev: 87c90810
+[    1.217523] Found SoC ID: 8382: RTL8382, family 8380
+[    1.223154] rtl8380_init_mac
+[    1.226476] Using MAC 00007898e8e98b20
+[    1.231085] libphy: rtl838x-eth-mdio: probed
+[    1.288877] Phy on MAC 0: 1cc981
+[    1.302773] Realtek RTL8218B (external) mdio-bus:00: Detected external RTL8218B
+[    1.311028] Firmware loaded. Size 1168, magic: 83808380
+[    2.685242] Realtek RTL8218B (internal) mdio-bus:08: Detected internal RTL8218B
+[    2.693512] Firmware loaded. Size 1184, magic: 83808380
+[    5.248901] Realtek RTL8214FC mdio-bus:18: Detected external RTL8214FC
+[    5.256288] Firmware loaded. Size 1676, magic: 83808380
+[    6.549586] NET: Registered protocol family 10
+[    6.569508] Segment Routing with IPv6
+[    6.573952] NET: Registered protocol family 17
+[    6.579163] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    6.594379] 8021q: 802.1Q VLAN Support v1.8
+[    6.603231] Phy on MAC 0: 1cc981
+[    6.617149] Realtek RTL8218B (external) rtl838x slave mii-0:00: Detected external RTL8218B
+[    6.626475] Firmware loaded. Size 1168, magic: 83808380
+[    8.000072] Realtek RTL8218B (internal) rtl838x slave mii-0:08: Detected internal RTL8218B
+[    8.009399] Firmware loaded. Size 1184, magic: 83808380
+[   10.560367] Realtek RTL8214FC rtl838x slave mii-0:18: Detected external RTL8214FC
+[   10.568827] Firmware loaded. Size 1676, magic: 83808380
+[   11.864288] libphy: rtl838x slave mii: probed
+[   11.871466] > 10000001 10000002 10000004 10000008 10000010 10000020 10000040 10000080
+[   11.880337] > 10000100 10000200 10000400 10000800 10001000 10002000 10004000 10008000
+[   11.889155] > 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff
+[   11.897967] > 11000000 12000000 14000000 18000000 1f00ffff        0        0        0
+[   11.906773] CPU_PORT> 1f00ffff
+[   13.969409] rtl83xx-switch switch@bb000000 lan1 (uninitialized): PHY [mdio-bus:00] driver [Realtek RTL8218B (external)]
+[   13.984257] rtl83xx-switch switch@bb000000 lan2 (uninitialized): PHY [mdio-bus:01] driver [Realtek RTL8218B (external)]
+[   13.999557] rtl83xx-switch switch@bb000000 lan3 (uninitialized): PHY [mdio-bus:02] driver [Realtek RTL8218B (external)]
+[   14.014439] rtl83xx-switch switch@bb000000 lan4 (uninitialized): PHY [mdio-bus:03] driver [Realtek RTL8218B (external)]
+[   14.029708] rtl83xx-switch switch@bb000000 lan5 (uninitialized): PHY [mdio-bus:04] driver [Realtek RTL8218B (external)]
+[   14.044714] rtl83xx-switch switch@bb000000 lan6 (uninitialized): PHY [mdio-bus:05] driver [Realtek RTL8218B (external)]
+[   14.059467] rtl83xx-switch switch@bb000000 lan7 (uninitialized): PHY [mdio-bus:06] driver [Realtek RTL8218B (external)]
+[   14.074863] rtl83xx-switch switch@bb000000 lan8 (uninitialized): PHY [mdio-bus:07] driver [Realtek RTL8218B (external)]
+[   14.090066] rtl83xx-switch switch@bb000000 lan9 (uninitialized): PHY [mdio-bus:08] driver [Realtek RTL8218B (internal)]
+[   14.115107] rtl83xx-switch switch@bb000000 lan10 (uninitialized): PHY [mdio-bus:09] driver [Realtek RTL8218B (internal)]
+[   14.140786] rtl83xx-switch switch@bb000000 lan11 (uninitialized): PHY [mdio-bus:0a] driver [Realtek RTL8218B (internal)]
+[   14.166171] rtl83xx-switch switch@bb000000 lan12 (uninitialized): PHY [mdio-bus:0b] driver [Realtek RTL8218B (internal)]
+[   14.191533] rtl83xx-switch switch@bb000000 lan13 (uninitialized): PHY [mdio-bus:0c] driver [Realtek RTL8218B (internal)]
+[   14.216994] rtl83xx-switch switch@bb000000 lan14 (uninitialized): PHY [mdio-bus:0d] driver [Realtek RTL8218B (internal)]
+[   14.242470] rtl83xx-switch switch@bb000000 lan15 (uninitialized): PHY [mdio-bus:0e] driver [Realtek RTL8218B (internal)]
+[   14.267954] rtl83xx-switch switch@bb000000 lan16 (uninitialized): PHY [mdio-bus:0f] driver [Realtek RTL8218B (internal)]
+[   14.283231] rtl83xx-switch switch@bb000000 lan17 (uninitialized): PHY [mdio-bus:18] driver [Realtek RTL8214FC]
+[   14.297478] rtl83xx-switch switch@bb000000 lan18 (uninitialized): PHY [mdio-bus:19] driver [Realtek RTL8214FC]
+[   14.311706] rtl83xx-switch switch@bb000000 lan19 (uninitialized): PHY [mdio-bus:1a] driver [Realtek RTL8214FC]
+[   14.326061] rtl83xx-switch switch@bb000000 lan20 (uninitialized): PHY [mdio-bus:1b] driver [Realtek RTL8214FC]
+[   14.339255] rtl83xx-switch switch@bb000000: configuring for fixed/internal link mode
+[   14.348302] DSA: tree 0 setup
+[   14.351771] LINK state irq: 20
+[   14.355322] In rtl83xx_setup_qos
+[   14.359008] Setting up RTL838X QoS
+[   14.362879] RTL838X_PRI_SEL_TBL_CTRL(i): 00033112
+[   14.368196] Current Intprio2queue setting: 00000000
+[   14.373711] QM_PKT2CPU_INTPRI_MAP: 00fac688
+[   14.378474] rtl838x_dbgfs_init called
+[   14.416631] rtl83xx-switch switch@bb000000: Link is Up - 1Gbps/Full - flow control off
+[   14.430376] VFS: Mounted root (squashfs filesystem) readonly on device 31:5.
+[   14.452084] Freeing unused kernel memory: 1200K
+[   14.457250] This architecture does not have kernel memory protection.
+[   14.464520] Run /sbin/init as init process
+[   15.199940] init: Console is alive
+[   15.407164] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[   15.572035] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[   15.593171] init: - preinit -
+[   16.926786] random: jshn: uninitialized urandom read (4 bytes read)
+[   17.127861] random: jshn: uninitialized urandom read (4 bytes read)
+[   18.434147] random: jshn: uninitialized urandom read (4 bytes read)
+[   18.513712] random: jshn: uninitialized urandom read (4 bytes read)
+[   18.709808] random: jshn: uninitialized urandom read (4 bytes read)
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   22.276304] jffs2: notice: (1288) jffs2_build_xattr_subsystem: complete building xattr subsystem, 21 of xdatum (0 unchecked, 21 orphan) and 31 of xref (1 dead, 30 orphan) found.
+[   22.296911] mount_root: overlay filesystem has not been fully initialized yet
+[   22.306620] mount_root: switching to jffs2 overlay
+[   22.315025] overlayfs: upper fs does not support tmpfile.
+[   22.328254] urandom-seed: Seed file not found (/etc/urandom.seed)
+[   22.521000] procd: - early -
+[   25.010561] procd: - ubus -
+[   25.167335] urandom_read: 1 callbacks suppressed
+[   25.167350] random: ubusd: uninitialized urandom read (4 bytes read)
+[   25.197679] random: ubusd: uninitialized urandom read (4 bytes read)
+[   25.206031] random: ubusd: uninitialized urandom read (4 bytes read)
+[   25.222506] procd: - init -
+Please press Enter to activate this console.
+[   26.721309] kmodloader: loading kernel modules from /etc/modules.d/*
+[   27.008332] urngd: v1.0.2 started.
+[   27.077889] xt_time: kernel timezone is -0000
+[   27.163724] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   27.282848] random: crng init done
+[   27.286787] random: 1 urandom warning(s) missed due to ratelimiting
+[   67.131207] Using MAC 00007898e8e98b20
+[   67.152757] RESETTING 8380, CPU_PORT 28
+[   67.356628] rtl838x-eth bb00a300.ethernet eth0: configuring for fixed/internal link mode
+[   67.365668] In rtl838x_mac_config, mode 1
+[   67.373445] In rtl838x_mac_config, mode 1
+[   67.378092] rtl838x-eth bb00a300.ethernet eth0: Link is Up - 1Gbps/Full - flow control off
+[   67.420739] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   67.910870] device eth0 entered promiscuous mode
+[   67.916194] rtl83xx-switch switch@bb000000 lan1: configuring for phy/qsgmii link mode
+[   67.925664] 8021q: adding VLAN 0 to HW filter on device lan1
+[   67.932122] rtl83xx_vlan_prepare: port 0
+[   67.936617] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   67.936641] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   67.958631] rtl83xx_vlan_add port 0, vid_end 0, vid_end 0, flags 0
+[   67.965635] rtl83xx_vlan_prepare: port 28
+[   67.970204] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   67.970225] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   67.992218] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   68.133206] switch: port 1(lan1) entered blocking state
+[   68.139170] switch: port 1(lan1) entered disabled state
+[   68.145998] device lan1 entered promiscuous mode
+[   68.151604] rtl83xx_vlan_prepare: port 0
+[   68.156107] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   68.156130] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   68.178128] rtl83xx_vlan_prepare: port 28
+[   68.182698] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   68.182720] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   68.204746] rtl83xx_vlan_add port 0, vid_end 1, vid_end 1, flags 6
+[   68.211748] Untagged ports, VLAN 1: 1fffffff
+[   68.216609] Tagged ports, VLAN 1: 1fffffff
+[   68.221287] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   68.228375] Untagged ports, VLAN 1: 1fffffff
+[   68.233241] Tagged ports, VLAN 1: 1fffffff
+[   68.362918] rtl83xx_vlan_prepare: port 0
+[   68.367453] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   68.367476] Tagged ports 1fffffff, untag 1ffffffe, prof 0, MC# 1, UC# 1, FID 0
+[   68.389500] rtl83xx_vlan_prepare: port 28
+[   68.394064] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   68.394086] Tagged ports 1fffffff, untag 1ffffffe, prof 0, MC# 1, UC# 1, FID 0
+[   68.416079] rtl83xx_vlan_add port 0, vid_end 1, vid_end 1, flags 6
+[   68.423085] Untagged ports, VLAN 1: 1fffffff
+[   68.427943] Tagged ports, VLAN 1: 1fffffff
+[   68.432624] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   68.439714] Untagged ports, VLAN 1: 1fffffff
+[   68.444591] Tagged ports, VLAN 1: 1fffffff
+[   68.673186] rtl83xx_vlan_prepare: port 0
+[   68.677693] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   68.677716] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   68.699732] rtl83xx_vlan_prepare: port 28
+[   68.704299] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   68.704320] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   68.726311] rtl83xx_vlan_add port 0, vid_end 100, vid_end 100, flags 0
+[   68.733697] Untagged ports, VLAN 100: 0
+[   68.738071] Tagged ports, VLAN 100: 1
+[   68.742298] rtl83xx_vlan_add port 28, vid_end 100, vid_end 100, flags 0
+[   68.749785] Untagged ports, VLAN 100: 0
+[   68.754158] Tagged ports, VLAN 100: 10000001
+[   69.016678] device switch entered promiscuous mode
+[   69.257182] rtl83xx-switch switch@bb000000 lan10: configuring for phy/internal link mode
+[   69.267009] 8021q: adding VLAN 0 to HW filter on device lan10
+[   69.273589] rtl83xx_vlan_prepare: port 9
+[   69.278067] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   69.278091] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   69.300078] rtl83xx_vlan_add port 9, vid_end 0, vid_end 0, flags 0
+[   69.307082] rtl83xx_vlan_prepare: port 28
+[   69.311662] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   69.311684] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   69.333684] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   69.874161] switch: port 2(lan10) entered blocking state
+[   69.880244] switch: port 2(lan10) entered disabled state
+[   69.956768] device lan10 entered promiscuous mode
+[   69.962666] rtl83xx_vlan_prepare: port 9
+[   69.967201] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   69.967224] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   69.989218] rtl83xx_vlan_prepare: port 28
+[   69.993780] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   69.993802] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   70.015793] rtl83xx_vlan_add port 9, vid_end 1, vid_end 1, flags 6
+[   70.022791] Untagged ports, VLAN 1: 1fffffff
+[   70.027651] Tagged ports, VLAN 1: 1fffffff
+[   70.032326] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   70.039420] Untagged ports, VLAN 1: 1fffffff
+[   70.044274] Tagged ports, VLAN 1: 1fffffff
+[   70.461175] rtl83xx_vlan_prepare: port 9
+[   70.465686] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   70.465708] Tagged ports 1fffffff, untag 1ffffdff, prof 0, MC# 1, UC# 1, FID 0
+[   70.487727] rtl83xx_vlan_prepare: port 28
+[   70.492324] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   70.492346] Tagged ports 1fffffff, untag 1ffffdff, prof 0, MC# 1, UC# 1, FID 0
+[   70.514352] rtl83xx_vlan_add port 9, vid_end 1, vid_end 1, flags 6
+[   70.521357] Untagged ports, VLAN 1: 1fffffff
+[   70.526215] Tagged ports, VLAN 1: 1fffffff
+[   70.530890] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   70.537984] Untagged ports, VLAN 1: 1fffffff
+[   70.542838] Tagged ports, VLAN 1: 1fffffff
+[   70.857151] rtl83xx-switch switch@bb000000 lan11: configuring for phy/internal link mode
+[   70.866836] 8021q: adding VLAN 0 to HW filter on device lan11
+[   70.873424] rtl83xx_vlan_prepare: port 10
+[   70.878003] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   70.878026] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   70.900033] rtl83xx_vlan_add port 10, vid_end 0, vid_end 0, flags 0
+[   70.907136] rtl83xx_vlan_prepare: port 28
+[   70.911700] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   70.911722] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   70.933716] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   71.164066] switch: port 3(lan11) entered blocking state
+[   71.170137] switch: port 3(lan11) entered disabled state
+[   71.212660] device lan11 entered promiscuous mode
+[   71.218520] rtl83xx_vlan_prepare: port 10
+[   71.223141] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   71.223164] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   71.245164] rtl83xx_vlan_prepare: port 28
+[   71.249735] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   71.249756] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   71.271774] rtl83xx_vlan_add port 10, vid_end 1, vid_end 1, flags 6
+[   71.278886] Untagged ports, VLAN 1: 1fffffff
+[   71.283747] Tagged ports, VLAN 1: 1fffffff
+[   71.288422] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   71.295515] Untagged ports, VLAN 1: 1fffffff
+[   71.300369] Tagged ports, VLAN 1: 1fffffff
+[   71.561238] rtl83xx_vlan_prepare: port 10
+[   71.565844] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   71.565867] Tagged ports 1fffffff, untag 1ffffbff, prof 0, MC# 1, UC# 1, FID 0
+[   71.587885] rtl83xx_vlan_prepare: port 28
+[   71.592451] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   71.592511] Tagged ports 1fffffff, untag 1ffffbff, prof 0, MC# 1, UC# 1, FID 0
+[   71.614500] rtl83xx_vlan_add port 10, vid_end 1, vid_end 1, flags 6
+[   71.621604] Untagged ports, VLAN 1: 1fffffff
+[   71.626461] Tagged ports, VLAN 1: 1fffffff
+[   71.631137] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   71.638231] Untagged ports, VLAN 1: 1fffffff
+[   71.643085] Tagged ports, VLAN 1: 1fffffff
+[   71.905124] rtl83xx-switch switch@bb000000 lan12: configuring for phy/internal link mode
+[   71.915096] 8021q: adding VLAN 0 to HW filter on device lan12
+[   71.921693] rtl83xx_vlan_prepare: port 11
+[   71.926272] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   71.926295] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   71.948296] rtl83xx_vlan_add port 11, vid_end 0, vid_end 0, flags 0
+[   71.955400] rtl83xx_vlan_prepare: port 28
+[   71.959965] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   71.959987] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   71.981971] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   72.226309] switch: port 4(lan12) entered blocking state
+[   72.232371] switch: port 4(lan12) entered disabled state
+[   72.280664] device lan12 entered promiscuous mode
+[   72.286550] rtl83xx_vlan_prepare: port 11
+[   72.291178] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   72.291202] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   72.313227] rtl83xx_vlan_prepare: port 28
+[   72.317798] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   72.317820] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   72.339844] rtl83xx_vlan_add port 11, vid_end 1, vid_end 1, flags 6
+[   72.346944] Untagged ports, VLAN 1: 1fffffff
+[   72.351803] Tagged ports, VLAN 1: 1fffffff
+[   72.356491] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   72.363580] Untagged ports, VLAN 1: 1fffffff
+[   72.368434] Tagged ports, VLAN 1: 1fffffff
+[   72.607564] rtl83xx_vlan_prepare: port 11
+[   72.612173] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   72.612196] Tagged ports 1fffffff, untag 1ffff7ff, prof 0, MC# 1, UC# 1, FID 0
+[   72.634233] rtl83xx_vlan_prepare: port 28
+[   72.638803] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   72.638825] Tagged ports 1fffffff, untag 1ffff7ff, prof 0, MC# 1, UC# 1, FID 0
+[   72.660831] rtl83xx_vlan_add port 11, vid_end 1, vid_end 1, flags 6
+[   72.667927] Untagged ports, VLAN 1: 1fffffff
+[   72.672788] Tagged ports, VLAN 1: 1fffffff
+[   72.677498] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   72.684605] Untagged ports, VLAN 1: 1fffffff
+[   72.689456] Tagged ports, VLAN 1: 1fffffff
+[   72.985181] rtl83xx-switch switch@bb000000 lan13: configuring for phy/internal link mode
+[   72.995020] 8021q: adding VLAN 0 to HW filter on device lan13
+[   73.001599] rtl83xx_vlan_prepare: port 12
+[   73.006178] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   73.006201] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   73.028188] rtl83xx_vlan_add port 12, vid_end 0, vid_end 0, flags 0
+[   73.035287] rtl83xx_vlan_prepare: port 28
+[   73.039856] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   73.039877] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   73.061888] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   73.289383] switch: port 5(lan13) entered blocking state
+[   73.295441] switch: port 5(lan13) entered disabled state
+[   73.335807] device lan13 entered promiscuous mode
+[   73.341720] rtl83xx_vlan_prepare: port 12
+[   73.346340] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   73.346363] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   73.368387] rtl83xx_vlan_prepare: port 28
+[   73.372961] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   73.372982] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   73.394983] rtl83xx_vlan_add port 12, vid_end 1, vid_end 1, flags 6
+[   73.402092] Untagged ports, VLAN 1: 1fffffff
+[   73.406952] Tagged ports, VLAN 1: 1fffffff
+[   73.411624] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   73.418718] Untagged ports, VLAN 1: 1fffffff
+[   73.423571] Tagged ports, VLAN 1: 1fffffff
+[   73.574971] rtl83xx_vlan_prepare: port 12
+[   73.579573] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   73.579596] Tagged ports 1fffffff, untag 1fffefff, prof 0, MC# 1, UC# 1, FID 0
+[   73.601615] rtl83xx_vlan_prepare: port 28
+[   73.606182] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   73.606204] Tagged ports 1fffffff, untag 1fffefff, prof 0, MC# 1, UC# 1, FID 0
+[   73.628205] rtl83xx_vlan_add port 12, vid_end 1, vid_end 1, flags 6
+[   73.635307] Untagged ports, VLAN 1: 1fffffff
+[   73.640167] Tagged ports, VLAN 1: 1fffffff
+[   73.644846] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   73.651937] Untagged ports, VLAN 1: 1fffffff
+[   73.656803] Tagged ports, VLAN 1: 1fffffff
+[   73.792931] rtl83xx-switch switch@bb000000 lan14: configuring for phy/internal link mode
+[   73.802616] 8021q: adding VLAN 0 to HW filter on device lan14
+[   73.809194] rtl83xx_vlan_prepare: port 13
+[   73.813782] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   73.813805] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   73.835798] rtl83xx_vlan_add port 13, vid_end 0, vid_end 0, flags 0
+[   73.842900] rtl83xx_vlan_prepare: port 28
+[   73.847468] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   73.847489] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   73.869473] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   73.997449] switch: port 6(lan14) entered blocking state
+[   74.003506] switch: port 6(lan14) entered disabled state
+[   74.010271] device lan14 entered promiscuous mode
+[   74.016114] rtl83xx_vlan_prepare: port 13
+[   74.020722] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.020745] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   74.042735] rtl83xx_vlan_prepare: port 28
+[   74.047298] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.047320] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   74.069340] rtl83xx_vlan_add port 13, vid_end 1, vid_end 1, flags 6
+[   74.076437] Untagged ports, VLAN 1: 1fffffff
+[   74.081299] Tagged ports, VLAN 1: 1fffffff
+[   74.085977] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   74.093072] Untagged ports, VLAN 1: 1fffffff
+[   74.097934] Tagged ports, VLAN 1: 1fffffff
+[   74.220798] rtl83xx_vlan_prepare: port 13
+[   74.225394] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.225417] Tagged ports 1fffffff, untag 1fffdfff, prof 0, MC# 1, UC# 1, FID 0
+[   74.247464] rtl83xx_vlan_prepare: port 28
+[   74.252031] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.252054] Tagged ports 1fffffff, untag 1fffdfff, prof 0, MC# 1, UC# 1, FID 0
+[   74.274055] rtl83xx_vlan_add port 13, vid_end 1, vid_end 1, flags 6
+[   74.281157] Untagged ports, VLAN 1: 1fffffff
+[   74.286017] Tagged ports, VLAN 1: 1fffffff
+[   74.290691] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   74.297785] Untagged ports, VLAN 1: 1fffffff
+[   74.302638] Tagged ports, VLAN 1: 1fffffff
+[   74.431248] rtl83xx-switch switch@bb000000 lan15: configuring for phy/internal link mode
+[   74.440991] 8021q: adding VLAN 0 to HW filter on device lan15
+[   74.447539] rtl83xx_vlan_prepare: port 14
+[   74.452114] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.452138] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   74.474126] rtl83xx_vlan_add port 14, vid_end 0, vid_end 0, flags 0
+[   74.481237] rtl83xx_vlan_prepare: port 28
+[   74.485807] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.485829] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   74.507856] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   74.637376] switch: port 7(lan15) entered blocking state
+[   74.643446] switch: port 7(lan15) entered disabled state
+[   74.650226] device lan15 entered promiscuous mode
+[   74.656049] rtl83xx_vlan_prepare: port 14
+[   74.660660] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.660683] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   74.682678] rtl83xx_vlan_prepare: port 28
+[   74.687243] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.687265] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   74.709256] rtl83xx_vlan_add port 14, vid_end 1, vid_end 1, flags 6
+[   74.716347] Untagged ports, VLAN 1: 1fffffff
+[   74.721206] Tagged ports, VLAN 1: 1fffffff
+[   74.725875] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   74.732970] Untagged ports, VLAN 1: 1fffffff
+[   74.737824] Tagged ports, VLAN 1: 1fffffff
+[   74.867262] rtl83xx_vlan_prepare: port 14
+[   74.871883] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.871906] Tagged ports 1fffffff, untag 1fffbfff, prof 0, MC# 1, UC# 1, FID 0
+[   74.893937] rtl83xx_vlan_prepare: port 28
+[   74.898504] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   74.898526] Tagged ports 1fffffff, untag 1fffbfff, prof 0, MC# 1, UC# 1, FID 0
+[   74.920521] rtl83xx_vlan_add port 14, vid_end 1, vid_end 1, flags 6
+[   74.927617] Untagged ports, VLAN 1: 1fffffff
+[   74.932507] Tagged ports, VLAN 1: 1fffffff
+[   74.937176] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   74.944252] Untagged ports, VLAN 1: 1fffffff
+[   74.949099] Tagged ports, VLAN 1: 1fffffff
+[   75.166520] rtl83xx-switch switch@bb000000 lan16: configuring for phy/internal link mode
+[   75.176313] 8021q: adding VLAN 0 to HW filter on device lan16
+[   75.182890] rtl83xx_vlan_prepare: port 15
+[   75.187482] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   75.187506] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   75.209543] rtl83xx_vlan_add port 15, vid_end 0, vid_end 0, flags 0
+[   75.216645] rtl83xx_vlan_prepare: port 28
+[   75.221211] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   75.221232] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   75.243226] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   75.431143] switch: port 8(lan16) entered blocking state
+[   75.437213] switch: port 8(lan16) entered disabled state
+[   75.443987] device lan16 entered promiscuous mode
+[   75.449815] rtl83xx_vlan_prepare: port 15
+[   75.454416] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   75.454439] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   75.476423] rtl83xx_vlan_prepare: port 28
+[   75.481000] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   75.481022] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   75.503019] rtl83xx_vlan_add port 15, vid_end 1, vid_end 1, flags 6
+[   75.510121] Untagged ports, VLAN 1: 1fffffff
+[   75.514980] Tagged ports, VLAN 1: 1fffffff
+[   75.519655] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   75.526749] Untagged ports, VLAN 1: 1fffffff
+[   75.531603] Tagged ports, VLAN 1: 1fffffff
+[   75.819404] rtl83xx_vlan_prepare: port 15
+[   75.824004] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   75.824027] Tagged ports 1fffffff, untag 1fff7fff, prof 0, MC# 1, UC# 1, FID 0
+[   75.846043] rtl83xx_vlan_prepare: port 28
+[   75.850612] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   75.850634] Tagged ports 1fffffff, untag 1fff7fff, prof 0, MC# 1, UC# 1, FID 0
+[   75.872626] rtl83xx_vlan_add port 15, vid_end 1, vid_end 1, flags 6
+[   75.879715] Untagged ports, VLAN 1: 1fffffff
+[   75.884575] Tagged ports, VLAN 1: 1fffffff
+[   75.889244] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   75.896333] Untagged ports, VLAN 1: 1fffffff
+[   75.901191] Tagged ports, VLAN 1: 1fffffff
+[   76.077068] rtl83xx-switch switch@bb000000 lan17: configuring for phy/qsgmii link mode
+[   76.086774] 8021q: adding VLAN 0 to HW filter on device lan17
+[   76.093356] rtl83xx_vlan_prepare: port 24
+[   76.097935] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   76.097959] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   76.119954] rtl83xx_vlan_add port 24, vid_end 0, vid_end 0, flags 0
+[   76.127055] rtl83xx_vlan_prepare: port 28
+[   76.131624] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   76.131645] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   76.153672] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   76.199590] RTL8380 Link change: status: 1, ports 1000000
+[   76.327680] switch: port 9(lan17) entered blocking state
+[   76.333754] switch: port 9(lan17) entered disabled state
+[   76.340590] device lan17 entered promiscuous mode
+[   76.346399] rtl83xx_vlan_prepare: port 24
+[   76.351000] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   76.351024] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   76.373035] rtl83xx_vlan_prepare: port 28
+[   76.377601] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   76.377623] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   76.399627] rtl83xx_vlan_add port 24, vid_end 1, vid_end 1, flags 6
+[   76.406727] Untagged ports, VLAN 1: 1fffffff
+[   76.411586] Tagged ports, VLAN 1: 1fffffff
+[   76.416260] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   76.423355] Untagged ports, VLAN 1: 1fffffff
+[   76.428227] Tagged ports, VLAN 1: 1fffffff
+[   76.697169] rtl83xx_vlan_prepare: port 24
+[   76.701769] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   76.701792] Tagged ports 1fffffff, untag 1effffff, prof 0, MC# 1, UC# 1, FID 0
+[   76.723807] rtl83xx_vlan_prepare: port 28
+[   76.728376] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   76.728398] Tagged ports 1fffffff, untag 1effffff, prof 0, MC# 1, UC# 1, FID 0
+[   76.750391] rtl83xx_vlan_add port 24, vid_end 1, vid_end 1, flags 6
+[   76.757494] Untagged ports, VLAN 1: 1fffffff
+[   76.762353] Tagged ports, VLAN 1: 1fffffff
+[   76.767027] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   76.774122] Untagged ports, VLAN 1: 1fffffff
+[   76.778975] Tagged ports, VLAN 1: 1fffffff
+[   76.976102] rtl83xx-switch switch@bb000000 lan18: configuring for phy/qsgmii link mode
+[   76.985559] 8021q: adding VLAN 0 to HW filter on device lan18
+[   76.992129] rtl83xx_vlan_prepare: port 25
+[   76.996713] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   76.996736] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.018736] rtl83xx_vlan_add port 25, vid_end 0, vid_end 0, flags 0
+[   77.025832] rtl83xx_vlan_prepare: port 28
+[   77.030402] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.030424] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.052447] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   77.162273] switch: port 10(lan18) entered blocking state
+[   77.168433] switch: port 10(lan18) entered disabled state
+[   77.175316] device lan18 entered promiscuous mode
+[   77.181144] rtl83xx_vlan_prepare: port 25
+[   77.185755] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.185778] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.207822] rtl83xx_vlan_prepare: port 28
+[   77.212405] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.212427] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.234441] rtl83xx_vlan_add port 25, vid_end 1, vid_end 1, flags 6
+[   77.241542] Untagged ports, VLAN 1: 1fffffff
+[   77.246398] Tagged ports, VLAN 1: 1fffffff
+[   77.251072] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   77.258167] Untagged ports, VLAN 1: 1fffffff
+[   77.263020] Tagged ports, VLAN 1: 1fffffff
+[   77.397016] rtl83xx_vlan_prepare: port 25
+[   77.401609] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.401632] Tagged ports 1fffffff, untag 1dffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.423647] rtl83xx_vlan_prepare: port 28
+[   77.428215] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.428236] Tagged ports 1fffffff, untag 1dffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.450241] rtl83xx_vlan_add port 25, vid_end 1, vid_end 1, flags 6
+[   77.457342] Untagged ports, VLAN 1: 1fffffff
+[   77.462200] Tagged ports, VLAN 1: 1fffffff
+[   77.466874] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   77.473969] Untagged ports, VLAN 1: 1fffffff
+[   77.478821] Tagged ports, VLAN 1: 1fffffff
+[   77.612190] rtl83xx-switch switch@bb000000 lan19: configuring for phy/qsgmii link mode
+[   77.621742] 8021q: adding VLAN 0 to HW filter on device lan19
+[   77.628323] rtl83xx_vlan_prepare: port 26
+[   77.632910] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.632934] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.654940] rtl83xx_vlan_add port 26, vid_end 0, vid_end 0, flags 0
+[   77.662041] rtl83xx_vlan_prepare: port 28
+[   77.666608] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.666629] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.688630] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   77.780872] switch: port 11(lan19) entered blocking state
+[   77.787026] switch: port 11(lan19) entered disabled state
+[   77.793915] device lan19 entered promiscuous mode
+[   77.799747] rtl83xx_vlan_prepare: port 26
+[   77.804346] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.804369] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.826355] rtl83xx_vlan_prepare: port 28
+[   77.830920] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.830941] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.852934] rtl83xx_vlan_add port 26, vid_end 1, vid_end 1, flags 6
+[   77.860067] Untagged ports, VLAN 1: 1fffffff
+[   77.864934] Tagged ports, VLAN 1: 1fffffff
+[   77.869605] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   77.876700] Untagged ports, VLAN 1: 1fffffff
+[   77.881554] Tagged ports, VLAN 1: 1fffffff
+[   77.892311] rtl83xx_vlan_prepare: port 26
+[   77.896915] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.896938] Tagged ports 1fffffff, untag 1bffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.918972] rtl83xx_vlan_prepare: port 28
+[   77.923540] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   77.923563] Tagged ports 1fffffff, untag 1bffffff, prof 0, MC# 1, UC# 1, FID 0
+[   77.945563] rtl83xx_vlan_add port 26, vid_end 1, vid_end 1, flags 6
+[   77.952666] Untagged ports, VLAN 1: 1fffffff
+[   77.957525] Tagged ports, VLAN 1: 1fffffff
+[   77.962199] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   77.969293] Untagged ports, VLAN 1: 1fffffff
+[   77.974147] Tagged ports, VLAN 1: 1fffffff
+[   77.992878] rtl83xx-switch switch@bb000000 lan2: configuring for phy/qsgmii link mode
+[   78.002612] 8021q: adding VLAN 0 to HW filter on device lan2
+[   78.009086] rtl83xx_vlan_prepare: port 1
+[   78.013561] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.013584] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.035573] rtl83xx_vlan_add port 1, vid_end 0, vid_end 0, flags 0
+[   78.042577] rtl83xx_vlan_prepare: port 28
+[   78.047145] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.047167] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.069171] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   78.113776] switch: port 12(lan2) entered blocking state
+[   78.119832] switch: port 12(lan2) entered disabled state
+[   78.126616] device lan2 entered promiscuous mode
+[   78.132351] rtl83xx_vlan_prepare: port 1
+[   78.136865] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.136889] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.158877] rtl83xx_vlan_prepare: port 28
+[   78.163447] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.163469] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.185479] rtl83xx_vlan_add port 1, vid_end 1, vid_end 1, flags 6
+[   78.192490] Untagged ports, VLAN 1: 1fffffff
+[   78.197343] Tagged ports, VLAN 1: 1fffffff
+[   78.202019] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   78.209113] Untagged ports, VLAN 1: 1fffffff
+[   78.213966] Tagged ports, VLAN 1: 1fffffff
+[   78.225266] rtl83xx_vlan_prepare: port 1
+[   78.229772] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.229795] Tagged ports 1fffffff, untag 1ffffffd, prof 0, MC# 1, UC# 1, FID 0
+[   78.251834] rtl83xx_vlan_prepare: port 28
+[   78.256433] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.256456] Tagged ports 1fffffff, untag 1ffffffd, prof 0, MC# 1, UC# 1, FID 0
+[   78.278509] rtl83xx_vlan_add port 1, vid_end 1, vid_end 1, flags 6
+[   78.285520] Untagged ports, VLAN 1: 1fffffff
+[   78.290387] Tagged ports, VLAN 1: 1fffffff
+[   78.295063] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   78.302154] Untagged ports, VLAN 1: 1fffffff
+[   78.307007] Tagged ports, VLAN 1: 1fffffff
+[   78.327626] rtl83xx-switch switch@bb000000 lan20: configuring for phy/qsgmii link mode
+[   78.337251] 8021q: adding VLAN 0 to HW filter on device lan20
+[   78.343829] rtl83xx_vlan_prepare: port 27
+[   78.348405] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.348428] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.370446] rtl83xx_vlan_add port 27, vid_end 0, vid_end 0, flags 0
+[   78.377549] rtl83xx_vlan_prepare: port 28
+[   78.382118] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.382139] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.404125] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   78.451652] switch: port 13(lan20) entered blocking state
+[   78.457818] switch: port 13(lan20) entered disabled state
+[   78.464742] device lan20 entered promiscuous mode
+[   78.470576] rtl83xx_vlan_prepare: port 27
+[   78.475181] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.475205] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.497199] rtl83xx_vlan_prepare: port 28
+[   78.501763] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.501784] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.523779] rtl83xx_vlan_add port 27, vid_end 1, vid_end 1, flags 6
+[   78.530880] Untagged ports, VLAN 1: 1fffffff
+[   78.535740] Tagged ports, VLAN 1: 1fffffff
+[   78.540414] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   78.547508] Untagged ports, VLAN 1: 1fffffff
+[   78.552361] Tagged ports, VLAN 1: 1fffffff
+[   78.562915] rtl83xx_vlan_prepare: port 27
+[   78.567516] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.567539] Tagged ports 1fffffff, untag 17ffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.589583] rtl83xx_vlan_prepare: port 28
+[   78.594155] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.594177] Tagged ports 1fffffff, untag 17ffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.616179] rtl83xx_vlan_add port 27, vid_end 1, vid_end 1, flags 6
+[   78.623279] Untagged ports, VLAN 1: 1fffffff
+[   78.628138] Tagged ports, VLAN 1: 1fffffff
+[   78.632817] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   78.639910] Untagged ports, VLAN 1: 1fffffff
+[   78.644776] Tagged ports, VLAN 1: 1fffffff
+[   78.663520] rtl83xx-switch switch@bb000000 lan3: configuring for phy/qsgmii link mode
+[   78.672961] 8021q: adding VLAN 0 to HW filter on device lan3
+[   78.679408] rtl83xx_vlan_prepare: port 2
+[   78.683884] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.683907] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.705906] rtl83xx_vlan_add port 2, vid_end 0, vid_end 0, flags 0
+[   78.712911] rtl83xx_vlan_prepare: port 28
+[   78.717476] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.717498] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.739492] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   78.785662] switch: port 14(lan3) entered blocking state
+[   78.791719] switch: port 14(lan3) entered disabled state
+[   78.798499] device lan3 entered promiscuous mode
+[   78.804225] rtl83xx_vlan_prepare: port 2
+[   78.808741] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.808764] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.830754] rtl83xx_vlan_prepare: port 28
+[   78.835316] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.835337] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   78.857330] rtl83xx_vlan_add port 2, vid_end 1, vid_end 1, flags 6
+[   78.864323] Untagged ports, VLAN 1: 1fffffff
+[   78.869184] Tagged ports, VLAN 1: 1fffffff
+[   78.873853] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   78.880947] Untagged ports, VLAN 1: 1fffffff
+[   78.885800] Tagged ports, VLAN 1: 1fffffff
+[   78.896367] rtl83xx_vlan_prepare: port 2
+[   78.900872] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.900895] Tagged ports 1fffffff, untag 1ffffffb, prof 0, MC# 1, UC# 1, FID 0
+[   78.922929] rtl83xx_vlan_prepare: port 28
+[   78.927497] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   78.927520] Tagged ports 1fffffff, untag 1ffffffb, prof 0, MC# 1, UC# 1, FID 0
+[   78.949510] rtl83xx_vlan_add port 2, vid_end 1, vid_end 1, flags 6
+[   78.956509] Untagged ports, VLAN 1: 1fffffff
+[   78.961366] Tagged ports, VLAN 1: 1fffffff
+[   78.966041] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   78.973135] Untagged ports, VLAN 1: 1fffffff
+[   78.977988] Tagged ports, VLAN 1: 1fffffff
+[   78.996580] rtl83xx-switch switch@bb000000 lan4: configuring for phy/qsgmii link mode
+[   79.006191] 8021q: adding VLAN 0 to HW filter on device lan4
+[   79.012675] rtl83xx_vlan_prepare: port 3
+[   79.017158] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.017182] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.039178] rtl83xx_vlan_add port 3, vid_end 0, vid_end 0, flags 0
+[   79.046182] rtl83xx_vlan_prepare: port 28
+[   79.050750] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.050771] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.072759] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   79.116963] switch: port 15(lan4) entered blocking state
+[   79.123031] switch: port 15(lan4) entered disabled state
+[   79.129834] device lan4 entered promiscuous mode
+[   79.135567] rtl83xx_vlan_prepare: port 3
+[   79.140073] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.140097] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.162095] rtl83xx_vlan_prepare: port 28
+[   79.166665] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.166687] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.188687] rtl83xx_vlan_add port 3, vid_end 1, vid_end 1, flags 6
+[   79.195688] Untagged ports, VLAN 1: 1fffffff
+[   79.200549] Tagged ports, VLAN 1: 1fffffff
+[   79.205227] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   79.212316] Untagged ports, VLAN 1: 1fffffff
+[   79.217181] Tagged ports, VLAN 1: 1fffffff
+[   79.229560] rtl83xx_vlan_prepare: port 3
+[   79.234064] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.234086] Tagged ports 1fffffff, untag 1ffffff7, prof 0, MC# 1, UC# 1, FID 0
+[   79.256132] rtl83xx_vlan_prepare: port 28
+[   79.260709] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.260732] Tagged ports 1fffffff, untag 1ffffff7, prof 0, MC# 1, UC# 1, FID 0
+[   79.282733] rtl83xx_vlan_add port 3, vid_end 1, vid_end 1, flags 6
+[   79.289739] Untagged ports, VLAN 1: 1fffffff
+[   79.294598] Tagged ports, VLAN 1: 1fffffff
+[   79.299272] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   79.306367] Untagged ports, VLAN 1: 1fffffff
+[   79.311220] Tagged ports, VLAN 1: 1fffffff
+[   79.330557] rtl83xx-switch switch@bb000000 lan5: configuring for phy/qsgmii link mode
+[   79.339987] 8021q: adding VLAN 0 to HW filter on device lan5
+[   79.346480] rtl83xx_vlan_prepare: port 4
+[   79.350963] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.350986] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.372982] rtl83xx_vlan_add port 4, vid_end 0, vid_end 0, flags 0
+[   79.379979] rtl83xx_vlan_prepare: port 28
+[   79.384550] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.384571] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.406559] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   79.441775] RTL8380 Link change: status: 1, ports 1000000
+[   79.458164] rtl83xx-switch switch@bb000000 lan17: Link is Up - 1Gbps/Full - flow control rx/tx
+[   79.467970] switch: port 9(lan17) entered blocking state
+[   79.474052] switch: port 9(lan17) entered forwarding state
+[   79.482232] IPv6: ADDRCONF(NETDEV_CHANGE): switch: link becomes ready
+[   79.496806] IPv6: ADDRCONF(NETDEV_CHANGE): switch.1: link becomes ready
+[   79.505001] IPv6: ADDRCONF(NETDEV_CHANGE): switch.100: link becomes ready
+[   79.516302] switch: port 16(lan5) entered blocking state
+[   79.522402] switch: port 16(lan5) entered disabled state
+[   79.529443] device lan5 entered promiscuous mode
+[   79.535189] rtl83xx_vlan_prepare: port 4
+[   79.539693] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.539716] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.561694] rtl83xx_vlan_prepare: port 28
+[   79.566253] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.566274] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.588250] rtl83xx_vlan_add port 4, vid_end 1, vid_end 1, flags 6
+[   79.595247] Untagged ports, VLAN 1: 1fffffff
+[   79.600098] Tagged ports, VLAN 1: 1fffffff
+[   79.604770] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   79.611852] Untagged ports, VLAN 1: 1fffffff
+[   79.616700] Tagged ports, VLAN 1: 1fffffff
+[   79.627605] rtl83xx_vlan_prepare: port 4
+[   79.632113] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.632136] Tagged ports 1fffffff, untag 1fffffef, prof 0, MC# 1, UC# 1, FID 0
+[   79.654641] rtl83xx_vlan_prepare: port 28
+[   79.659211] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.659234] Tagged ports 1fffffff, untag 1fffffef, prof 0, MC# 1, UC# 1, FID 0
+[   79.681260] rtl83xx_vlan_add port 4, vid_end 1, vid_end 1, flags 6
+[   79.688263] Untagged ports, VLAN 1: 1fffffff
+[   79.693127] Tagged ports, VLAN 1: 1fffffff
+[   79.697796] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   79.704892] Untagged ports, VLAN 1: 1fffffff
+[   79.709744] Tagged ports, VLAN 1: 1fffffff
+[   79.728757] rtl83xx-switch switch@bb000000 lan6: configuring for phy/qsgmii link mode
+[   79.738003] 8021q: adding VLAN 0 to HW filter on device lan6
+[   79.744512] rtl83xx_vlan_prepare: port 5
+[   79.748982] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.749005] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.771007] rtl83xx_vlan_add port 5, vid_end 0, vid_end 0, flags 0
+[   79.778310] rtl83xx_vlan_prepare: port 28
+[   79.782904] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.782925] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.804939] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   79.852084] switch: port 17(lan6) entered blocking state
+[   79.858144] switch: port 17(lan6) entered disabled state
+[   79.865024] device lan6 entered promiscuous mode
+[   79.870747] rtl83xx_vlan_prepare: port 5
+[   79.875250] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.875274] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.897261] rtl83xx_vlan_prepare: port 28
+[   79.901825] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.901846] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   79.923845] rtl83xx_vlan_add port 5, vid_end 1, vid_end 1, flags 6
+[   79.930844] Untagged ports, VLAN 1: 1fffffff
+[   79.935704] Tagged ports, VLAN 1: 1fffffff
+[   79.940379] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   79.947473] Untagged ports, VLAN 1: 1fffffff
+[   79.952325] Tagged ports, VLAN 1: 1fffffff
+[   79.963086] rtl83xx_vlan_prepare: port 5
+[   79.967586] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.967609] Tagged ports 1fffffff, untag 1fffffdf, prof 0, MC# 1, UC# 1, FID 0
+[   79.989636] rtl83xx_vlan_prepare: port 28
+[   79.994206] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   79.994229] Tagged ports 1fffffff, untag 1fffffdf, prof 0, MC# 1, UC# 1, FID 0
+[   80.016219] rtl83xx_vlan_add port 5, vid_end 1, vid_end 1, flags 6
+[   80.023218] Untagged ports, VLAN 1: 1fffffff
+[   80.028077] Tagged ports, VLAN 1: 1fffffff
+[   80.032757] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   80.039848] Untagged ports, VLAN 1: 1fffffff
+[   80.044705] Tagged ports, VLAN 1: 1fffffff
+[   80.063515] rtl83xx-switch switch@bb000000 lan7: configuring for phy/qsgmii link mode
+[   80.073166] 8021q: adding VLAN 0 to HW filter on device lan7
+[   80.079622] rtl83xx_vlan_prepare: port 6
+[   80.084098] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.084121] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.106126] rtl83xx_vlan_add port 6, vid_end 0, vid_end 0, flags 0
+[   80.113131] rtl83xx_vlan_prepare: port 28
+[   80.117698] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.117720] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.139715] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   80.183597] switch: port 18(lan7) entered blocking state
+[   80.189666] switch: port 18(lan7) entered disabled state
+[   80.196446] device lan7 entered promiscuous mode
+[   80.202221] rtl83xx_vlan_prepare: port 6
+[   80.206729] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.206753] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.229037] rtl83xx_vlan_prepare: port 28
+[   80.233612] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.233634] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.255659] rtl83xx_vlan_add port 6, vid_end 1, vid_end 1, flags 6
+[   80.262659] Untagged ports, VLAN 1: 1fffffff
+[   80.267518] Tagged ports, VLAN 1: 1fffffff
+[   80.272193] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   80.279286] Untagged ports, VLAN 1: 1fffffff
+[   80.284139] Tagged ports, VLAN 1: 1fffffff
+[   80.296596] rtl83xx_vlan_prepare: port 6
+[   80.301069] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.301092] Tagged ports 1fffffff, untag 1fffffbf, prof 0, MC# 1, UC# 1, FID 0
+[   80.323148] rtl83xx_vlan_prepare: port 28
+[   80.327721] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.327743] Tagged ports 1fffffff, untag 1fffffbf, prof 0, MC# 1, UC# 1, FID 0
+[   80.349765] rtl83xx_vlan_add port 6, vid_end 1, vid_end 1, flags 6
+[   80.356765] Untagged ports, VLAN 1: 1fffffff
+[   80.361623] Tagged ports, VLAN 1: 1fffffff
+[   80.366299] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   80.373392] Untagged ports, VLAN 1: 1fffffff
+[   80.378246] Tagged ports, VLAN 1: 1fffffff
+[   80.398452] rtl83xx-switch switch@bb000000 lan8: configuring for phy/qsgmii link mode
+[   80.407797] 8021q: adding VLAN 0 to HW filter on device lan8
+[   80.414281] rtl83xx_vlan_prepare: port 7
+[   80.418763] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.418786] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.440782] rtl83xx_vlan_add port 7, vid_end 0, vid_end 0, flags 0
+[   80.447779] rtl83xx_vlan_prepare: port 28
+[   80.452346] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.452367] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.474583] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   80.525043] switch: port 19(lan8) entered blocking state
+[   80.531107] switch: port 19(lan8) entered disabled state
+[   80.537955] device lan8 entered promiscuous mode
+[   80.543701] rtl83xx_vlan_prepare: port 7
+[   80.548206] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.548229] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.570226] rtl83xx_vlan_prepare: port 28
+[   80.574796] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.574818] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.596819] rtl83xx_vlan_add port 7, vid_end 1, vid_end 1, flags 6
+[   80.603821] Untagged ports, VLAN 1: 1fffffff
+[   80.608680] Tagged ports, VLAN 1: 1fffffff
+[   80.613350] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   80.620439] Untagged ports, VLAN 1: 1fffffff
+[   80.625366] Tagged ports, VLAN 1: 1fffffff
+[   80.636778] rtl83xx_vlan_prepare: port 7
+[   80.641269] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.641292] Tagged ports 1fffffff, untag 1fffff7f, prof 0, MC# 1, UC# 1, FID 0
+[   80.663323] rtl83xx_vlan_prepare: port 28
+[   80.667891] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.667913] Tagged ports 1fffffff, untag 1fffff7f, prof 0, MC# 1, UC# 1, FID 0
+[   80.689913] rtl83xx_vlan_add port 7, vid_end 1, vid_end 1, flags 6
+[   80.696910] Untagged ports, VLAN 1: 1fffffff
+[   80.701769] Tagged ports, VLAN 1: 1fffffff
+[   80.706443] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   80.713537] Untagged ports, VLAN 1: 1fffffff
+[   80.718391] Tagged ports, VLAN 1: 1fffffff
+[   80.740752] rtl83xx-switch switch@bb000000 lan9: configuring for phy/internal link mode
+[   80.750558] 8021q: adding VLAN 0 to HW filter on device lan9
+[   80.757043] rtl83xx_vlan_prepare: port 8
+[   80.761520] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.761544] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.783529] rtl83xx_vlan_add port 8, vid_end 0, vid_end 0, flags 0
+[   80.790535] rtl83xx_vlan_prepare: port 28
+[   80.795103] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.795125] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.817107] rtl83xx_vlan_add port 28, vid_end 0, vid_end 0, flags 0
+[   80.854892] switch: port 20(lan9) entered blocking state
+[   80.860966] switch: port 20(lan9) entered disabled state
+[   80.867766] device lan9 entered promiscuous mode
+[   80.873510] rtl83xx_vlan_prepare: port 8
+[   80.878018] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.878042] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.900055] rtl83xx_vlan_prepare: port 28
+[   80.904625] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.904647] Tagged ports 1fffffff, untag 1fffffff, prof 0, MC# 1, UC# 1, FID 0
+[   80.926641] rtl83xx_vlan_add port 8, vid_end 1, vid_end 1, flags 6
+[   80.933648] Untagged ports, VLAN 1: 1fffffff
+[   80.938508] Tagged ports, VLAN 1: 1fffffff
+[   80.943183] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   80.950276] Untagged ports, VLAN 1: 1fffffff
+[   80.955130] Tagged ports, VLAN 1: 1fffffff
+[   80.968189] rtl83xx_vlan_prepare: port 8
+[   80.972701] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.972724] Tagged ports 1fffffff, untag 1ffffeff, prof 0, MC# 1, UC# 1, FID 0
+[   80.994755] rtl83xx_vlan_prepare: port 28
+[   80.999325] VLAN 1: L2 learning: 1, L2 Unknown MultiCast Field 1ff,          IPv4 Unknown MultiCast Field 1ff, IPv6 Unknown MultiCast Field: 1ff
+[   80.999347] Tagged ports 1fffffff, untag 1ffffeff, prof 0, MC# 1, UC# 1, FID 0
+[   81.021337] rtl83xx_vlan_add port 8, vid_end 1, vid_end 1, flags 6
+[   81.028331] Untagged ports, VLAN 1: 1fffffff
+[   81.033191] Tagged ports, VLAN 1: 1fffffff
+[   81.037893] rtl83xx_vlan_add port 28, vid_end 1, vid_end 1, flags 4
+[   81.044997] Untagged ports, VLAN 1: 1fffffff
+[   81.049852] Tagged ports, VLAN 1: 1fffffff
+</nowiki>
+</WRAP>
+Bootlog for OpenWrt SNAPSHOT, r26990-06b37a5856, on DGS-1210-52 F3:
+<WRAP bootlog>
+<nowiki>
+U-Boot 2011.12.(2.1.5.67086)-Candidate1 (Aug 24 2021 - 17:33:09)
+
+Board: RTL839x CPU:700MHz LXB:200MHz MEM:400MHz
+DRAM:  128 MB
+SPI-F: 1x32 MB
+Loading 1024B env. variables from offset 0x80000
+Board Model = DGS-1210-52-F1 Cameo_bdinfo_get_BoardID [293] 
+Switch Model: RTL8393M_8218D (Port Count: 52)
+Switch Chip: RTL8393
+### RTL8218D config - MAC ID = 0 ###
+### RTL8218D config - MAC ID = 8 ###
+### RTL8218D config - MAC ID = 16 ###
+### RTL8218D config - MAC ID = 24 ###
+### RTL8218D config - MAC ID = 32 ###
+### RTL8218D config - MAC ID = 40 ###
+### RTL8214FC config - MAC ID = 48 ###
+PHY[0]: disable EEE
+PHY[1]: disable EEE
+PHY[2]: disable EEE
+PHY[3]: disable EEE
+PHY[4]: disable EEE
+PHY[5]: disable EEE
+PHY[6]: disable EEE
+Net:   Net Initialization Skipped
+rtl8390#0
+Hit Esc key to stop autoboot:  0 
+auto_update_precode is null!
+
+Loading Runtime Image ......
+## Booting kernel from Legacy Image at b4100000 ...
+   Image Name:   OpenWrt
+   Created:      2024-07-21  22:32:38 UTC
+   Image Type:   MIPS Linux Kernel Image (gzip compressed)
+   Data Size:    3653951 Bytes = 3.5 MB
+   Load Address: 80100000
+   Entry Point:  80100000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+[    0.000000] Linux version 5.15.161 (builder@buildhost) (mips-openwrt-linux-musl-gcc (OpenWrt GCC 13.3.0 r26990-06b37a5856) 13.3.0, GNU ld (GNU Binutils) 2.42) #0 SMP Sun Jul 21 22:32:38 2024
+[    0.000000] RTL838X model is ffffffff
+[    0.000000] RTL839X model is 83936806
+[    0.000000] SoC Type: RTL8393
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019555 (MIPS 34Kc)
+[    0.000000] MIPS: machine is D-Link DGS-1210-52
+[    0.000000] earlycon: ns16550a0 at MMIO 0x18002000 (options '115200n8')
+[    0.000000] printk: bootconsole [ns16550a0] enabled
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Using appended Device Tree.
+[    0.000000] Detected 1 available secondary CPU(s)
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] percpu: Embedded 11 pages/cpu s15632 r8192 d21232 u45056
+[    0.000000] pcpu-alloc: s15632 r8192 d21232 u45056 alloc=11*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: earlycon
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] Writing ErrCtl register=0007ec1c
+[    0.000000] Readback ErrCtl register=0007ec1c
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 119420K/131072K available (6682K kernel code, 625K rwdata, 1404K rodata, 1264K init, 222K bss, 11652K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000]  Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] NR_IRQS: 256
+[    0.000000] rtl83xx-clk: initialized, CPU 700 MHz, MEM 400 MHz (16 Bit DDR3), LXB 200 MHz
+[    0.000000] clocksource: realtek_otto_timer: mask: 0xfffffff max_cycles: 0xfffffff, max_idle_ns: 38225208801 ns
+[    0.000001] sched_clock: 28 bits at 3125kHz, resolution 320ns, wraps every 42949672800ns
+[    0.009245] Calibrating delay loop... 464.48 BogoMIPS (lpj=2322432)
+[    0.075876] pid_max: default: 32768 minimum: 301
+[    0.082026] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.090169] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.103958] rcu: Hierarchical SRCU implementation.
+[    0.110279] smp: Bringing up secondary CPUs ...
+[    0.116569] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.116608] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.116692] CPU1 revision is: 00019555 (MIPS 34Kc)
+[    0.169019] Synchronize counters for CPU 1: done.
+[    0.195537] smp: Brought up 1 node, 2 CPUs
+[    0.209426] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.220370] futex hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.228176] pinctrl core: initialized pinctrl subsystem
+[    0.235973] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.243320] thermal_sys: Registered thermal governor 'step_wise'
+[    0.270003] rtl83xx-clk clock-controller: rate setting enabled, CPU 400-850 MHz, MEM 400-400 MHz, LXB 200-200 MHz, OVERCLOCK AT OWN RISK
+[    0.293241] clocksource: Switched to clocksource realtek_otto_timer
+[    0.302120] NET: Registered PF_INET protocol family
+[    0.307853] IP idents hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.317143] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    0.326480] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.335133] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.343689] TCP bind hash table entries: 1024 (order: 1, 8192 bytes, linear)
+[    0.351517] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.358809] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.366155] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.374471] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    0.382777] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    0.398947] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.405486] jffs2: version 2.2 (NAND) (SUMMARY) (ZLIB) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.419040] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 252)
+[    0.429839] pinctrl-single 1b000004.pinmux: 32 pins, size 4
+[    0.436928] pinctrl-single 1b0000e4.pinmux: 32 pins, size 4
+[    0.445972] Probing RTL8231 GPIOs
+[    0.449718] rtl8231_init called, MDIO bus ID: 0
+[    0.457897] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.472102] printk: console [ttyS0] disabled
+[    0.477073] 18002000.uart: ttyS0 at MMIO 0x18002000 (irq = 31, base_baud = 12500000) is a 16550A
+[    0.486966] printk: console [ttyS0] enabled
+[    0.486966] printk: console [ttyS0] enabled
+[    0.496372] printk: bootconsole [early0] disabled
+[    0.496372] printk: bootconsole [early0] disabled
+[    0.506947] printk: bootconsole [ns16550a0] disabled
+[    0.506947] printk: bootconsole [ns16550a0] disabled
+[    0.559583] brd: module loaded
+[    0.568102] spi-nor spi0.0: mx25l25635e (32768 Kbytes)
+[    0.574141] 8 fixed-partitions partitions found on MTD device spi0.0
+[    0.581352] OF: Bad cell count for /soc/spi@1200/flash@0/partitions
+[    0.588560] OF: Bad cell count for /soc/spi@1200/flash@0/partitions
+[    0.596302] Creating 8 MTD partitions on "spi0.0":
+[    0.601728] 0x000000000000-0x000000080000 : "u-boot"
+[    0.608920] 0x000000080000-0x0000000c0000 : "u-boot-env"
+[    0.616504] 0x0000000c0000-0x000000100000 : "board-name"
+[    0.624809] 0x000000100000-0x000000e80000 : "firmware"
+[    0.633977] 2 uimage-fw partitions found on MTD device firmware
+[    0.640602] Creating 2 MTD partitions on "firmware":
+[    0.646193] 0x000000000000-0x000000380000 : "kernel"
+[    0.653200] 0x000000380000-0x000000d80000 : "rootfs"
+[    0.660512] mtd: setting mtd5 (rootfs) as root device
+[    0.667006] 1 squashfs-split partitions found on MTD device rootfs
+[    0.674042] 0x0000005f0000-0x000000d80000 : "rootfs_data"
+[    0.681557] 0x000000e80000-0x000001000000 : "kernel2"
+[    0.689258] 0x000001000000-0x000001040000 : "sysinfo"
+[    0.697703] 0x000001040000-0x000001c40000 : "rootfs2"
+[    0.705048] 0x000001c40000-0x000002000000 : "jffs2"
+[    0.734871] RTL839X Chip-Info: a0036290, version D
+[    0.740731] Probing RTL838X eth device pdev: 8210b400, dev: 8210b410
+[    0.770029] Found SoC ID: 8393: RTL8393, family 8390
+[    0.775892] Using MAC 0000800052d40000
+[    0.968387] NET: Registered PF_INET6 protocol family
+[    0.983724] Segment Routing with IPv6
+[    0.987926] In-situ OAM (IOAM) with IPv6
+[    0.992473] NET: Registered PF_PACKET protocol family
+[    0.998285] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.013665] 8021q: 802.1Q VLAN Support v1.8
+[    1.019858] i2c-gpio i2c-gpio-0: Slow GPIO pins might wreak havoc into I2C/SMBus bus timing
+[    1.029546] i2c-gpio i2c-gpio-0: using lines 457 (SDA) and 458 (SCL)
+[    1.037530] i2c-gpio i2c-gpio-1: Slow GPIO pins might wreak havoc into I2C/SMBus bus timing
+[    1.047270] i2c-gpio i2c-gpio-1: using lines 452 (SDA) and 453 (SCL)
+[    1.055318] i2c-gpio i2c-gpio-2: Slow GPIO pins might wreak havoc into I2C/SMBus bus timing
+[    1.065037] i2c-gpio i2c-gpio-2: using lines 473 (SDA) and 474 (SCL)
+[    1.072980] i2c-gpio i2c-gpio-3: Slow GPIO pins might wreak havoc into I2C/SMBus bus timing
+[    1.082728] i2c-gpio i2c-gpio-3: using lines 462 (SDA) and 463 (SCL)
+[    1.091990] sfp sfp-p49: Host maximum power 1.0W
+[    1.097353] sfp sfp-p49: No tx_disable pin: SFP modules will always be emitting.
+[    1.107783] sfp sfp-p50: Host maximum power 1.0W
+[    1.113104] sfp sfp-p50: No tx_disable pin: SFP modules will always be emitting.
+[    1.123600] sfp sfp-p51: Host maximum power 1.0W
+[    1.128917] sfp sfp-p51: No tx_disable pin: SFP modules will always be emitting.
+[    1.139503] sfp sfp-p52: Host maximum power 1.0W
+[    1.144855] sfp sfp-p52: No tx_disable pin: SFP modules will always be emitting.
+[    1.154005] RTL839X Chip-Info: a0036290, version D
+[    1.312663] rtl8393_serdes_probe: id: 63
+[    1.317289] Realtek RTL8393 SERDES rtl838x slave mii-0:3f: Detected internal RTL8390 SERDES
+[    1.329805] In rtl83xx_vlan_setup
+[    1.333654] UNKNOWN_MC_PMASK: 001fffffffffffff
+[    1.338622] VLAN profile 0: L2 learning: 1, UNKN L2MC FLD PMSK 511,          UNKN IPMC FLD PMSK 511, UNKN IPv6MC FLD PMSK: 511
+[    1.338637] VLAN profile 0: raw 000001ff, 003fe3ff
+[    2.413273] rtl83xx_enable_phy_polling:    fffffffffffff
+[    3.454227] rtl83xx-switch switch@1b000000: configuring for fixed/qsgmii link mode
+[    3.463043] rtl83xx-switch switch@1b000000: Link is Up - 1Gbps/Full - flow control off
+[    3.472467] rtl83xx-switch switch@1b000000 lan1 (uninitialized): PHY [mdio-bus:00] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.487444] rtl83xx-switch switch@1b000000 lan2 (uninitialized): PHY [mdio-bus:01] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.502787] rtl83xx-switch switch@1b000000 lan3 (uninitialized): PHY [mdio-bus:02] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.518154] rtl83xx-switch switch@1b000000 lan4 (uninitialized): PHY [mdio-bus:03] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.533509] rtl83xx-switch switch@1b000000 lan5 (uninitialized): PHY [mdio-bus:04] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.548855] rtl83xx-switch switch@1b000000 lan6 (uninitialized): PHY [mdio-bus:05] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.563910] rtl83xx-switch switch@1b000000 lan7 (uninitialized): PHY [mdio-bus:06] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.579161] rtl83xx-switch switch@1b000000 lan8 (uninitialized): PHY [mdio-bus:07] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.594526] rtl83xx-switch switch@1b000000 lan9 (uninitialized): PHY [mdio-bus:08] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.609498] rtl83xx-switch switch@1b000000 lan10 (uninitialized): PHY [mdio-bus:09] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.624859] rtl83xx-switch switch@1b000000 lan11 (uninitialized): PHY [mdio-bus:0a] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.640214] rtl83xx-switch switch@1b000000 lan12 (uninitialized): PHY [mdio-bus:0b] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.655602] rtl83xx-switch switch@1b000000 lan13 (uninitialized): PHY [mdio-bus:0c] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.670960] rtl83xx-switch switch@1b000000 lan14 (uninitialized): PHY [mdio-bus:0d] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.686306] rtl83xx-switch switch@1b000000 lan15 (uninitialized): PHY [mdio-bus:0e] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.701677] rtl83xx-switch switch@1b000000 lan16 (uninitialized): PHY [mdio-bus:0f] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.717046] rtl83xx-switch switch@1b000000 lan17 (uninitialized): PHY [mdio-bus:10] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.732436] rtl83xx-switch switch@1b000000 lan18 (uninitialized): PHY [mdio-bus:11] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.747749] rtl83xx-switch switch@1b000000 lan19 (uninitialized): PHY [mdio-bus:12] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.763137] rtl83xx-switch switch@1b000000 lan20 (uninitialized): PHY [mdio-bus:13] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.778495] rtl83xx-switch switch@1b000000 lan21 (uninitialized): PHY [mdio-bus:14] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.793914] rtl83xx-switch switch@1b000000 lan22 (uninitialized): PHY [mdio-bus:15] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.809237] rtl83xx-switch switch@1b000000 lan23 (uninitialized): PHY [mdio-bus:16] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.824608] rtl83xx-switch switch@1b000000 lan24 (uninitialized): PHY [mdio-bus:17] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.839961] rtl83xx-switch switch@1b000000 lan25 (uninitialized): PHY [mdio-bus:18] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.855325] rtl83xx-switch switch@1b000000 lan26 (uninitialized): PHY [mdio-bus:19] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.870695] rtl83xx-switch switch@1b000000 lan27 (uninitialized): PHY [mdio-bus:1a] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.886046] rtl83xx-switch switch@1b000000 lan28 (uninitialized): PHY [mdio-bus:1b] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.901408] rtl83xx-switch switch@1b000000 lan29 (uninitialized): PHY [mdio-bus:1c] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.916796] rtl83xx-switch switch@1b000000 lan30 (uninitialized): PHY [mdio-bus:1d] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.932163] rtl83xx-switch switch@1b000000 lan31 (uninitialized): PHY [mdio-bus:1e] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.947932] rtl83xx-switch switch@1b000000 lan32 (uninitialized): PHY [mdio-bus:1f] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.963481] rtl83xx-switch switch@1b000000 lan33 (uninitialized): PHY [mdio-bus:20] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.978667] rtl83xx-switch switch@1b000000 lan34 (uninitialized): PHY [mdio-bus:21] driver [REALTEK RTL8218D] (irq=POLL)
+[    3.994028] rtl83xx-switch switch@1b000000 lan35 (uninitialized): PHY [mdio-bus:22] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.009402] rtl83xx-switch switch@1b000000 lan36 (uninitialized): PHY [mdio-bus:23] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.024765] rtl83xx-switch switch@1b000000 lan37 (uninitialized): PHY [mdio-bus:24] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.040123] rtl83xx-switch switch@1b000000 lan38 (uninitialized): PHY [mdio-bus:25] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.055483] rtl83xx-switch switch@1b000000 lan39 (uninitialized): PHY [mdio-bus:26] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.070854] rtl83xx-switch switch@1b000000 lan40 (uninitialized): PHY [mdio-bus:27] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.086210] rtl83xx-switch switch@1b000000 lan41 (uninitialized): PHY [mdio-bus:28] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.101584] rtl83xx-switch switch@1b000000 lan42 (uninitialized): PHY [mdio-bus:29] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.116960] rtl83xx-switch switch@1b000000 lan43 (uninitialized): PHY [mdio-bus:2a] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.132308] rtl83xx-switch switch@1b000000 lan44 (uninitialized): PHY [mdio-bus:2b] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.148088] rtl83xx-switch switch@1b000000 lan45 (uninitialized): PHY [mdio-bus:2c] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.163474] rtl83xx-switch switch@1b000000 lan46 (uninitialized): PHY [mdio-bus:2d] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.178837] rtl83xx-switch switch@1b000000 lan47 (uninitialized): PHY [mdio-bus:2e] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.194603] rtl83xx-switch switch@1b000000 lan48 (uninitialized): PHY [mdio-bus:2f] driver [REALTEK RTL8218D] (irq=POLL)
+[    4.209968] rtl83xx-switch switch@1b000000 lan49 (uninitialized): PHY [mdio-bus:30] driver [Realtek RTL8218B (external)] (irq=POLL)
+[    4.226616] rtl83xx-switch switch@1b000000 lan50 (uninitialized): PHY [mdio-bus:31] driver [Realtek RTL8218B (external)] (irq=POLL)
+[    4.243336] rtl83xx-switch switch@1b000000 lan51 (uninitialized): PHY [mdio-bus:32] driver [Realtek RTL8218B (external)] (irq=POLL)
+[    4.259861] rtl83xx-switch switch@1b000000 lan52 (uninitialized): PHY [mdio-bus:33] driver [Realtek RTL8218B (external)] (irq=POLL)
+[    4.275344] DSA: tree 0 setup
+[    4.278836] LINK state irq: 20
+[    4.282492] In rtl83xx_setup_qos
+[    4.286150] Setting up RTL839X QoS
+[    4.289947] RTL839X_PRI_SEL_TBL_CTRL(i): 01112111
+[    4.295223] Current Intprio2queue setting: 00000000
+[    4.300666] QM_PKT2CPU_INTPRI_MAP: 00fac688
+[    4.305552] rtl838x_dbgfs_init called
+[    4.309825] rtl83xx_fib_event_work_do: FIB4 default rule failed
+[    4.323742] clk: Disabling unused clocks
+[    4.336274] VFS: Mounted root (squashfs filesystem) readonly on device 31:5.
+[    4.349912] Freeing unused kernel image (initmem) memory: 1264K
+[    4.356592] This architecture does not have kernel memory protection.
+[    4.363848] Run /sbin/init as init process
+[    4.368425]   with arguments:
+[    4.371726]     /sbin/init
+[    4.374780]   with environment:
+[    4.378291]     HOME=/
+[    4.380912]     TERM=linux
+[    5.006369] init: Console is alive
+[    5.010732] init: - watchdog -
+[    5.416112] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    5.462597] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    5.481474] init: - preinit -
+[    6.731419] random: jshn: uninitialized urandom read (4 bytes read)
+[    6.877963] random: jshn: uninitialized urandom read (4 bytes read)
+mtd_get_mac_ascii: partition u-boot-env2 not found!
+mtd_get_mac_ascii: partition u-boot-env2 not found!
+[    8.911804] random: jshn: uninitialized urandom read (4 bytes read)
+[    8.986958] random: jshn: uninitialized urandom read (4 bytes read)
+[    9.237334] random: jshn: uninitialized urandom read (4 bytes read)
+[   10.841494] RESETTING 8390, CPU_PORT 52
+[   11.045955] rtl838x-eth 1b00a300.ethernet eth0: configuring for fixed/internal link mode
+[   11.054999] In rtl838x_mac_config, mode 1
+[   11.060386] rtl83xx-switch switch@1b000000 lan1: configuring for phy/qsgmii link mode
+[   11.069311] rtl838x-eth 1b00a300.ethernet eth0: Link is Up - 1Gbps/Full - flow control off
+[   11.073471] 8021q: adding VLAN 0 to HW filter on device lan1
+[   11.085400] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   11.092533] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   11.100163] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   11.108963] rtl83xx_fib_event_work_do: FIB4 failed
+[   11.114550] rtl83xx_fib_event_work_do: FIB4 failed
+[   11.120910] rtl83xx_fib_event_work_do: FIB4 failed
+[   11.133698] random: procd: uninitialized urandom read (4 bytes read)
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   12.893310] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   13.512546] jffs2: notice: (1295) jffs2_build_xattr_subsystem: complete building xattr subsystem, 42 of xdatum (33 unchecked, 9 orphan) and 53 of xref (11 dead, 0 orphan) found.
+[   13.543681] mount_root: switching to jffs2 overlay
+[   13.552040] overlayfs: upper fs does not support tmpfile.
+[   13.607991] urandom-seed: Seeding with /etc/urandom.seed
+[   13.790248] rtl83xx_fib4_del: no such gateway: 0.0.0.0
+[   13.796111] rtl83xx_fib4_del: no such gateway: 0.0.0.0
+[   13.802008] rtl83xx_fib4_del: no such gateway: 0.0.0.0
+[   13.836572] procd: - early -
+[   13.840147] procd: - watchdog -
+[   14.543413] procd: - watchdog -
+[   14.548276] procd: - ubus -
+[   14.684760] random: ubusd: uninitialized urandom read (4 bytes read)
+[   14.702448] random: ubusd: uninitialized urandom read (4 bytes read)
+[   14.710063] random: ubusd: uninitialized urandom read (4 bytes read)
+[   14.722923] procd: - init -
+Please press Enter to activate this console.
+[   16.226916] kmodloader: loading kernel modules from /etc/modules.d/*
+[   16.278609] GACT probability on
+[   16.285240] Mirror/redirect action on
+[   16.304423] u32 classifier
+[   16.307460]     input device check on
+[   16.311542]     Actions configured
+[   16.426521] xt_time: kernel timezone is -0000
+[   16.543049] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   17.013343] random: crng init done
+[   17.017172] random: 22 urandom warning(s) missed due to ratelimiting
+[   17.746627] urngd: v1.0.2 started.
+[   19.866455] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   26.758294] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   26.815913] in rtl838x_eth_stop
+[   26.819617] rtl838x-eth 1b00a300.ethernet eth0: Link is Down
+[   27.494048] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   27.501441] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   27.508942] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   27.517807] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   27.539322] Using MAC 0000c8787d317770
+[   27.544156] RESETTING 8390, CPU_PORT 52
+[   27.898219] rtl838x-eth 1b00a300.ethernet eth0: configuring for fixed/internal link mode
+[   27.908031] In rtl838x_mac_config, mode 1
+[   27.913058] rtl838x-eth 1b00a300.ethernet eth0: Link is Up - 1Gbps/Full - flow control off
+[   27.928041] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   27.935263] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   27.942688] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   28.068941] rtl83xx-switch switch@1b000000 lan1: configuring for phy/qsgmii link mode
+[   28.096673] 8021q: adding VLAN 0 to HW filter on device lan1
+[   28.123917] switch: port 1(lan1) entered blocking state
+[   28.129844] switch: port 1(lan1) entered disabled state
+[   28.137717] device lan1 entered promiscuous mode
+[   28.142992] device eth0 entered promiscuous mode
+[   28.229357] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   28.244310] Not offloading default route for now
+[   28.251924] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   28.403084] rtl83xx-switch switch@1b000000 lan2: configuring for phy/qsgmii link mode
+[   28.445711] 8021q: adding VLAN 0 to HW filter on device lan2
+[   28.469471] switch: port 2(lan2) entered blocking state
+[   28.475465] switch: port 2(lan2) entered disabled state
+[   28.496353] device lan2 entered promiscuous mode
+[   28.572005] rtl83xx-switch switch@1b000000 lan3: configuring for phy/qsgmii link mode
+[   28.582770] 8021q: adding VLAN 0 to HW filter on device lan3
+[   28.595602] switch: port 3(lan3) entered blocking state
+[   28.601503] switch: port 3(lan3) entered disabled state
+[   28.608636] device lan3 entered promiscuous mode
+[   28.651421] rtl83xx-switch switch@1b000000 lan4: configuring for phy/qsgmii link mode
+[   28.667021] 8021q: adding VLAN 0 to HW filter on device lan4
+[   28.695117] switch: port 4(lan4) entered blocking state
+[   28.701028] switch: port 4(lan4) entered disabled state
+[   28.711061] device lan4 entered promiscuous mode
+[   28.759884] rtl83xx-switch switch@1b000000 lan5: configuring for phy/qsgmii link mode
+[   28.783582] 8021q: adding VLAN 0 to HW filter on device lan5
+[   28.795850] switch: port 5(lan5) entered blocking state
+[   28.801758] switch: port 5(lan5) entered disabled state
+[   28.816202] device lan5 entered promiscuous mode
+[   28.850254] rtl83xx-switch switch@1b000000 lan6: configuring for phy/qsgmii link mode
+[   28.867188] 8021q: adding VLAN 0 to HW filter on device lan6
+[   28.879871] switch: port 6(lan6) entered blocking state
+[   28.885971] switch: port 6(lan6) entered disabled state
+[   28.892872] device lan6 entered promiscuous mode
+[   28.919424] rtl83xx-switch switch@1b000000 lan7: configuring for phy/qsgmii link mode
+[   28.930530] 8021q: adding VLAN 0 to HW filter on device lan7
+[   28.951509] switch: port 7(lan7) entered blocking state
+[   28.957552] switch: port 7(lan7) entered disabled state
+[   28.964482] device lan7 entered promiscuous mode
+[   28.992017] rtl83xx-switch switch@1b000000 lan8: configuring for phy/qsgmii link mode
+[   29.001523] 8021q: adding VLAN 0 to HW filter on device lan8
+[   29.014267] switch: port 8(lan8) entered blocking state
+[   29.020147] switch: port 8(lan8) entered disabled state
+[   29.027149] device lan8 entered promiscuous mode
+[   29.075650] rtl83xx-switch switch@1b000000 lan9: configuring for phy/qsgmii link mode
+[   29.091922] 8021q: adding VLAN 0 to HW filter on device lan9
+[   29.104876] switch: port 9(lan9) entered blocking state
+[   29.110783] switch: port 9(lan9) entered disabled state
+[   29.117789] device lan9 entered promiscuous mode
+[   29.154227] rtl83xx-switch switch@1b000000 lan10: configuring for phy/qsgmii link mode
+[   29.163642] 8021q: adding VLAN 0 to HW filter on device lan10
+[   29.184050] switch: port 10(lan10) entered blocking state
+[   29.190162] switch: port 10(lan10) entered disabled state
+[   29.197367] device lan10 entered promiscuous mode
+[   29.226711] rtl83xx-switch switch@1b000000 lan11: configuring for phy/qsgmii link mode
+[   29.236596] 8021q: adding VLAN 0 to HW filter on device lan11
+[   29.249533] switch: port 11(lan11) entered blocking state
+[   29.255769] switch: port 11(lan11) entered disabled state
+[   29.263027] device lan11 entered promiscuous mode
+[   29.292576] rtl83xx-switch switch@1b000000 lan12: configuring for phy/qsgmii link mode
+[   29.313692] 8021q: adding VLAN 0 to HW filter on device lan12
+[   29.337787] switch: port 12(lan12) entered blocking state
+[   29.343975] switch: port 12(lan12) entered disabled state
+[   29.351113] device lan12 entered promiscuous mode
+[   29.406467] rtl83xx-switch switch@1b000000 lan13: configuring for phy/qsgmii link mode
+[   29.415977] 8021q: adding VLAN 0 to HW filter on device lan13
+[   29.431086] switch: port 13(lan13) entered blocking state
+[   29.437309] switch: port 13(lan13) entered disabled state
+[   29.444725] device lan13 entered promiscuous mode
+[   29.498241] rtl83xx-switch switch@1b000000 lan14: configuring for phy/qsgmii link mode
+[   29.512426] 8021q: adding VLAN 0 to HW filter on device lan14
+[   29.529749] switch: port 14(lan14) entered blocking state
+[   29.535956] switch: port 14(lan14) entered disabled state
+[   29.543157] device lan14 entered promiscuous mode
+[   29.631587] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   29.639143] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   29.648047] rtl83xx-switch switch@1b000000 lan15: configuring for phy/qsgmii link mode
+[   29.663058] 8021q: adding VLAN 0 to HW filter on device lan15
+[   29.681531] switch: port 15(lan15) entered blocking state
+[   29.687745] switch: port 15(lan15) entered disabled state
+[   29.695222] device lan15 entered promiscuous mode
+[   29.743614] rtl83xx-switch switch@1b000000 lan16: configuring for phy/qsgmii link mode
+[   29.761158] 8021q: adding VLAN 0 to HW filter on device lan16
+[   29.788296] switch: port 16(lan16) entered blocking state
+[   29.794518] switch: port 16(lan16) entered disabled state
+[   29.802031] device lan16 entered promiscuous mode
+[   29.850220] rtl83xx-switch switch@1b000000 lan17: configuring for phy/qsgmii link mode
+[   29.870141] 8021q: adding VLAN 0 to HW filter on device lan17
+[   29.892812] switch: port 17(lan17) entered blocking state
+[   29.898987] switch: port 17(lan17) entered disabled state
+[   29.906582] device lan17 entered promiscuous mode
+[   29.959953] rtl83xx-switch switch@1b000000 lan18: configuring for phy/qsgmii link mode
+[   29.983601] 8021q: adding VLAN 0 to HW filter on device lan18
+[   29.996735] switch: port 18(lan18) entered blocking state
+[   30.002824] switch: port 18(lan18) entered disabled state
+[   30.026857] device lan18 entered promiscuous mode
+[   30.067641] rtl83xx-switch switch@1b000000 lan19: configuring for phy/qsgmii link mode
+[   30.092250] 8021q: adding VLAN 0 to HW filter on device lan19
+[   30.114262] switch: port 19(lan19) entered blocking state
+[   30.120364] switch: port 19(lan19) entered disabled state
+[   30.128266] device lan19 entered promiscuous mode
+[   30.193389] rtl83xx-switch switch@1b000000 lan20: configuring for phy/qsgmii link mode
+[   30.208739] 8021q: adding VLAN 0 to HW filter on device lan20
+[   30.244225] switch: port 20(lan20) entered blocking state
+[   30.250313] switch: port 20(lan20) entered disabled state
+[   30.258304] device lan20 entered promiscuous mode
+[   30.319940] rtl83xx-switch switch@1b000000 lan21: configuring for phy/qsgmii link mode
+[   30.335665] 8021q: adding VLAN 0 to HW filter on device lan21
+[   30.360167] switch: port 21(lan21) entered blocking state
+[   30.366400] switch: port 21(lan21) entered disabled state
+[   30.374467] device lan21 entered promiscuous mode
+[   30.431333] rtl83xx-switch switch@1b000000 lan22: configuring for phy/qsgmii link mode
+[   30.453600] 8021q: adding VLAN 0 to HW filter on device lan22
+[   30.466903] switch: port 22(lan22) entered blocking state
+[   30.472989] switch: port 22(lan22) entered disabled state
+[   30.480896] device lan22 entered promiscuous mode
+[   30.514515] rtl83xx-switch switch@1b000000 lan23: configuring for phy/qsgmii link mode
+[   30.523990] 8021q: adding VLAN 0 to HW filter on device lan23
+[   30.539684] switch: port 23(lan23) entered blocking state
+[   30.545950] switch: port 23(lan23) entered disabled state
+[   30.553978] device lan23 entered promiscuous mode
+[   30.587090] rtl83xx-switch switch@1b000000 lan24: configuring for phy/qsgmii link mode
+[   30.596829] 8021q: adding VLAN 0 to HW filter on device lan24
+[   30.610981] switch: port 24(lan24) entered blocking state
+[   30.617260] switch: port 24(lan24) entered disabled state
+[   30.625453] device lan24 entered promiscuous mode
+[   30.656690] rtl83xx-switch switch@1b000000 lan25: configuring for phy/qsgmii link mode
+[   30.667779] 8021q: adding VLAN 0 to HW filter on device lan25
+[   30.681368] switch: port 25(lan25) entered blocking state
+[   30.687625] switch: port 25(lan25) entered disabled state
+[   30.695815] device lan25 entered promiscuous mode
+[   30.738056] rtl83xx-switch switch@1b000000 lan26: configuring for phy/qsgmii link mode
+[   30.748266] 8021q: adding VLAN 0 to HW filter on device lan26
+[   30.765780] switch: port 26(lan26) entered blocking state
+[   30.771863] switch: port 26(lan26) entered disabled state
+[   30.780233] device lan26 entered promiscuous mode
+[   30.808573] rtl83xx-switch switch@1b000000 lan27: configuring for phy/qsgmii link mode
+[   30.818037] 8021q: adding VLAN 0 to HW filter on device lan27
+[   30.837196] switch: port 27(lan27) entered blocking state
+[   30.843400] switch: port 27(lan27) entered disabled state
+[   30.851659] device lan27 entered promiscuous mode
+[   30.904751] rtl83xx-switch switch@1b000000 lan28: configuring for phy/qsgmii link mode
+[   30.916089] 8021q: adding VLAN 0 to HW filter on device lan28
+[   30.930511] switch: port 28(lan28) entered blocking state
+[   30.936752] switch: port 28(lan28) entered disabled state
+[   30.945348] device lan28 entered promiscuous mode
+[   30.990770] rtl83xx-switch switch@1b000000 lan29: configuring for phy/qsgmii link mode
+[   31.000297] 8021q: adding VLAN 0 to HW filter on device lan29
+[   31.017409] switch: port 29(lan29) entered blocking state
+[   31.023658] switch: port 29(lan29) entered disabled state
+[   31.031787] device lan29 entered promiscuous mode
+[   31.069760] rtl83xx-switch switch@1b000000 lan30: configuring for phy/qsgmii link mode
+[   31.079670] 8021q: adding VLAN 0 to HW filter on device lan30
+[   31.093410] switch: port 30(lan30) entered blocking state
+[   31.099502] switch: port 30(lan30) entered disabled state
+[   31.108245] device lan30 entered promiscuous mode
+[   31.145567] rtl83xx-switch switch@1b000000 lan31: configuring for phy/qsgmii link mode
+[   31.154980] 8021q: adding VLAN 0 to HW filter on device lan31
+[   31.167604] switch: port 31(lan31) entered blocking state
+[   31.173849] switch: port 31(lan31) entered disabled state
+[   31.182618] device lan31 entered promiscuous mode
+[   31.225348] rtl83xx-switch switch@1b000000 lan32: configuring for phy/qsgmii link mode
+[   31.234787] 8021q: adding VLAN 0 to HW filter on device lan32
+[   31.250258] switch: port 32(lan32) entered blocking state
+[   31.256474] switch: port 32(lan32) entered disabled state
+[   31.265236] device lan32 entered promiscuous mode
+[   31.313016] rtl83xx-switch switch@1b000000 lan33: configuring for phy/qsgmii link mode
+[   31.322737] 8021q: adding VLAN 0 to HW filter on device lan33
+[   31.335546] switch: port 33(lan33) entered blocking state
+[   31.341644] switch: port 33(lan33) entered disabled state
+[   31.350405] device lan33 entered promiscuous mode
+[   31.386951] rtl83xx-switch switch@1b000000 lan34: configuring for phy/qsgmii link mode
+[   31.396774] 8021q: adding VLAN 0 to HW filter on device lan34
+[   31.409675] switch: port 34(lan34) entered blocking state
+[   31.415916] switch: port 34(lan34) entered disabled state
+[   31.425028] device lan34 entered promiscuous mode
+[   31.452746] rtl83xx-switch switch@1b000000 lan35: configuring for phy/qsgmii link mode
+[   31.462627] 8021q: adding VLAN 0 to HW filter on device lan35
+[   31.475187] switch: port 35(lan35) entered blocking state
+[   31.481289] switch: port 35(lan35) entered disabled state
+[   31.490235] device lan35 entered promiscuous mode
+[   31.523533] rtl83xx-switch switch@1b000000 lan36: configuring for phy/qsgmii link mode
+[   31.533124] 8021q: adding VLAN 0 to HW filter on device lan36
+[   31.551476] switch: port 36(lan36) entered blocking state
+[   31.557626] switch: port 36(lan36) entered disabled state
+[   31.566701] device lan36 entered promiscuous mode
+[   31.607680] rtl83xx-switch switch@1b000000 lan37: configuring for phy/qsgmii link mode
+[   31.617507] 8021q: adding VLAN 0 to HW filter on device lan37
+[   31.642522] switch: port 37(lan37) entered blocking state
+[   31.648730] switch: port 37(lan37) entered disabled state
+[   31.657848] device lan37 entered promiscuous mode
+[   31.684807] rtl83xx-switch switch@1b000000 lan38: configuring for phy/qsgmii link mode
+[   31.694623] 8021q: adding VLAN 0 to HW filter on device lan38
+[   31.715122] switch: port 38(lan38) entered blocking state
+[   31.721232] switch: port 38(lan38) entered disabled state
+[   31.730602] device lan38 entered promiscuous mode
+[   31.761079] rtl83xx-switch switch@1b000000 lan39: configuring for phy/qsgmii link mode
+[   31.770577] 8021q: adding VLAN 0 to HW filter on device lan39
+[   31.790097] switch: port 39(lan39) entered blocking state
+[   31.796318] switch: port 39(lan39) entered disabled state
+[   31.805688] device lan39 entered promiscuous mode
+[   31.833694] rtl83xx-switch switch@1b000000 lan40: configuring for phy/qsgmii link mode
+[   31.843920] 8021q: adding VLAN 0 to HW filter on device lan40
+[   31.861888] switch: port 40(lan40) entered blocking state
+[   31.868176] switch: port 40(lan40) entered disabled state
+[   31.877737] device lan40 entered promiscuous mode
+[   31.906861] rtl83xx-switch switch@1b000000 lan41: configuring for phy/qsgmii link mode
+[   31.916472] 8021q: adding VLAN 0 to HW filter on device lan41
+[   31.929059] switch: port 41(lan41) entered blocking state
+[   31.935293] switch: port 41(lan41) entered disabled state
+[   31.945003] device lan41 entered promiscuous mode
+[   31.983798] rtl83xx-switch switch@1b000000 lan42: configuring for phy/qsgmii link mode
+[   31.993429] 8021q: adding VLAN 0 to HW filter on device lan42
+[   32.005754] switch: port 42(lan42) entered blocking state
+[   32.011893] switch: port 42(lan42) entered disabled state
+[   32.021988] device lan42 entered promiscuous mode
+[   32.057176] rtl83xx-switch switch@1b000000 lan43: configuring for phy/qsgmii link mode
+[   32.066921] 8021q: adding VLAN 0 to HW filter on device lan43
+[   32.102704] switch: port 43(lan43) entered blocking state
+[   32.108866] switch: port 43(lan43) entered disabled state
+[   32.118631] device lan43 entered promiscuous mode
+[   32.200536] rtl83xx-switch switch@1b000000 lan44: configuring for phy/qsgmii link mode
+[   32.212070] 8021q: adding VLAN 0 to HW filter on device lan44
+[   32.242446] switch: port 44(lan44) entered blocking state
+[   32.248666] switch: port 44(lan44) entered disabled state
+[   32.258461] device lan44 entered promiscuous mode
+[   32.331316] rtl83xx-switch switch@1b000000 lan45: configuring for phy/qsgmii link mode
+[   32.340936] 8021q: adding VLAN 0 to HW filter on device lan45
+[   32.362640] switch: port 45(lan45) entered blocking state
+[   32.368868] switch: port 45(lan45) entered disabled state
+[   32.379048] device lan45 entered promiscuous mode
+[   32.447995] rtl83xx-switch switch@1b000000 lan46: configuring for phy/qsgmii link mode
+[   32.457616] 8021q: adding VLAN 0 to HW filter on device lan46
+[   32.483675] switch: port 46(lan46) entered blocking state
+[   32.489814] switch: port 46(lan46) entered disabled state
+[   32.500396] device lan46 entered promiscuous mode
+[   32.575495] rtl83xx-switch switch@1b000000 lan47: configuring for phy/qsgmii link mode
+[   32.589155] 8021q: adding VLAN 0 to HW filter on device lan47
+[   32.612346] switch: port 47(lan47) entered blocking state
+[   32.618605] switch: port 47(lan47) entered disabled state
+[   32.629023] device lan47 entered promiscuous mode
+[   32.696669] rtl83xx-switch switch@1b000000 lan48: configuring for phy/qsgmii link mode
+[   32.707023] 8021q: adding VLAN 0 to HW filter on device lan48
+[   32.720470] switch: port 48(lan48) entered blocking state
+[   32.726776] switch: port 48(lan48) entered disabled state
+[   32.737406] device lan48 entered promiscuous mode
+[   32.799945] rtl83xx-switch switch@1b000000 lan49: configuring for phy/qsgmii link mode
+[   32.809792] 8021q: adding VLAN 0 to HW filter on device lan49
+[   32.832100] switch: port 49(lan49) entered blocking state
+[   32.838353] switch: port 49(lan49) entered disabled state
+[   32.848894] device lan49 entered promiscuous mode
+[   32.926427] rtl83xx-switch switch@1b000000 lan50: configuring for phy/qsgmii link mode
+[   32.943677] 8021q: adding VLAN 0 to HW filter on device lan50
+[   32.959403] switch: port 50(lan50) entered blocking state
+[   32.965632] switch: port 50(lan50) entered disabled state
+[   32.976371] device lan50 entered promiscuous mode
+[   33.047140] rtl83xx-switch switch@1b000000 lan51: configuring for phy/qsgmii link mode
+[   33.056961] 8021q: adding VLAN 0 to HW filter on device lan51
+[   33.081285] switch: port 51(lan51) entered blocking state
+[   33.087494] switch: port 51(lan51) entered disabled state
+[   33.098394] device lan51 entered promiscuous mode
+[   33.176605] rtl83xx-switch switch@1b000000 lan52: configuring for phy/qsgmii link mode
+[   33.186096] 8021q: adding VLAN 0 to HW filter on device lan52
+[   33.201466] switch: port 52(lan52) entered blocking state
+[   33.207674] switch: port 52(lan52) entered disabled state
+[   33.219091] device lan52 entered promiscuous mode
+[   33.248261] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   35.064413] rtl83xx-switch switch@1b000000 lan50: Link is Up - 100Mbps/Full - flow control rx/tx
+[   35.093470] switch: port 50(lan50) entered blocking state
+[   35.099553] switch: port 50(lan50) entered forwarding state
+[   35.129961] IPv6: ADDRCONF(NETDEV_CHANGE): switch: link becomes ready
+[   35.138459] IPv6: ADDRCONF(NETDEV_CHANGE): switch.1: link becomes ready
+[   36.253526] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   36.261063] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   36.348744] rtl83xx-switch switch@1b000000 lan52: Link is Up - 10Mbps/Half - flow control off
+[   36.365653] switch: port 52(lan52) entered blocking state
+[   36.371762] switch: port 52(lan52) entered forwarding state
+[   39.056183] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   39.067241] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   39.078390] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   39.088049] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   39.097657] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   39.107026] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   39.116327] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   39.125019] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[   39.133094] rtl83xx_fib_event_work_do: FIB4 default rule failed
+[   39.139998] rtl83xx_fib_event: FIB_RULE ADD/DEL for IPv6 not supported
+[…]
+
+
+
+BusyBox v1.36.1 (2024-07-21 22:32:38 UTC) built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r26990-06b37a5856
+ -----------------------------------------------------
+root@HOSTNAME:/# 
+</nowiki>
+</WRAP>
+
+===== Notes =====
+
+==== Vendor firmware rebuild ====
+
+The factory firmware file layout is composed of concatenated blocks of one of each type: boot, os and squashfs.
+Boot replaces u-boot installed, os is the kernel section and squashfs is the rootfs. Only firmwares with both os and squashfs were tested.
+All tools required to compose a new firmware are available in the GPL packaged distributed by the vendor.
+If you do not regenerate squashfs (or manage to recreate it with the same timestamps), these steps will rebuild an identical vendor firmware (same hash)for a F series.
+For other models, check the variables values in the GPL package.
+
+To create the os block, you need:
+  * a zImage kernel
+  * the start address in the format of "objdump -f kernel.elf" output (only start address line might matter)
+
+**Note**: you can get the start address from a uImage header
+
+**Note**: you can also convert a zImage to ELF kernel using [[https://github.com/marin-m/vmlinux-to-elf]]
+
+First you need to create a uImage using the kernel:
+   * ''mkimage -A mips -O linux -T kernel -C gzip -a 0x80000000 -e $kernel_start_address -d zImage.gz os.uImage''
+
+**Note**: the mkimage binary from the GPL package seems to be crashing but any other might work
+
+**Note**: Some or all uImage header values might not matter here as the header is regenerated in the next step
+
+Now you need to append a CAMEOTAG and hashes to that uImage and prefix with the vendor header (instructions after the squashfs).
+
+To create the squashfs block, you need a working rootfs content. The vendor GPL package does not include the code for all needed files. You can extract them from the vendor firmware (remeber to use root to create special files and keep ownership). The squashfs needs to be v3 and big endian:
+   * ''sudo DGS-1210-GPL/os/kernel/uClinux/tools/mksquashfs new-rootfs/ rootfs.squashfs -be -b 128k -noappend -no-exports -force-uid 0 -force-gid 0 -no-sparse''
+
+Both os.uImage and rootfs.squashfs needs to append the CAMEOTAG and hashes. For os.uImage:
+   * ''DGS-1210-GPL/host/tools/imgtag os.uImage 1''. It will automatically pad the uImage to 16b before adding the CAMEOTAG
+   * ''DGS-1210-GPL/host/tools/genTotalChecksum os.uImage os.uImage.sum && cat os.uImage.sum >> os.uImage''
+
+Just repeat replacing os.uImage with rootfs.squashfs. 
+
+Finally you can add the vendor header:
+    * ''HEADER_MODEL=DGS-1210-F1-SERIES CUSTOMER_SIGNATURE=2 BOARD_VERSION=32''
+    * ''DGS-1210-GPL/host/tools/imghdr os.uImage os.hex ${HEADER_MODEL} os 2 ${CUSTOMER_SIGNATURE} ${BOARD_VERSION} kernel.elf.objdump.output''
+    * ''DGS-1210-GPL/host/tools/imghdr rootfs.squashfs rootfs.hex ${HEADER_MODEL} squashfs 3 ${CUSTOMER_SIGNATURE} ${BOARD_VERSION}''
+
+**Note**: the os header seem to replace the uImage header (that's why it needs the kernel start address again). And the new uImage header uses a different magic number 0x12345000, although the device u-boot is not configured to validate that value.
+
+Now you can concatenate both files and flash the image:
+    * ''cat os.hex rootfs.hex > firmware.hex''
+
+If you need the cloud version (.con), you need to encrypt it and repack with another tool. If there is an encryption key, it is already compiled-in in the GPL tool:
+    * ''DGS-1210-GPL/host/tools/fw_encrypt firmware.hex firmware.enc''
+    * ''CLOUD_FW_SIGNATURE=dlink_dgs1210 CLOUD_FW_MODEL=dgs1210f CLOUD_FW_VERSION=v6.30.016''
+    * ''DGS-1210-GPL/host/tools/cloud_imghdr firmware.enc firmware.con ${CLOUD_FW_SIGNATURE} ${CLOUD_FW_MODEL} ${CLOUD_FW_VERSION}''
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>realtek RTL8382M 32flash 128ram 16port 20port GigabitEthernet VLAN mains_powered}}

@@ -1,0 +1,135 @@
+====== CloudEngines Pogoplug Pro / V3 ======
+
+{{media:pogoplug:oxnas_pogoplug.jpg?400|CloudEngines Pogoplug Pro/V3}}
+
+:!: CloudEngine marketed different devices under the name "Pogoplug", some of which even share the same outward appearance. This page is for the devices using the Oxnas/PLXtech SoC.
+
+The "V3 Pro" version is marked "P01" or "P02" on the bottom, the non-"pro" "V3" version is marked "B01", "B02", "B03", "B04", "P21", "P24", or "P25".
+
+Devices marked "E02" share the same case but not the hardware, they can be found at their own target: [[toh:cloud_engines:pogoplug|Kirkwood Pogoplug E02]]
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "Pogoplug V3"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "Pogoplug V3"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl"],
+  "filterColumns": {"model": "Pogoplug V3"}
+} -->
+
+==== Important Notes ====
+
+Support for the OXNAS Pogoplugs has been added with OpenWrt 15.05. OpenWrt 15.05 and LEDE 17.01 required a u-boot version more capable than the vendor u-boot that comes with the Pogoplug. This required a rather convoluted installation process, resulting in either loading a suitably capable u-boot from the less capable vendor u-boot (a "2nd stage u-boot") or outright replacing the vendor u-boot (which is rather dangerous).
+
+With 18.06, the OXNAS target has been overhauled, one of the results is that it can now be booted from the vendor u-boot, no additional or replacement u-boot required anymore. One of the consequences of those significant changes is that **you cannot upgrade from an older version than 18.06 to 18.06 or later using sysupgrade**. If you try to force it, you will render your device unable to boot, you will need to go through the installation process outlined below.
+
+=== Bugs ===
+
+**All versions of OpenWrt 18.06 and 19.07 up to 19.07.2** contain a bug that prevents a proper boot after a reset. If you reset the device from OpenWrt it will hang at the subsequent boot and requires a physical power cycle. This bug has been fixed [[https://git.openwrt.org/?p=openwrt/openwrt.git;a=commit;h=2bd9d2e08be4eb392b07fe42dbeea26a1e1cb7da|for OpenWrt 19.07.3]] and [[https://git.openwrt.org/?p=openwrt/openwrt.git;a=commit;h=67b04e767a0dcd01d39fe71eed9bdff7d5be72f0|in Snapshots after 2020-03-19]].
+
+In versions **18.06.0 through 18.06.2**, pre-compiled "official" images did not contain a kernel image, resulting in an unbootable Pogoplug even if you followed the correct install process. Pre-built OpenWrt 18.06.0 to 18.06.2 images are broken and can not be used. This bug has been fixed in OpenWrt 18.06.3 and later.
+
+
+==== Installation Process ====
+
+{{page>meta:infobox:high_voltage&noheader&nofooter&noeditbtn}}
+
+Seriously, this could kill you if you're not careful. Please completely disconnect the Pogoplug from power before opening the case and working inside, and make really sure to not touch anything inside as long as the Pogoplug is powered.
+
+
+=== Prerequisites ===
+
+You will need the following:
+  * The image files:\\ ''openwrt-oxnas-ox820-cloudengines-pogoplug-//<series-3|pro>//-initramfs-uImage''\\ ''openwrt-oxnas-ox820-cloudengines-pogoplug-//<series-3|pro>//-squashfs-sysupgrade.tar''\\ (''series-3'' or ''pro'' depending on your Pogoplug hardware, for brevity of this guide, the files are only referenced by the last part of the filename)
+   * A serial connection (see [[toh:cloud_engines/pogoplugpro#serial|the "Serial" section]]) between your PC and the Pogoplug
+   * An ethernet connection between your PC and the Pogoplug, with your PC's ethernet interface set to static IP ''192.168.1.2''
+   * A TFTP server on your PC, serving the ''initramfs-uImage'' file
+   * An SCP client on your PC
+
+
+=== Step 1: Changing the U-Boot configuration ===
+
+Open the serial connection and power on your Pogoplug. Once you see ''Hit any key to stop autoboot: ...'' hit any key to stop autoboot. You will be on the vendor u-boot command line, prompting you with ''CE>''.
+
+Permanently set up the bootloader's boot configuration to boot OpenWrt and configure U-Boot for the IP addresses we will use:
+<code>
+setenv bootcmd 'nboot 60500000 0 440000; bootm'
+setenv serverip 192.168.1.2
+setenv ipaddr 192.168.1.1
+saveenv
+</code>
+
+=== Step 2: Transfer and boot OpenWrt through tftp in U-Boot ===
+
+Transfer the ''initramfs-uImage'' to uboot and start it using:
+<code>
+tftp 64000000 initramfs-uImage
+bootm 64000000
+</code>
+OpenWrt will start up, but for now will only reside in RAM (i.e. will be lost after a reboot.)
+While still connected via serial, press enter now to get a shell in OpenWrt.
+
+=== Step 3: Permanently install OpenWrt ===
+
+Unlike with other devices, the ethernet interface will configured as DHCP by default. Set it to a static IP using:
+<code>
+uci set network.lan.proto=static
+uci set network.lan.ipaddr=192.168.1.1
+uci set network.lan.netmask=255.255.255.0
+uci commit
+service network restart
+</code>
+
+Using an SCP application (for example [[:docs:guide-quick-start:sshadministration#using_winscp|WinSCP]]) connect to OpenWrt at 192.168.1.1 and transfer the ''squashfs-sysupgrade.tar'' image file OpenWrt's ''/tmp'' directory. Install it permanently using
+
+<code>
+sysupgrade /tmp/squashfs-sysupgrade.tar
+</code>
+
+The Pogoplug will reboot, and via serial you should be able to observe it booting into your complete OpenWrt installation. Again, the default LAN configuration is DHCP, so either plug it into a router serving DHCP or, while you are still connected via serial, change the network configuration to a static IP.
+
+
+=== Note for installing OpenWrt 18.06 ===
+
+If, for some reason, you want to install OpenWrt 18.06 you will need to do steps 2 and 3 //two times//, the first time with the ''squashfs-ubinized.bin'' file which has to be forced in ''sysupgrade'' using ''sysupgrade -F''. Then repeat steps 2 and 3 exactly as outlined above using the ''squashfs-sysupgrade.tar'' file.
+===== Hardware =====
+==== Serial ====
+
+{{media:pogoplug:oxnas_pogoplug_uart.jpg?600|}}
+
+Pogoplugs come with a serial header, populated with a Molex 70107 connector (as used with CD-ROM audio cables).
+
+The settings for accessing the serial console are as follows:
+
+Bits per second: **115200**\\
+Data bits: **8**\\
+Stop bits: **1**\\
+Parity: **None**\\
+Flow control: **None**\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>oxnas 128flash 128RAM 1port GigabitEthernet minipciexpress 4USB USB2.0 mains_powered}}

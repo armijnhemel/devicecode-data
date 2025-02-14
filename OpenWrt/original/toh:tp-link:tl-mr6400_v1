@@ -1,0 +1,682 @@
+====== TP-Link TL-MR6400 v1.0 ======
+/* This template is intended to be used via https://openwrt.org/meta/create_new_device_page only. */
+
+{{ media:tplink:mr6400:tl-mr6400.jpg?200|TL-MR6400r}}
+
+LTE router with 4 fast (100Mbps) ethernet ports.
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^TL-MR6400$", "version": "^v1$"}
+} -->
+
+===== Hardware highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^TL-MR6400$", "version": "^v1$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^TL-MR6400$", "version": "^v1$"}
+} -->
+
+==== OEM installation using the TFTP method ====
+{{page>meta:infobox:dangerous&noheader&nofooter&noeditbtn}}
+ ->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+== Flash via u-boot tftp : ==
+
+  - Ensure that LAN interface in original firmware's web-ui is NOT set to address from 192.168.0.0/24 ([[#lan_interface_rndis_interface_network_collision|more info]])
+  - Connect to any Ethernet port
+  - Setup your interface to 192.168.0.66/24
+  - Serve factory image as ''mr6400_tp_recovery.bin'' via TFTP server
+  - Power on the device while holding the reset button pressed
+  - Keep holding the reset button at least for 5 seconds
+  - Device should flash itself and reboot to new firmware after flashing is complete
+
+Note: If you have troubles with ethernet negotiation (e.g. you are not even receiving any ARP packets for 192.168.0.66) you can put any dumb switch between your NIC and MR6400 to workaround this.
+
+==== Reverting to original firmware ====
+
+{{page>meta:infobox:dangerous&noheader&nofooter&noeditbtn}}
+
+Steps:
+  - download firmware from TP-Link's web ([[http://www.tp-link.com/download/TL-MR6400.html]])
+  - unpack the zip file
+  - you should find there a ~50 MiB .bin file
+  - yet again unpack the .bin file (it has .bin extension but it's actually a zip file)
+  - you should find a file named router.bin
+  - cut out the first 0x20200 (131584) bytes. (tp-link header+bootloader)
+    - e.g. ''tail -c+131585 router.bin > mr6400_tp_recovery.bin''
+  - check that the resulted file has exactly 0x7c0000 (8126464) bytes
+  - flash either via U-Boot's tftp recovery or via sysupgrade (''sysupgrade -n mr6400_tp_recovery.bin'')
+
+
+**NOTE:** This will (obviously) not touch your LTE module's firmware. All changes you've done to LTE module (or were done automatically) will be preserved. Also main board's firmware and LTE module's firmware versions might get out of sync. Both may result in state that was not intended by the manufacturer so it is recommended (unless you know what you're doing) to flash once again via web-ui following TP-Link's instructions.
+
+===== Upgrading LTE Module =====
+
+{{page>meta:infobox:dangerous&noheader&nofooter&noeditbtn}}
+
+<color red>WARNING: Be careful what you do in LTE Module's shell. Executing wrong commands might brick your LTE Module.</color>
+
+<color red>WARNING: If you're using [[#Using LTE Module's shared storage|LTE Module's shared storage]] this will (obviously) destroy all your data there (don't forget to make backup before upgrading). Also this will revert any changes you have done to /usr/bin/prepareUdisk so you'll need to do redo them once you finish upgrading.</color>
+
+Steps:
+  - free space on /cache
+    - enter LTE Module's shell (''adb shell'')
+    - unshare v_disk.img
+      - run ''cat /sys/devices/virtual/android_usb/android0/f_mass_storage/lun/file''
+      - you should see /dev/loop7 (this means that /dev/loop7 is shared with main board)
+      - unshare it with ''echo > /sys/devices/virtual/android_usb/android0/f_mass_storage/lun/file''
+      - check once again ''cat /sys/devices/virtual/android_usb/android0/f_mass_storage/lun/file'' (should be empty now)
+    - detach v_disk.img from loop device
+      - run ''losetup''
+      - you should see line ''/dev/loop7: 0 /cache/share/v_disk.img'' (this means v_disk.img is still associated with /dev/loop7)
+      - detach loop with ''losetup -d /dev/loop7''
+      - check once again ''losetup''
+      - line with ''/cache/share/v_disk.img'' should disappear
+    - delete v_disk.img to free space: ''rm /cache/share/v_disk.img''
+    - check free space ''df -h /cache'' (you should see about 64M available)
+  - download firmware from TP-Link's web ([[http://www.tp-link.com/download/TL-MR6400.html]])
+  - unpack the zip file
+  - you should find there a ~50 MiB .bin file
+  - change extension to .zip (LTE module's web interface won't accept file with different extension)
+  - login to LTE Module's web interface and upload .zip file via Advanced -> Device -> Firmware update -> Update via local server
+  - LTE Module will flash itself and reboot to new firmware
+
+**NOTE:** If ''adb'' stops working after LTE Module reboots. You can try running ''rmmod option'' to get ''adb'' working again.
+
+**NOTE:** LTE Module's web interface won't start automatically after LTE Module boots up. Start it manually (e.g. ''/etc/init.d/adb-enablemodem start'').
+
+/*** if info available: uncomment and fill in
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+===== Specific configuration =====
+
+==== LTE Module ====
+
+The included modem in this device is running it's own Android OS and has a hidden (disabled in the stock firmware) web interface. At least in LEDE, the hidden web interface is re-activated again on each boot and can be used to setup the 3g/lte connection after switching to LEDE. Modem's web interface is available at ''%%http://192.168.0.1/login.html%%'' with the default username/password of admin/admin.
+
+The web interface is started by service adb-enablemodem. If you want to disable it (e.g. for security reasons) stop and/or disable adb-enablemodem service as needed.
+
+  * ''/etc/init.d/adb-enablemodem stop'' - stop LTE Module's web interface
+  * ''/etc/init.d/adb-enablemodem disable'' - disable starting LTE Module's web interface on boot
+
+See ''/etc/init.d/adb-enablemodem help'' for more commands.
+
+==== Using LTE Module's shared storage ====
+
+There is 60 MiB shared storage available which you can use however you wish but all your data will be lost after reboot by default. You can follow instructions below to make storage data to be preserved even after reboot.
+
+{{page>meta:infobox:dangerous&noheader&nofooter&noeditbtn}}
+
+<color red>WARNING: Be careful what you do in LTE Module's shell. Executing wrong commands might brick your LTE Module.</color>
+
+Steps:
+  - enter LTE Module's shell (`adb shell`)
+  - edit prepareUdisk script `vi /usr/bin/prepareUdisk`
+  - comment out these lines:
+    - ''rm -rf /cache/*''
+    - ''dd if=/dev/zero of=/cache/share/v_disk.img bs=1024 count=61440''
+    - ''mkdosfs -n \"TP-LINK\" /dev/loop7''
+  - save & close (:wq)
+  - exit LTE Module's shell (e.g. hit ctrl+d or run ''exit'')
+  - now you can use LTE Module's shared storage (all your data will be preserved after reboot)
+
+You'll need kmod-usb-storage installed for shared storage (/dev/sda) to appear.
+You can format /dev/sda to any filesystem you wish. You can also use partitions.
+Follow instructions on [[docs:guide-user:storage:usb-drives|USB Storage]].
+
+**NOTE:** This won't break upgrade procedure of main board's original firmware's web-ui. Also you can upgrade main board's firmware as well as revert it to original firmware without losing data on shared storage. But once you do upgrade via original firmware's web-ui it will destroy all your data on shared storage.
+
+
+/*** if info available: uncomment and fill in
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+</WRAP>
+***/
+
+
+/*** if info available: uncomment and fill in
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+The TP-Link TL-MR6400 has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+</WRAP>
+***/
+
+===== Bugs / Gotchas =====
+==== LAN interface & RNDIS interface network collision ====
+LTE Module uses address 192.168.0.1/24 on RNDIS interface by default. But original TP-Link's firmware allows user to set address on LAN interface also to 192.168.0.x which automatically changes LTE Module's RNDIS interface address to 192.168.1.1/24 to avoid collision of networks. In this state if you flash MR6400 with different firmware which uses network 192.168.1.0/24 on LAN interface by default (such as OpenWRT/LEDE) you will get two interfaces which uses the same IPv4 network. This is very likely to cause problems. It is possible to change the address of LTE Module after flashing but to avoid the trouble it is recommended to ensure that the LAN interface is set to address outside of network 192.168.0.0/24 (e.g. the default 192.168.1.1/24 is fine) in original firmware's web-ui before flashing so that LTE Module's address would end up to be set to 192.168.0.1/24.
+
+==== Port forwarding configuration ====
+TP-Link LTE Module (that keeps the original software inside) has it's own NAT with a DMZ configuration set to an address x.x.x.100. To make the port forwarding from WAN to LAN work you have to set the OpenWrt side to use a static ip of x.x.x.100 on the WAN configuration. By default the OpenWrt side uses an address that it gets with a DHCP from the LTE Module. I also turned the LTE module DHCP server off since you shouldn't need it any more after a static configuration.
+===== Hardware =====
+==== Info ====
+^ Architecture     | [[wp>MIPS architecture|MIPS]] MIPS 24Kc    |
+^ Vendor           | [[wp>Qualcomm Atheros]]                    |
+^ Bootloader       | [[docs:techref:bootloader:uboot|U-Boot]]   |
+^ System-On-Chip   | QCA9531                                    |
+^ CPU/Speed        | 650 MHz                                    |
+^ Flash-Chip       | Winbond W25Q64BV,W25Q64CV or W25Q64FV      |
+^ Flash size       | 8 MiB                                      |
+^ RAM              | 64 MiB                                     |
+^ Wireless         | SoC-integrated: 2.4GHz 802.11bgn           |
+^ Ethernet         | 10/100 Mbit/s w/ vlan support              |
+^ USB              | no                                         |
+^ Serial           | [[#Serial|Yes]]                            |
+^ JTAG             | [[#JTAG|Not populated]]                    |
+
+
+/*** if info available: uncomment and fill in
+==== Flash Layout ====
+<WRAP BOX>
+FIXME //[[:docs:techref:flash.layout#discovery_how_to_find_out|Find out flash layout]], then add the flash layout table here (copy, paste, modify the [[docs:techref:flash.layout#partitioning_of_the_flash|example]]).//
+
+Please check out the article [[docs:techref:flash.layout|Flash layout]]. It contains examples and explanations that describe how to document the flash layout.
+</WRAP>
+***/
+
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+**Insert photo of front of the casing**
+
+**Insert photo of back of the casing**
+
+**Insert photo of backside label**
+
+{{:media:tplink:mr6400:tl-mr6400-v10-pcb-top01.jpg?400| PCB TL-MR6400-v1.0}}
+
+==== Opening the case ====
+
+<WRAP BOX>
+FIXME //Describe what needs to be done to open the device, e.g. remove rubber feet, adhesive labels, screws, ...//
+</WRAP>
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+{{:media:tplink:mr6400:tl-mr6400-serial1-pinout.jpg?200|}}
+The three grey wires are connected to a 3,5mm stereo headphone jack.
+You also have to shorten R29 and R30 to connect with soc-uart-
+
+^ Serial connection parameters\\ for TP-Link TL-MR6400 v1.0 | 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+
+===== Bootlogs =====
+==== Logs ====
+
+++++ TL-MR6400(EU) v1.0 OEM-Bootlog |
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.4-g23c7cce0-dirty (Build from LSDK- at Mar 22 2016 - 09:14:13)
+
+ap143 - Honey Bee 2.0
+
+DRAM:  64 MB
+Flash Manuf Id 0xef, DeviceId0 0x40, DeviceId1 0x17
+Flash:  8 MB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ath_gmac_enet_initialize...
+ath_gmac_enet_initialize: reset mask:c02200
+Scorpion ---->S27 PHY*
+S27 reg init
+: cfg1 0x800c0000 cfg2 0x7114
+eth0: ba:be:fa:ce:08:41
+athrs27_phy_setup ATHR_PHY_CONTROL 0 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 0 :10
+eth0 up
+Honey Bee ---->  MAC 1 S27 PHY *
+S27 reg init
+ATHRS27: resetting s27
+ATHRS27: s27 reset done
+: cfg1 0x800c0000 cfg2 0x7214
+eth1: ba:be:fa:ce:08:41
+athrs27_phy_setup ATHR_PHY_CONTROL 1 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 1 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 2 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 2 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 3 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 3 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 4 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 4 :10
+eth1 up
+eth0, eth1
+Setting 0x181162c0 to 0x60c1a100
+is_auto_upload_firmware=0
+Autobooting in 1 seconds
+## Booting image at 9f020000 ...
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+Booting QCA953x
+Linux version 2.6.31 (tp-link@Sohoidev) (gcc version 4.3.3 (GCC) ) #1 Tue Mar 22 09:16:59 CST 2016
+flash_size passed from bootloader = 8
+Ram size passed from bootloader =67108864
+CPU revision is: 00019374 (MIPS 24Kc)
+ath_sys_frequency: cpu apb ddr apb cpu 650 ddr 390 ahb 216
+Determined physical RAM map:
+ memory: 04000000 @ 00000000 (usable)
+Zone PFN ranges:
+  Normal   0x00000000 -> 0x00004000
+Movable zone start PFN for each node
+early_node_map[1] active PFN ranges
+    0: 0x00000000 -> 0x00004000
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+Kernel command line: console=ttyS0,115200 root=31:2 rootfstype=squashfs init=/sbin/init mtdparts=ath-nor0:128k(u-boot),1024k(kernel),6912k(rootfs),64k(config),64k(art) mem=32M
+PID hash table entries: 256 (order: 8, 1024 bytes)
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+Writing ErrCtl register=00000000
+Readback ErrCtl register=00000000
+Memory: 56408k/65536k available (1715k kernel code, 9052k reserved, 417k data, 112k init, 0k highmem)
+NR_IRQS:128
+plat_time_init: plat time init done
+Calibrating delay loop... 433.15 BogoMIPS (lpj=866304)
+Mount-cache hash table entries: 512
+
+****************ALLOC***********************
+ Packet mem: 80243720 (0x600000 bytes)
+********************************************
+
+NET: Registered protocol family 16
+bio: create slab <bio-0> at 0
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+net_link: create socket ok.
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+NET: Registered protocol family 1
+ATH GPIOC major 0
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+msgmni has been set to 110
+io scheduler noop registered
+io scheduler deadline registered (default)
+Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+serial8250.0: ttyS0 at MMIO 0xb8020000 (irq = 19) is a 16550A
+console [ttyS0] enabled
+PPP generic driver version 2.4.2
+NET: Registered protocol family 24
+5 cmdlinepart partitions found on MTD device ath-nor0
+Creating 5 MTD partitions on "ath-nor0":
+0x000000000000-0x000000020000 : "u-boot"
+0x000000020000-0x000000120000 : "kernel"
+0x000000120000-0x0000007e0000 : "rootfs"
+0x0000007e0000-0x0000007f0000 : "config"
+0x0000007f0000-0x000000800000 : "art"
+->Oops: flash id 0xef4017 .
+ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+Port Status 1c000004
+ath-ehci ath-ehci.0: ATH EHCI
+ath-ehci ath-ehci.0: new USB bus registered, assigned bus number 1
+ehci_reset Intialize USB CONTROLLER in host mode: 13
+ehci_reset Port Status 1c000000
+ath-ehci ath-ehci.0: irq 3, io mem 0x1b000000
+ehci_reset Intialize USB CONTROLLER in host mode: 13
+ehci_reset Port Status 1c000000
+ath-ehci ath-ehci.0: USB 2.0 started, EHCI 1.00
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+Ooops, why the devices couldn't been initialed?
+TCP cubic registered
+NET: Registered protocol family 17
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+athwdt_init: Registering WDT success
+VFS: Mounted root (squashfs filesystem) readonly on device 31:2.
+Freeing unused kernel memory: 112k freed
+init started:  BusyBox v1.01 (2016.03.22-01:21+0000) multi-call binary
+This Board use 2.6.31
+xt_time: kernel timezone is -0000
+nf_conntrack version 0.5.0 (1024 buckets, 5120 max)
+ip_tables: (C) 2000-2006 Netfilter Core Team
+insmod: cannot open module `/lib/modules/2.6.31/kernel/iptable_raw.ko': No such file or directory
+insmod: cannot open module `/lib/modules/2.6.31/kernel/flashid.ko': No such file or directory
+PPPoL2TP kernel driver, V1.0
+PPTP driver version 0.8.3
+insmod: cannot open module `/lib/modules/2.6.31/kernel/harmony.ko': No such file or directory
+insmod: cannot open module `/lib/modules/2.6.31/kernel/af_key.ko': No such file or directory
+insmod: cannot open module `/lib/modules/2.6.31/kernel/xfrm_user.ko': No such file or directory
+
+ (none) mips #1 Tue Mar 22 09:16:59 CST 2016 (none)
+(none) login: Now flash open!
+Now flash open!
+vlan init params sucess.
+qca955x_GMAC: Length per segment 1536
+953x_GMAC: qca953x_gmac_attach
+Link Int Enabled
+qca953x_set_gmac_caps  CHECK DMA STATUS
+mac:1 Registering S27....
+qca955x_GMAC: RX TASKLET - Pkts per Intr:18
+qca955x_GMAC: Max segments per packet :   1
+qca955x_GMAC: Max tx descriptor count :   511
+qca955x_GMAC: Max rx descriptor count :   128
+qca955x_GMAC: Mac capability flags    :   2D81
+953x_GMAC: qca953x_gmac_attach
+Link Int Enabled
+qca953x_set_gmac_caps  CHECK DMA STATUS
+mac:0 Registering S27....
+qca955x_GMAC: RX TASKLET - Pkts per Intr:18
+qca955x_GMAC: Max segments per packet :   1
+qca955x_GMAC: Max tx descriptor count :   511
+qca955x_GMAC: Max rx descriptor count :   128
+qca955x_GMAC: Mac capability flags    :   2581
+athr_gmac_ring_alloc Allocated 8176 at 0x838ee000
+athr_gmac_ring_alloc Allocated 2048 at 0x838d1000
+HONEYBEE ----> S27 PHY MDIO
+Setting Drop CRC Errors, Pause Frames and Length Error frames
+Setting PHY...
+athr_gmac_ring_alloc Allocated 8176 at 0x838f0000
+athr_gmac_ring_alloc Allocated 2048 at 0x83bb3800
+HONEYBEE ----> S27 PHY MDIO
+ATHRS27: resetting s27
+ATHRS27: s27 reset done
+++++ athrs27_igmp_setup once
+port0 vid is 0xb000b
+port1 vid is 0x30003
+port2 vid is 0x50005
+port3 vid is 0x70007
+port4 vid is 0x90009
+++ PVID: 0x0000000b, bitmap: 0x0000001f
+++ PVID: 0x00000003, bitmap: 0x0000001f
+++ PVID: 0x00000005, bitmap: 0x0000001f
+++ PVID: 0x00000007, bitmap: 0x0000001f
+++ PVID: 0x00000009, bitmap: 0x0000001f
+vtable vid: 0x00000002, bitmap 0x00000003
+vtable vid: 0x00000004, bitmap 0x00000005
+vtable vid: 0x00000006, bitmap 0x00000007
+vtable vid: 0x00000008, bitmap 0x00000009
+vtable vid: 0x0000000a, bitmap 0x0000000b
+vtable vid: 0x0000000c, bitmap 0x0000000d
+vtable vid: 0x0000000e, bitmap 0x0000000f
+vtable vid: 0x00000010, bitmap 0x00000011
+vtable vid: 0x00000012, bitmap 0x00000013
+vtable vid: 0x00000014, bitmap 0x00000015
+vtable vid: 0x00000016, bitmap 0x00000017
+vtable vid: 0x00000018, bitmap 0x00000019
+vtable vid: 0x0000001a, bitmap 0x0000001b
+vtable vid: 0x0000001c, bitmap 0x0000001d
+vtable vid: 0x0000001e, bitmap 0x0000001f
+vtable vid: 0x00000020, bitmap 0x00000021
+Setting Drop CRC Errors, Pause Frames and Length Error frames
+Setting PHY...
+enet1 port2 up 100Mbps Full duplex
+953x_GMAC: Enet Unit:1 PHY:2 is UP eth1  RGMII  1000Mbps  full duplex
+953x_GMAC: done cfg2 0x7215 ifctl 0x0 miictrl
+Setting Drop CRC Errors, Pause Frames and Length Error frames
+device eth0 entered promiscuous mode
+athr_gmac_ring_free Freeing at 0x838ee000
+athr_gmac_ring_free Freeing at 0x838d1000
+athr_gmac_ring_alloc Allocated 8176 at 0x83be0000
+athr_gmac_ring_alloc Allocated 2048 at 0x838d1000
+HONEYBEE ----> S27 PHY MDIO
+Setting Drop CRC Errors, Pause Frames and Length Error frames
+Setting PHY...
+Now flash open!
+athr_gmac_ring_free Freeing at 0x838f0000
+athr_gmac_ring_free Freeing at 0x83bb3800
+athr_gmac_ring_alloc Allocated 8176 at 0x838ec000
+athr_gmac_ring_alloc Allocated 2048 at 0x83bb3800
+HONEYBEE ----> S27 PHY MDIO
+Setting Drop CRC Errors, Pause Frames and Length Error frames
+Setting PHY...
+enet1 port2 up 100Mbps Full duplex
+953x_GMAC: Enet Unit:1 PHY:2 is UP eth1  RGMII  1000Mbps  full duplex
+953x_GMAC: done cfg2 0x7215 ifctl 0x0 miictrl
+Setting Drop CRC Errors, Pause Frames and Length Error frames
+br0: port 1(eth0) entering forwarding state
+usb 1-1: new high speed USB device using ath-ehci and address 2
+usb 1-1: configuration #1 chosen from 1 choice
+nf_conntrack_rtsp v0.6.21 loading
+nf_nat_rtsp v0.6.21 loading
+Now flash open!
+adf: module license 'Proprietary' taints kernel.
+Disabling lock debugging due to kernel taint
+ath_hal: 0.9.17.1 (AR5416, AR9380, REGOPS_FUNC, WRITE_EEPROM, TX_DATA_SWAP, RX_DATA_SWAP, 11D)
+ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+ath_ahb: 10.2-00082-4 (Atheros/multi-bss)
+__ath_attach: Set global_scn[0]
+Enterprise mode: 0x03fc0000
+Restoring Cal data from Flash
+ath_get_caps[6174] rx chainmask mismatch actual 3 sc_chainmak 0
+ath_get_caps[6149] tx chainmask mismatch actual 3 sc_chainmak 0
+wifi0: Atheros ???: mem=0xb8100000, irq=2
+ath_pci: 10.2-00082-4 (Atheros/multi-bss)
+LTE_COEX: lteWifiCoexInit, init struct lte_coex
+VAP device ath0 created
+
+ DES SSID SET=TP-LINK_5C14
+Set freq vap stop send + 83108000
+Set freq vap stop send -83108000
+Set wait done --83108000
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+Setting Max Stations:32
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+        DCS for CW interference mitigation:   0
+        DCS for WLAN interference mitigation: 0
+
+ DES SSID SET=TP-LINK_5C14
+LTE_COEX: lteWifiRandomChannel, lte_coex.acs_chan_mask is 0! no need to change channel!
+ ieee80211_ioctl_siwmode: imr.ifm_active=393856, new mode=3, valid=1
+Set freq vap stop send + 83108000
+Set freq vap stop send -83108000
+Set wait done --83108000
+Set freq vap stop send + 83108000
+Set freq vap stop send -83108000
+Set wait done --83108000
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+ Scan in progress.. Cancelling it
+athr_gmac_ring_free Freeing at 0x838ec000
+athr_gmac_ring_free Freeing at 0x83bb3800
+br0: port 1(eth0) entering disabled state
+athr_gmac_ring_alloc Allocated 8176 at 0x831cc000
+athr_gmac_ring_alloc Allocated 2048 at 0x83bb3800
+HONEYBEE ----> S27 PHY MDIO
+Setting Drop CRC Errors, Pause Frames and Length Error frames
+Setting PHY...
+enet1 port2 up 100Mbps Full duplex
+953x_GMAC: Enet Unit:1 PHY:2 is UP eth1  RGMII  1000Mbps  full duplex
+953x_GMAC: done cfg2 0x7215 ifctl 0x0 miictrl
+Setting Drop CRC Errors, Pause Frames and Length Error frames
+br0: port 1(eth0) entering forwarding state
+device ath0 entered promiscuous mode
+br0: port 2(ath0) entering forwarding state
+ ieee80211_ioctl_siwmode: imr.ifm_active=393856, new mode=3, valid=1
+ Scan in progress.. Cancelling it
+br0: port 2(ath0) entering disabled state
+
+ DES SSID SET=TP-LINK_5C14
+br0: port 2(ath0) entering forwarding state
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+(all_group_send_igmp_leave)809, has delete all IGMP groups and timer
+NET: Registered protocol family 10
+ADDRCONF(NETDEV_UP): eth1: link is not ready
+IPv6 over IPv4 tunneling driver
+usbcore: registered new interface driver cdc_ether
+usbcore: registered new interface driver rndis_host
+device eth1 entered promiscuous mode
+lte0: IPv6 duplicate address detected!
+fastnat init
+usbcore: registered new interface driver usbserial
+USB Serial support registered for generic
+usbserial_generic 1-1:1.2: generic converter detected
+usb 1-1: generic converter now attached to ttyUSB0
+usbcore: registered new interface driver usbserial_generic
+usbserial: USB Serial Driver core
+USB Serial support registered for GSM modem (1-port)
+option 1-1:1.4: GSM modem (1-port) converter detected
+usb 1-1: GSM modem (1-port) converter now attached to ttyUSB1
+option 1-1:1.5: GSM modem (1-port) converter detected
+usb 1-1: GSM modem (1-port) converter now attached to ttyUSB2
+usbcore: registered new interface driver option
+option_2: v0.7.2:USB Driver for GSM modems
+LTE_COEX: Bandinfo unknown error
+qca955x_GMAC: GE0 RX DMA ENABLE
+blockWps_proc_write 868: write value = 0
+Lte net info change!
+LTE_COEX: lteWifiRandomChannel, old channel 1, new selected channel: 6
+Now flash open!
+Erase from 0X7E0000 to 0X7EC8D8:.
+Program from 0X7E0000 to 0X7EC8D8:
+write successfully
+Setting Max Stations:32
+br0: port 2(ath0) entering disabled state
+LTE_COEX: lteWifiRandomChannel, channel 6 is in lte_coex.acs_chan_mask 126! no need to change channel!
+ ieee80211_ioctl_siwmode: imr.ifm_active=1442432, new mode=3, valid=1
+Set freq vap stop send + 83108000
+Set freq vap stop send -83108000
+Set wait done --83108000
+br0: port 2(ath0) entering forwarding state
+ Scan in progress.. Cancelling it
+br0: port 2(ath0) entering disabled state
+br0: port 2(ath0) entering forwarding state
+ ieee80211_ioctl_siwmode: imr.ifm_active=393856, new mode=3, valid=1
+ Scan in progress.. Cancelling it
+br0: port 2(ath0) entering disabled state
+
+ DES SSID SET=TP-LINK_5C14
+br0: port 2(ath0) entering forwarding state
+Setting Max Stations:32
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+br0: port 2(ath0) entering disabled state
+LTE_COEX: lteWifiRandomChannel, channel 6 is in lte_coex.acs_chan_mask 126! no need to change channel!
+ ieee80211_ioctl_siwmode: imr.ifm_active=393856, new mode=3, valid=1
+Set freq vap stop send + 83108000
+Set freq vap stop send -83108000
+Set wait done --83108000
+br0: port 2(ath0) entering forwarding state
+ Scan in progress.. Cancelling it
+br0: port 2(ath0) entering disabled state
+br0: port 2(ath0) entering forwarding state
+ ieee80211_ioctl_siwmode: imr.ifm_active=393856, new mode=3, valid=1
+ Scan in progress.. Cancelling it
+br0: port 2(ath0) entering disabled state
+
+ DES SSID SET=TP-LINK_5C14
+br0: port 2(ath0) entering forwarding state
+Now flash open!
+Erase from 0X7E0000 to 0X7EC8D8:.
+Program from 0X7E0000 to 0X7EC8D8:
+write successfully
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+</nowiki>
+</WRAP>\\
+++++
+
+++++ UBoot 1.1.4 Environment Variables |
+<WRAP bootlog>
+<nowiki>hb> version
+
+U-Boot 1.1.4-g23c7cce0-dirty (Build from LSDK- at Mar 22 2016 - 09:14:13)
+hb> printenv
+bootargs=console=ttyS0,115200 root=31:02 rootfstype=squashfs init=/sbin/init mtdparts=ath-nor0:128k(u-boot),1024k(kernel),6912k(rootfs),64k(config),64k(art)
+bootcmd=bootm 0x9f020000
+bootdelay=1
+baudrate=115200
+ethaddr=0xba:0xbe:0xfa:0xce:0x08:0x41
+ipaddr=192.168.1.1
+serverip=192.168.1.10
+dir=
+lu=tftp 0x80060000 ${dir}u-boot.bin&&erase 0x9f000000 +$filesize&&cp.b $fileaddr 0x9f000000 $filesize
+lf=tftp 0x80060000 ${dir}ap143${bc}-squashfs&&erase 0x9f120000 +$filesize&&cp.b $fileaddr 0x9f120000 $filesize
+lk=tftp 0x80060000 ${dir}vmlinux${bc}.lzma.uImage&&erase 0x9f020000 +$filesize&&cp.b $fileaddr 0x9f020000 $filesize
+stdin=serial
+stdout=serial
+stderr=serial
+ethact=eth1
+
+Environment size: 676/65532 bytes
+hb>
+</nowiki>
+</WRAP>\\
+++++
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>COPY HERE THE BOOTLOG ONCE OPENWRT IS INSTALLED AND RUNNING</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>QCA9531 8flash 64ram 4port FastEthernet LTE 0USB 1SIM}}

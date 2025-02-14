@@ -1,0 +1,282 @@
+====== Davolink DV-201AMR ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+The Davolink DV-201AMR is a an ADSL modem with 4 Fast Ethernet ports, Wireless Access Point and VoIP (2 times FXS).
+The modem was distributed by Versatel/Tele2 in the Netherlands until beginning 2007.
+
+===== Supported Versions =====
+
+**NOTE:** Internal ADSL not supported.
+
+^ OpenWrt Version Supported   ^ Notes                            ^
+| Backfire 10.03.1            | CRC error after the first boot   |
+| Attitude Adjustment 12.09   | may run out of memory            |
+
+**NOTE:** Old versions need to have the mtd changes to fix crc error for the brcm63xx platform created by [[https://forum.openwrt.org/profile.php?id=18299|Cshore]] (tested with 25565).
+
+===== Hardware Highlights =====
+^ SoC                ^  CPU Freq  ^   Ram   ^  Flash  ^  Network  ^  USB  ^  Serial  ^  JTag  ^
+| Broadcom BCM6348   |   256MHz   |  16MiB  |  8MiB   |   4 x 1   |  Yes  |   Yes    |  Yes   |
+
+**Note:** On the DV-201AMR only device USB is supported e.g. to provide Internet access via USB.
+
+===== Installation =====
+**Note:** Before installing a new image it might be a good idea to make a backup first. See [[toh/davolink/dv-201amr#JTAG]] below.
+
+  - [[:downloads]] You //should// download the current trunk version, and compile.
+  - [[docs:guide-user:installation:generic.flashing]] Now write this firmware-file onto the flash-chip of your device. You can use the CFE web-interface.
+
+  * Quickest way is to download a precompiled [[http://downloads.openwrt.org/snapshots/trunk/brcm63xx/ |image]], look for openwrt-96348GW-generic-squashfs-cfe.bin. You can install missing packages on the jffs2 partition later per ''opkg update'' then for example ''opkg install kmod-ath9k wpad-mini''.
+  * You can allways [[docs:guide-user:additional-software:imagebuilder|build]] your own image. Chose Broadcom BCM63xx as target system and use Target Profile (Broadcom BCM43xx WiFi (wl, proprietary)).
+
+==== Flash Layout ====
+
+^   Davolink DV-201AMR  Flash Layout OpenWrt           ^^^^^^^
+^ Layer0       |                       MX29LV640MB 4Mx16 BotB       8192KiB                                                                         ||||||
+^ CFE Backup Layer |  lower half flash 4096KiB |  upper half flash 4096KiB  ||||| 
+^ Layer1       ||  mtd0            |  mtd5 **//linux//** 3968KiB                                                                       |||    mtd4  |
+^ Layer2       ||  mtd0            |  mtd1             |              mtd2 **//rootfs//** 3072KiB                                          ||    mtd4  |
+^ Layer3       ||  mtd0            |  mtd1             |                      |  mtd3                                                       |    mtd4  |
+^ Size in KiB  ||  64KiB          |  895.75KiB          |  1536KiB             |  1600KiB                                                    |   64KiB  |
+^ Name         ||  **//CFE//**  |  **//kernel//**   |                      |  **//rootfs_data//**                                  |   **//nvram//**  |
+^ mountpoints  ||  none            |         none       |  / = /rom            |  /overlay                                                   |    none  |
+^ file system  ||  none            |         none       |  SquashFS            |  JFFS2                                                      |    none  |
+
+==== OEM easy installation ====
+
+This section deals with how you install OpenWrt from a device freshly opened.
+
+  * Connect a router LAN port directly to your PC.
+  * Configure your PC with a static IP address between 192.168.1.2 and 192.168.1.254. E. g. 192.168.1.2 (gateway and DNS is not required).
+  * Reset router to factory defaults (and stop at CFE) by holding the reset button until red LED on front is lit (takes about 10 to 20 sec.)).
+  * Browse to http://192.168.1.1/
+  * Browse to the image to upload to router
+  * Wait for it to reboot
+  * Due to the inclusion of the 0xdeadc0de value (read [[docs:techref:flash.layout]]) the bootloader detects a CRC failure and will revert to the backup image. Cshore created a fix that will correct the CRC value. use the following command to initiate the fix:
+<code>   mtd fixtrx linux </code>
+  * Telnet to 192.168.1.1 and set a root password, or browse to http://192.168.1.1 if LuCI is installed.
+
+==== OEM installation using the TFTP method ====
+
+If you want to upgrade using TFTP you follow these steps (as an alternative to the above install process).
+
+  * Connect via serial, power-on and hit any key within a second after seeing the message:
+<code>  *** Press any key to stop auto run (1 seconds) ***
+  Auto run second count down:</code>
+
+  * This will stop the router at CFE but doesn't reset router to factory defaults.
+  * From the prompt run the following command: ''CFE> f <ip-address>:<image-name>''\\ Where the <ip-address> is the IP address of the TFTP server, and the <image-name> the filename of the image you want to install.
+  * Wait for it to reboot
+  * Due to the inclusion of the ''0xdeadc0de'' value (read [[docs:techref:flash.layout]]) the bootloader detects a CRC failure and will revert to the backup image. Cshore created a fix that will correct the CRC value. use the following command to initiate the fix:
+<code>   mtd fixtrx linux </code>
+  * Telnet to 192.168.1.1 and set a root password, or browse to http://192.168.1.1 if LuCI is installed.
+
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-quick-start:walkthrough_login|First Login]] and than [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]].\\
+Set up your Internet connection, configure wireless, etc.
+
+=== Internet connection via LAN interface ===
+
+To install packages like needed for installing LuCI (the Web interface) you need to connect the router to the Internet.
+Because we don't have a working ADSL driver (WAN interface), we need to connect to the Internet via the LAN interface.
+I used ICS on a Win PC. Connect the router using an Ethernet cable to the PC and configure the PC for Internet Connection Sharing.
+I left the router IP address on the default of 192.168.1.1/24. 
+On the PC you can force to use the same range by configuring an fixed IP addres on the LAN interface connected to the router (e.g. 192.168.1.90/24).
+Be sure that the router with Internet access doesn't use the same range.
+
+Changes needed on the router:
+<code>vi /etc/config/network 
+    option dns    <ip-adres van Internet access router> 
+reboot
+route add default gw <ip-adres van LAN interface></code>
+
+The router should now be able to ping a www URL and receive an reply.
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| eth1             | LAN ports (1 to 4)   | None                    |
+| wl0              | WiFi                 | Disabled                |
+
+==== Failsafe mode ====
+->[[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+->  [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+^ BUTTON   ^ Event   ^
+| Init     | reset   |
+
+The Davolink DV-201AMR has one button. The //Reset// button. It is located at the rear between LAN1 and TEL2 connectors.
+
+===== Hardware =====
+==== Info ====
+| **Architecture:**     | MIPS                       |
+| **Vendor:**           | Broadcom                   |
+| **Bootloader:**       | CFE (version 1.0.37-4.3)   |
+| **Board Id:**         | DV201AMR                   |
+| **System-On-Chip:**   | Broadcom BCM6348           |
+| **CPU/Speed**         | BMIPS3300 V0.7 256 Mhz     |
+| **Flash-Chip:**       | AMD AM29LV640MB            |
+| **Flash size:**       | 8192 KiB                   |
+| **RAM:**              | 16 MiB                     |
+| **Wireless:** | Broadcom BCM4320 802.11 Wireless Controller 5.10.56.27 |
+| **Ethernet:**   | BCM5325             |
+| **USB:**        | Yes 1 x slave 1.1   |
+| **Serial:**     | [[#Serial|Yes]]     |
+| **JTAG:**       | [[#JTAG|Yes]]       |
+
+
+==== Photos ====
+Model Number DV-201AMR
+
+{{:media:davolink:dv-201amr_case_front.jpg?400|DV-201AMR case front}}
+{{:media:davolink:dv-201amr_case_back.jpg?400|DV-201AMR case back}}
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+  *To remove the cover remove the rubber pads from the bottom and remove the 4 screws under the pads. 
+  *You can than lift the top cover.
+  *You than find the front panel, back panel, and PCB.
+
+//Main PCB//\\
+{{:media:davolink:dv-201_pcb_jtag.jpg?400|DV-201AMR PCB}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+See photo of the PCB for the location Pinout:
+<code>
+1 VCC 3.3V
+2 GND
+3 TX
+4 RX
+5 GND
+6 VCC 3.3V
+</code>
+Serial settings:
+Baud rate: 115200, Data: 8 bit, Parity: none, Stop: 1 bit, Flow control: none
+
+==== JTAG ====
+  * -> [[docs:techref:hardware:port.jtag|JTAG]]
+  * -> [[docs:techref:bootloader]] and [[docs:techref:bootloader:cfe]]
+  * -> [[docs:techref:flash.layout]]
+
+
+How to connect to JTAG interface, and how to backup and reflash the device with [[https://docs.google.com/leaf?id=0B07LcVZMfvdkZTc1MDA5MjUtZTMzYy00OGQzLWE5MjAtODFiN2RkMTJmNDQ5&sort=name&layout=list&num=50|debrick utility modified by Cshore ]]
+
+Before you can connect the router to your parallel port of the PC you need to solder a header to the PCB to be able to connect the JTAG cable.
+
+=== First download, unpack and compile the needed files: ===
+<code>wget -O HairyDairyMaid_WRT54G_Debrick_Utility_v48~cshore2.zip --no-check-certificate https://docs.google.com/uc?id=0B07LcVZMfvdkZTc1MDA5MjUtZTMzYy00OGQzLWE5MjAtODFiN2RkMTJmNDQ5&export=download&hl=en
+unzip HairyDairyMaid_WRT54G_Debrick_Utility_v48~cshore2.zip
+cd HairyDairyMaid_WRT54G_Debrick_Utility_v48~cshore
+make</code>
+
+
+results in the following executable:\\ 
+"debrick"\\ 
+"switchend"
+
+Before using the debrick tool remove the printer module
+<code>rmmod lp</code>
+
+
+=== Backup the current content of the router: ===
+**First the CFE:**\\ 
+Connect the power to the router, and after the LAN LED's go off use the following command:
+<code>./debrick -backup:custom /window:1fc00000 /start:1fc00000 /length:10000 /fc:62 /notimestamp /noreset /noemw /nocwd /bigendian</code>
+After 100% is reached rename the resulting file to something meaningfull.
+<code>mv CUSTOM.BIN.SAVED cfe-<route-mac>.bin</code>
+\\ 
+
+**Second the CFE config:**
+<code>./debrick -backup:custom /window:1fc00000 /start:1fc00580 /length:0400 /fc:62 /notimestamp /noreset /noemw /nocwd /bigendian</code>
+After 100% is reached rename the resulting file to something meaningfull.
+<code>mv CUSTOM.BIN.SAVED cfe-config-<route-mac>.bin</code>
+\\ 
+\\ 
+**NOTE:** The filesystem and nvram are probably only correct for the original (non OpenWRT) firmware.
+
+**Next the filesystem:**
+<code>./debrick -backup:custom /window:1fc00000 /start:1fc10000 /length:3e0000 /fc:61 /notimestamp /noreset /noemw /nocwd /bigendian</code>
+After 100% is reached rename the resulting file to something meaningfull.
+<code>mv CUSTOM.BIN.SAVED filesystem-<route-mac>.bin</code>
+
+\\ 
+**As last the nvram:**
+<code>./debrick -backup:custom /window:1fc00000 /start:1fffa000 /length:5000 /fc:61 /notimestamp /noreset /noemw /nocwd /bigendian</code>
+After 100% is reached rename the resulting file to something meaningfull.
+<code>mv CUSTOM.BIN.SAVED nvram-<route-mac>.bin</code>
+
+\\ 
+
+=== Flashing a CFE ===
+**NOTE:** Normally you only flash the CFE and with a good working CFE you can install the image via the web-interface or tftp-server.
+Command to use for flashing the CFE (named CUSTOM.BIN):
+<code>./debrick -flash:custom /start:1fc00000 /window:1fc00000 /length:10000 /nobreak /noreset /bigendian</code>
+
+
+Before flashing a CFE verify it is in the correct format (big-endian versus little-endian)
+Verify the first 4 bytes with the following command:  \\ <code>od -x <file name> | head -n 2</code>
+The file should start with 0278 1000
+
+If this is not the case you can change the endianness with the switchend tool created by Cshore included in the download above.
+Command to use: 
+<code>cat bigendian_cfe_file.bin | ./switchend > CUSTOM.BIN</code>
+
+
+otherwise make sure the filename of the CFE is CUSTOM.BIN (E.g. mv cfe.bin CUSTOM.BIN).
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Bootloader Mods =====
+  - you could read about [[docs:techref:bootloader]] in general or about [[docs:techref:bootloader:cfe]] in particular.
+
+[[https://forum.openwrt.org/profile.php?id=1445|LinuxInside]] created a CFE for the DV-201AMR that doesn't make a backup.
+
+Image for regular cfe the trx is copied to low half of flash. Map is as follows:
+
+<code>  start          len
+  0x00000000:<firmware>                           backup
+  <firmware>:-0x00400000                          rootfs_data
+  0x00400000:0x00010000                           CFE:RO
+  0x00410000:0x003f0000                           linux
+  0x00410000+<kernel>:<rootfs_len>                rootfs
+  0x00410000+<firmware>:-0x8000000                free1</code>
+
+Patched CFE, proposed MAP is like:
+<code>  start          len
+  0x00000000:0x00010000                           free2
+  0x00010000:0x003f0000                           rootfs_data
+  0x00400000:0x00010000                           CFE:RO
+  0x00410000:0x003f0000                           linux
+  0x00410000+<kernel_len>:<rootfs_len>            rootfs
+  0x00410000+<kernel_len>+<rootfs_len>:-0x8000000 free1</code>
+
+{{:oldwiki:hardware:davolink:patched-cfe-for-davolink.bin|Patched-cfe-for-Davolink.bin}}\\ 
+See also the following forum update: http://forum.openwrt.org/viewtopic.php?pid=81093#p81093
+
+=== To install de CFE after OpenWRT is installed === 
+
+<del><code>mtd write Patched-cfe-for-Davolink.bin /dev/mtd0</code></del>
+
+Tried the above command a few times but it bricks the router. Asked why this is in [[https://forum.openwrt.org/viewtopic.php?pid=133253#p133253|this thread]].\\ 
+Instead use the following command:
+<code>dd if=/tmp/Patched-cfe-for-Davolink.bin of=/dev/mtd0</code>
+
+===== Other Info =====
+
+  * Most information, (e.g. like **GPL source** with **ADSL** and **VoIP** support) can be found on the following forum:\\ **http://www.davoforum.nl/** \\ **Note**: For this forum you need to subscribe to see the posts.
+  * More information about OpenWRT on the bcm63xx platform can be found in the following thread:\\ https://forum.openwrt.org/viewtopic.php?id=17370
+  * The following thread also contains nice information:\\ http://gathering.tweakers.net/forum/list_messages/1065348/last
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>bcm63xx bcm6348 8flash 16ram}}

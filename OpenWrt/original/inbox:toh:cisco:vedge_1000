@@ -1,0 +1,1065 @@
+====== Cisco vEdge 1000 ======
+~~NOTOC~~
+
+{{ media:cisco:vedge1000:vedge-1000-v1_front_viptela.jpg?300|Cisco/Viptela vEdge 1000|}}
+
+The Cisco vEdge 1000 is a small form factor SD-WAN appliance previously sold as Viptela vEgde 1000. It is based on the Niagara 821 board by the ODM Interface Masters. 
+
+/*****/
+/* How to add images ========> https://openwrt.org/meta/adding_images_to_openwrt_wiki */
+/*****/
+
+
+===== OpenWrt support =====
+
+<color red>**WIP**</color>
+
+Basic plattform support is available in the main branch since https://github.com/openwrt/openwrt/commit/6bf0e7649400f5c25828061d14dd5aa76bfc1211.
+
+Currently there is a [[https://github.com/sonix-network/openwrt/tree/viptela-vedge1000-for-upstream|private fully-featured OpenWrt port]] pending kernel patch upstreaming before they are submitted to OpenWrt.
+
+The upstream master branch (and future releases) include enough support to install OpenWrt, but not to use it as a useful device. This means you can use the official builds to bootstrap the installation of the experimental patches.
+===== Supporting activities =====
+
+  * OpenWrt forum thread: https://forum.openwrt.org/t/openwrt-support-for-cisco-vedge-100wm/103919
+  * Github PRs:
+    * None open right now
+  * Commits:
+    * https://github.com/openwrt/openwrt/commit/6bf0e7649400f5c25828061d14dd5aa76bfc1211
+    * https://github.com/openwrt/openwrt/commit/9bc782dfd8b09a96812771124eea56cbd230d9ad
+
+
+/*** if info available: uncomment and fill in ***/
+===== Experimental firmware =====
+
+See https://github.com/sonix-network/openwrt/releases.
+
+/***
+  * External image (add link)
+  * trunk image (add link)
+  * ...
+***/
+
+
+===== Hardware highlights =====
+^ CPU           ^ Cores ^ Ram        ^ Flash    ^ RJ45                                   ^ SFP  ^ eMMC    ^ USB       ^ Serial                    ^ JTag  ^
+| Cavium CN6130 | 4 |  4096 MiB  |  16 MiB  |  1x 10/100/1000 | 8x 10/100/1000 |  8 GiB  |  2x USB3  |  1x RJ45/USB/TTL, 1x TTL  | Yes |
+
+
+USB per-port power switching (PPPS) is available for both USB 3 front ports.
+
+/*** if info available: uncomment and fill in
+===== Installation =====
+  - → [[:downloads|Obtain firmware]]
+  - → [[docs:guide-user:installation:generic.flashing|Install OpenWrt]]
+  - → [[:downloads|Latest OpenWrt release]]
+***/
+
+==== Installing OpenWrt ====
+
+=== Alternative 1: Boot installation from unlocked u-boot via TFTP ===
+
+**This is the strongly preferred method, the USB method below can be really tricky.**
+
+  * Download the [[https://downloads.openwrt.org/snapshots/targets/octeon/generic/openwrt-octeon-generic-cisco_vedge1000-initramfs-kernel.bin|openwrt-octeon-generic-cisco_vedge1000-initramfs-kernel.bin]] file somewhere locally and set up a TFTP server serving the file.
+    * Example TFTP server command to serve the files in the current directory: ''sudo /usr/sbin/in.tftpd -sLv .''
+  * Calculate the CRC32 of your boot file using the following command: <code>python3 -c 'd = open("openwrt-octeon-generic-cisco_vedge1000-initramfs-kernel.bin", "rb").read(); import binascii; print("crc32 -v 0x20000000 " + hex(len(d)) + " " + hex(binascii.crc32(d))[2:].rjust(8, "0"))'</code>
+
+  * If you are not in the u-boot prompt, reboot the device and press **Ctrl-x** to enter u-boot
+    * If this does not work, see the "Unlock u-boot" section.
+  * Connect the vEdge 1000 via the management Ethernet port to a network with DHCP available
+  * Run the following commands, replace the IP with your TFTP server:
+    * ''setenv ethact octmgmt0; dhcp; setenv serverip 10.1.2.3''
+    * ''setenv ethact octmgmt0; tftpboot $loadaddr $serverip:/openwrt-octeon-generic-cisco_vedge1000-initramfs-kernel.bin''
+    * ''crc32 -v 0x20000000 0x?????? ????????'' (use the already prepared CRC32 command from earlier)
+    * If the previous crc32 command does not complain, continue with the boot
+    * ''bootoctlinux $loadaddr endbootargs''
+  * Continue with the **Prepare the disk** step
+
+=== Alternative 2: Boot installation from inside OEM OS (USB drive, SD card, SSH, HTTP(S)) ===
+
+**If you can, prefer to use the TFTP boot above. This is a tricky install that has a lot of gotchas.**
+
+**Note:** OEM OS only supports mounting vfat partitions automatically
+
+  * Copy ''openwrt-octeon-generic-cisco_vedge1000-initramfs-kernel.bin'' to ''/boot/openwrt-install.bin''
+  * ''touch /boot/in_prod'' to unlock u-boot if required
+  * Reboot vEdge
+  * Press ctrl-x to enter u-boot
+  * Run the following commands:
+    * ''usb start''
+    * ''ext2load usb 0:1 $loadaddr openwrt-install.bin''
+    * ''bootoctlinux $loadaddr endbootargs''
+  * Continue with the **Prepare the disk** step
+
+=== Prepare the disk ===
+The vEdge 1000 has been found to have a disk ID of zero by default. This needs to be rectified in order for OpenWrt to reliably be able to find the root partition. This step only has to be done once as it is permanent unless the full disk is re-partitioned manually by the user.
+
+  * Verify if you need to change the disk ID by running ''blkid -t LABEL=boot''
+    * You should get a single line like this: ''/dev/sda1: LABEL="boot" UUID="e74e53f8-dbfd-4b1f-8fc9-ba6528c03635" BLOCK_SIZE="4096" TYPE="ext2" PARTUUID="01013160-01"''
+    * If you are missing the ''PARTUUID'' part, you need to follow the next instruction - otherwise you can skip ahead to the next section.
+  * Generate a new disk ID by running the following commands:
+    * <code>
+source /lib/upgrade/platform.sh
+sfdisk --disk-id "$(platform_get_n821_disk)" 0x10"${RANDOM}"
+</code>
+  * Now loop back to step 1 above and verify that the boot partition has a ''PARTUUID'' property. Then continue with the installation.
+
+=== Running the installation ===
+
+You need to make the file ''openwrt-octeon-generic-cisco_vedge1000-squashfs-sysupgrade.tar'' available to the installation.
+
+**Example using OpenSSH:**
+
+<code>
+udhcpc -i br-lan
+# On another machine: scp -O openwrt-octeon-generic-cisco_vedge1000-squashfs-sysupgrade.tar root@10.x.x.x:/tmp/
+sysupgrade -n /tmp/openwrt-octeon-generic-cisco_vedge1000-squashfs-sysupgrade.tar
+</code>
+
+**Example using a USB drive:**
+
+<code>
+mount /dev/sdb1 /mnt
+sysupgrade -n /mnt/openwrt-octeon-generic-cisco_vedge1000-squashfs-sysupgrade.tar
+</code>
+
+Done! It is recommended to power-cycle the device to ensure that e.g. the LED and USB controllers are reset to a known state.
+
+=== Sync and reset fallback partitions ===
+
+The vEdge 1000 has support for two U-Boot bootloaders. It is recommended to sync and force a switch to the primary partition.
+
+In U-Boot, execute the following:
+
+<code>
+# optional: ensure USB3 ports are enabled
+setenv ext_usb_setup "i2c dev 1; i2c smbwrite 6e 01 01 ff; cpld_wr 0x4 0x00"
+
+cpld_wr 0xa 0x2
+saveenv
+cpld_wr 0xa 0x0
+saveenv
+reset
+</code>
+==== Reverting back to OEM ====
+
+<code>
+source /lib/upgrade/platform.sh
+mkdir /mnt
+mount "$(platform_get_n821_disk 1)" /mnt
+rm /mnt/in_prod
+umount /mnt
+reboot
+</code>
+
+In the "Viptela vEdge-1000 Boot Console" interface select ESC to enter recovery mode and select "Reset u-boot environment".
+The system will restart but fail to boot with a bunch of file system related errors. At this point press the reset button on the front panel for 10 seconds and let go.
+The system should now boot up correctly in the OEM software
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+The vEdge 1000 has a 16 MiB NOR flash that is split into two 8 MiB flash banks. Only one is active at the time, allowing for a primary and secondary bootloader to be present.
+
+Pressing, holding for more than 10 seconds, and letting go of the reset button flips the boot bank selection to the other bank. This can be verified by executing ''<nowiki>cpld_rd 0xa</nowiki>'' in u-boot. It will read either 0x0 or 0x2 depending on the bank that is currently active. You can switch the bank using e.g. ''<nowiki>cpld_wr 0xa 0x0</nowiki>''.
+
+This should allow you to enter a working u-boot and boot OpenWrt live image using TFTP, allowing you to install OpenWrt as usual.
+
+Example U-Boot commands:
+
+<code>
+cpld_wr 0xa 0x2
+dhcp
+setenv serverip 1.2.3.4
+tftpboot $loadaddr $serverip:/openwrt.bin
+bootoctlinux $loadaddr coremask=f endbootargs
+# Wait for OpenWrt to boot, verify that you are operating against the *broken* flash bank
+hexdump -C /dev/mtdblock0 | head -n 1000
+# scp the u-boot.bin you want to recover
+dd if=uboot.bin of=/dev/mtdblock0 bs=1M
+sync
+reboot -f
+# You should be booting correctly now
+</code>
+
+If you get a ''<nowiki>Permissioned denined</nowiki>'' error while writing to  ''<nowiki>/dev/mtdblock0</nowiki>'' you likely need to remove the read-only property for the bootloader partition in the device tree.
+
+For more advanced debricking, there is a [[vedge_1000#JTAG|JTAG section]]. However, as of this writing there is no definite guide how to load a new u-boot onto a bricked flash bank. It should be possible using the ''<nowiki>flash [..]</nowiki>'' OpenOCD commands - **however note that the NOR flashes uses swapped byte order** so ensure you compensate for that.
+
+/*** if info available: uncomment and fill in
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Specific configuration =====
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+</WRAP>
+***/
+
+
+/*** if info available: uncomment and fill in
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+The Cisco vEdge 1000 has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+</WRAP>
+***/
+
+
+===== Hardware =====
+==== Info ====
+
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "ethernet1gports", "sfp_ports", "vlan", "commentsnetworkports", "usbports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Cisco$", "model": "^vEdge 1000$"}
+} -->
+
+/*** if info available: uncomment and fill in
+==== Flash Layout ====
+<WRAP BOX>
+FIXME //[[:docs:techref:flash.layout#discovery_how_to_find_out|Find out flash layout]], then add the flash layout table here (copy, paste, modify the [[docs:techref:flash.layout#partitioning_of_squashfs-images|example]]).//
+
+Please check out the article [[docs:techref:flash.layout|Flash layout]]. It contains examples and explanations that describe how to document the flash layout.
+</WRAP>
+***/
+
+The unit is shipped with two power adapters, part number FSP060-DIBAN2. A DC connector w/ the dimensions 2.1×5.5×9.5mm is suitable. The stock PSU is rated 60W but in reality anything at 30W or higher should work fine. During stress testing the vEdge 1000 has been pushed to draw 28W at worst-case but during normal loads it should be closer to 15-20W. The unit works fine with voltage levels between 6.5V up to 15.2V - higher voltages might be possible but has not been tested.
+
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+**Photo of front of the casing**
+
+{{:media:cisco:vedge1000:vedge-1000-v1_front_viptela.jpg?400|}}
+
+**Photo of bottom of the casing**
+
+{{:media:cisco:vedge1000:vedge-1000-v1_back.jpg?400|}}
+
+**Photo of backside label**
+
+{{:media:cisco:vedge1000:vedge-1000-v1_bottom.jpg?400|}}
+
+**Photo of main board**
+
+{{:media:cisco:vedge1000:vedge-1000-v1_board_top_annotated.jpg?400|}} 
+
+^ ID   ^ Summary                                ^ Notes                                                                                                     ^
+| 1    | CPU                                    | CN6130p1.1-1000-NSP                                                                                       |
+| 2    | DDR3 SODIMM                            |                                                                                                           |
+| 3    | 8x SFP cages                           | Named "lan0" through "lan7" in OpenWrt                                                                    |
+| 4    | Interface LED pairs                    | Two leds per cage, one upper and one lower                                                                |
+| 5    | System LEDs                            | SYS/STATUS/PWR0/PWR1 LEDs                                                                                 |
+| 6    | System reset button                    | A press of 5-6 seconds produces a software interrupt. A long press of >10 sec forces the board to reset.  |
+| 7    | 2x USB 3.0 ports                       | Attached to the PCIe bus. Capable of being disabled via software.                                         |
+| 8    | Interface 10/100/1000 RJ45             | Named "mgmt0" in OpenWrt                                                                                  |
+| 8A   | Vitesse PHY for interface #8           |                                                                                                           |
+| 9    | System console, RJ45 w/ RS-232 levels  |                                                                                                           |
+| 9A   | System console, TTL 3.3V               | Two middle pins are TX/RX                                                                                 |
+| 9B   | /dev/ttyS1, TTL 3.3V                   | Two middle pins are TX/RX                                                                                 |
+| 10   | System console, USB Type-B             |                                                                                                           |
+| 11   | Board CPLD                             |                                                                                                           |
+| 12A  | I2C bus, OCTEON #1                     | SCL, SDA, GND                                                                                             |
+| 12B  | I2C bus, OCTEON #2                     | SCL, SDA, GND                                                                                             |
+| 12C  | I2C bus, i2c-mux #10                   | SCL, SDA, GND                                                                                             |
+| 12D  | I2C bus, bit-bang bus                  | SCL, SDA, GND                                                                                             |
+| 13A  | Power 0, DC 12V barrel connector       | Positive in the middle                                                                                    |
+| 13B  | Power 1, DC 12V barrel connector       | Positive in the middle                                                                                    |
+| 14A  | Fan 1, PWM                             |                                                                                                           |
+| 14B  | Fan 2, PWM                             |                                                                                                           |
+| 15   | NOR flash, 16 MiB                      | Presented as 2 banks, 8 MiB each for recovery                                                             |
+| 16   | JTAG connector                         | See the [[vedge_1000#JTAG|JTAG section]].                                                                 |
+
+==== Opening the case ====
+
+<WRAP BOX>
+Opening the box is a simple task of removing four screws on the top and four screws on each side totalling twelve screws to be removed. This allows for removing the top cover.
+</WRAP>
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+{{ media:cisco:vedge1000:vedge-1000-v1_front_console.jpg?200|}}
+
+How to connect to the Serial Port of this specific device:\\
+
+<WRAP BOX>
+The serial interface on the front is a standard Cisco RJ45 serial port labelled as "console". It is possible to enter u-boot by interrupting the boot process when prompted to hit ''<nowiki>ctrl-x</nowiki>''.
+On newer firmwares this method is not directly accessible and will require additional work, see below.
+
+Alternatively the USB Type-B on the front can be used to connect to the serial console. 
+</WRAP>
+
+^ Serial connection parameters\\ for Cisco vEdge 1000 | 115200, 8N1, 3.3V |
+
+
+=== Unlocking u-boot ===
+
+Entering U-boot is achieved by pressing **Ctrl-x** when booting. The prompt is something like this:
+
+<code>
+scanning bus 0 for devices... 2 USB Device(s) found                                                                                                                                                      
+Type the command 'usb start' to scan for USB storage devices.                                                                                                                                            
+                                                                                                                                                                                                        
+(Re)start USB...                                                                                                                                                                                         
+USB0:   USB EHCI 1.00                                                                                                                                                                                    
+scanning bus 0 for devices... 2 USB Device(s) found                                                                                                                                                      
+      scanning usb for storage devices... 1 Storage Device(s) found                                                                                                                                     
+Hit ctrl-x to stop booting 0                                                                                                                                                                             
+=>
+</code>
+
+If you instead get presented by a screen that looks like the one in the screenshot below, you need to unlock U-boot before you can install OpenWrt.
+
+<code>
+/------------------------------------------------------------------------------\
+|                       Viptela vEdge-1000 Boot Console                        |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                             /-------------------\                            |
+|                             | 18.4.302 (active) |                            |
+|                             \-------------------/                            |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|        Press <ENTER> to boot image, <ESC> to enter Viptela Recovery          |
+|           Menu. Press <Up> or <Down> to select different image.              |
+|                                                                              |
+\------------------------------------------------------------------------------/
+</code>
+
+The least complicated way to unlock U-boot is to create a file called ''in_prod'' on the first partition on the internal disk, however that requires rooting the OEM software on the device. A bit more complicated, but universal, way to unlock U-boot is to put the device into testbed mode by using an I2C gadget.
+
+As part of the secure boot flow U-boot will be searching for an I2C EEPROM at address 0x75 on the JP3 header (see "12B" on the photo of the main board). If the device is found, it will compare the contents of the EEPROM with the string ''Viptela'' and if it matches, enable testbed mode. In testbed mode you have access to utilities like the U-boot console.
+
+One straightforward way to create such a gadget is to use an Arduino microcontroller. Documented below is code and connection schematic for using an Arduino Uno controller connected via normal 0.64mm jumper wire. If you have no previous experience nor equipment to build this hardware yourself there are kits available that contain everything you need - example of such a kit is the [[https://www.elegoo.com/products/elegoo-uno-basic-starter-kit|ELEGOO UNO Basic Starter Kit]] 
+
+{{ media:cisco:vedge1000:vedge-1000-v1_unlock.jpg?400|}}
+
+Use the following code:
+
+<code>
+include <Wire.h>
+ 
+void setup() {
+  Wire.begin(0x75);
+  Wire.setClock(100 * 1000);
+  Wire.onRequest(requestEvent);
+  Serial.begin(9600);
+  Serial.println("Cisco vEdge u-boot testbed unlock");
+}
+
+void requestEvent() {
+  Wire.write("Viptela");
+  Serial.println("Processing I2C read ...");
+}
+ 
+void loop() {
+  delay(50);
+}
+</code>
+
+^ Arduino UNO Pinout ^ Signal ^ To where on JP3 ^
+| A5 | SDA | left-most on the picture, arrow on the PCB points to this pin |
+| A4 | SCL | center pin |
+| GND | GND | right-most on the picture |
+
+When booting with this gadget correctly attached you should be greeted with a recovery menu that looks like this:
+
+
+<code>
+/------------------------------------------------------------------------------\
+|                       Viptela vEdge-1000 Recovery Tool                       |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|               /-----------------------------------------------\              |
+|               |      Boot Viptela Software (Normal Boot)      |              |
+|               |      Boot Viptela Software (Debug Mode)       |              |
+|               | Clean Install Viptela Software (From SD-Card) |              |
+|               |       Network Install Viptela Software        |              |
+|               |           Reset U-boot Environment            |              |
+|               |        Permanently Enable Testbed Mode        |              |
+|               |                U-boot Console                 |              |
+|               |                    Reboot                     |              |
+|               \-----------------------------------------------/              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+\------------------------------------------------------------------------------/
+</code>
+
+You may then choose the option **"Permanently enable testbed mode"** which will reset the U-boot environment and do a ''setenv testbed 1; saveenv'' to activate testbed mode regardless of if the I2C gadget is attached.
+
+
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+{{ :media:cisco:vedge1000:vedge-1000-v1_jtag_pinout.png?200|}}
+
+The JTAG header is marked as header 16 on the board picture. The main board PCB has an arrow pointing to PIN 1.
+
+| JTAG TRST  |   **PIN1** |   | **PIN2**   | GND            |
+| JTAG TDI   |   **PIN3** |   | **PIN4**   | GND            |
+| JTAG TDO   |   **PIN5** |   | **PIN6**   | GND            |
+| JTAG TMS   |   **PIN7** |   | **PIN8**   | GND            |
+| JTAG TCK   |   **PIN9** |   | **PIN10**  | GND            |
+| JTAG SRST  |  **PIN11** |   | **PIN12**  | Not connected  |
+| GPIO #4    |  **PIN13** |   | **PIN14**  | Vcc / Vio      |
+
+**Note that when SRST is used the flash bank toggles every system reset**, so make sure you compensate for that so you do not accidentally modify the wrong flash bank.
+
+Example configuration for OpenOCD:
+
+
+<code openocd>
+source [find interface/ftdi/olimex-arm-usb-ocd.cfg]
+ftdi tdo_sample_edge falling
+reset_config trst_and_srst
+adapter speed 10000
+
+jtag newtap chip0 tap -irlen 5 -expected-id 0x19300399 -ignore-version
+jtag newtap chip1 tap -irlen 5 -expected-id 0x19300399 -ignore-version
+jtag newtap chip2 tap -irlen 5 -expected-id 0x19300399 -ignore-version
+jtag newtap chip3 tap -irlen 5 -expected-id 0x19300399 -ignore-version
+
+target create core0 mips_mips64 -endian big -chain-position 0 -coreid 0
+target create core1 mips_mips64 -endian big -chain-position 1 -coreid 1
+target create core2 mips_mips64 -endian big -chain-position 2 -coreid 2
+target create core3 mips_mips64 -endian big -chain-position 3 -coreid 3
+
+target smp core0 core1 core2 core3
+targets core0
+
+flash bank nor0 cfi 0x1ec00000 0x1000000 2 2 core0
+</code>
+
+Here are some useful commands:
+
+  # Dump the active u-boot configuration
+  dump_image uboot.img 0x1ec00000 0x200000
+  dump_image uboot.env 0x1fbe0000 0x20000
+
+  # Switch to the secondary boot bank
+  mwb phys 0x1e00000a 2
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>
+U-Boot 2013.07-g1874683 (Build time: Nov 05 2018 - 00:10:57)
+
+Skipping PCIe port 0 BIST, reset not done. (port not configured)
+Skipping PCIe port 1 BIST, reset not done. (port not configured)
+BIST check passed.
+CUST_N821 board revision major:7, minor:1, serial #: 11OG427170497
+OCTEON CN6130-AAP pass 1.1, Core clock: 1000 MHz, IO clock: 600 MHz, DDR clock: 533 MHz (1066 Mhz DDR)
+Base DRAM address used by u-boot: 0x10f000000, size: 0x1000000
+DRAM: 4 GiB
+Clearing DRAM...... done
+Flash: 16 MiB
+PCIe: Port 0 is SGMII, skipping.
+PCIe: Link timeout on port 1, probably the slot is empty
+Net:   octmgmt0, octeth0, octeth1, octeth2, octeth3, octeth4, octeth5, octeth6, octeth7
+MMC:   not available
+USB0:   USB EHCI 1.00
+scanning bus 0 for devices... 2 USB Device(s) found
+Type the command 'usb start' to scan for USB storage devices.
+
+Hit ctrl-x to stop booting 0 
+Setting bus to 1
+writing 0x303 to addr: 0x8001180000001628
+(Re)start USB...
+USB0:   USB EHCI 1.00
+scanning bus 0 for devices... 2 USB Device(s) found
+       scanning usb for storage devices... 1 Storage Device(s) found
+Allocated 0x20000000 bytes at address: 0x30000000, name: almushtarika
+23919002 bytes read in 4602 ms (5 MiB/s)
+Bootloader: Done loading app on coremask: 0xe
+32135760 bytes read in 5905 ms (5.2 MiB/s)
+argv[2]: coremask=1
+argv[3]: endbootargs
+Allocating memory for ELF segment: addr: 0xffffffff80100000 (adjusted to: 0x100000), size 0x20bb660
+## Loading big-endian Linux kernel with entry point: 0xffffffff8088df20 ...
+Bootloader: Done loading app on coremask: 0x1
+Starting cores:
+ 0xf
+PP1:~CONSOLE->I nUsiitinagl idzeviingc ec gtrreoeup
+ subsys cpuset
+Initializing cgroup subsys cpu
+Initializing cgroup subsys cpuacct
+Linux version 3.10.62-ltsi (vbamboo@sjc-vip-bld06) (gcc version 4.8.2 (GCC) ) #2 SMP PREEMPT Mon Nov 5 00:21:38 PST 2018
+CVMSEG size: 2 cache lines (256 bytes)
+Cavium Inc. SDK-3.1
+bootconsole [early0] enabled
+CPU revision is: 000d9301 (Cavium Octeon II)
+Checking for the multiply/shift bug... no.
+Checking for the daddiu bug... no.
+Determined physical RAM map:
+ memory: 000000000cc00000 @ 0000000002300000 (usable)
+ memory: 0000000010000000 @ 0000000020000000 (usable)
+ memory: 000000009dc00000 @ 0000000052400000 (usable)
+ memory: 0000000000fff000 @ 00000000f0001000 (usable)
+ memory: 0000000000a5d000 @ 0000000000100000 (usable)
+ memory: 0000000001453000 @ 0000000000b5d000 (usable after init)
+Booting ...
+sd 0:0:0:0: [sda] No Caching mode page found
+sd 0:0:0:0: [sda] Assuming drive cache: write through
+sd 0:0:0:0: [sda] No Caching mode page found
+sd 0:0:0:0: [sda] Assuming drive cache: write through
+sd 0:0:0:0: [sda] No Caching mode page found
+sd 0:0:0:0: [sda] Assuming drive cache: write through
+e2fsck 1.43.4 (31-Jan-2017)
+Pass 1: Checking inodes, blocks, and sizes
+Pass 2: Checking directory structure
+Pass 3: Checking directory connectivity
+Pass 4: Checking reference counts
+Pass 5: Checking group summary information
+boot: 49/65664 files (6.1% non-contiguous), 43650/262144 blocks
+Mounting /dev/sda1 at /boot
+Image found in /dev/sda1 ... 
+Boot device found in: /dev/sda1
+Checking /dev/sda1...
+e2fsck 1.43.4 (31-Jan-2017)
+Pass 1: Checking inodes, blocks, and sizes
+Pass 2: Checking directory structure
+Pass 3: Checking directory connectivity
+Pass 4: Checking reference counts
+Pass 5: Checking group summary information
+boot: 49/65664 files (6.1% non-contiguous), 43650/262144 blocks
+Mounting /dev/sda1 at /boot
+DRAM Size is 4096 M
+Checking signature for /boot/active/vmlinux
+Kernel integrity check successful
+Checking signature for /boot/active/rootfs.img
+Rootfs integrity check successful
+Mounting /boot/active/rootfs.img at /rootfs.ro
+Starting version 17.2.9...
+Checking /dev/sda2...
+e2fsck 1.43.4 (31-Jan-2017)
+root: recovering journal
+Clearing orphaned inode 158 (uid=0, gid=0, mode=0100644, size=58680)
+Clearing orphaned inode 130 (uid=0, gid=0, mode=0100644, size=2077080)
+Clearing orphaned inode 127 (uid=0, gid=0, mode=0100644, size=4096)
+Pass 1: Checking inodes, blocks, and sizes
+Pass 2: Checking directory structure
+Pass 3: Checking directory connectivity
+Pass 4: Checking reference counts
+Pass 5: Checking group summary information
+Free blocks count wrong (1606529, counted=1606498).
+Fix? yes
+
+Free inodes count wrong (413468, counted=413465).
+Fix? yes
+
+
+root: ***** FILE SYSTEM WAS MODIFIED *****
+root: 247/413712 files (3.2% non-contiguous), 47693/1654191 blocks
+tune2fs 1.43.4 (31-Jan-2017)
+Mounting /dev/sda2 at /rootfs.rw
+Checking integrity of /boot/active/fp
+Fast path integrity check successful
+Mounting aufs at /rootfs
+Mounting pseudo filesystems...
+Setting up hotplug...
+Mounting filesystems...
+Setting hostname...
+Configuring kernel parameters...
+Configuring network interfaces...
+Verifying current time against timestamp...
+Setting up log files...
+Starting services...
+
+viptela 17.2.9 
+
+vedge login: 
+
+Thu Jun  8 13:32:55 UTC 2023: System Ready
+
+
+viptela 17.2.9 
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+U-Boot 2013.07-g1874683 (Build time: Nov 05 2018 - 00:10:57)
+
+Skipping PCIe port 0 BIST, reset not done. (port not configured)
+Skipping PCIe port 1 BIST, reset not done. (port not configured)
+BIST check passed.
+CUST_N821 board revision major:7, minor:1, serial #: 11OG427170497
+OCTEON CN6130-AAP pass 1.1, Core clock: 1000 MHz, IO clock: 600 MHz, DDR clock: 533 MHz (1066 Mhz DDR)
+Base DRAM address used by u-boot: 0x10f000000, size: 0x1000000
+DRAM: 4 GiB
+Clearing DRAM...... done
+Flash: 16 MiB
+PCIe: Port 0 is SGMII, skipping.
+PCIe: Port 1 link active, 1 lanes, speed gen2
+Net:   octmgmt0, octeth0, octeth1, octeth2, octeth3, octeth4, octeth5, octeth6, octeth7
+MMC:   Octeon MMC/SD0: 1
+USB0:   USB EHCI 1.00
+scanning bus 0 for devices... 2 USB Device(s) found
+Type the command 'usb start' to scan for USB storage devices.
+
+Hit ctrl-x to stop booting 0 
+(Re)start USB...
+USB0:   USB EHCI 1.00
+scanning bus 0 for devices... 2 USB Device(s) found
+       scanning usb for storage devices... 1 Storage Device(s) found
+11052832 bytes read in 2089 ms (5 MiB/s)
+argv[2]: endbootargs
+Allocating memory for ELF segment: addr: 0xffffffff81100000 (adjusted to: 0x1100000), size 0x1c8f5a4
+## Loading big-endian Linux kernel with entry point: 0xffffffff81894af0 ...
+Bootloader: Done loading app on coremask: 0x1
+Starting cores:
+ 0x1
+[    0.000000] Linux version 5.15.114 (bluecmd@fedora) (mips64-openwrt-linux-musl-gcc (OpenWrt GCC 12.3.0 r23370+1-6196159295) 12.3.0, GNU ld (GNU Binutils) 2.40.0) #0 SMP Thu Jun 22 14:44:15 2023
+[    0.000000] Skipping L2 locking due to reduced L2 cache size
+[    0.000000] CVMSEG size: 0 cache lines (0 bytes)
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 000d9301 (Cavium Octeon II)
+[    0.000000] Kernel sections are not in the memory maps
+[    0.000000] Wasting 278528 bytes for tracking 4352 unused pages
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Using appended Device Tree.
+[    0.000000] software IO TLB: mapped [mem 0x0000000002e12000-0x0000000006e12000] (64MB)
+[    0.000000] Primary instruction cache 37kB, virtually tagged, 37 way, 8 sets, linesize 128 bytes.
+[    0.000000] Primary data cache 32kB, 32-way, 8 sets, linesize 128 bytes.
+[    0.000000] Zone ranges:
+[    0.000000]   DMA32    [mem 0x0000000001100000-0x00000000efffffff]
+[    0.000000]   Normal   [mem 0x00000000f0000000-0x000000010effffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000001100000-0x0000000002d8efff]
+[    0.000000]   node   0: [mem 0x0000000002e00000-0x000000000edfffff]
+[    0.000000]   node   0: [mem 0x000000000f200000-0x000000000fdfffff]
+[    0.000000]   node   0: [mem 0x0000000020000000-0x00000000efffffff]
+[    0.000000]   node   0: [mem 0x00000000f0001000-0x00000000ffffffff]
+[    0.000000]   node   0: [mem 0x0000000100001000-0x000000010effffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000001100000-0x000000010effffff]
+[    0.000000] On node 0, zone DMA32: 4352 pages in unavailable ranges
+[    0.000000] On node 0, zone DMA32: 113 pages in unavailable ranges
+[    0.000000] On node 0, zone DMA32: 1024 pages in unavailable ranges
+[    0.000000] On node 0, zone DMA32: 512 pages in unavailable ranges
+[    0.000000] On node 0, zone Normal: 1 pages in unavailable ranges
+[    0.000000] On node 0, zone Normal: 1 pages in unavailable ranges
+[    0.000000] On node 0, zone Normal: 4096 pages in unavailable ranges
+[    0.000000] percpu: Embedded 15 pages/cpu s22944 r8192 d30304 u61440
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 1022250
+[    0.000000] Kernel command line:  root=/dev/sda2 rootfstype=squashfs,ext4 rootwait console=ttyS0,115200
+[    0.000000] Dentry cache hash table entries: 524288 (order: 10, 4194304 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 262144 (order: 9, 2097152 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 3986532K/4153908K available (7795K kernel code, 817K rwdata, 1900K rodata, 1312K init, 17405K bss, 167376K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=128, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu:     RCU restricting CPUs from NR_CPUS=16 to nr_cpu_ids=1.
+[    0.000000]  Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=1
+[    0.000000] NR_IRQS: 127
+[   16.593333] clocksource: OCTEON_CVMCOUNT: mask: 0xffffffffffffffff max_cycles: 0x1cd42e4dffb, max_idle_ns: 881590591483 ns
+[   16.604293] Calibrating delay loop (skipped) preset value.. 2000.00 BogoMIPS (lpj=10000000)
+[   16.612569] pid_max: default: 32768 minimum: 301
+[   16.617594] Mount-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[   16.624845] Mountpoint-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[   16.634445] rcu: Hierarchical SRCU implementation.
+[   16.639313] smp: Bringing up secondary CPUs ...
+[   16.643704] smp: Brought up 1 node, 1 CPU
+[   16.650625] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[   16.660326] futex hash table entries: 256 (order: 3, 32768 bytes, linear)
+[   16.667792] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[   16.681189] PCIe: Initializing port 0
+[   16.695715] PCIe: Port 0 stuck in reset, skipping.
+[   16.700340] PCIe: Initializing port 1
+[   16.720730] PCIe: Port 1 link active, 1 lanes, speed gen2
+[   16.852335] SCSI subsystem initialized
+[   16.856261] usbcore: registered new interface driver usbfs
+[   16.861625] usbcore: registered new interface driver hub
+[   16.866943] usbcore: registered new device driver usb
+[   16.871975] EDAC MC: Ver: 3.0.0
+[   16.875978] PCI host bridge to bus 0000:00
+[   16.879936] pci_bus 0000:00: root bus resource [mem 0x1000000000000]
+[   16.886254] pci_bus 0000:00: root bus resource [io  0x0000]
+[   16.891826] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[   16.900655] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[   16.907182] PCI host bridge to bus 0000:01
+[   16.911197] pci_bus 0000:01: root bus resource [mem 0x11c00f0000000-0x11c0fffffffff] (bus address [0xf0000000-0xfffffffff])
+[   16.922336] pci_bus 0000:01: root bus resource [io  0x100000000-0x1ffffffff] (bus address [0x0000-0xffffffff])
+[   16.932320] pci_bus 0000:01: No busn resource found for root bus, will use [bus 01-ff]
+[   16.940280] pci 0000:01:00.0: [104c:8241] type 00 class 0x0c0330
+[   16.946252] pci 0000:01:00.0: reg 0x10: [mem 0x00000000-0x0000ffff 64bit]
+[   16.953030] pci 0000:01:00.0: reg 0x18: [mem 0x00000000-0x00001fff 64bit]
+[   16.959901] pci 0000:01:00.0: supports D1 D2
+[   16.964060] pci 0000:01:00.0: PME# supported from D0 D1 D2 D3hot
+[   16.971144] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[   16.977620] pci 0000:01:00.0: BAR 0: assigned [mem 0x11c0100000000-0x11c010000ffff 64bit]
+[   16.985783] pci 0000:01:00.0: BAR 2: assigned [mem 0x11c0100010000-0x11c0100011fff 64bit]
+[   16.994274] clocksource: Switched to clocksource OCTEON_CVMCOUNT
+[   17.000897] NET: Registered PF_INET protocol family
+[   17.005826] IP idents hash table entries: 65536 (order: 7, 524288 bytes, linear)
+[   17.015806] tcp_listen_portaddr_hash hash table entries: 2048 (order: 3, 32768 bytes, linear)
+[   17.024220] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[   17.031932] TCP established hash table entries: 32768 (order: 6, 262144 bytes, linear)
+[   17.040141] TCP bind hash table entries: 32768 (order: 7, 524288 bytes, linear)
+[   17.047759] TCP: Hash tables configured (established 32768 bind 32768)
+[   17.054218] UDP hash table entries: 2048 (order: 4, 65536 bytes, linear)
+[   17.060945] UDP-Lite hash table entries: 2048 (order: 4, 65536 bytes, linear)
+[   17.068228] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[   17.073770] pci 0000:01:00.0: enabling device (0000 -> 0002)
+[   17.079431] PCI: CLS 64 bytes, default 128
+[   17.089905] workingset: timestamp_bits=46 max_order=20 bucket_order=0
+[   17.101731] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[   17.107594] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[   17.119396] octeon_gpio 1070000000800.gpio-controller: OCTEON GPIO driver probed.
+[   17.126944] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[   17.133501] printk: console [ttyS0] disabled
+[   17.137663] 1180000000800.serial: ttyS0 at MMIO 0x1180000000800 (irq = 34, base_baud = 37500000) is a OCTEON
+[   17.147463] printk: console [ttyS0] enabled
+[   17.147463] printk: console [ttyS0] enabled
+[   17.155795] printk: bootconsole [early0] disabled
+[   17.155795] printk: bootconsole [early0] disabled
+[   17.165457] 1180000000c00.serial: ttyS1 at MMIO 0x1180000000c00 (irq = 35, base_baud = 37500000) is a OCTEON
+[   17.175531] octeon_rng octeon_rng: Octeon Random Number Generator
+[   17.189153] loop: module loaded
+[   17.192594] Driver 'pata_octeon_cf' needs updating - please use bus_type methods
+[   17.200309] physmap-flash 1ec00000.nor: physmap platform flash device: [mem 0x1ec00000-0x1fbfffff]
+[   17.209361] 1ec00000.nor: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x000001 Chip ID 0x002101
+[   17.219400] Amd/Fujitsu Extended Query Table at 0x0040
+[   17.224570]   Amd/Fujitsu Extended Query version 1.5.
+[   17.229635] number of CFI chips: 1
+[   17.236150] 2 fixed-partitions partitions found on MTD device 1ec00000.nor
+[   17.243049] Creating 2 MTD partitions on "1ec00000.nor":
+[   17.248412] 0x000000000000-0x000000200000 : "bootloader"
+[   17.254706] 0x000000fe0000-0x000001000000 : "environment"
+[   17.265547] mdio_octeon 1180000001800.mdio: Probed
+[   17.270958] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[   17.277541] ehci-pci: EHCI PCI platform driver
+[   17.282037] ehci-platform: EHCI generic platform driver
+[   17.287382] ehci-platform 16f0000000000.ehci: EHCI Host Controller
+[   17.293594] ehci-platform 16f0000000000.ehci: new USB bus registered, assigned bus number 1
+[   17.302069] ehci-platform 16f0000000000.ehci: irq 56, io mem 0x16f0000000000
+[   17.334298] ehci-platform 16f0000000000.ehci: USB 2.0 started, EHCI 1.00
+[   17.341500] hub 1-0:1.0: USB hub found
+[   17.345554] hub 1-0:1.0: 2 ports detected
+[   17.349923] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[   17.356158] ohci-platform: OHCI generic platform driver
+[   17.361502] ohci-platform 16f0000000400.ohci: Generic Platform OHCI controller
+[   17.368774] ohci-platform 16f0000000400.ohci: new USB bus registered, assigned bus number 2
+[   17.377203] ohci-platform 16f0000000400.ohci: irq 56, io mem 0x16f0000000400
+[   17.458732] hub 2-0:1.0: USB hub found
+[   17.462758] hub 2-0:1.0: 2 ports detected
+[   17.467181] xhci_hcd 0000:01:00.0: xHCI Host Controller
+[   17.472434] xhci_hcd 0000:01:00.0: new USB bus registered, assigned bus number 3
+[   17.480022] xhci_hcd 0000:01:00.0: hcc params 0x0270f06d hci version 0x96 quirks 0x0000000004000000
+[   17.489307] xhci_hcd 0000:01:00.0: xHCI Host Controller
+[   17.494571] xhci_hcd 0000:01:00.0: new USB bus registered, assigned bus number 4
+[   17.501988] xhci_hcd 0000:01:00.0: Host supports USB 3.0 SuperSpeed
+[   17.509439] hub 3-0:1.0: USB hub found
+[   17.513453] hub 3-0:1.0: 2 ports detected
+[   17.517916] usb usb4: We don't know the algorithms for LPM for this host, disabling LPM.
+[   17.526660] hub 4-0:1.0: USB hub found
+[   17.530671] hub 4-0:1.0: 2 ports detected
+[   17.535284] usbcore: registered new interface driver usb-storage
+[   17.541643] i2c-octeon 1180000001000.i2c: probed
+[   17.549194] at24 1-0054: 65536 byte 24c512 EEPROM, writable, 128 bytes/write
+[   17.556356] i2c-octeon 1180000001200.i2c: probed
+[   17.561104] octeon_wdt: Initial granularity 5 Sec
+[   17.566740] EDAC DEVICE0: Giving out device to module octeon-cpu controller cache: DEV octeon_pc_edac (INTERRUPT)
+[   17.577185] EDAC DEVICE1: Giving out device to module octeon-l2c controller octeon_l2c_err: DEV octeon_l2c_edac (POLLED)
+[   17.588212] EDAC MC0: Giving out device to module octeon-lmc controller co_lmc_err: DEV octeon_lmc_edac.0 (POLLED)
+[   17.602734] Interface 0 has 4 ports (SGMII)
+[   17.607001] Interface 1 has 4 ports (SGMII)
+[   17.611205] cvm_oct_get_port_status running over 3 interfaces
+[   17.616971] cvm_oct_get_port_status interface 0, #ports = 4
+[   17.622559] cvm_oct_get_port_status 0/0, mode = 6, port_node = 1
+[   17.629615] cvm_oct_get_port_status 0/1, mode = 6, port_node = 1
+[   17.635651] cvm_oct_get_port_status 0/2, mode = 6, port_node = 1
+[   17.641672] sgmii-mac-1000x-mode found setting..
+[   17.646306] cvm_oct_get_port_status 0/3, mode = 6, port_node = 1
+[   17.652328] sgmii-mac-1000x-mode found setting..
+[   17.656960] cvm_oct_get_port_status interface 1, #ports = 4
+[   17.662546] cvm_oct_get_port_status 1/0, mode = 6, port_node = 1
+[   17.668576] cvm_oct_get_port_status 1/1, mode = 6, port_node = 1
+[   17.674607] cvm_oct_get_port_status 1/2, mode = 6, port_node = 1
+[   17.680630] cvm_oct_get_port_status 1/3, mode = 6, port_node = 1
+[   17.686657] cvm_oct_get_port_status interface 2, #ports = 0
+[   17.692252] __cvmx_helper_sgmii_hardware_init_one_time, interface 0/0, protocol SGMII, MAC mode
+[   17.700976] __cvmx_helper_sgmii_hardware_init_one_time, interface 0/1, protocol SGMII, MAC mode
+[   17.709700] __cvmx_helper_sgmii_hardware_init_one_time, interface 0/2, protocol 1000BASE-X
+[   17.717990] __cvmx_helper_sgmii_hardware_init_one_time, interface 0/3, protocol 1000BASE-X
+[   17.726293] __cvmx_helper_sgmii_hardware_init_one_time, interface 1/0, protocol SGMII, MAC mode
+[   17.735018] __cvmx_helper_sgmii_hardware_init_one_time, interface 1/1, protocol SGMII, MAC mode
+[   17.743734] __cvmx_helper_sgmii_hardware_init_one_time, interface 1/2, protocol SGMII, MAC mode
+[   17.752456] __cvmx_helper_sgmii_hardware_init_one_time, interface 1/3, protocol SGMII, MAC mode
+[   17.762371] platform 1180000002000.mmc:mmc-slot@0: Got CD GPIO
+[   17.768251] platform 1180000002000.mmc:mmc-slot@0: Got WP GPIO
+[   17.782039] NET: Registered PF_INET6 protocol family
+[   17.791237] Segment Routing with IPv6
+[   17.795008] In-situ OAM (IOAM) with IPv6
+[   17.799026] NET: Registered PF_PACKET protocol family
+[   17.804680] 8021q: 802.1Q VLAN Support v1.8
+[   17.809481] OF: fdt: not creating '/sys/firmware/fdt': CRC check failed
+[   17.816635] Waiting for root device /dev/sda2...
+[   17.844293] usb 1-1: new high-speed USB device number 2 using ehci-platform
+[   18.051137] usb-storage 1-1:1.0: USB Mass Storage device detected
+[   18.057909] scsi host0: usb-storage 1-1:1.0
+[   19.065312] scsi 0:0:0:0: Direct-Access     Generic  Ultra HS-COMBO   1.98 PQ: 0 ANSI: 0
+[   19.075400] sd 0:0:0:0: [sda] 15335424 512-byte logical blocks: (7.85 GB/7.31 GiB)
+[   19.084143] sd 0:0:0:0: [sda] Write Protect is off
+[   19.090146] sd 0:0:0:0: [sda] No Caching mode page found
+[   19.095503] sd 0:0:0:0: [sda] Assuming drive cache: write through
+[   19.107788]  sda: sda1 sda2
+[   19.114318] sd 0:0:0:0: [sda] Attached SCSI removable disk
+[   19.144800] VFS: Mounted root (squashfs filesystem) readonly on device 8:2.
+[   19.152155] Freeing unused kernel image (initmem) memory: 1312K
+[   19.158169] This architecture does not have kernel memory protection.
+[   19.164659] Run /sbin/init as init process
+[   19.437986] init: Console is alive
+[   19.441569] init: - watchdog -
+[   19.737983] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[   19.772316] usbcore: registered new interface driver uas
+[   19.778816] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[   19.788051] init: - preinit -
+[   20.372871] random: jshn: uninitialized urandom read (4 bytes read)
+[   20.423160] random: jshn: uninitialized urandom read (4 bytes read)
+[   20.443004] random: jshn: uninitialized urandom read (4 bytes read)
+[   20.473527] octeon_mgmt 1070000100000.ethernet mgmt0: Link is up - 1000/Full
+[   20.484205] IPv6: ADDRCONF(NETDEV_CHANGE): mgmt0: link becomes ready
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   22.586327] loop0: detected capacity change from 0 to 13233528
+[   22.604277] loop0: detected capacity change from 13233528 to 13227256
+[   22.611043] random: procd: uninitialized urandom read (4 bytes read)
+[   22.956003] mmc0: new high speed SDHC card at address aaaa
+[   22.962880] mmcblk0: mmc0:aaaa SP32G 29.7 GiB 
+[   23.041622] F2FS-fs (loop0): Mounted with checkpoint version = 351ed6af
+[   23.049238] mount_root: switching to f2fs overlay
+[   23.054961] overlayfs: null uuid detected in lower fs '/', falling back to xino=off,index=off,nfs_export=off.
+[   23.108953] EXT4-fs (sda1): mounting ext2 file system using the ext4 subsystem
+[   23.128438] EXT4-fs (sda1): warning: mounting unchecked fs, running e2fsck is recommended
+[   23.137630] EXT4-fs (sda1): mounted filesystem without journal. Opts: (null). Quota mode: disabled.
+[   23.237153] urandom-seed: Seeding with /etc/urandom.seed
+[   23.294754] octeon_mgmt 1070000100000.ethernet mgmt0: Link is down
+[   23.306380] procd: - early -
+[   23.309366] procd: - watchdog -
+[   23.871917] procd: - watchdog -
+[   23.875474] procd: - ubus -
+[   23.926480] random: ubusd: uninitialized urandom read (4 bytes read)
+[   23.933891] random: ubusd: uninitialized urandom read (4 bytes read)
+[   23.940598] random: ubusd: uninitialized urandom read (4 bytes read)
+[   23.951417] procd: - init -
+Please press Enter to activate this console.
+[   24.419649] kmodloader: loading kernel modules from /etc/modules.d/*
+[   24.428710] urngd: v1.0.2 started.
+[   24.436650] i2c_dev: i2c /dev entries driver
+[   24.456365] n821_cpld_i2c: module is from the staging directory, the quality is unknown, you have been warned.
+[   24.475674] mdio_i2c_gen: module is from the staging directory, the quality is unknown, you have been warned.
+[   24.505794] n821_cpld_fan: module is from the staging directory, the quality is unknown, you have been warned.
+[   24.519281] random: crng init done
+[   24.522694] random: 22 urandom warning(s) missed due to ratelimiting
+[   24.530038] n821_cpld_psu: module is from the staging directory, the quality is unknown, you have been warned.
+[   24.544011] hid: raw HID events driver (C) Jiri Kosina
+[   24.557553] n821_cpld: module is from the staging directory, the quality is unknown, you have been warned.
+[   24.568177] n821-cpld 1e000000.cpld: probed
+[   24.572973] n821-cpld-i2c 1e000038.n821-cpld-i2c: probed, base = 800000001e000038
+[   24.580832] n821-cpld-fan 1e000000.cpld:n821-cpld-fan: probed
+[   24.587003] n821-cpld-psu 1e000000.cpld:n821-cpld-psu: probed
+[   24.593320] input: 1e000000.cpld:reset-button as /devices/platform/soc/1180000000000.bootbus/1e000000.cpld/1e000000.cpld:reset-button/input/input0
+[   24.606880] leds-syscon 1e000000.cpld:sysled: registered LED (null)
+[   24.613397] leds-syscon 1e000000.cpld:sysled-flash: registered LED (null)
+[   24.620447] leds-syscon 1e000000.cpld:statusled: registered LED (null)
+[   24.637402] mdio_bus i2c:3-0056: MDIO device at address 22 is missing.
+[   24.644093] i2c i2c-2: Added multiplexed i2c bus 3
+[   24.652740] mdio_bus i2c:4-0056: MDIO device at address 22 is missing.
+[   24.659418] i2c i2c-2: Added multiplexed i2c bus 4
+[   24.693662] mdio_bus i2c:5-0056: MDIO device at address 22 is missing.
+[   24.700364] i2c i2c-2: Added multiplexed i2c bus 5
+[   24.709830] mdio_bus i2c:6-0056: MDIO device at address 22 is missing.
+[   24.716525] i2c i2c-2: Added multiplexed i2c bus 6
+[   24.744017] i2c i2c-2: Added multiplexed i2c bus 7
+[   24.752533] mdio_bus i2c:8-0056: MDIO device at address 22 is missing.
+[   24.759223] i2c i2c-2: Added multiplexed i2c bus 8
+[   24.766099] mdio_bus i2c:9-0056: MDIO device at address 22 is missing.
+[   24.772721] i2c i2c-2: Added multiplexed i2c bus 9
+[   24.779713] mdio_bus i2c:10-0056: MDIO device at address 22 is missing.
+[   24.786457] i2c i2c-2: Added multiplexed i2c bus 10
+[   24.793737] i2c i2c-2: Added multiplexed i2c bus 11
+[   24.800351] n821_cpld_gpio: module is from the staging directory, the quality is unknown, you have been warned.
+[   24.811009] n821-cpld-gpio 1e000000.cpld:n821-cpld-gpio: probed
+[   24.823953] rtc-ds1307 1-006f: registered as rtc0
+[   24.829192] rtc-ds1307 1-006f: setting system clock to 2023-06-22T19:08:21 UTC (1687460901)
+[   24.866180] PPP generic driver version 2.4.2
+[   24.872277] NET: Registered PF_PPPOX protocol family
+[   24.882119] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   29.877535] octeon_mgmt 1070000100000.ethernet mgmt0: Link is up - 1000/Full
+[   29.896882] br-lan: port 1(mgmt0) entered blocking state
+[   29.902226] br-lan: port 1(mgmt0) entered disabled state
+[   29.907798] device mgmt0 entered promiscuous mode
+[   29.951882] br-lan: port 1(mgmt0) entered blocking state
+[   29.957258] br-lan: port 1(mgmt0) entered forwarding state
+[   30.064894] lan0: 1000 Mbps Full duplex, port 2, queue 2
+[   30.904305] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+
+
+
+BusyBox v1.36.1 (2023-06-21 10:19:51 UTC) built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r23377-82eae1c521
+ -----------------------------------------------------
+root@OpenWrt:/# 
+
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+==== USB power switching ====
+
+To power down the top port you can do:
+
+<code>
+echo 1 > /sys/devices/pci0000:01/0000:01:00.0/usb3/3-0:1.0/usb3-port2/disable
+echo 1 > /sys/devices/pci0000:01/0000:01:00.0/usb4/4-0:1.0/usb4-port2/disable
+</code>
+
+For the bottom port use ''usb3-port1'' and ''usb4-port1''. Both ports need to be disabled due to USB 3.0/2.x duality. Enable the port by writing 0 in the same fashion.
+
+The software uhubctl can be used, but as of this writing there are some issues regarding endianness and devices hanging around in the kernel even when being powered down.
+
+==== Gotchas ====
+
+=== Trying to up an interface fails ===
+
+<code>
+root@OpenWrt:/# ip link set up dev lan5
+RTNETLINK answers: No error information
+</code>
+
+This will happen if the port is configured for SGMII and did not have a PHY inserted at boot time. Reboot the unit and it should be able to up the link.
+
+=== Kernel panic - not syncing: ������ ===
+
+This message with broken glyphs can occur if you enable CONFIG_TARGET_INITRAMFS_COMPRESSION. Maybe the support is broken for MIPS64, or maybe it is broken for just this platform.
+
+=== Crash when loading kernel after "Allocating memory for ELF segment:" ===
+
+This error can happen if the initramfs image is too large. Images larger than 256 MiB seems to be unbootable.
+
+Example log:
+
+<code>
+Bytes transferred = 432629896 (19c96888 hex)
+=> bootoctlinux $loadaddr endbootargs
+argv[2]: endbootargs
+Allocating memory for ELF segment: addr: 0xffffffff81100000 (adjusted to: 0x1100000), size 0x19ea1360
+
+Reg: 0x0 0x0
+Reg: 0x1 0x0
+Reg: 0x2 0x30000000
+Reg: 0x3 0xD1D2D3D4D5D6D7DC
+Reg: 0x4 0x19EA1360
+Reg: 0x5 0xD1D2D3D4D5D6D7DC
+Reg: 0x6 0x1100000
+Reg: 0x7 0x8000000000000000
+Reg: 0x8 0x6C108
+Reg: 0x9 0xFFFFFFFFFFFFFFF0
+Reg: 0xA 0x30000000
+Reg: 0xB 0xD1D2D3D4D5D6D7E4
+Reg: 0xC 0xDEDF00000000003C
+Reg: 0xD 0xDEDF00003000003C
+Reg: 0xE 0x800000000006C110
+Reg: 0xF 0x1
+Reg: 0x10 0x1AFA1360
+Reg: 0x11 0xF
+Reg: 0x12 0x0
+Reg: 0x13 0x19EA1360
+Reg: 0x14 0x0
+Reg: 0x15 0x1100000
+Reg: 0x16 0x0
+Reg: 0x17 0x1100000
+Reg: 0x18 0xFFFFFFFFC00F0180
+Reg: 0x19 0xFFFFFFFFC0001BC0
+Reg: 0x1A 0xFFFFFFFFFFFF97F8
+Reg: 0x1B 0xFFFFFFFFFFFF97F8
+Reg: 0x1C 0xFFFFFFFFC00CD3C0
+Reg: 0x1D 0xFFFFFFFFC0FAF7B0
+Reg: 0x1E 0x0
+Reg: 0x1F 0xFFFFFFFFC0001D1C
+status:    0x505000E6
+cause:  0x40008010 (Address error exception (load or inst fetch))
+epc:    0xFFFFFFFFC0001DEC
+badvaddr:       0xD1D2D3D4D5D6D7E4
+instruction: 0xDD6C0000
+
+stack:     0xFFFFFFFFC0FAF7B0
+0xFFFFFFFFC0FAF6B0 : 0xFFFFFFFFC012AB98 0xFFFFFFFFC03A1A88
+0xFFFFFFFFC0FAF6C0 : 0x5F5F746D705F7265 0x7365727665645F6C
+0xFFFFFFFFC0FAF6D0 : 0x696E757800000000 0x536B697070696E67
+0xFFFFFFFFC0FAF6E0 : 0x206E6F6E204C4F41 0x442070726F677261
+0xFFFFFFFFC0FAF6F0 : 0x6D20686561646572 0x2028747970652030
+</code>
+===== Tags =====
+
+{{tag>U-boot octeon 4core MIPS64 SFP GigabitEthernet 9Port VLAN 4096RAM USB3.0 Serial 2serial 1button fan RTC rackmount 12v_powered dual_firmware jtag}}

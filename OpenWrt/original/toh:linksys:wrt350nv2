@@ -1,0 +1,251 @@
+====== Linksys WRT350N v2 ======
+Note that WRT350N v2 is a completely different device than [[toh:linksys:wrt350n_v1|WRT350N v1]].
+
+<WRAP center round alert 60%>
+This device is [[docs:techref:targets:orion|no longer supported]] and its use cannot be encouraged due to known insecurities that have emerged after the last OpenWrt builds.
+
+  As of 2016-11-07, this target is not supported by LEDE. 
+</WRAP>
+
+
+===== Supported Versions =====
+^ Version/Model   ^ S/N   ^ OpenWrt Version Supported                ^ Model Specific Notes   ^
+| v2.0            | SNQ   | [[:downloads|Backfire 10.03]]            | Wireless issues        |
+| v2.1            | SNQ   | [[:downloads|Backfire 10.03]]            | Wireless issues        |
+| v2.1            | SNQ   | [[:downloads|Attitude Adjustment 12.09]] | Wireless issues        |
+===== Hardware Highlights =====
+^ CPU                       ^ Ram    ^ Flash   ^ Network   ^ USB   ^ Serial   ^ JTag   ^
+| Marvell 88F5181L@500MHz   | 32MB   | 8 MB    | 4 x 1     | Yes   | Yes      | Yes    |
+
+
+===== Installation =====
+[[https://archive.openwrt.org/attitude_adjustment/12.09/orion/generic/]]
+==== Known Issues ====
+
+^ Image Type ^ Notes ^
+| squashfs   | working (recommended) |
+| jffs2 64k  | working |
+| jffs2 128k | **NOT** working. The following error occurs several times and at last a kernel panic.\\ ''jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x0000XXXX: 0xXXXX instead'' |
+
+  * Wireless performance is sometimes questionable (see [[https://forum.openwrt.org/viewtopic.php?pid=111187#p111187|this forum post]] for possible reason). Certainly due to overheat issue. The Marvell chip hasn't any thermal heat sink and its heat is trapped with the (too) long wifi card runing above it. 
+  * Some people reported about wireless instabilities after several days, these can be avoided with a daily cron job that restarts wireless via "wifi up" (see [[https://forum.openwrt.org/viewtopic.php?pid=102856#p102856|this forum post]]).
+  * Alternative for wireless client bridge support (see ticket [[https://dev.openwrt.org/ticket/7918|#7918]])
+  * //(solved in Backfire 10.03.1)// All WRT350N v2 share the same MAC address 00:00:00:00:51:81 as Linksys did not set the U-Boot variable "ethaddr" for each device.\\ Instead Linksys reads it via firmware from the U-Boot mtd partition at offset 0x0003FFA0.\\ Changing the LAN MAC address in Backfire 10.03 will make the router __inaccessible__.\\ Two tickets were created for a solution: [[https://dev.openwrt.org/ticket/7111|#7111]]  (committed in [[https://dev.openwrt.org/changeset/21577|r21577]] & [[https://dev.openwrt.org/changeset/21581|r21581]]), [[https://dev.openwrt.org/ticket/7113|#7113]] (committed in [[https://dev.openwrt.org/changeset/21647|r21647]] & [[https://dev.openwrt.org/changeset/21648|r21648]]).
+
+==== eRcOmM Hell and MTD specialities ====
+UBoot of the WRT350N v2 is modified to include the later described download mode, but also to check for some marks inside the flash.
+The string "eRcOmM" has to be at offset 0x0075ffe8 of the image otherwise UBoot will stop booting, therefore the area 0x00750000 - 0x0075ffff is excluded from the rootfs mtd parititon to prevent it from being overwritten
+([[https://forum.openwrt.org/viewtopic.php?pid=88583#p88583|related forum post]], see also Linksys's [[https://dev.openwrt.org/browser/trunk/tools/wrt350nv2-builder/src/upgrade.h|upgrade.h]] and OpenWrt's [[https://dev.openwrt.org/browser/trunk/tools/wrt350nv2-builder/src/wrt350nv2-builder.c|WRT350Nv2 webupgrade builder]]).
+
+==== Revert to Stock Firmware ====
+An //extracted// Linksys update image is needed and can be flashed like any OpenWrt update.
+How to extract a Linksys update image is described in [[https://forum.openwrt.org/viewtopic.php?pid=92928#p92928|this forum thread]].
+
+----
+
+===== Flashing and Recovery Methods =====
+No matter how OpenWrt/Linux is flashed, at the first boot always wait until the JFFS2 file system is fully formatted.\\
+Serial console and `dmesg` output:\\
+| <code>jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+jffs2_build_filesystem(): unlocking the mtd device... done.
+jffs2_build_filesystem(): erasing all blocks after the end marker... done.
+mini_fo: using base directory: /
+mini_fo: using storage directory: /overlay</code> |
+
+For the stock firmware an erase error is displayed as the flash image size (0x00800000) is bigger than the "image" mtd partition (0x00750000), but this is not an issue.
+| <code>sysupgrade -n [-v] /tmp/wrt350n.bin</code> |
+
+==== Download Mode ====
+This is a special functionality added by LinkSys to U-Boot.\\
+No extra hardware required.\\
+
+Currently explained in three forum posts [[http://forum.openwrt.org/viewtopic.php?pid=93665#p93665|here]], [[https://forum.openwrt.org/viewtopic.php?pid=94830#p94830|here]] and [[https://forum.openwrt.org/viewtopic.php?pid=121911#p121911|here]].\\
+Here are the cliff notes if you find the above posts either not verbose enough or a bit too verbose:
+
+  - Download [[https://archive.openwrt.org/backfire/10.03.1/orion/openwrt-wrt350nv2-squashfs-recovery.bin]] (as of updated, 2019-07-25). A self compiled openwrt-wrt350nv2-squashfs-recovery.bin is possible, too.
+  - Prepare your PC/laptop as described in the below paragraphs (depending on your OS).
+  - Connect an UTP cable from any of the 4 LAN ports of the WRT350N v2 directly to your PC/laptop.
+  - Enter download mode on WRT350N v2 by disconnecting its power, then pressing the reset button (keep pressing), powering on the WRT350N, and releasing the reset button after 1-2 secs (no longer than 3secs, or exactly as soon as the LAN led switches on). The power led will now alternate between colours if done correctly.
+  - If flashing, fails ... never mind, try again! 
+
+=== Windows XP 32-bit ===
+
+  - Download, unpack & install [[http://www.everbesthk.com/8-download/sercomm/firmware/NU54/Upgrade_207_XP.zip|Upgrade_207_XP.zip]] (this only seemed to work on XP 32-bit for me, W7 32/64 did not seem to work, YMMV). Edit : Link dead, you should look here (used on the 2019-07-25, under the "File name" field of the "overview" tab) [[https://www.driverguide.com/driver/detail.php?driverid=979404]] , successfully used through a virtualized XP sp2 (computer's network interface attached to the VM, no bridge mode used)
+  - Start the 'Upgrade Utility' installed in step 1, click "Browse targets", click "Files" and browse to the image downloaded in above's step 1. Press OK for all dialogs. Now click "Upgrade" and ignore any possible message about an older version.
+  - Wait for the flash to complete (it will tell you) and, if applicable, power cycle your WRT350N. Done.
+
+=== Linux Upslug2 ===
+The OpenWrt build system also provides [[http://www.nslu2-linux.org/wiki/Main/UpSlug2|UpSlug2]] with support for WRT350N v2.\\
+Upslug2 normally searches for the MAC address of an NSLU2. So the correct MAC address of the WRT350N v2 has to be provided to it. It is written on the label at the bottom of the router and also listed in the U-Boot output ("mac address in flash is:...").
+For detailed information, see also post [[https://forum.openwrt.org/viewtopic.php?pid=121911#p121911|#953]].\\
+
+Correct Upslug2 call:\\
+| <code>[sudo] ./upslug2 [-d <interface>] -t <MAC address> --image=openwrt-wrt350nv2-squashfs-recovery.bin</code> |
+
+**Important note**: Only option "--image" will work with wrt350nv2. The use of "--kernel", "--rootfs" or other options of upslug2 (Version 20071227) will fail!
+
+
+=== Macos ===
+  - Create a XP sp2 32-bit virtual machine (VirtualBox, Parallels Desktop...), 
+  - Download the recovery firmware .bin & the upgrade utility (unpack & install)
+  - Switch the VM's network to the ethernet interface you connected or want to connect to the wrt350nv2
+  - Start the 'Upgrade Utility', click "Browse targets", click "Files" and browse to the firmware .bin image downloaded. Press OK for all dialogs. Now click "Upgrade" and ignore any possible message about an older version.
+
+
+==== TFTP in U-Boot via Serial Access ====
+Serial access to the router is required (see "Serial Port" above).\\
+Also a TFTP server has to be setup on another device on the same network.
+The TFTP server will provide the image to flash.\\
+
+First stop the autoboot in [[http://www.denx.de/wiki/U-Boot|U-Boot]] by pressing enter on the serial console.\\
+| <code>Hit ENTER to stop autoboot:  0
+Marvell>></code> |
+
+Check the current U-Boot settings with `printenv`.\\
+Especially look at "ipaddr" and "serverip" as these have to match the network and the server ip address.\\
+If necessary change the ip address of the router and/or the TFTP server accordingly.\\
+New settings are only temporary until the next boot, as long as the new settings are not saved with `saveenv`.
+| <code>Marvell>> printenv
+bootcmd=scload; bootm 0x400000
+...
+ipaddr=172.21.5.10
+serverip=172.21.5.30
+...
+overEthAddr=no
+
+Environment size: 434/8188 bytes</code> |
+| <code>Marvell>> setenv ipaddr 10.0.0.99</code> |
+| <code>Marvell>> setenv serverip 10.0.0.1</code> |
+
+Load the image from the TFTP server with `tftpboot`.\\
+After a successful transfer the size of the file is printed.
+This has to match the size on the TFTP server and is needed in the next steps for flashing.\\
+If the transfer failed, then check the network cabling and the settings of the router and TFTP server.
+Do not continue until this works correctly.\\
+| <code>Marvell>> tftpboot 0x400000 "openwrt-wrt350nv2-squashfs.img"
+mvEgigaInit: egiga0 init - mvBoardPhyAddrGet()=0x0 , priv->port =0x0
+ring full
+mvEgigaInit: egiga0 complete ok
+Using egiga0 device
+TFTP from server 10.0.0.1; our IP address is 10.0.0.99
+Filename 'openwrt-wrt350nv2-squashfs.img'.
+Load address: 0x400000
+Loading: #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         ##########################################################
+done
+Bytes transferred = 2621440 (280000 hex)</code> |
+
+At last erase and unprotect the flash for writing, then copy the loaded image from RAM to flash.
+For copying the load address, the flash address and the image size are need.
+All in hex with "0x" prefix.
+The image size must be taken from the previous step ("Bytes transferred").\\
+This is the most critical part as by erasing this part of the flash the router will loose its OS.
+But do not worry as U-Boot will still be there for flashing.\\
+If all went well reboot the device via `reset`.\\
+| <code>Marvell>> erase 0xff800000 0xfff4ffff
+............................................................
+Erased 117 sectors</code> |
+| <code>Marvell>> protect off 0xff800000 0xfff4ffff
+............................................................
+Un-Protected 117 sectors</code> |
+| <code>Marvell>> cp.b 0x400000 0xff800000 0x280000
+Copy to Flash... done</code> |
+| <code>Marvell>> reset</code> |
+
+----
+
+
+===== Basic configuration =====
+Since this part is identical for all devices, see [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]].
+
+===== Hardware =====
+==== Known Versions ====
+^ Model          ^ S/N   ^
+| WRT350N v2.0   | SNQ   |
+| WRT350N v2.1   | SNQ   |
+
+==== Technical Details ====
+| **Vendor:**           | Marvell                    |
+| **Architecture:**     | Orion                      |
+| **Bootloader:**       | U-Boot                     |
+| **System-On-Chip:**   | Marvell 88F5181L           |
+| **CPU:**              | Feroceon (ARMv5TE)         |
+| **CPU Speed:**        | 500 Mhz                    |
+| **Flash-Chip:**       | Samsung 552 k8d6316utm     |
+| **Flash size:**       | 8 MB                       |
+| **RAM:**              | 32 MB                      |
+| **Wireless:**         | Atheros AR5416 (miniPCI)   |
+| **Ethernet:**         | Marvell 88E6131            |
+| **USB:**              | Yes, 1x                    |
+| **Serial:**           | Yes, J5 populated          |
+| **JTAG:**             | Yes, J4 unpopulated        |
+
+Documentation at http://www.embeddedarm.com/ under Support -> Documentation -> Third-Party manuals -> MV88F5182 files (sister SoC with additional SATA support)
+
+==== Photos ====
+Photos are available in [[https://forum.openwrt.org/viewtopic.php?pid=66943#p66943|this forum post]].
+
+==== Serial Port (JP5) ====
+The pin layout is described in [[https://forum.openwrt.org/viewtopic.php?pid=60299#p60299|this forum post]].
+
+==== JTAG (J4) ====
+{{ media:linksys:wrt350nv2_jtag.jpg?50|JTAG header J4}}
+[[docs:techref:hardware:port.jtag|JTAG]] is available.
+The JTAG header with its pins is missing and has to be soldered onto the device.
+JTAG is named J4 and is located near the silver heat sink next to the network ports, see picture to the right.
+Pin 1 is in the lower right corner and marked with thicker lines.
+
+It's a 20-pin ARM JTAG connector. "The connector is a 20-Way Insulation Displacement Connector (IDC) keyed box header (2.54mm male)" (taken from [[http://infocenter.arm.com/help/topic/com.arm.doc.dui0048f/DUI0048.pdf|ARM document DUI0048]], chapter F.1, page F-2 (pdf page 246)).
+But pins 5 and 7 are switched, that's TDI and TMS.
+
+After resetting and halting the device, the chipset registers have to be initialized, so that RAM, flash and other features are working.
+Lennert, buytenh and DirkNL found out a setup that allows you to boot from RAM, but still it is not perfect.
+
+JTAG info collection is done in [[https://forum.openwrt.org/viewtopic.php?pid=144427#p144427|this forum post]].
+
+=== OpenOCD ===
+
+file ''board/wrt350nv2.cfg''
+
+  # Linksys WRT350Nv2
+  
+  # SoC: Marvell Orion 88F5181 with Feroceon CPU (ARMv5TE)
+  #      Documentation at http://www.embeddedarm.com/
+  #      under Support -> Documentation -> Third-Party manuals
+  #                    -> MV88F5182 files (sister SoC with SATA)
+  
+  set CPUTAPID 0x07926041
+  source [find target/feroceon.cfg]
+  
+  # use RCLK (adaptive clock speed), fallback 3 MHz = 3000KHz
+  # (otherwise use "adapter_khz", before 0.5.0 use "jtag_khz", before 0.2.0 use "jtag_speed")
+  jtag_rclk 3000
+  
+  arm7_9 dcc_downloads enable
+  arm7_9 fast_memory_access enable
+  
+  # define NOR flash bank
+  # (TODO: can not be written to, seems some register values are missing in init)
+  set _FLASHNAME $_CHIPNAME.flash
+  flash bank $_FLASHNAME cfi 0xff800000 0x00800000 1 1 $_TARGETNAME jedec_probe
+
+device init script from DirkNL can be found in [[https://forum.openwrt.org/viewtopic.php?pid=144427#p144427|this forum post]]
+
+===== Watchdog =====
+  * See [[https://forum.openwrt.org/viewtopic.php?pid=130607#p130607|this forum post]]. Package kmod-wdt-orion.
+
+===== Hardware Modding =====
+  * See [[http://cascade.dyndns.org/~datagarbage/wrt350n.html|WRT350N Serial and USB-Port Mod]] (search for "How to disassemble a WRT350N")
+
+  * Possible to swap the original wireless long mini-pci card with a similar one (I took the one from a Airport Extreme 3rd gen which is a very similar device) and it works like a charm, I will come back in few weeks to confirm if the wireless issue know for this device is remaining or not.
+===== Link dump =====
+  * Development thread: [[https://forum.openwrt.org/viewtopic.php?id=12358|Marvell 88F5xx81 based routers]] (this is __not__ an end user support thread)
+
+===== Tags =====
+{{tag>orion 8Flash 32RAM 802.11bgn 1WNIC AR5416 ath9k 3Ant NonDetachableAntenna GigabitEthernet 5Port 2NIC USB 1USB JTAG Serial MiniPCI ARM ARMv5 88F5181 crypto}}

@@ -1,0 +1,2237 @@
+====== Ubiquiti NanoBeam AC ======
+
+{{media:ubiquiti:nanobeam_ac:nanobeamac.png?100|Nanobeam AC}}
+
+The [[https://www.ui.com/airmax/nanobeam-ac-gen2|Ubiquiti NanoBeam™ AC]] are lightweight proprietary (based on 802.11ac) outdoor access points with a 13, 16 or 19 dBi antenna covering 30º and a Passive POE Gigabit Ethernet port based on the AR9342 SoC. 
+
+Note that the official firmware is not compatible to 802.11ac as Ubiquiti uses their own TDMA packet timing scheme. Despite the AC in its name, Ubiquiti is not marketing it as 802.11ac, nor intending to support it. This is as far as I know true for //**all**// AirMax AC devices. Unlike the older AirMax M devices, which could be set into a 802.11n compatibility mode. Ubiquiti considers AirMax for backhaul purposes only, and intends the Unifi series to be for client connectivity.
+
+With the OpenWrt firmware however, the device is normally 802.11ac compatible, can communicate with normal 802.11an/ac client devices, but can no longer communicate with unmodified AirMax AC devices.
+
+
+
+
+===== Supported Versions=====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "unsupported_functions", "forumsearch", "deviceid"],
+  "filterColumns": {"model": "NanoBeam .*AC"}
+} -->
+
+//After extensively studying my OEM bootlog with the OEM bootlog from [[toh:ubiquiti:nanostation_ac_loco|Ubiquiti Nanostation AC loco]], realising they load the same WA 8.5.0 firmware, and checking the TFTP recovery procedure, I simply installed the Loco AC firmware on my NanoBeam AC and it worked. 
+
+Everything seems to work, only I have the wrong model name in the OpenWrt status screen, and either there is no 2nd 2.4GHz management radio or it is not found by the OpenWrt (UBNT interface did offer a 2nd SSID for management, but I never tried that, it may simply be an alias on the first 5GHz radio)//
+
+Main differences between NanoBeam AC and NanoBeam AC Gen2:
+^ Model           ^ Version  ^ Release Date  ^Antenna Gain (dBi) ^ management radio  ^ ethernet ports ^ supported ^ 
+^ NBE-5AC-16      | **WA**       |  2015         |  16                |  ☐                      |  1             |  ✔  |
+^ NBE-5AC-19      | XC       |  2015         |  19                |  ☐                      |  1             |  ✔  |
+^ NBE-2AC-13      | 2WA      |  2016         |  13 (2.4GHz)                |  5GHz                      |  1             |  untested  |
+^ NBE-5AC-Gen2    | XC       |  2017         |  19                |  2.4GHz                      |  1             |  ✔  |
+^ NBE-5AC-Gen2    | **WA**       |  2017         |  19                |  2.4GHz                      |  2             |  ✔  |
+As shown in the table the main difference between old and new models is the **management radio** (Gen2 and 2AC-13 boards)
+
+**2WA** board isn't supported (or unknown support).
+
+Note: older [[toh:ubiquiti:nanobeam|NanoBeam M]] devices have their own page and are completely different
+
+===== Hardware highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "wlancomments", "ethernet100mports", "ethernet1gports", "usbports"],
+  "filterColumns": {"model": "NanoBeam .*AC"}
+} -->
+
+The official data sheet list 8MB flash, but the bootlog really shows 16MB, even the OEM mtd table is using/assuming all 16MB so it may even be for all devices, not merely unused space on newer production sets.
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "NanoBeam .*AC"}
+} -->
+
+Do remember that if you are still using daily snapshots for the install, that Luci web interface is not be installed by default.
+You will have to use SSH / Putty on firstboot, and [[docs:guide-user:luci:luci.essentials|install Luci]] manually.
+
+==== Flashing through factory firmware ====
+
+<WRAP center info >
+See -> [[:toh:ubiquiti:common#openwrt_installation_on_wa_and_xc_boards|OpenWrt installation on WA and XC boards]]
+</WRAP>
+
+The firmware for this ubiquiti device is signed. But since there are no mtd utilities available on the device the original  fwupdate.real binary must be used.
+
+Follow this procedure, tested on **NBE-5AC-16, NBE-5AC-19** models:
+  - Please make sure you have got firmware version ''v8.5.0.36727'' installed. The instructions probably won't work for other versions.<WRAP center round download 60%>
+**WA:**
+[[https://dl.ubnt.com/firmwares/XC-fw/v8.5.0/WA.v8.5.0.36727.180118.1314.bin]] or [[https://web.archive.org/web/20201120173743/https://dl.ubnt.com/firmwares/XC-fw/v8.5.0/WA.v8.5.0.36727.180118.1314.bin]].
+
+**XC:**
+https://dl.ui.com/firmwares/XC-fw/v8.5.0/XC.v8.5.0.36727.180118.1402.bin
+</WRAP>
+  - To install unsigned firmware the fwupdate.real binary (which is in fact just a symlink to ubntbox) must be patched:<code bash>
+hexdump -Cv /bin/ubntbox | sed 's/14 40 fe fe/00 00 00 00/g' | hexdump -R > /tmp/fwupdate.real
+chmod +x /tmp/fwupdate.real</code>
+  - After that the factory image can be installed using the patched binary:<code bash>
+/tmp/fwupdate.real -m /tmp/openwrt-ath79-generic-ubnt_nanobeam-ac-squashfs-factory.bin</code>
+
+The complete set including responses:
+<code>
+WA.v8.5.0# hexdump -Cv /bin/ubntbox | grep '14 40 fe fe'
+000093a0  14 40 fe fe 00 40 a8 21  82 02 00 03 3c 03 00 48  |.@...@.!....<..H|
+WA.v8.5.0# hexdump -Cv /bin/ubntbox | sed 's/14 40 fe fe/00 00 00 00/g' | hexdump -R > /tmp/fwupdate.real
+WA.v8.5.0# chmod +x /tmp/fwupdate.real
+WA.v8.5.0# /tmp/fwupdate.real -m /tmp/openwrt-ath79-generic-ubnt-nanostation-ac-loco-squashfs-factory.bin
+Writing 'kernel         ' to /dev/mtd2(kernel         ) ...  [%100]
+Writing 'rootfs         ' to /dev/mtd3(rootfs         ) ...  [%100]
+Done
+</code>
+
+
+==== Troubleshooting ====
+The above instructions were only verified using firmware version ''v8.5.0.36727''.
+
+It will most likely work for any firmware version where
+<code bash>
+md5sum /bin/fwupdate.real
+</code>
+is
+<code>
+3584df67dd90aeedf4bee71c08292233
+</code>
+I've not had a look at any other firmware versions yet but up/downgrading to version ''v8.5.0.36727'' should always work.
+
+If you do not have any luck with the non-invasive installation and are not afraid of opening your device and have a USB to serial adapter at hand you can always follow the instructions below.
+
+
+==== Alternate Installation Instructions ====
+The NanoBeam 5AC devices seem to be ultrasonically welded together and thus cannot be opened.
+This makes any TTL serial recovery somewhat destructive. ([[https://www.youtube.com/watch?v=mHTsnyZPaSI|cut open with Dremel tool]])
+
+Additional, even if you do get inside the device, from the [[toh:ubiquiti:nanostation_ac_loco|Ubiquiti Nanostation AC loco]] info it is reported there seem to be some additional checks in the tftp rescue and they refuse to install any custom firmware. Read the section of the [[toh:ubiquiti:nanostation_ac_loco|Ubiquiti Nanostation AC loco]] for more info if you want/need to try.
+
+Then again, the NanoBeam AC (not the Gen2) is older then the Loco AC, maybe the urescue still works similar to the older [[toh:ubiquiti:nanostationm2|Ubiquiti NanoStation M2 / Loco M2]] devices. Due to the ultrasonic welding I was not inclined to try yet.
+
+===== Debricking / Back to Original firmware=====
+It essentially runs the urescue utility from uboot (without the -f -e option)
+  - Connect a fast ethernet cable (4 wires) to the LAN side at the power adapter, or use a fast ethernet switch in between, for connecting to your computer.
+  - Press the reset button for 20 seconds while powering on. 
+  - Check if the device entered the recovery mode, with the signal strength leds flashing in an alternating pattern. 
+  - Ping to **192.168.1.20**, just to be sure you have connectivity
+  - Using TFTP client mode to 192.168.1.20 you can then upload signed firmware. Send the Ubiquiti **exact** version number you used previously to flash OpenWrt.
+    * In a Linux OS execute these commands:<code>tftp 192.168.1.20
+tftp> binary
+tftp> trace
+tftp> put WA.v8.5.0.36727.180118.1314.bin</code>
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Specific configuration =====
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+</WRAP>
+***/
+
+
+===== Buttons =====
+The Ubiquiti NanoBeam AC has the following buttons:
+^ BUTTON                       ^ Event   ^
+| Reset                        |  reset  |
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                                        |
+^ Vendor           | Ubiquiti                                    |
+^ Bootloader       | U-Boot                                      |
+^ System-On-Chip   | Atheros AR9342 - MIPS 74Kc V4.12            |
+^ CPU/Speed        | 535 MHz                                     |
+^ Flash-Chip       | Macronix MX25L12805D                        |
+^ Flash size       | 128 Mbit                                    |
+^ RAM              | 64 MiB                                      |
+^ Wireless         | Atheros AR9342 & Qualcomm/Atheros QCA988X   |
+^ Ethernet         | 1000/100/10 Mbit/s (Atheros AR8035 PHY)     |
+^ USB              | None                                        |
+^ Serial           | [[#Serial|Yes]]                             |
+^ JTAG             | [[#JTAG|No]]                                |
+
+
+==== Flash Layout ====
+Please read the article [[docs:techref:flash.layout]] for a better understanding. It contains a couple of explanations. Then let's have a quick view at flash layout of this particular device:
+
+^   Ubiquiti NanoBeam AC  Flash Layout stock firmware           ^^^^^^^^
+^ Layer0       |                       m25p128 [[wp>Serial Peripheral Interface Bus|spi]]0.0: Macronix MX25L12805D      16384KiB                                                                      ||||||
+^ Layer1       |  mtd0            |  mtd1                |  mtd2            |  mtd3            |  mtd4          |  mtd5            |
+^ Size in KiB  |  256KiB          |  64KiB               |  1024KiB         |  14720KiB        |  256KiB        |  64KiB           |
+^ Name         |  **//u-boot//**  |  **//u-boot-env//**  |  **//kernel//**  |  **//rootfs//**  |  **//cfg//**   |  **//EEPROM//**  |
+^ mountpoint   |  none            |  none                |  none            |  /               |  none          |  none            |
+^ filesystem   |  none            |  none                |  none            |  SquashFS 4.0    |  none          |  none            |
+^   Ubiquiti NanoBeam AC  Flash Layout           ^^^^^^^^
+^ Layer0       |                       m25p128 [[wp>Serial Peripheral Interface Bus|spi]]0.0: Macronix MX25L12805D      16384KiB                                                                      |||||||
+^ Layer1       |  mtd0 **//u-boot//** 256KiB  |  mtd1 **//u-boot-env//** 64KiB  |  mtd2 **//firmware//** 15744KiB                                      |||  mtd6 **//cfg//** 256 KiB  |    mtd7 **//EEPROM//** 64KiB  |
+^ Layer2       |                              |                                 |  mtd3 **//kernel//**          |  mtd4 **//rootfs//**                                   ||  |         |
+^ mountpoint   |                              |                                 |                               |  <color magenta>''/''</color>                          ||  |        |
+^ filesystem   |                              |                                 |                               |  overlayfs           ||          |
+^ Layer3       |                              |                                 |                               |                 |  mtd5 **//rootfs_data//**             |  |        |
+^ Size in KiB  |  256KiB                      |  64KiB                          |                               |                 |                                       |  256KiB  |  64KiB  |
+^ Name         |  **//u-boot//**              |  **//u-boot-env//**             |  **//kernel//**               |                 |  **//rootfs_data//**             |  **//cfg//**  |  **//EEPROM//**  |
+^ mountpoint   |  //none//                    |  //none//                       |  //none//                     |  <color magenta>''/rom''</color>  |  <color magenta>''/overlay''</color>   |  //none//  |  //none//  |
+^ filesystem   |  //none//                    |  //none//                       |  //none//                     |  [[docs:techref:filesystems#SquashFS]]  |  [[docs:techref:filesystems#JFFS2]]  |  //none//  |  //none//  |
+
+EEPROM = Atheros radio calibration data\\
+
+cfg = Config partition, contains ubnt device config and persistent storage, remarks on format: [[toh:ubiquiti:ubiquiti_wa_cfg_partition|Ubiquiti cfg partition]]
+
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+**Insert photo of front of the casing**
+
+**Insert photo of back of the casing**
+
+**Insert photo of backside label**
+
+/*{{:media:ubiquiti:nanostation_ac:pcb.jpg?400|}}*/
+
+==== Opening the case ====
+
+The NanoBeam AC devices seem to be ultrasonically welded together and thus cannot be opened.
+This makes any TTL serial recovery somewhat destructive. ([[https://www.youtube.com/watch?v=mHTsnyZPaSI|cut open with Dremel tool]])
+
+//Board top NBE-5AC-16//\\ 
+{{:media:ubiquiti:nanobeam_ac:nbe-5ac-16-board_top.jpg?direct&250|}}
+
+//Board top NBE-5AC-19//\\ 
+{{:media:ubiquiti:nanobeam_ac:nbe-5ac-19-board_top.jpg?direct&400|}}
+
+//Board top NBE-5AC-gen2-XC//\\ 
+{{:media:ubiquiti:nanobeam_ac:NBE-5AC-gen2-XC-board_top.jpg?direct&400|}}
+
+//Board top NBE-5AC-gen2-WA//\\ 
+{{:media:ubiquiti:nanobeam_ac:NBE-5AC-gen2-WA-board_top.jpg?direct&400|}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+FIXME Add photo of serial connection
+
+^ Serial connection parameters\\ for Ubiquiti NanoBeam AC | 115200, 8N1 |
+
+==== JTAG ====
+None
+
+===== Bootlogs =====
+==== OEM bootlog ====
+
+
+=== NBE-5AC-16 ===
+
+
+<WRAP bootlog>
+<nowiki>
+
+BusyBox v1.19.4 (2018-01-18 13:14:41 EET) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+WA.v8.5.0# dmesg
+[    0.000000] Linux version 2.6.32.68 (bamboo@936dddf72593) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.01 unknown) ) #1 Thu Jan 18 13:19:18 EET 2018
+[    0.000000] flash_size passed from bootloader = 16
+[    0.000000] CPU revision is: 0001974c (MIPS 74Kc)
+[    0.000000] ath_sys_frequency: cpu srif ddr srif cpu 535 ddr 400 ahb 200
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00004000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] early_node_map[1] active PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00004000
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 80293020, node_mem_map 81000000
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16256 pages, LIFO batch:3
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,115200 rootfstype=squashfs init=/init mtdparts=ath-nor0:256k(u-boot),64k(u-boot-env),1024k(kernel),14720k(rootfs),256k(cfg),64k(EEPROM) mem=64M panic=3 quiet
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 61772k/65536k available (2121k kernel code, 3696k reserved, 511k data, 132k init, 0k highmem)
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:128
+[    0.000000] plat_time_init: plat time init done
+[    0.000000] Console: colour dummy device 80x25
+[    0.000000] Calibrating delay loop... 266.24 BogoMIPS (lpj=133120)
+[    0.022000] Mount-cache hash table entries: 512
+[    0.024000] NET: Registered protocol family 16
+[    0.027000] PCIe WLAN H/W found [tries: 1]
+[    0.027000] PCI init:ath_pcibios_init
+[    0.027000] ath_pcibios_init(419): PCI CMD write: 0x356
+[    0.027000] registering PCI controller with io_map_base unset
+[    0.032000] bio: create slab <bio-0> at 0
+[    0.034000] pci 0000:00:00.0: reg 10 64bit mmio: [0x000000-0x1fffff]
+[    0.034000] pci 0000:00:00.0: reg 30 32bit mmio pref: [0x000000-0x00ffff]
+[    0.034000] pci 0000:00:00.0: supports D1 D2
+[    0.034000] Returning IRQ 64
+[    0.035000] Switching to clocksource MIPS
+[    0.037000] NET: Registered protocol family 2
+[    0.038000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.039000] TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+[    0.039000] TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.039000] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.039000] TCP reno registered
+[    0.040000] NET: Registered protocol family 1
+[    0.040000] ATH GPIOC major 0
+[    0.041000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.041000] msgmni has been set to 120
+[    0.042000] io scheduler noop registered (default)
+[    0.066000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.067000] serial8250.0: ttyS0 at MMIO 0xb8020000 (irq = 19) is a 16550A
+[    0.067000] console [ttyS0] enabled
+[    0.069000] 6 cmdlinepart partitions found on MTD device ath-nor0
+[    0.069000] Creating 6 MTD partitions on "ath-nor0":
+[    0.069000] 0x000000000000-0x000000040000 : "u-boot"
+[    0.070000] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.071000] 0x000000050000-0x000000150000 : "kernel"
+[    0.072000] 0x000000150000-0x000000fb0000 : "rootfs"
+[    0.073000] mtd: partition "rootfs" set to be root filesystem
+[    0.074000] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.075000] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.076000] u32 classifier
+[    0.076000]     Performance counters on
+[    0.076000]     input device check on
+[    0.076000]     Actions configured
+[    0.078000] TCP westwood registered
+[    0.078000] NET: Registered protocol family 10
+[    0.081000] NET: Registered protocol family 17
+[    0.081000] Bridge firewalling registered
+[    0.081000] 802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+[    0.081000] All bugs added by David S. Miller <davem@redhat.com>
+[    0.081000] athwdt_init: Registering WDT success
+[    0.082000] Reset: Normal
+[    0.082000] ath_otp_init: Registering OTP success
+[    0.082000] ath_clksw_init: Registering Clock Switch Interface success
+[    0.089000] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    0.090000] Freeing unused kernel memory: 132k freed
+[    1.624000] ubnthal: module license 'Proprietary' taints kernel.
+[    1.624000] Disabling lock debugging due to kernel taint
+[    1.671000] ubnthal: initializing...
+[    1.671000] ath-gpio 2.0 initialised
+[    1.671000] ubnthal: initialised, board found, sysid = 0xe9f5, name = NanoBeam 5AC 16
+[    1.671000] ubnthal: host_board_t size: 7392B, boards table size: 151kB
+[    7.007000] ATHR_GMAC: Length per segment 1536
+[    7.007000] ATHR_GMAC: fifo cfg 3 01f00140
+[    7.008000] Found PHY at address 4 with ID 4d:d072
+[    7.008000] Registering AR8035 Phy....
+[    7.008000] ATHR_GMAC: RX TASKLET - Pkts per Intr:160
+[    7.008000] ATHR_GMAC: Mac address for unit 0:bfff0000
+[    7.008000] ATHR_GMAC: f0:9f:c2:xx:xx:xx
+[    7.563000] ATHR_GMAC: Max segments per packet :   1
+[    7.563000] ATHR_GMAC: Max tx descriptor count :   128
+[    7.563000] ATHR_GMAC: Max rx descriptor count :   252
+[    7.563000] ATHR_GMAC: Mac capability flags    :   42200
+[    7.676000] PPP generic driver version 2.4.2
+[    7.733000] PPP MPPE Compression module registered
+[    7.766000] NET: Registered protocol family 24
+[    7.934000] GRE over IPv4 tunneling driver
+[    8.012000] URD Init
+[    8.579000] ath_hal: 0.9.17.1 (AR9380, REGOPS_FUNC, 11D)
+[    8.744000] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+[    8.859000] ath_spectral: Version 2.0.0
+[    8.859000] Copyright (c) 2005-2009 Atheros Communications, Inc. All Rights Reserved
+[    8.859000] SPECTRAL module built on Jan 18 2018 13:17:59
+[    9.126000] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+[   11.043000] ath_pci: 10.1.467 (Atheros/multi-bss)
+[   11.043000] Ubiquiti U-AME chipset detected
+[   11.043000] ath_pci_probe
+[   11.043000] PCI: Setting latency timer of device 0000:00:00.0 to 64
+[   11.044000] ath_pci 0000:00:00.0: ath DEBUG: sc=0x83a7fa00
+[   11.044000]
+[   11.044000]  ol_ath_pci_configure : num_desired MSI set to 0
+[   11.044000]
+[   11.044000]  Using PCI Legacy Interrupt
+[   11.946000] Target Warm Reset
+[   11.946000] Host Intr Cause reg 0x900c : value : 0x0
+[   11.946000] Target CPU Intr Cause 0x0
+[   12.047000] addr 0x4050 :  0x4
+[   12.067000] Target CPU Intr Cause after CE reset 0x0
+[   12.067000] RESET_CONTROL after cpu warm reset 0x800
+[   12.167000] Target Warm reset complete
+[   12.380000] __ol_ath_attach: ath_attach TODO
+[   12.381000] ol_ath_attach() BMI inited.
+[   12.381000] ol_ath_attach() BMI Get Target Info.
+[   12.381000] ol_ath_attach() TARGET TYPE: 7 Vers 0x4100016c
+[   12.381000] NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+[   12.381000] ol_ath_attach() configure Target .
+[   12.382000] qc98xx_verify_checksum: flash checksum passed: 0xb9b9
+[   12.382000] ol_transfer_bin_file 338: Download Flash data len 2116
+[   12.395000] BMI operation done
+[   12.396000] ol_transfer_bin_file 259: Download Firmware data len 213896. Mode: PTP
+[   13.303000] BMI operation done
+[   13.303000] ol_ath_attach() Download FW.
+[   13.303000] ol_ath_attach() HT Create .
+[   13.303000] ol_ath_attach() HIF Claim.
+[   13.303000] ol_ath_attach() BMI Done.
+[   13.303000] ol_ath_attach() WMI attached. wmi_handle 83ba0000
+[   13.303000] +HWT
+[   13.306000] -HWT
+[   13.307000] HTC Service:0x0300 ep:1 TX flow control disabled
+[   13.311000] ol_txrx_pdev_attach: tx_credit initialised to 1424
+[   13.311000] HTC Service:0x0100 ep:2 TX flow control disabled
+[   13.312000] wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event
+[   13.312000] num_rf_chain : 00000002
+[   13.312000] ht_cap_info: : 0000085b
+[   13.312000] vht_cap_info : 338001b2
+[   13.312000] vht_supp_mcs : 0000fffa
+[   13.321000] FIRMWARE:P 34 V 1 T 110
+[   13.321000]
+[   13.321000] wmi_ready_event_rx:  WMI UNIFIED READY event
+[   13.321000] ol_ath_connect_htc() WMI is ready
+[   13.321000] ol_ath_set_host_app_area TODO
+[   13.321000] target uses HTT version 2.1; host uses 2.1
+[   13.321000] ol_ath_attach() connect HTC.
+[   13.321000] Supported modes: 0x1f9001
+[   13.321000] ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+[   13.324000] ol_ath_phyerr_attach: called
+[   13.324000] ath92.ieee80211_ifattach():      Enable ignore 11d
+[   13.324000] OL Resmgr Init-ed
+[   13.325000] ol_if_spectral_setup
+[   13.325000] SPECTRAL : get_capability not registered
+[   13.325000] HAL_CAP_PHYDIAG : Capable
+[   13.325000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 233)
+[   13.325000] SPECTRAL : get_capability not registered
+[   13.325000] HAL_CAP_RADAR   : Capable
+[   13.325000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   13.325000]  (spectral_attach : 238)
+[   13.325000] SPECTRAL : get_capability not registered
+[   13.325000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   13.325000] SPECTRAL : get_tsf64 not registered
+[   13.325000] spectral_init_netlink 54 NULL SKB
+[   13.325000] ol_ath_set_dscp_tid_map: ...ath.c
+[   13.325000] ol_if_dfs_setup: called
+[   13.325000] ol_ath_rtt_meas_report_attach: called
+[   13.325000] ol_ath_attach() UMAC attach .
+[   13.325000] __ol_ath_attach: init tx/rx TODO
+[   13.325000] __ol_ath_attach: hard_header_len reservation 64
+[   13.325000] __ol_ath_attach: dev name wifi0
+[   13.330000] ath_ahb: 10.1.467 (Atheros/multi-bss)
+[   13.330000] __ath_attach: Set global_scn[0]
+[   13.330000] ACBKMinfree = 48
+[   13.330000] ACBEMinfree = 32
+[   13.330000] ACVIMinfree = 16
+[   13.330000] ACVOMinfree = 0
+[   13.330000] CABMinfree = 48
+[   13.330000] UAPSDMinfree = 0
+[   13.341000] Enterprise mode: 0x00000000
+[   13.341000] Restoring Cal data from Flash
+[   13.342000] ar9300_eeprom_restore_internal[4673] No vaid CAL, calling default template
+[   13.716000] SPECTRAL : get_capability not registered
+[   13.716000] HAL_CAP_PHYDIAG : Capable
+[   13.716000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 233)
+[   13.716000] SPECTRAL : get_capability not registered
+[   13.716000] HAL_CAP_RADAR   : Capable
+[   13.716000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   13.716000]  (spectral_attach : 238)
+[   13.716000] SPECTRAL : get_capability not registered
+[   13.716000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   13.716000] SPECTRAL : get_tsf64 not registered
+[   13.716000] spectral_init_netlink 54 NULL SKB
+[   13.716000] IRQ request for SPECTRAL-XMIT-FILTER successful
+[   13.716000] SPECTRAL : No ADVANCED SPECTRAL SUPPORT
+[   13.717000] SPECTRAL : module attached
+[   13.720000] ath_get_caps[5783] rx chainmask mismatch actual 3 sc_chainmak 0
+[   13.720000] ath_get_caps[5758] tx chainmask mismatch actual 3 sc_chainmak 0
+[   13.721000] ath92.ieee80211_ifattach():      Enable ignore 11d
+[   13.753000] SPECTRAL : module already attached
+[   13.756000] ath_tx_paprd_init sc 827a0000 PAPRD disabled in HAL
+[   14.040000] wifi1: Atheros 9340: mem=0xb8100000, irq=2
+[   14.267000] ubnt_poll_host: Hooks registered
+[   14.268000] ubnt_poll_host: Allocated chardev region for major 189
+[   14.390000] rssi-leds 1.2 loaded
+[   14.703000] Mirror/redirect action on
+[   23.137000] ath92.ol_ath_set_config_param(): Reset scheduled on wifi0 radio
+[   23.137000] Resetting the radio
+[   23.137000] Suspending Target - with disable_intr set
+[   23.137000] waiting for target paused event from target
+[   23.139000] __ol_ath_detach: init tx/rx cleanup TODO
+[   23.140000] ol_if_dfs_teardown: called
+[   23.140000] ol_ath_phyerr_detach: called
+[   23.143000] ol_if_spectral_detach
+[   23.143000] SPECTRAL : Module removed (spectral = 83214000)
+[   23.143000] ath_pci_warm_reset :(sc 83a7fa00)
+[   23.143000] Target Warm Reset
+[   23.143000] Host Intr Cause reg 0x900c : value : 0x4000
+[   23.143000] Target CPU Intr Cause 0x5000
+[   23.243000] addr 0x4050 :  0x4
+[   23.263000] Target CPU Intr Cause after CE reset 0x0
+[   23.263000] RESET_CONTROL after cpu warm reset 0x800
+[   23.364000] Target Warm reset complete
+[   23.364000] ath_pci_remove
+[   23.364000] Ubiquiti U-AME chipset detected
+[   23.364000] ath_pci_probe
+[   23.364000] PCI: Setting latency timer of device 0000:00:00.0 to 64
+[   23.364000] ath_pci 0000:00:00.0: ath DEBUG: sc=0x83a7fa00
+[   23.364000]
+[   23.364000]  ol_ath_pci_configure : num_desired MSI set to 0
+[   23.365000]
+[   23.365000]  Using PCI Legacy Interrupt
+[   23.477000] __ol_ath_attach: ath_attach TODO
+[   23.478000] ol_ath_attach() BMI inited.
+[   23.483000] ol_ath_attach() BMI Get Target Info.
+[   23.483000] ol_ath_attach() TARGET TYPE: 7 Vers 0x4100016c
+[   23.483000] NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+[   23.484000] ol_ath_attach() configure Target .
+[   23.484000] qc98xx_verify_checksum: flash checksum passed: 0xb9b9
+[   23.484000] ol_transfer_bin_file 338: Download Flash data len 2116
+[   23.498000] BMI operation done
+[   23.498000] ol_transfer_bin_file 259: Download Firmware data len 213896. Mode: PTP
+[   24.420000] BMI operation done
+[   24.420000] ol_ath_attach() Download FW.
+[   24.420000] ol_ath_attach() HT Create .
+[   24.420000] ol_ath_attach() HIF Claim.
+[   24.420000] ol_ath_attach() BMI Done.
+[   24.420000] ol_ath_attach() WMI attached. wmi_handle 83ba0000
+[   24.420000] +HWT
+[   24.423000] -HWT
+[   24.423000] HTC Service:0x0300 ep:1 TX flow control disabled
+[   24.428000] ol_txrx_pdev_attach: tx_credit initialised to 1424
+[   24.428000] HTC Service:0x0100 ep:2 TX flow control disabled
+[   24.429000] wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event
+[   24.429000] num_rf_chain : 00000002
+[   24.429000] ht_cap_info: : 0000085b
+[   24.429000] vht_cap_info : 338001b2
+[   24.429000] vht_supp_mcs : 0000fffa
+[   24.438000] FIRMWARE:P 34 V 1 T 110
+[   24.438000]
+[   24.438000] wmi_ready_event_rx:  WMI UNIFIED READY event
+[   24.438000] ol_ath_connect_htc() WMI is ready
+[   24.438000] ol_ath_set_host_app_area TODO
+[   24.438000] ol_ath_attach() connect HTC.
+[   24.438000] target uses HTT version 2.1; host uses 2.1
+[   24.438000] Supported modes: 0x1f9001
+[   24.438000] ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+[   24.441000] ol_ath_phyerr_attach: called
+[   24.441000] ath92.ieee80211_ifattach():      Enable ignore 11d
+[   24.441000] OL Resmgr Init-ed
+[   24.442000] ol_if_spectral_setup
+[   24.442000] SPECTRAL : get_capability not registered
+[   24.442000] HAL_CAP_PHYDIAG : Capable
+[   24.442000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 233)
+[   24.442000] SPECTRAL : get_capability not registered
+[   24.442000] HAL_CAP_RADAR   : Capable
+[   24.442000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   24.442000]  (spectral_attach : 238)
+[   24.442000] SPECTRAL : get_capability not registered
+[   24.442000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   24.442000] SPECTRAL : get_tsf64 not registered
+[   24.442000] spectral_init_netlink 54 NULL SKB
+[   24.442000] ol_ath_set_dscp_tid_map: ...ath.c
+[   24.442000] ol_if_dfs_setup: called
+[   24.442000] ol_ath_rtt_meas_report_attach: called
+[   24.442000] ol_ath_attach() UMAC attach .
+[   24.442000] __ol_ath_attach: init tx/rx TODO
+[   24.442000] __ol_ath_attach: hard_header_len reservation 64
+[   24.442000] __ol_ath_attach: dev name wifi0
+[   24.447000] Reset of radio done
+[   24.520000] ubnt_poll_host: Hooks registered
+[   24.520000] ubnt_poll_host: Allocated chardev region for major 189
+[   24.529000] ubnt_poll_host wifi0: Char device created succesfully err 0
+[   24.529000] ubnt_poll_host: Polling enabled for radio wifi0
+[   24.529000] ubnt_poll_host: noack_mode set to 0 for radio wifi0
+[   24.529000] ubnt-poll-host: [wifi0] Station priority configured to 2 (no-auto=0)
+[   24.530000] ubnt_poll_host: Fixed frame mode disabled for radio wifi0
+[   24.670000] ath_ioctl: SIOC80211IFCREATE CALLED
+[   24.670000] ubnt_poll_host: Initialized in PTP STA mode for device wifi0
+[   24.671000] wmi_unified_set_psmode:set psmode=1
+[   24.671000] ol_if_dfs_configure: called
+[   24.671000] ol_if_dfs_configure: FCC domain
+[   24.671000] VAP device ath0 created
+[   24.742000] ubnt_poll_host: ATPC enabled (0/0/0/24) for radio wifi0
+[   24.826000]
+[   24.826000]  DES SSID SET=ubnt
+[   24.831000] ol_ath_vap_set_param: VAP param unsupported param:33 value:0
+[   24.846000] wmi_unified_set_psmode:set psmode=0
+[   24.846000] wmi_unified_set_psmode:set psmode=0
+[   25.251000] Ebtables v2.0 registered
+[   27.091000] device eth0 entered promiscuous mode
+[   27.097000] device ath0 entered promiscuous mode
+[   27.154000] athr_gmac_ring_alloc Allocated 2048 at 0x823ec800
+[   27.154000] sram_desc_cnt 1536,mac Unit 0,Tx r->ring_desc 0xbd000000
+[   27.154000] athr_gmac_ring_alloc Allocated 4032 at 0x81c04000
+[   27.154000] sram_desc_cnt 4560,mac Unit 0,Rx r->ring_desc 0xbd000600
+[   27.454000] WASP ----> AR8035 PHY
+[   27.455000] AR8035 Detected
+[   27.455000] Setting Drop CRC Errors, Pause Frames and Length Error frames
+[   27.455000] Setting PHY...
+[   27.455000] Forced AR8035 PHY hardware reset on PHY setup.
+[   27.559000] AR8035 - ID 0x004d:0xd072
+[   33.680000] ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   34.845000] br0: port 2(ath0) entering learning state
+[   35.845000] br0: port 2(ath0) entering forwarding state
+[   40.663000] wlan_vap_create : enter. devhandle=0x827902c0, opmode=IEEE80211_M_MONITOR, flags=0x1
+[   40.664000] wlan_vap_create : exit. devhandle=0x827902c0, opmode=IEEE80211_M_MONITOR, flags=0x1.
+[   40.664000] VAP device airview1 created
+[   41.042000]
+[   41.042000]  DES SSID SET=spectral
+[   54.678000] ATH_MAC_TIMER: enet unit:0 is up (RGMii 100Mbps full duplex)
+[   54.678000] ATH_MAC_TIMER: done cfg2 0x7115 ifctl 0x10000 miictrl
+[   54.678000] ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   54.678000] br0: port 1(eth0) entering learning state
+[   55.678000] br0: port 1(eth0) entering forwarding state
+WA.v8.5.0#
+
+</nowiki>
+</WRAP>\\
+
+=== NBE-5AC-19 ===
+
+<WRAP bootlog>
+<nowiki>|\  \|\  \      Welcome to airOS
+\ \  \\\  \
+ \ \  \\\  \    PRODUCT: NanoBeam 5AC 19
+  \ \  \\\  \   MAC: F09FC2ECE9DB
+   \ \_______\
+    \|_______|  VERSION: XC.v8.6.2
+
+XC# dmesg 
+[    0.000000] Linux version 2.6.32.68 (jenkins@528f742f82ef) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.01 unknown) ) #1 Thu Aug 22 16:38:56 EEST 2019
+[    0.000000] flash_size passed from bootloader = 16
+[    0.000000] arg 1: console=ttyS0,115200
+[    0.000000] arg 2: rootfstype=squashfs
+[    0.000000] arg 3: init=/init
+[    0.000000] arg 4: mtdparts=ath-nor0:256k(u-boot),64k(u-boot-env),1024k(kernel),14720k(rootfs),256k(cfg),64k(EEPROM)
+[    0.000000] arg 5: mem=128M
+[    0.000000] cpu apb ddr apb ath_sys_frequency: cpu 720 ddr 600 ahb 200
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019750 (MIPS 74Kc)
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 02000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00008000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] early_node_map[1] active PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00008000
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000] free_area_init_node: node 0, pgdat 8029aaa0, node_mem_map 81000000
+[    0.000000]   Normal zone: 256 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32512 pages, LIFO batch:7
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line: console=ttyS0,115200 rootfstype=squashfs init=/init mtdparts=ath-nor0:256k(u-boot),64k(u-boot-env),1024k(kernel),14720k(rootfs),256k(cfg),64k(EEPROM) mem=128M 
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 126604k/131072k available (2161k kernel code, 4300k reserved, 499k data, 144k init, 0k highmem)
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:128
+[    0.000000] plat_time_init: plat time init done
+[    0.000000] Console: colour dummy device 80x25
+[    0.001000] Calibrating delay loop... 359.42 BogoMIPS (lpj=179712)
+[    0.020000] Mount-cache hash table entries: 512
+[    0.022000] NET: Registered protocol family 16
+[    0.023000] ath_pcibios_init: bus 0
+[    0.024000] ath_pcibios_init(232): PCI 0 CMD write: 0x356
+[    0.025000] registering PCI controller with io_map_base unset
+[    0.026000] ath_pcibios_init: bus 1
+[    0.027000] ***** Warning PCIe 1 H/W not found !!!
+[    0.028000] registering PCI controller with io_map_base unset
+[    0.029000] bio: create slab <bio-0> at 0
+[    0.030000] pci 0000:00:00.0: reg 10 64bit mmio: [0x000000-0x1fffff]
+[    0.030000] pci 0000:00:00.0: reg 30 32bit mmio pref: [0x000000-0x00ffff]
+[    0.030000] pci 0000:00:00.0: supports D1 D2
+[    0.030000] pcibios_map_irq: IRQ 75 for bus 0
+[    0.031000] Switching to clocksource MIPS
+[    0.032000] NET: Registered protocol family 2
+[    0.036000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.043000] TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.050000] TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.056000] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.062000] TCP reno registered
+[    0.065000] NET: Registered protocol family 1
+[    0.069000] ATH GPIOC major 0
+[    0.073000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.078000] msgmni has been set to 247
+[    0.082000] io scheduler noop registered
+[    0.086000] io scheduler deadline registered (default)
+[    0.093000] HS UART step 0x54e scale 0x8 for 115200
+[    0.098000] Serial: Atheros High-Speed UART (115200)
+[    0.103000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.109000] serial8250.0: ttyS0 at MMIO 0xb8020000 (irq = 19) is a 16550A
+[    0.116000] console [ttyS0] enabled, bootconsole disabled
+[    0.127000] 6 cmdlinepart partitions found on MTD device ath-nor0
+[    0.133000] Creating 6 MTD partitions on "ath-nor0":
+[    0.138000] 0x000000000000-0x000000040000 : "u-boot"
+[    0.144000] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.149000] 0x000000050000-0x000000150000 : "kernel"
+[    0.154000] 0x000000150000-0x000000fb0000 : "rootfs"
+[    0.160000] mtd: partition "rootfs" set to be root filesystem
+[    0.166000] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.171000] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.176000] i2c /dev entries driver
+[    0.180000] u32 classifier
+[    0.182000]     Performance counters on
+[    0.186000]     input device check on 
+[    0.190000]     Actions configured 
+[    0.194000] IPv4 over IPv4 tunneling driver
+[    0.198000] TCP cubic registered
+[    0.202000] NET: Registered protocol family 10
+[    0.207000] IPv6 over IPv4 tunneling driver
+[    0.212000] NET: Registered protocol family 17
+[    0.216000] Bridge firewalling registered
+[    0.220000] 802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+[    0.227000] All bugs added by David S. Miller <davem@redhat.com>
+[    0.233000] athwdt_init: Registering WDT success
+[    0.238000] Reset: Normal
+[    0.249000] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    0.257000] Freeing unused kernel memory: 144k freed
+[    1.970000] Revision:  dca6de98bad480daba0762ca556fcee50447a594
+[    2.051000] ubnthal: module license 'Proprietary' taints kernel.
+[    2.057000] Disabling lock debugging due to kernel taint
+[    2.124000] ath-gpio 2.0 initialised
+[    2.128000] ubnthal: initialised, board found, sysid = 0xe4f5, name = NanoBeam 5AC 19
+[    6.393000] qca955x_GMAC: Length per segment 1536
+[    6.393000] 955x_GMAC: qca955x_gmac_attach
+[    6.394000] 955x_GMAC: qca955x_gmac_attach
+[    6.394000] Found PHY at address 4 with ID 4d:d074
+[    6.394000] 955x_GMAC: qca955x_set_gmac_caps
+[    6.394000] Currently in polling mode unit0
+[    6.394000] Registering AR8033 Phy....
+[    6.394000] qca955x_GMAC: RX TASKLET - Pkts per Intr:160
+[    6.394000] qca955x_GMAC: Mac address for unit 0:bfff0000
+[    6.394000] qca955x_GMAC: f0:9f:c2:ed:e9:db 
+[    6.395000] qca955x_GMAC: Max segments per packet :   1
+[    6.395000] qca955x_GMAC: Max tx descriptor count :   128
+[    6.395000] qca955x_GMAC: Max rx descriptor count :   224
+[    6.395000] qca955x_GMAC: Mac capability flags    :   10002201
+[    6.396000] 955x_GMAC: qca955x_set_gmac_caps
+[    6.396000] Currently in polling mode unit1
+[    6.396000] qca955x_GMAC: RX TASKLET - Pkts per Intr:160
+[    6.396000] qca955x_GMAC: Mac address for unit 1:bfff0006
+[    6.396000] qca955x_GMAC: f2:9f:c2:ed:e9:db 
+[    6.397000] MAC:1 Warning: Phy not found!!!
+[    6.397000] qca955x_GMAC: Max segments per packet :   1
+[    6.397000] qca955x_GMAC: Max tx descriptor count :   128
+[    6.397000] qca955x_GMAC: Max rx descriptor count :   224
+[    6.397000] qca955x_GMAC: Mac capability flags    :   10002201
+[    6.397000] 955x_GMAC: Serdes PLL is locked value 0x18838116
+[    7.371000] PPP generic driver version 2.4.2
+[    7.416000] PPP MPPE Compression module registered
+[    7.443000] NET: Registered protocol family 24
+[    7.585000] GRE over IPv4 tunneling driver
+[    7.740000] URD Init
+[    8.342000] ath_hal: 0.9.17.1 (AR9380, REGOPS_FUNC, 11D)
+[    8.449000] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+[    8.475000] ath_spectral: Version 2.0.0
+[    8.475000] Copyright (c) 2005-2009 Atheros Communications, Inc. All Rights Reserved
+[    8.475000] SPECTRAL module built on Aug 22 2019 16:36:45
+[    8.739000] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+[   10.940000] ath_pci: 10.1.467 (Atheros/multi-bss)
+[   10.940000] Ubiquiti U-AME chipset detected
+[   10.940000] ath_pci_probe
+[   10.940000] PCI: Setting latency timer of device 0000:00:00.0 to 64
+[   10.941000] ath_pci 0000:00:00.0: ath DEBUG: sc=0x87af1400
+[   10.941000] 
+[   10.941000]  ol_ath_pci_configure : num_desired MSI set to 0
+[   10.941000] 
+[   10.941000]  Using PCI Legacy Interrupt
+[   11.354000] __ol_ath_attach: ath_attach TODO
+[   11.356000] ol_ath_attach() BMI inited.
+[   11.356000] ol_ath_attach() BMI Get Target Info.
+[   11.356000] ol_ath_attach() TARGET TYPE: 7 Vers 0x4100016c
+[   11.356000] NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+[   11.356000] ol_ath_attach() configure Target .
+[   11.356000] qc98xx_verify_checksum: flash checksum passed: 0x6b49
+[   11.356000] ol_transfer_bin_file 338: Download Flash data len 2116
+[   11.370000] BMI operation done
+[   11.370000] ol_transfer_bin_file 259: Download Firmware data len 216824. Mode: PTP
+[   12.285000] BMI operation done
+[   12.285000] ol_ath_attach() Download FW. 
+[   12.285000] ol_ath_attach() HT Create .
+[   12.285000] ol_ath_attach() HIF Claim.
+[   12.285000] ol_ath_attach() BMI Done. 
+[   12.286000] ol_ath_attach() WMI attached. wmi_handle 87a70000 
+[   12.286000] +HWT
+[   12.289000] -HWT
+[   12.289000] HTC Service:0x0300 ep:1 TX flow control disabled
+[   12.292000] ol_txrx_pdev_attach: tx_credit initialised to 1424
+[   12.292000] HTC Service:0x0100 ep:2 TX flow control disabled
+[   12.293000] wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event 
+[   12.293000] num_rf_chain : 00000002
+[   12.293000] ht_cap_info: : 0000085b
+[   12.293000] vht_cap_info : 338001b2
+[   12.293000] vht_supp_mcs : 0000fffa
+[   12.302000] FIRMWARE:P 34 V 1 T 110
+[   12.302000]  
+[   12.302000] wmi_ready_event_rx:  WMI UNIFIED READY event 
+[   12.302000] ol_ath_connect_htc() WMI is ready
+[   12.302000] ol_ath_set_host_app_area TODO
+[   12.302000] ol_ath_attach() connect HTC. 
+[   12.302000] target uses HTT version 2.1; host uses 2.1
+[   12.302000] Supported modes: 0x1f9001
+[   12.302000] ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+[   12.349000] ol_ath_phyerr_attach: called
+[   12.349000] ath92.ieee80211_ifattach():      Enable ignore 11d
+[   12.354000] OL Resmgr Init-ed
+[   12.354000] ol_if_spectral_setup
+[   12.354000] SPECTRAL : get_capability not registered
+[   12.354000] HAL_CAP_PHYDIAG : Capable
+[   12.354000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 234)
+[   12.354000] SPECTRAL : get_capability not registered
+[   12.354000] HAL_CAP_RADAR   : Capable
+[   12.354000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   12.354000]  (spectral_attach : 239)
+[   12.354000] SPECTRAL : get_capability not registered
+[   12.354000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   12.354000] SPECTRAL : get_tsf64 not registered
+[   12.354000] spectral_init_netlink 54 NULL SKB
+[   12.354000] ol_ath_set_dscp_tid_map: ...ath.c
+[   12.354000] ol_if_dfs_setup: called 
+[   12.355000] ol_ath_rtt_meas_report_attach: called
+[   12.355000] ol_ath_attach() UMAC attach . 
+[   12.355000] __ol_ath_attach: init tx/rx TODO
+[   12.355000] __ol_ath_attach: hard_header_len reservation 64
+[   12.355000] __ol_ath_attach: dev name wifi0
+[   12.355000] ath_ahb: 10.1.467 (Atheros/multi-bss)
+[   12.356000] __ath_attach: Set global_scn[0]
+[   12.356000] ACBKMinfree = 48
+[   12.356000] ACBEMinfree = 32
+[   12.356000] ACVIMinfree = 16
+[   12.356000] ACVOMinfree = 0
+[   12.356000] CABMinfree = 48
+[   12.356000] UAPSDMinfree = 0
+[   12.368000] Enterprise mode: 0x30000000
+[   12.368000] Restoring Cal data from Flash
+[   12.369000] ar9300_eeprom_restore_internal[4673] No vaid CAL, calling default template
+[   12.656000] SPECTRAL : get_capability not registered
+[   12.656000] HAL_CAP_PHYDIAG : Capable
+[   12.656000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 234)
+[   12.656000] SPECTRAL : get_capability not registered
+[   12.656000] HAL_CAP_RADAR   : Capable
+[   12.656000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   12.656000]  (spectral_attach : 239)
+[   12.656000] SPECTRAL : get_capability not registered
+[   12.656000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   12.656000] SPECTRAL : get_tsf64 not registered
+[   12.656000] spectral_init_netlink 54 NULL SKB
+[   12.656000] IRQ request for SPECTRAL-XMIT-FILTER successful
+[   12.656000] SPECTRAL : No ADVANCED SPECTRAL SUPPORT
+[   12.656000] SPECTRAL : module attached
+[   12.663000] ath_get_caps[5784] rx chainmask mismatch actual 3 sc_chainmak 0
+[   12.663000] ath_get_caps[5759] tx chainmask mismatch actual 3 sc_chainmak 0
+[   12.663000] ath92.ieee80211_ifattach():      Enable ignore 11d
+[   12.690000] SPECTRAL : module already attached
+[   12.692000] ath_tx_paprd_init sc 86030000 PAPRD disabled in HAL
+[   12.978000] wifi1: Atheros ???: mem=0xb8100000, irq=2
+[   13.181000] ubnt_poll_host: Hooks registered
+[   13.181000] ubnt_poll_host: Allocated chardev region for major 189
+[   13.291000] rssi-leds 1.2 loaded
+[   13.710000] Mirror/redirect action on
+[   14.329000] gpio_i2c: module loaded
+[   14.896000] ath_dfs: Version 2.0.0
+[   14.896000] Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+[   15.070000] ath92.ol_ath_set_config_param(): Reset scheduled on wifi0 radio
+[   15.070000] Resetting the radio
+[   15.070000] Suspending Target - with disable_intr set 
+[   15.070000] waiting for target paused event from target
+[   15.322000] __ol_ath_detach: init tx/rx cleanup TODO
+[   15.322000] ol_if_dfs_teardown: called 
+[   15.322000] ol_ath_phyerr_detach: called
+[   15.324000] ol_if_spectral_detach
+[   15.324000] SPECTRAL : Module removed (spectral = 87b85000)
+[   15.324000] ath_pci_warm_reset :(sc 87af1400)
+[   15.324000] Target Warm Reset
+[   15.324000] Host Intr Cause reg 0x900c : value : 0x4000 
+[   15.324000] Target CPU Intr Cause 0x5040 
+[   15.425000] addr 0x4050 :  0x4 
+[   15.445000] Target CPU Intr Cause after CE reset 0x40 
+[   15.445000] RESET_CONTROL after cpu warm reset 0x800 
+[   15.545000] Target Warm reset complete
+[   15.545000] ath_pci_remove
+[   15.545000] Ubiquiti U-AME chipset detected
+[   15.545000] ath_pci_probe
+[   15.545000] PCI: Setting latency timer of device 0000:00:00.0 to 64
+[   15.546000] ath_pci 0000:00:00.0: ath DEBUG: sc=0x87af1400
+[   15.546000] 
+[   15.546000]  ol_ath_pci_configure : num_desired MSI set to 0
+[   15.546000] 
+[   15.546000]  Using PCI Legacy Interrupt
+[   15.658000] __ol_ath_attach: ath_attach TODO
+[   15.660000] ol_ath_attach() BMI inited.
+[   15.660000] ol_ath_attach() BMI Get Target Info.
+[   15.660000] ol_ath_attach() TARGET TYPE: 7 Vers 0x4100016c
+[   15.660000] NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+[   15.660000] ol_ath_attach() configure Target .
+[   15.661000] qc98xx_verify_checksum: flash checksum passed: 0x6b49
+[   15.661000] ol_transfer_bin_file 338: Download Flash data len 2116
+[   15.675000] BMI operation done
+[   15.675000] ol_transfer_bin_file 259: Download Firmware data len 236100. Mode: PTMP
+[   16.691000] BMI operation done
+[   16.691000] ol_ath_attach() Download FW. 
+[   16.691000] ol_ath_attach() HT Create .
+[   16.691000] ol_ath_attach() HIF Claim.
+[   16.691000] ol_ath_attach() BMI Done. 
+[   16.692000] ol_ath_attach() WMI attached. wmi_handle 87a70000 
+[   16.692000] +HWT
+[   16.694000] -HWT
+[   16.695000] HTC Service:0x0300 ep:1 TX flow control disabled
+[   16.698000] ol_txrx_pdev_attach: tx_credit initialised to 1424
+[   16.698000] HTC Service:0x0100 ep:2 TX flow control disabled
+[   16.699000] wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event 
+[   16.699000] num_rf_chain : 00000002
+[   16.699000] ht_cap_info: : 0000085b
+[   16.699000] vht_cap_info : 338001b2
+[   16.699000] vht_supp_mcs : 0000fffa
+[   16.699000] LARGE_AP enabled. num_peers 31, num_vdevs 1, num_tids 120
+[   16.699000] idx 0 req 1  num_units 0 num_unit_info 2 unit size 560 actual units 32 
+[   16.699000] chunk 0 len 17920 requested ,ptr  0x6380000 
+[   16.708000] FIRMWARE:P 32 V 1 T 164
+[   16.708000]  
+[   16.708000] wmi_ready_event_rx:  WMI UNIFIED READY event 
+[   16.708000] ol_ath_connect_htc() WMI is ready
+[   16.708000] ol_ath_set_host_app_area TODO
+[   16.709000] ol_ath_attach() connect HTC. 
+[   16.709000] target uses HTT version 2.1; host uses 2.1
+[   16.709000] Supported modes: 0x1f9001
+[   16.709000] ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+[   16.755000] ol_ath_phyerr_attach: called
+[   16.755000] ath92.ieee80211_ifattach():      Enable ignore 11d
+[   16.760000] OL Resmgr Init-ed
+[   16.760000] ol_if_spectral_setup
+[   16.760000] SPECTRAL : get_capability not registered
+[   16.760000] HAL_CAP_PHYDIAG : Capable
+[   16.761000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 234)
+[   16.761000] SPECTRAL : get_capability not registered
+[   16.761000] HAL_CAP_RADAR   : Capable
+[   16.761000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   16.761000]  (spectral_attach : 239)
+[   16.761000] SPECTRAL : get_capability not registered
+[   16.761000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   16.761000] SPECTRAL : get_tsf64 not registered
+[   16.761000] spectral_init_netlink 54 NULL SKB
+[   16.761000] ol_ath_set_dscp_tid_map: ...ath.c
+[   16.761000] ol_if_dfs_setup: called 
+[   16.761000] ol_ath_rtt_meas_report_attach: called
+[   16.761000] ol_ath_attach() UMAC attach . 
+[   16.761000] __ol_ath_attach: init tx/rx TODO
+[   16.761000] __ol_ath_attach: hard_header_len reservation 64
+[   16.761000] __ol_ath_attach: dev name wifi0
+[   16.762000] Reset of radio done
+[   17.111000] ubnt_poll_host: Hooks registered
+[   17.111000] ubnt_poll_host: Allocated chardev region for major 189
+[   17.149000] ubnt_poll_host wifi0: Char device created succesfully err 0
+[   17.149000] ubnt_poll_host: Polling enabled for radio wifi0
+[   17.149000] ubnt_poll_host: noack_mode set to 0 for radio wifi0
+[   17.149000] ubnt_poll_host: DAPROT set to 0 for radio wifi0
+[   17.149000] ubnt-poll-host: [wifi0] Station priority configured to 0 (no-auto=0)
+[   17.150000] ubnt_poll_host: Fixed frame mode disabled for radio wifi0
+[   17.342000] ath_ioctl: SIOC80211IFCREATE CALLED
+[   17.343000] ubnt_poll_host: Initialized in PTMP STA mode for device wifi0
+[   17.343000] wmi_unified_set_psmode:set psmode=1
+[   17.344000] ol_if_dfs_attach: called; ptr=85e9cffc, radar_info=863a5908
+[   17.352000] ol_if_dfs_configure: called
+[   17.352000] ol_if_dfs_configure: ETSI domain
+[   17.352000] ol_if_dfs_disable: called
+[   17.352000] ol_ath_phyerr_disable: about to send
+[   17.352000] VAP device ath0 created 
+[   17.360000] dfs_control debug flags now 0x00000003
+[   17.371000] BW divisor: 0X411
+[   17.445000] Going to update dfs settings
+[   17.445000] Going to update dfs settings
+[   17.446000] ubnt_poll_host: ATPC enabled (0/0/0/19) for radio wifi0
+[   17.524000]  
+[   17.524000]  DES SSID SET=inlaw2 
+[   17.528000] ol_ath_vap_set_param: VAP param unsupported param:33 value:0
+[   17.541000] wmi_unified_set_psmode:set psmode=0
+[   17.541000] wmi_unified_set_psmode:set psmode=0
+[   17.893000] Ebtables v2.0 registered
+[   18.495000] device eth0 entered promiscuous mode
+[   18.500000] device ath0 entered promiscuous mode
+[   18.582000] athr_gmac_ring_alloc Allocated 2048 at 0x85fd8800
+[   18.582000] sram_desc_cnt 1536,mac Unit 0,Tx r->ring_desc 0xbd000000
+[   18.582000] athr_gmac_ring_alloc Allocated 3584 at 0x863ae000
+[   18.582000] sram_desc_cnt 4224,mac Unit 0,Rx r->ring_desc 0xbd000600
+[   18.883000] 955x_GMAC: eth0 in SGMII MODE
+[   18.883000] Scorpion -----> 8033 PHY
+[   18.883000] athrs_ar8033_reg_init: PHY_ID1 = 0x004d PHY_ID2 = 0xd074
+[   19.086000] Setting PHY...
+[   20.093000] ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   21.270000] br0: port 2(ath0) entering learning state
+[   21.649000] ath_dfs: another dfs module already in use
+[   22.017000] wlan_vap_create : enter. devhandle=0x860202c0, opmode=IEEE80211_M_MONITOR, flags=0x1
+[   22.017000] wlan_vap_create : exit. devhandle=0x860202c0, opmode=IEEE80211_M_MONITOR, flags=0x1.
+[   22.017000] VAP device airview1 created 
+[   22.270000] br0: port 2(ath0) entering forwarding state
+[   22.296000]  
+[   22.296000]  DES SSID SET=spectral 
+[   24.093000] 955x_GMAC: enet unit:0 is up...
+[   24.093000] eth0  SGMII  1000Mbps  full duplex flow-control rx:on tx:on
+[   24.093000] 955x_GMAC: done cfg2 0x7215 ifctl 0x0 miictrl  
+[   24.322000] ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   24.322000] br0: port 1(eth0) entering learning state
+[   24.658000]  ieee80211_ioctl_siwmode: vap->iv_opmode=1, new mode=2, valid=1 
+[   24.660000]  Scan in progress.. Cancelling it 
+[   25.322000] br0: port 1(eth0) entering forwarding state
+[   28.801000] br0: port 2(ath0) entering disabled state
+[   28.801000] ol_ath_vap_set_param: VAP param unsupported param:35 value:0
+[   37.909000] Deliver ol stop event, node count: 1
+[   58.698000] Deliver ol stop event, node count: 1
+[   85.064000] Deliver ol stop event, node count: 1
+[  111.428000] Deliver ol stop event, node count: 1
+[  137.681000] Deliver ol stop event, node count: 1
+[  163.896000] Deliver ol stop event, node count: 1
+[  190.261000] Deliver ol stop event, node count: 1
+[  216.625000] Deliver ol stop event, node count: 1
+[  242.989000] Deliver ol stop event, node count: 1
+XC# cat /proc/cpuinfo 
+system type             : QCA955x
+processor               : 0
+cpu model               : MIPS 74Kc V5.0
+BogoMIPS                : 359.42
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 32
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0000, 0x0fe8, 0x0ff8, 0x0ef0]
+ASEs implemented        : mips16 dsp
+shadow register sets    : 1
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+
+XC#</nowiki>
+</WRAP>\\
+
+=== NBE-5AC-GEN2 XC ===
+
+<WRAP bootlog>
+<nowiki>|\  \|\  \      Welcome to airOS
+\ \  \\\  \
+ \ \  \\\  \    PRODUCT: NanoBeam 5AC Gen2
+  \ \  \\\  \   MAC: 788A20626950
+   \ \_______\
+    \|_______|  VERSION: XC.v8.6.1
+
+XC# dmesg 
+[    0.000000] Linux version 2.6.32.68 (jenkins@52c2e43c77bb) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.01 unknown) ) #1 Fri Aug 2 18:53:36 EEST 2019
+[    0.000000] flash_size passed from bootloader = 16
+[    0.000000] arg 1: console=ttyS0,115200
+[    0.000000] arg 2: rootfstype=squashfs
+[    0.000000] arg 3: init=/init
+[    0.000000] arg 4: mtdparts=ath-nor0:256k(u-boot),64k(u-boot-env),1024k(kernel),14720k(rootfs),256k(cfg),64k(EEPROM)
+[    0.000000] arg 5: mem=128M
+[    0.000000] cpu apb ddr apb ath_sys_frequency: cpu 720 ddr 600 ahb 200
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019750 (MIPS 74Kc)
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 02000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00008000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] early_node_map[1] active PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00008000
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000] free_area_init_node: node 0, pgdat 8029aaa0, node_mem_map 81000000
+[    0.000000]   Normal zone: 256 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32512 pages, LIFO batch:7
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line: console=ttyS0,115200 rootfstype=squashfs init=/init mtdparts=ath-nor0:256k(u-boot),64k(u-boot-env),1024k(kernel),14720k(rootfs),256k(cfg),64k(EEPROM) mem=128M 
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 126604k/131072k available (2161k kernel code, 4300k reserved, 499k data, 144k init, 0k highmem)
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:128
+[    0.000000] plat_time_init: plat time init done
+[    0.000000] Console: colour dummy device 80x25
+[    0.001000] Calibrating delay loop... 359.42 BogoMIPS (lpj=179712)
+[    0.020000] Mount-cache hash table entries: 512
+[    0.022000] NET: Registered protocol family 16
+[    0.023000] ath_pcibios_init: bus 0
+[    0.024000] ath_pcibios_init(232): PCI 0 CMD write: 0x356
+[    0.025000] registering PCI controller with io_map_base unset
+[    0.026000] ath_pcibios_init: bus 1
+[    0.027000] ***** Warning PCIe 1 H/W not found !!!
+[    0.028000] registering PCI controller with io_map_base unset
+[    0.029000] bio: create slab <bio-0> at 0
+[    0.030000] pci 0000:00:00.0: reg 10 64bit mmio: [0x000000-0x1fffff]
+[    0.030000] pci 0000:00:00.0: reg 30 32bit mmio pref: [0x000000-0x00ffff]
+[    0.030000] pci 0000:00:00.0: supports D1 D2
+[    0.030000] pcibios_map_irq: IRQ 75 for bus 0
+[    0.031000] Switching to clocksource MIPS
+[    0.032000] NET: Registered protocol family 2
+[    0.036000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.043000] TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.050000] TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.056000] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.062000] TCP reno registered
+[    0.065000] NET: Registered protocol family 1
+[    0.069000] ATH GPIOC major 0
+[    0.074000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.079000] msgmni has been set to 247
+[    0.083000] io scheduler noop registered
+[    0.087000] io scheduler deadline registered (default)
+[    0.094000] HS UART step 0x54e scale 0x8 for 115200
+[    0.099000] Serial: Atheros High-Speed UART (115200)
+[    0.104000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.110000] serial8250.0: ttyS0 at MMIO 0xb8020000 (irq = 19) is a 16550A
+[    0.117000] console [ttyS0] enabled, bootconsole disabled
+[    0.128000] 6 cmdlinepart partitions found on MTD device ath-nor0
+[    0.134000] Creating 6 MTD partitions on "ath-nor0":
+[    0.139000] 0x000000000000-0x000000040000 : "u-boot"
+[    0.144000] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.150000] 0x000000050000-0x000000150000 : "kernel"
+[    0.155000] 0x000000150000-0x000000fb0000 : "rootfs"
+[    0.161000] mtd: partition "rootfs" set to be root filesystem
+[    0.166000] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.171000] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.177000] i2c /dev entries driver
+[    0.180000] u32 classifier
+[    0.183000]     Performance counters on
+[    0.187000]     input device check on 
+[    0.191000]     Actions configured 
+[    0.195000] IPv4 over IPv4 tunneling driver
+[    0.199000] TCP cubic registered
+[    0.202000] NET: Registered protocol family 10
+[    0.208000] IPv6 over IPv4 tunneling driver
+[    0.212000] NET: Registered protocol family 17
+[    0.217000] Bridge firewalling registered
+[    0.221000] 802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+[    0.228000] All bugs added by David S. Miller <davem@redhat.com>
+[    0.234000] athwdt_init: Registering WDT success
+[    0.239000] Reset: Normal
+[    0.248000] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    0.256000] Freeing unused kernel memory: 144k freed
+[    1.741000] Revision:  c46714b01bc941b44dc09863284405075a6527bc
+[    1.817000] ubnthal: module license 'Proprietary' taints kernel.
+[    1.823000] Disabling lock debugging due to kernel taint
+[    1.872000] ath-gpio 2.0 initialised
+[    1.876000] ubnthal: initialised, board found, sysid = 0xe3d7, name = NanoBeam 5AC Gen2
+[    5.639000] qca955x_GMAC: Length per segment 1536
+[    5.639000] 955x_GMAC: qca955x_gmac_attach
+[    5.639000] 955x_GMAC: qca955x_gmac_attach
+[    5.639000] Found PHY at address 4 with ID 4d:d074
+[    5.639000] 955x_GMAC: qca955x_set_gmac_caps
+[    5.639000] Currently in polling mode unit0
+[    5.639000] Registering AR8033 Phy....
+[    5.639000] qca955x_GMAC: RX TASKLET - Pkts per Intr:160
+[    5.639000] qca955x_GMAC: Mac address for unit 0:bfff0000
+[    5.639000] qca955x_GMAC: 78:8a:20:63:69:50 
+[    5.640000] qca955x_GMAC: Max segments per packet :   1
+[    5.640000] qca955x_GMAC: Max tx descriptor count :   128
+[    5.640000] qca955x_GMAC: Max rx descriptor count :   224
+[    5.640000] qca955x_GMAC: Mac capability flags    :   10002201
+[    5.642000] 955x_GMAC: qca955x_set_gmac_caps
+[    5.642000] Currently in polling mode unit1
+[    5.642000] qca955x_GMAC: RX TASKLET - Pkts per Intr:160
+[    5.642000] qca955x_GMAC: Mac address for unit 1:bfff0006
+[    5.642000] qca955x_GMAC: 7a:8a:20:63:69:50 
+[    5.642000] MAC:1 Warning: Phy not found!!!
+[    5.642000] qca955x_GMAC: Max segments per packet :   1
+[    5.642000] qca955x_GMAC: Max tx descriptor count :   128
+[    5.642000] qca955x_GMAC: Max rx descriptor count :   224
+[    5.642000] qca955x_GMAC: Mac capability flags    :   10002201
+[    5.642000] 955x_GMAC: Serdes PLL is locked value 0x1f038116
+[    6.595000] PPP generic driver version 2.4.2
+[    6.641000] PPP MPPE Compression module registered
+[    6.667000] NET: Registered protocol family 24
+[    6.810000] GRE over IPv4 tunneling driver
+[    6.947000] URD Init
+[    7.503000] ath_hal: 0.9.17.1 (AR9380, REGOPS_FUNC, 11D)
+[    7.610000] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+[    7.635000] ath_spectral: Version 2.0.0
+[    7.635000] Copyright (c) 2005-2009 Atheros Communications, Inc. All Rights Reserved
+[    7.635000] SPECTRAL module built on Aug  2 2019 18:51:31
+[    7.872000] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+[    9.766000] ath_pci: 10.1.467 (Atheros/multi-bss)
+[    9.766000] Ubiquiti U-AME chipset detected
+[    9.766000] ath_pci_probe
+[    9.766000] PCI: Setting latency timer of device 0000:00:00.0 to 64
+[    9.766000] ath_pci 0000:00:00.0: ath DEBUG: sc=0x87bb4400
+[    9.766000] 
+[    9.766000]  ol_ath_pci_configure : num_desired MSI set to 0
+[    9.766000] 
+[    9.766000]  Using PCI Legacy Interrupt
+[   10.671000] Target Warm Reset
+[   10.671000] Host Intr Cause reg 0x900c : value : 0x0 
+[   10.671000] Target CPU Intr Cause 0x0 
+[   10.772000] addr 0x4050 :  0x4 
+[   10.792000] Target CPU Intr Cause after CE reset 0x0 
+[   10.792000] RESET_CONTROL after cpu warm reset 0x800 
+[   10.892000] Target Warm reset complete
+[   11.104000] __ol_ath_attach: ath_attach TODO
+[   11.105000] ol_ath_attach() BMI inited.
+[   11.105000] ol_ath_attach() BMI Get Target Info.
+[   11.106000] ol_ath_attach() TARGET TYPE: 7 Vers 0x4100016c
+[   11.106000] NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+[   11.106000] ol_ath_attach() configure Target .
+[   11.106000] qc98xx_verify_checksum: flash checksum passed: 0x26e0
+[   11.106000] ol_transfer_bin_file 338: Download Flash data len 2116
+[   11.119000] BMI operation done
+[   11.120000] ol_transfer_bin_file 259: Download Firmware data len 216824. Mode: PTP
+[   12.035000] BMI operation done
+[   12.035000] ol_ath_attach() Download FW. 
+[   12.035000] ol_ath_attach() HT Create .
+[   12.035000] ol_ath_attach() HIF Claim.
+[   12.035000] ol_ath_attach() BMI Done. 
+[   12.035000] ol_ath_attach() WMI attached. wmi_handle 87a70000 
+[   12.035000] +HWT
+[   12.038000] -HWT
+[   12.039000] HTC Service:0x0300 ep:1 TX flow control disabled
+[   12.042000] ol_txrx_pdev_attach: tx_credit initialised to 1424
+[   12.042000] HTC Service:0x0100 ep:2 TX flow control disabled
+[   12.043000] wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event 
+[   12.043000] num_rf_chain : 00000002
+[   12.043000] ht_cap_info: : 0000085b
+[   12.043000] vht_cap_info : 338001b2
+[   12.043000] vht_supp_mcs : 0000fffa
+[   12.052000] FIRMWARE:P 34 V 1 T 110
+[   12.052000]  
+[   12.052000] wmi_ready_event_rx:  WMI UNIFIED READY event 
+[   12.052000] ol_ath_connect_htc() WMI is ready
+[   12.052000] ol_ath_set_host_app_area TODO
+[   12.052000] ol_ath_attach() connect HTC. 
+[   12.052000] target uses HTT version 2.1; host uses 2.1
+[   12.052000] Supported modes: 0x1f9001
+[   12.052000] ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+[   12.099000] ol_ath_phyerr_attach: called
+[   12.099000] ath92.ieee80211_ifattach():      Enable ignore 11d
+[   12.104000] OL Resmgr Init-ed
+[   12.104000] ol_if_spectral_setup
+[   12.104000] SPECTRAL : get_capability not registered
+[   12.104000] HAL_CAP_PHYDIAG : Capable
+[   12.104000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 234)
+[   12.104000] SPECTRAL : get_capability not registered
+[   12.104000] HAL_CAP_RADAR   : Capable
+[   12.104000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   12.104000]  (spectral_attach : 239)
+[   12.104000] SPECTRAL : get_capability not registered
+[   12.104000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   12.104000] SPECTRAL : get_tsf64 not registered
+[   12.104000] spectral_init_netlink 54 NULL SKB
+[   12.104000] ol_ath_set_dscp_tid_map: ...ath.c
+[   12.104000] ol_if_dfs_setup: called 
+[   12.104000] ol_ath_rtt_meas_report_attach: called
+[   12.104000] ol_ath_attach() UMAC attach . 
+[   12.104000] __ol_ath_attach: init tx/rx TODO
+[   12.104000] __ol_ath_attach: hard_header_len reservation 64
+[   12.105000] __ol_ath_attach: dev name wifi0
+[   12.105000] ath_ahb: 10.1.467 (Atheros/multi-bss)
+[   12.106000] __ath_attach: Set global_scn[0]
+[   12.106000] ACBKMinfree = 48
+[   12.106000] ACBEMinfree = 32
+[   12.106000] ACVIMinfree = 16
+[   12.106000] ACVOMinfree = 0
+[   12.106000] CABMinfree = 48
+[   12.106000] UAPSDMinfree = 0
+[   12.118000] Enterprise mode: 0x40000000
+[   12.118000] Restoring Cal data from Flash
+[   12.406000] SPECTRAL : get_capability not registered
+[   12.406000] HAL_CAP_PHYDIAG : Capable
+[   12.406000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 234)
+[   12.406000] SPECTRAL : get_capability not registered
+[   12.406000] HAL_CAP_RADAR   : Capable
+[   12.406000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   12.406000]  (spectral_attach : 239)
+[   12.406000] SPECTRAL : get_capability not registered
+[   12.406000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   12.406000] SPECTRAL : get_tsf64 not registered
+[   12.406000] spectral_init_netlink 54 NULL SKB
+[   12.406000] IRQ request for SPECTRAL-XMIT-FILTER successful
+[   12.406000] SPECTRAL : No ADVANCED SPECTRAL SUPPORT
+[   12.406000] SPECTRAL : module attached
+[   12.412000] ath_get_caps[5784] rx chainmask mismatch actual 3 sc_chainmak 0
+[   12.412000] ath_get_caps[5759] tx chainmask mismatch actual 3 sc_chainmak 0
+[   12.412000] ath92.ieee80211_ifattach():      Enable ignore 11d
+[   12.440000] SPECTRAL : module already attached
+[   12.442000] ath_tx_paprd_init sc 86030000 PAPRD disabled in HAL
+[   12.671000] wifi1: Atheros ???: mem=0xb8100000, irq=2
+[   12.875000] ubnt_poll_host: Hooks registered
+[   12.875000] ubnt_poll_host: Allocated chardev region for major 189
+[   12.985000] rssi-leds 1.2 loaded
+[   13.405000] Mirror/redirect action on
+[   14.023000] gpio_i2c: module loaded
+[   14.637000] ath_dfs: Version 2.0.0
+[   14.637000] Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+[   14.785000] ath92.ol_ath_set_config_param(): Reset scheduled on wifi0 radio
+[   14.785000] Resetting the radio
+[   14.785000] Suspending Target - with disable_intr set 
+[   14.785000] waiting for target paused event from target
+[   15.037000] __ol_ath_detach: init tx/rx cleanup TODO
+[   15.037000] ol_if_dfs_teardown: called 
+[   15.037000] ol_ath_phyerr_detach: called
+[   15.039000] ol_if_spectral_detach
+[   15.039000] SPECTRAL : Module removed (spectral = 86edd000)
+[   15.039000] ath_pci_warm_reset :(sc 87bb4400)
+[   15.039000] Target Warm Reset
+[   15.039000] Host Intr Cause reg 0x900c : value : 0x4000 
+[   15.039000] Target CPU Intr Cause 0x5040 
+[   15.140000] addr 0x4050 :  0x4 
+[   15.160000] Target CPU Intr Cause after CE reset 0x40 
+[   15.160000] RESET_CONTROL after cpu warm reset 0x800 
+[   15.260000] Target Warm reset complete
+[   15.260000] ath_pci_remove
+[   15.260000] Ubiquiti U-AME chipset detected
+[   15.260000] ath_pci_probe
+[   15.260000] PCI: Setting latency timer of device 0000:00:00.0 to 64
+[   15.261000] ath_pci 0000:00:00.0: ath DEBUG: sc=0x87bb4400
+[   15.261000] 
+[   15.261000]  ol_ath_pci_configure : num_desired MSI set to 0
+[   15.261000] 
+[   15.261000]  Using PCI Legacy Interrupt
+[   15.373000] __ol_ath_attach: ath_attach TODO
+[   15.374000] ol_ath_attach() BMI inited.
+[   15.375000] ol_ath_attach() BMI Get Target Info.
+[   15.375000] ol_ath_attach() TARGET TYPE: 7 Vers 0x4100016c
+[   15.375000] NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+[   15.375000] ol_ath_attach() configure Target .
+[   15.375000] qc98xx_verify_checksum: flash checksum passed: 0x26e0
+[   15.375000] ol_transfer_bin_file 338: Download Flash data len 2116
+[   15.389000] BMI operation done
+[   15.389000] ol_transfer_bin_file 259: Download Firmware data len 216824. Mode: PTP
+[   16.322000] BMI operation done
+[   16.322000] ol_ath_attach() Download FW. 
+[   16.322000] ol_ath_attach() HT Create .
+[   16.322000] ol_ath_attach() HIF Claim.
+[   16.322000] ol_ath_attach() BMI Done. 
+[   16.322000] ol_ath_attach() WMI attached. wmi_handle 87a70000 
+[   16.322000] +HWT
+[   16.325000] -HWT
+[   16.325000] HTC Service:0x0300 ep:1 TX flow control disabled
+[   16.329000] ol_txrx_pdev_attach: tx_credit initialised to 1424
+[   16.329000] HTC Service:0x0100 ep:2 TX flow control disabled
+[   16.330000] wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event 
+[   16.330000] num_rf_chain : 00000002
+[   16.330000] ht_cap_info: : 0000085b
+[   16.330000] vht_cap_info : 338001b2
+[   16.330000] vht_supp_mcs : 0000fffa
+[   16.339000] FIRMWARE:P 34 V 1 T 110
+[   16.339000]  
+[   16.339000] wmi_ready_event_rx:  WMI UNIFIED READY event 
+[   16.339000] ol_ath_connect_htc() WMI is ready
+[   16.339000] ol_ath_set_host_app_area TODO
+[   16.339000] ol_ath_attach() connect HTC. 
+[   16.339000] target uses HTT version 2.1; host uses 2.1
+[   16.339000] Supported modes: 0x1f9001
+[   16.339000] ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+[   16.385000] ol_ath_phyerr_attach: called
+[   16.386000] ath92.ieee80211_ifattach():      Enable ignore 11d
+[   16.390000] OL Resmgr Init-ed
+[   16.391000] ol_if_spectral_setup
+[   16.391000] SPECTRAL : get_capability not registered
+[   16.391000] HAL_CAP_PHYDIAG : Capable
+[   16.391000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 234)
+[   16.391000] SPECTRAL : get_capability not registered
+[   16.391000] HAL_CAP_RADAR   : Capable
+[   16.391000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   16.391000]  (spectral_attach : 239)
+[   16.391000] SPECTRAL : get_capability not registered
+[   16.391000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   16.391000] SPECTRAL : get_tsf64 not registered
+[   16.391000] spectral_init_netlink 54 NULL SKB
+[   16.391000] ol_ath_set_dscp_tid_map: ...ath.c
+[   16.391000] ol_if_dfs_setup: called 
+[   16.391000] ol_ath_rtt_meas_report_attach: called
+[   16.391000] ol_ath_attach() UMAC attach . 
+[   16.391000] __ol_ath_attach: init tx/rx TODO
+[   16.391000] __ol_ath_attach: hard_header_len reservation 64
+[   16.391000] __ol_ath_attach: dev name wifi0
+[   16.392000] Reset of radio done
+[   16.826000] ubnt_poll_host: Hooks registered
+[   16.826000] ubnt_poll_host: Allocated chardev region for major 189
+[   16.863000] ubnt_poll_host wifi0: Char device created succesfully err 0
+[   16.863000] ubnt_poll_host: Polling enabled for radio wifi0
+[   16.863000] ubnt_poll_host: noack_mode set to 0 for radio wifi0
+[   16.864000] ubnt_poll_host: DAPROT set to 0 for radio wifi0
+[   16.864000] ubnt-poll-host: [wifi0] Station priority configured to 2 (no-auto=0)
+[   16.864000] ubnt_poll_host: Fixed frame mode disabled for radio wifi0
+[   17.034000] ath_ioctl: SIOC80211IFCREATE CALLED
+[   17.034000] ubnt_poll_host: Initialized in PTP AP mode for device wifi0
+[   17.034000] ubnt_poll_host TARGET LOG:
+[   17.034000]  ubnt_poll: Enabling PTP polling state machine
+[   17.035000] ol_if_dfs_attach: called; ptr=85eacffc, radar_info=86dc5908
+[   17.042000] ol_if_dfs_configure: called
+[   17.042000] ol_if_dfs_configure: ETSI domain
+[   17.042000] ol_if_dfs_disable: called
+[   17.042000] ol_ath_phyerr_disable: about to send
+[   17.043000] VAP device ath0 created 
+[   17.050000] dfs_control debug flags now 0x00000003
+[   17.062000] BW divisor: 0X411
+[   17.069000] ol_vdev_start_resp_ev
+[   17.069000] ol_ath_vap_join: join operation is only for STA/IBSS mode
+[   17.069000] ol_if_dfs_configure: called
+[   17.069000] ol_if_dfs_configure: ETSI domain
+[   17.070000] ol_if_dfs_disable: called
+[   17.070000] ol_ath_phyerr_disable: about to send
+[   17.070000] DFS dfsdomain=2, num_filter_specifications=10, num_b5_filter_specifications=0
+[   17.070000] DFS min filter rssiThresh = 9 (with 0 adjustment for external gain, where possible)
+[   17.070000] DFS max pulse dur = 58 ticks
+[   17.070000] ol_if_dfs_enable: called
+[   17.070000] ieee80211_dfs_cac_start: ***** CAC STARTED ***** Channel 5280 Timeout 67 sec, Current Time: 4294684 sec
+[   17.070000] ieee80211_notify_vap_start_complete: Notification to UMAC VAP layer
+[   17.100000] ieee80211_dfs_cac_stop: ***** CAC STOPPED *****  CAC Timer 5280 procphyerr 0x80000000
+[   17.100000] Deliver ol stop event, node count: 1
+[   17.239000] Going to update dfs settings
+[   17.239000] Going to update dfs settings
+[   17.240000] ubnt_poll_host: ATPC enabled (36/0/0/19) for radio wifi0
+[   17.269000] ol_vdev_start_resp_ev
+[   17.269000] ol_ath_vap_join: join operation is only for STA/IBSS mode
+[   17.269000] ol_if_dfs_configure: called
+[   17.269000] ol_if_dfs_configure: ETSI domain
+[   17.269000] ol_if_dfs_disable: called
+[   17.269000] ol_ath_phyerr_disable: about to send
+[   17.269000] DFS dfsdomain=2, num_filter_specifications=10, num_b5_filter_specifications=0
+[   17.269000] DFS min filter rssiThresh = 9 (with 16 adjustment for external gain, where possible)
+[   17.269000] DFS max pulse dur = 58 ticks
+[   17.269000] ol_if_dfs_enable: called
+[   17.269000] ieee80211_dfs_cac_start: ***** CAC STARTED ***** Channel 5280 Timeout 67 sec, Current Time: 4294684 sec
+[   17.269000] ieee80211_notify_vap_start_complete: Notification to UMAC VAP layer
+[   17.320000]  
+[   17.320000]  DES SSID SET=inlaw1 
+[   17.324000] ol_ath_vap_set_param: VAP param unsupported param:33 value:0
+[   17.369000] ol_ath_vap_set_param: VAP param unsupported param:36 value:0
+[   17.398000]  DEVICE IS DOWN ifname=ath0
+[   17.554000] ath_dfs: another dfs module already in use
+[   17.564000] wlan_vap_create : enter. devhandle=0x860202c0, opmode=IEEE80211_M_HOSTAP, flags=0x1
+[   17.565000] wlan_vap_create : exit. devhandle=0x860202c0, opmode=IEEE80211_M_HOSTAP, flags=0x1.
+[   17.565000] VAP device ath1 created 
+[   17.570000]  
+[   17.570000]  DES SSID SET=NBE-5AC-Gen2:788A20626950 
+[   17.804000] Ebtables v2.0 registered
+[   17.892000] Invoking ACS module for Best channel selection 
+[   18.687000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   18.943000] device eth0 entered promiscuous mode
+[   18.954000] device ath0 entered promiscuous mode
+[   19.098000] ieee80211_dfs_cac_stop: ***** CAC STOPPED *****  CAC Timer 5280 procphyerr 0x80000000
+[   19.098000] Deliver ol stop event, node count: 2
+[   19.225000] ol_if_dfs_clist_update: called, cmd=1, nollist=(null), nentries=0
+[   19.225000] OL vap_start +
+[   19.225000] OL vap_start -
+[   19.232000] ol_vdev_start_resp_ev
+[   19.232000] ol_ath_vap_join: join operation is only for STA/IBSS mode
+[   19.233000] ol_ath_wmm_update:
+[   19.233000] ol_if_dfs_configure: called
+[   19.233000] ol_if_dfs_configure: ETSI domain
+[   19.233000] ol_if_dfs_disable: called
+[   19.233000] ol_ath_phyerr_disable: about to send
+[   19.233000] DFS dfsdomain=2, num_filter_specifications=10, num_b5_filter_specifications=0
+[   19.233000] DFS min filter rssiThresh = 9 (with 16 adjustment for external gain, where possible)
+[   19.233000] DFS max pulse dur = 58 ticks
+[   19.233000] ol_if_dfs_enable: called
+[   19.233000] ieee80211_dfs_cac_start: ***** CAC STARTED ***** Channel 5630 Timeout 612 sec, Current Time: 4294686 sec
+[   19.233000] ieee80211_notify_vap_start_complete: Notification to UMAC VAP layer
+[   19.240000] xt_time: kernel timezone is -0000
+[   20.131000] ieee80211_acs_find_best_centerchan: ACS picked 2462 as best channel
+[   20.605000] nf_conntrack version 0.5.0 (1983 buckets, 7932 max)
+[   20.605000] CONFIG_NF_CT_ACCT is deprecated and will be removed soon. Please use
+[   20.605000] nf_conntrack.acct=1 kernel parameter, acct=1 nf_conntrack module option or
+[   20.605000] sysctl net.netfilter.nf_conntrack_acct=1 to enable it.
+[   21.697000] athr_gmac_ring_alloc Allocated 2048 at 0x8583c800
+[   21.697000] sram_desc_cnt 1536,mac Unit 0,Tx r->ring_desc 0xbd000000
+[   21.697000] athr_gmac_ring_alloc Allocated 3584 at 0x860b9000
+[   21.697000] sram_desc_cnt 4224,mac Unit 0,Rx r->ring_desc 0xbd000600
+[   21.997000] 955x_GMAC: eth0 in SGMII MODE
+[   21.997000] Scorpion -----> 8033 PHY
+[   21.998000] athrs_ar8033_reg_init: PHY_ID1 = 0x004d PHY_ID2 = 0xd074
+[   22.200000] Setting PHY...
+[   23.414000] ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   23.554000] br0: port 2(ath0) entering learning state
+[   24.554000] br0: port 2(ath0) entering forwarding state
+[   25.055000]  ieee80211_ioctl_siwmode: vap->iv_opmode=6, new mode=3, valid=1 
+[   25.056000] ol_ath_vap_set_param: VAP param unsupported param:33 value:0
+[   25.057000] ol_ath_vap_set_param: VAP param unsupported param:33 value:0
+[   25.890000] ol_ath_vap_set_param: VAP param unsupported param:33 value:1
+[   25.890000] ol_ath_vap_set_param: VAP param unsupported param:33 value:1
+[   25.890000] ol_ath_vap_set_param: VAP param unsupported param:33 value:1
+[   25.890000] ieee80211_dfs_cac_stop: ***** CAC STOPPED *****  CAC Timer 5630 procphyerr 0x80000000
+[   25.891000] Deliver ol stop event, node count: 1
+[   26.102000] ol_if_dfs_clist_update: called, cmd=1, nollist=(null), nentries=0
+[   26.102000] OL vap_start +
+[   26.102000] OL vap_start -
+[   26.103000] ol_vdev_start_resp_ev
+[   26.103000] ol_ath_vap_join: join operation is only for STA/IBSS mode
+[   26.103000] ol_if_dfs_configure: called
+[   26.103000] ol_if_dfs_configure: ETSI domain
+[   26.103000] ol_if_dfs_disable: called
+[   26.103000] ol_ath_phyerr_disable: about to send
+[   26.103000] DFS dfsdomain=2, num_filter_specifications=10, num_b5_filter_specifications=0
+[   26.103000] DFS min filter rssiThresh = 9 (with 16 adjustment for external gain, where possible)
+[   26.103000] DFS max pulse dur = 58 ticks
+[   26.103000] ol_if_dfs_enable: called
+[   26.103000] ieee80211_dfs_cac_start: ***** CAC STARTED ***** Channel 5630 Timeout 612 sec, Current Time: 4294693 sec
+[   26.103000] ieee80211_notify_vap_start_complete: Notification to UMAC VAP layer
+[   26.105000] ol_ath_vap_set_param: VAP param unsupported param:33 value:1
+[   26.107000]  Group Keyidx set=1 
+[   26.107000]  955x_GMAC: enet unit:0 is up...
+[   27.209000] eth0  SGMII  1000Mbps  full duplex flow-control rx:on tx:on
+[   27.209000] 955x_GMAC: done cfg2 0x7215 ifctl 0x0 miictrl  
+[   27.522000] ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   27.522000] br0: port 1(eth0) entering learning state
+[   28.522000] br0: port 1(eth0) entering forwarding state
+[  111.409000] 955x_GMAC: unit 0: phy 0 not up carrier 1
+[  111.409000] br0: port 1(eth0) entering disabled state
+[  113.409000] 955x_GMAC: enet unit:0 is up...
+[  113.409000] eth0  SGMII  1000Mbps  full duplex flow-control rx:on tx:on
+[  113.409000] 955x_GMAC: done cfg2 0x7215 ifctl 0x0 miictrl  
+[  113.610000] br0: port 1(eth0) entering learning state
+[  114.610000] br0: port 1(eth0) entering forwarding state
+[  121.609000] 955x_GMAC: unit 0: phy 0 not up carrier 1
+[  121.609000] br0: port 1(eth0) entering disabled state
+[  123.609000] AR8033: Warning, the SGMII link is down!
+[  123.809000] Trying to workaround stuck SGMII. Link is up
+[  123.810000] 955x_GMAC: enet unit:0 is up...
+[  123.810000] eth0  SGMII  1000Mbps  full duplex flow-control rx:on tx:on
+[  123.810000] 955x_GMAC: done cfg2 0x7215 ifctl 0x0 miictrl  
+[  124.011000] br0: port 1(eth0) entering learning state
+[  125.011000] br0: port 1(eth0) entering forwarding state
+[  638.103000] cac_timeout: ***** CAC EXPIRED *****  Channel 5630 Current Time 338 sec
+[  638.103000] ieee80211_dfs_cac_stop: ***** CAC STOPPED *****  CAC Timer 5630 procphyerr 0x80000000
+[  638.104000] ubnt_poll_host TARGET LOG:
+[  638.104000]  ubnt_poll: Timing params set to Down:50, Up:50, Burst:3000
+[  651.263000]  Unicast Keyidx set=5 
+[  651.263000]  _ieee80211_scan_unregister_event_handler: Failed to unregister evhandler=8649e5a8 arg=85ebb2c0
+[  929.500000] wlan_vap_delete : enter. vaphandle=0x85fcc000
+[  929.505000] wlan_vap_delete : exit. vaphandle=0x85fcc000
+[  930.752000] wlan_vap_create : enter. devhandle=0x860202c0, opmode=IEEE80211_M_MONITOR, flags=0x1
+[  930.752000] wlan_vap_create : exit. devhandle=0x860202c0, opmode=IEEE80211_M_MONITOR, flags=0x1.
+[  930.752000] VAP device airview1 created 
+[  931.425000]  
+[  931.425000]  DES SSID SET=spectral 
+[211798.307000] Filter[33]: Variable Radar - FOUND - numpulses=7 thresh=5/5/5 refdur=4 refpri=2220 primargin=6 ext_flag=0
+[211798.307000] 
+[211798.307000] =============================== Delay Line ================================
+[211798.307000] FOUND: Filter[33]: DLE [   1]: ts=9913809570 time=  193587 dur=  2 rssi=11
+[211798.307000] FOUND: Filter[33]: DLE [   2]: ts=9913814009 time=    4439 dur=  3 rssi=22
+[211798.307000] FOUND: Filter[33]: DLE [   3]: ts=9913816230 time=    2221 dur=  3 rssi=24
+[211798.307000] FOUND: Filter[33]: DLE [   4]: ts=9913820676 time=    4446 dur=  2 rssi=12
+[211798.307000] FOUND: Filter[33]: DLE [   5]: ts=9913822896 time=    2220 dur=  4 rssi=22
+[211798.307000] FOUND: Filter[33]: DLE [   6]: ts=9913827342 time=    4446 dur=  4 rssi=26
+[211798.307000] FOUND: Filter[33]: DLE [   7]: ts=9913829566 time=    2224 dur=  3 rssi=27
+[211798.307000] FOUND: Filter[33]: DLE [   8]: ts=9913838450 time=    8884 dur=  3 rssi=26
+[211798.307000] FOUND: Filter[33]: DLE [   9]: ts=9913842894 time=    4444 dur=  3 rssi=22
+[211798.307000] FOUND: Filter[33]: DLE [  10]: ts=9913854007 time=   11113 dur=  4 rssi=28
+[211798.307000] FOUND: Filter[33]: DLE [  11]: ts=9913869562 time=   15555 dur=  3 rssi=20
+[211798.307000] FOUND: Filter[33]: DLE [  12]: ts=9913872196 time=    2634 dur=  4 rssi=11
+[211798.307000] FOUND: Filter[33]: DLE [  13]: ts=9913876228 time=    4032 dur=  3 rssi=19
+[211798.307000] FOUND: Filter[33]: DLE [  14]: ts=9913882903 time=    6675 dur=  4 rssi=26
+[211798.307000] FOUND: Filter[33]: DLE [  15]: ts=9913885127 time=    2224 dur=  3 rssi=20
+[211798.307000] ===========================================================================
+[211798.307000] 
+[211798.307000] Radar found on channel 126 (5630 MHz, BW 20 MHz)
+[211798.307000] ol_if_dfs_clist_update: called, cmd=1, nollist=86218740, nentries=1
+[211798.309000] 
+[211798.309000]  ieee80211_dfs_action: Changing to channel 104 (5520 MHz. flags 0x800300) (ch ieee 104 tbtt 1 pcsaie (null))
+[211798.309000] 
+[211848.763000]  Unicast Keyidx set=5 
+[211848.763000]  ol_if_dfs_clist_update: called, cmd=1, nollist=(null), nentries=0
+[643328.400000]  Unicast Keyidx set=5 
+[643328.400000]  
+XC# cat /proc/cpuinfo 
+system type             : QCA955x
+processor               : 0
+cpu model               : MIPS 74Kc V5.0
+BogoMIPS                : 359.42
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 32
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0000, 0x0fe8, 0x0bb8, 0x0ef8]
+ASEs implemented        : mips16 dsp
+shadow register sets    : 1
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+
+XC# cat /proc/iomem 
+00000000-07ffffff : System RAM
+  00002000-0021e6a7 : Kernel code
+  0021e6a8-0029b57f : Kernel data
+10000000-11ffffff : PCI MEM - 0
+  10000000-101fffff : 0000:00:00.0
+    10000000-101fffff : ath
+  10200000-1020ffff : 0000:00:00.0
+12000000-13ffffff : PCI MEM - 1
+18020000-18020fff : serial8250.0
+18127000-18127dfe : ath-pciep.0
+1b000000-1b00ffff : ath-ehci.0
+1b400000-1b40ffff : ath-ehci1.1
+b8020000-b802001f : serial
+XC#</nowiki>
+</WRAP>\\
+
+==== Ubiquiti Radio info ====
+<WRAP bootlog>
+<nowiki>
+
+WA.v8.5.0# iwconfig
+lo        no wireless extensions.
+
+eth0      no wireless extensions.
+
+gre0      no wireless extensions.
+
+wifi1     no wireless extensions.
+
+teql0     no wireless extensions.
+
+wifi0     no wireless extensions.
+
+ath0      IEEE 802.11ac  ESSID:"Device under test AC"
+          Mode:Master  Frequency:5.185 GHz  Access Point: F0:9F:C2:xx:xx:xx
+          Bit Rate:400 Mb/s   Tx-Power=7 dBm
+          RTS thr:off   Fragment thr:off
+          Center1-Freq: 5.195 GHz
+          Encryption key:4217-94BF-0711-6C1C-A538-2FCA-3C91-0C96 [2]   Security mode:open
+          Power Management:off
+          Link Quality=0/94  Signal level=-96 dBm  Noise level=-96 dBm
+          Rx invalid nwid:0  Rx invalid crypt:0  Rx invalid frag:0
+          Tx excessive retries:0  Invalid misc:0   Missed beacon:0
+
+br0       no wireless extensions.
+
+airview1  IEEE 802.11na  ESSID:"spectral"
+          Mode:Monitor  Frequency:5.1 GHz  Access Point: Not-Associated
+          Bit Rate:130 Mb/s   Tx-Power:13 dBm
+          RTS thr:off   Fragment thr:off
+          Center1-Freq: 5.1 GHz
+          Encryption key:off
+          Power Management:off
+          Link Quality=0/94  Signal level=-96 dBm  Noise level=-96 dBm
+          Rx invalid nwid:0  Rx invalid crypt:0  Rx invalid frag:0
+          Tx excessive retries:0  Invalid misc:0   Missed beacon:0
+
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+login as: root
+
+
+BusyBox v1.29.3 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r7994+175-ded905ce43
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@OpenWrt:~# dmesg
+[    0.000000] Linux version 4.14.72 (tsys@arch-build) (gcc version 7.3.0 (OpenWrt GCC 7.3.0 r7275-f076ad8074)) #0 Thu Sep 27 01:35:38 2018
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001974c (MIPS 74Kc)
+[    0.000000] MIPS: machine is Ubiquiti Nanostation AC loco (WA)
+[    0.000000] SoC: Atheros AR9342 rev 2
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 805013a0, node_mem_map 81006ee0
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16384 pages, LIFO batch:3
+[    0.000000] random: get_random_bytes called from start_kernel+0x8c/0x474 with crng_init=0
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,115200 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 58344K/65536K available (3703K kernel code, 144K rwdata, 896K rodata, 1200K init, 204K bss, 7192K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 51
+[    0.000000] CPU clock: 535.000 MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7144898866 ns
+[    0.000011] sched_clock: 32 bits at 267MHz, resolution 3ns, wraps every 8027976190ns
+[    0.008328] Calibrating delay loop... 266.64 BogoMIPS (lpj=1333248)
+[    0.094953] pid_max: default: 32768 minimum: 301
+[    0.100108] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.107169] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.119326] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.129848] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.136435] pinctrl core: initialized pinctrl subsystem
+[    0.143150] NET: Registered protocol family 16
+[    0.155951] PCI host bridge /ahb/apb/pcie-controller@180c0000 ranges:
+[    0.162886]  MEM 0x0000000010000000..0x0000000013ffffff
+[    0.168443]   IO 0x0000000000000000..0x0000000000000000
+[    0.193460] PCI host bridge to bus 0000:00
+[    0.197896] pci_bus 0000:00: root bus resource [mem 0x10000000-0x13ffffff]
+[    0.205208] pci_bus 0000:00: root bus resource [io  0x0000]
+[    0.211154] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.218373] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.226855] pci 0000:00:00.0: [0777:11ac] type 00 class 0x028000
+[    0.226918] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x001fffff 64bit]
+[    0.226976] pci 0000:00:00.0: reg 0x30: [mem 0x00000000-0x0000ffff pref]
+[    0.227060] pci 0000:00:00.0: supports D1 D2
+[    0.227298] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[    0.227330] pci 0000:00:00.0: BAR 0: assigned [mem 0x10000000-0x101fffff 64bit]
+[    0.235134] pci 0000:00:00.0: BAR 6: assigned [mem 0x10200000-0x1020ffff pref]
+[    0.243575] clocksource: Switched to clocksource MIPS
+[    0.250142] NET: Registered protocol family 2
+[    0.255750] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.263189] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.270024] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.276963] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.283201] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.290236] NET: Registered protocol family 1
+[    0.294977] PCI: CLS 0 bytes, default 32
+[    0.300257] Crashlog allocated RAM at address 0x3f00000
+[    0.307388] workingset: timestamp_bits=30 max_order=14 bucket_order=0
+[    0.319798] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.326061] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.347081] io scheduler noop registered
+[    0.351264] io scheduler deadline registered (default)
+[    0.359290] pinctrl-single 1804002c.pinmux: 544 pins at pa b804002c size 68
+[    0.367873] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.375545] console [ttyS0] disabled
+[    0.379402] 18020000.uart: ttyS0 at MMIO 0x18020000 (irq = 8, base_baud = 2500000) is a 16550A
+[    0.388646] console [ttyS0] enabled
+[    0.396082] bootconsole [early0] disabled
+[    0.417103] m25p80 spi0.0: mx25l12805d (16384 Kbytes)
+[    0.422299] 5 fixed-partitions partitions found on MTD device spi0.0
+[    0.428800] Creating 5 MTD partitions on "spi0.0":
+[    0.433683] 0x000000000000-0x000000040000 : "u-boot"
+[    0.439690] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.446146] 0x000000050000-0x000000fb0000 : "firmware"
+[    0.473832] 2 uimage-fw partitions found on MTD device firmware
+[    0.479862] 0x000000050000-0x0000001e0000 : "kernel"
+[    0.485815] 0x0000001e0000-0x000000fb0000 : "rootfs"
+[    0.491666] mtd: device 4 (rootfs) set to be root filesystem
+[    0.497506] 1 squashfs-split partitions found on MTD device rootfs
+[    0.503817] 0x000000670000-0x000000fb0000 : "rootfs_data"
+[    0.510220] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.515966] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.523197] libphy: Fixed MDIO Bus: probed
+[    0.864001] libphy: ag71xx_mdio: probed
+[    1.303782] ag71xx 19000000.eth: connected to PHY at mdio-bus.0:04 [uid=004dd072, driver=Atheros 8035 ethernet]
+[    1.314830] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:RGMII
+[    1.322928] NET: Registered protocol family 10
+[    1.331648] Segment Routing with IPv6
+[    1.335581] NET: Registered protocol family 17
+[    1.340153] 8021q: 802.1Q VLAN Support v1.8
+[    1.351924] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    1.366958] Freeing unused kernel memory: 1200K
+[    1.371559] This architecture does not have kernel memory protection.
+[    2.063546] init: Console is alive
+[    2.067348] init: - watchdog -
+[    2.483592] random: fast init done
+[    3.122818] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    3.177233] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    3.195141] init: - preinit -
+[    4.614832] random: jshn: uninitialized urandom read (4 bytes read)
+[    4.915466] random: jshn: uninitialized urandom read (4 bytes read)
+[    4.961107] random: jshn: uninitialized urandom read (4 bytes read)
+[    5.186820] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[    8.508710] mount_root: jffs2 not ready yet, using temporary tmpfs overlay
+[    8.545152] urandom-seed: Seed file not found (/etc/urandom.seed)
+[    8.677943] procd: - early -
+[    8.680990] procd: - watchdog -
+[    9.273717] procd: - watchdog -
+[    9.277234] procd: - ubus -
+[    9.338190] urandom_read: 4 callbacks suppressed
+[    9.338200] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.350942] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.358024] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.365731] procd: - init -
+[    9.775926] kmodloader: loading kernel modules from /etc/modules.d/*
+[    9.787704] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    9.807001] Loading modules backported from Linux version v4.19-rc5-0-g6bf4ca7fbc85
+[    9.814836] Backport generated by backports.git v4.19-rc5-1-0-g05571dcd
+[    9.825539] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    9.841019] nf_conntrack version 0.5.0 (1024 buckets, 4096 max)
+[    9.918818] xt_time: kernel timezone is -0000
+[   10.156937] PPP generic driver version 2.4.2
+[   10.164272] NET: Registered protocol family 24
+[   10.203748] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[   10.209671] ath10k_pci 0000:00:00.0: pci irq legacy oper_irq_mode 1 irq_mode 0 reset_mode 0
+[   10.488341] ath10k_pci 0000:00:00.0: Direct firmware load for ath10k/pre-cal-pci-0000:00:00.0.bin failed with error -2
+[   10.499243] ath10k_pci 0000:00:00.0: Falling back to user helper
+[   10.713076] firmware ath10k!pre-cal-pci-0000:00:00.0.bin: firmware_loading_store: map pages failed
+[   10.722592] ath10k_pci 0000:00:00.0: Direct firmware load for ath10k/cal-pci-0000:00:00.0.bin failed with error -2
+[   10.733140] ath10k_pci 0000:00:00.0: Falling back to user helper
+[   11.031772] ath10k_pci 0000:00:00.0: Direct firmware load for ath10k/QCA988X/hw2.0/firmware-6.bin failed with error -2
+[   11.042695] ath10k_pci 0000:00:00.0: Falling back to user helper
+[   11.233853] firmware ath10k!QCA988X!hw2.0!firmware-6.bin: firmware_loading_store: map pages failed
+[   11.250082] ath10k_pci 0000:00:00.0: qca988x hw2.0 ubiquiti target 0x4100016c chip_id 0x043222ff sub 0777:e9f5
+[   11.260283] ath10k_pci 0000:00:00.0: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 1
+[   11.275164] ath10k_pci 0000:00:00.0: firmware ver 10.2.4-1.0-00037 api 5 features no-p2p,raw-mode,mfp,allows-mesh-bcast crc32 a4a52adb
+[   11.373843] ath10k_pci 0000:00:00.0: Direct firmware load for ath10k/QCA988X/hw2.0/board-2.bin failed with error -2
+[   11.384487] ath10k_pci 0000:00:00.0: Falling back to user helper
+[   11.568057] firmware ath10k!QCA988X!hw2.0!board-2.bin: firmware_loading_store: map pages failed
+[   11.577542] ath10k_pci 0000:00:00.0: board_file api 1 bmi_id N/A crc32 bebc7c08
+[   12.720676] ath10k_pci 0000:00:00.0: htt-ver 2.1 wmi-op 5 htt-op 2 cal file max-sta 128 raw 0 hwcrypto 1
+[   12.865782] ath: EEPROM regdomain: 0x0
+[   12.865792] ath: EEPROM indicates default country code should be used
+[   12.865797] ath: doing EEPROM country->regdmn map search
+[   12.865814] ath: country maps to regdmn code: 0x3a
+[   12.865820] ath: Country alpha2 being used: US
+[   12.865825] ath: Regpair used: 0x3a
+[   12.948905] ath: phy1: Unable to initialize hardware; initialization status: -5
+[   12.956395] ath9k 18100000.wmac: failed to initialize device
+[   12.962195] ath9k: probe of 18100000.wmac failed with error -5
+[   13.055737] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   28.244168] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   28.251178] jffs2_build_filesystem(): unlocking the mtd device...
+[   28.251184] done.
+[   28.259476] jffs2_build_filesystem(): erasing all blocks after the end marker...
+[   29.071684] eth0: link up (100Mbps/Full duplex)
+[   29.095859] br-lan: port 1(eth0) entered blocking state
+[   29.101174] br-lan: port 1(eth0) entered disabled state
+[   29.106908] device eth0 entered promiscuous mode
+[   29.193864] br-lan: port 1(eth0) entered blocking state
+[   29.199183] br-lan: port 1(eth0) entered forwarding state
+[   29.204924] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   30.113663] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   72.064474] done.
+[   72.066481] jffs2: notice: (1177) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[   72.310099] overlayfs: upper fs does not support tmpfile.
+[  128.993631] random: crng init done
+root@OpenWrt:~#
+</nowiki>
+</WRAP>\\
+
+=== NBE-5AC-19 ===
+<WRAP bootlog>
+<nowiki>
+BusyBox v1.35.0 (2022-01-14 22:13:23 UTC) built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r18567-9e15dea36e
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@OpenWrt:~# dmesg 
+[    0.000000] Linux version 5.10.90 (dani@tool) (mips-openwrt-linux-musl-gcc (OpenWrt GCC 11.2.0 r18567-9e15dea36e) 11.2.0, GNU ld (GNU Binutils) 2.37) #0 Fri Jan 14 22:13:23 2022
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019750 (MIPS 74Kc)
+[    0.000000] MIPS: machine is Ubiquiti NanoBeam AC Gen1 (XC)
+[    0.000000] SoC: Qualcomm Atheros QCA9558 ver 1 rev 0
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000]   Normal zone: 288 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32768 pages, LIFO batch:7
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: console=ttyS0,115200n8 rootfstype=squashfs,jffs2
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 121096K/131072K available (5443K kernel code, 594K rwdata, 1196K rodata, 1204K init, 201K bss, 9976K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 51
+[    0.000000] random: get_random_bytes called from start_kernel+0x3c0/0x5b0 with crng_init=0
+[    0.000000] CPU clock: 720.000 MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 5309056796 ns
+[    0.000008] sched_clock: 32 bits at 360MHz, resolution 2ns, wraps every 5965232126ns
+[    0.008299] Calibrating delay loop... 358.80 BogoMIPS (lpj=1794048)
+[    0.074985] pid_max: default: 32768 minimum: 301
+[    0.080052] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.087827] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.097881] dyndbg: Ignore empty _ddebug table in a CONFIG_DYNAMIC_DEBUG_CORE build
+[    0.108600] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.119109] futex hash table entries: 256 (order: -1, 3072 bytes, linear)
+[    0.126454] pinctrl core: initialized pinctrl subsystem
+[    0.132979] NET: Registered protocol family 16
+[    0.190826] clocksource: Switched to clocksource MIPS
+[    0.197369] NET: Registered protocol family 2
+[    0.202205] IP idents hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.210443] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    0.219445] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.227625] TCP bind hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.235143] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.242043] UDP hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.249012] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.256716] NET: Registered protocol family 1
+[    0.261426] PCI: CLS 0 bytes, default 32
+[    0.271227] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    0.281947] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.288154] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.302565] pinctrl-single 1804002c.pinmux: 544 pins, size 68
+[    0.309675] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.317188] printk: console [ttyS0] disabled
+[    0.321861] 18020000.uart: ttyS0 at MMIO 0x18020000 (irq = 9, base_baud = 2500000) is a 16550A
+[    0.331064] printk: console [ttyS0] enabled
+[    0.339956] printk: bootconsole [early0] disabled
+[    0.359145] led_gpio@0 enforce active low on chipselect handle
+[    0.377312] spi-nor spi0.0: mx25l12805d (16384 Kbytes)
+[    0.382634] 5 fixed-partitions partitions found on MTD device spi0.0
+[    0.389078] Creating 5 MTD partitions on "spi0.0":
+[    0.393972] 0x000000000000-0x000000040000 : "u-boot"
+[    0.399966] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.407761] 0x000000050000-0x000000fb0000 : "firmware"
+[    0.414086] 2 uimage-fw partitions found on MTD device firmware
+[    0.420101] Creating 2 MTD partitions on "firmware":
+[    0.425201] 0x000000000000-0x000000230000 : "kernel"
+[    0.432570] 0x000000230000-0x000000f60000 : "rootfs"
+[    0.438393] mtd: device 4 (rootfs) set to be root filesystem
+[    0.445054] 1 squashfs-split partitions found on MTD device rootfs
+[    0.451399] 0x0000005d0000-0x000000f60000 : "rootfs_data"
+[    0.458519] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.464251] 0x000000ff0000-0x000001000000 : "art"
+[    0.476779] libphy: Fixed MDIO Bus: probed
+[    0.853172] libphy: ag71xx_mdio: probed
+[    0.931462] ag71xx 19000000.eth: connected to PHY at mdio.0:04 [uid=004dd074, driver=Qualcomm Atheros AR8031/AR8033]
+[    0.942742] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode: sgmii
+[    0.949208] i2c /dev entries driver
+[    0.958182] NET: Registered protocol family 10
+[    0.966257] Segment Routing with IPv6
+[    0.970087] NET: Registered protocol family 17
+[    0.974737] 8021q: 802.1Q VLAN Support v1.8
+[    0.979734] PCI host bridge /ahb/pcie-controller@180c0000 ranges:
+[    0.986000]  MEM 0x0000000010000000..0x0000000011ffffff
+[    0.991319]   IO 0x0000000000000000..0x0000000000000000
+[    0.996796] PCI host bridge to bus 0000:00
+[    1.000996] pci_bus 0000:00: root bus resource [mem 0x10000000-0x11ffffff]
+[    1.007969] pci_bus 0000:00: root bus resource [io  0x0000]
+[    1.013633] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    1.020517] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    1.028610] pci 0000:00:00.0: [0777:11ac] type 00 class 0x028000
+[    1.034752] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x001fffff 64bit]
+[    1.041699] pci 0000:00:00.0: reg 0x30: [mem 0x00000000-0x0000ffff pref]
+[    1.048565] pci 0000:00:00.0: supports D1 D2
+[    1.053887] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[    1.060621] pci 0000:00:00.0: BAR 0: assigned [mem 0x10000000-0x101fffff 64bit]
+[    1.068103] pci 0000:00:00.0: BAR 6: assigned [mem 0x10200000-0x1020ffff pref]
+[    1.083861] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    1.097791] Freeing unused kernel memory: 1204K
+[    1.102424] This architecture does not have kernel memory protection.
+[    1.108966] Run /sbin/init as init process
+[    1.113124]   with arguments:
+[    1.113129]     /sbin/init
+[    1.113133]   with environment:
+[    1.113137]     HOME=/
+[    1.113141]     TERM=linux
+[    1.728687] init: Console is alive
+[    1.732693] init: - watchdog -
+[    2.310839] random: fast init done
+[    2.977290] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    3.030603] usbcore: registered new interface driver usbfs
+[    3.036290] usbcore: registered new interface driver hub
+[    3.041808] usbcore: registered new device driver usb
+[    3.054679] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    3.064218] ehci-fsl: Freescale EHCI Host controller driver
+[    3.072192] ehci-platform: EHCI generic platform driver
+[    3.080576] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    3.098430] init: - preinit -
+[    4.658267] random: jshn: uninitialized urandom read (4 bytes read)
+[    4.720585] random: jshn: uninitialized urandom read (4 bytes read)
+[    4.803977] random: jshn: uninitialized urandom read (4 bytes read)
+[    7.702314] eth0: link up (1000Mbps/Full duplex)
+[    7.707037] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    9.968807] jffs2: notice: (489) jffs2_build_xattr_subsystem: complete building xattr subsystem, 16 of xdatum (0 unchecked, 4 orphan) and 21 of xref (2 dead, 2 orphan) found.
+[    9.986743] mount_root: switching to jffs2 overlay
+[    9.995249] overlayfs: upper fs does not support tmpfile.
+[   10.008107] urandom-seed: Seeding with /etc/urandom.seed
+[   10.193131] eth0: link down
+[   10.208080] procd: - early -
+[   10.212032] procd: - watchdog -
+[   10.845957] procd: - watchdog -
+[   10.851763] procd: - ubus -
+[   10.950113] procd: - init -
+[   12.220170] kmodloader: loading kernel modules from /etc/modules.d/*
+[   12.638793] urngd: v1.0.2 started.
+[   12.797814] Loading modules backported from Linux version v5.15.8-0-g43e577d7a2cb
+[   12.805475] Backport generated by backports.git v5.15.8-1-0-g83f664bb
+[   12.829214] random: crng init done
+[   12.832725] random: 7 urandom warning(s) missed due to ratelimiting
+[   12.888479] xt_time: kernel timezone is -0000
+[   13.223858] PPP generic driver version 2.4.2
+[   13.230777] NET: Registered protocol family 24
+[   13.324442] ath10k 5.15 driver, optimized for CT firmware, probing pci device: 0x11ac.
+[   13.351805] ath10k_pci 0000:00:00.0: enabling device (0000 -> 0002)
+[   13.358342] ath10k_pci 0000:00:00.0: pci irq legacy oper_irq_mode 1 irq_mode 0 reset_mode 0
+[   19.562780] ath10k_pci 0000:00:00.0: qca988x hw2.0 ubiquiti target 0x4100016c chip_id 0x043222ff sub 0777:e4f5
+[   19.572970] ath10k_pci 0000:00:00.0: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   19.585036] ath10k_pci 0000:00:00.0: firmware ver 10.1-ct-8x-__fW-022-ecad3248 api 2 features wmi-10.x,has-wmi-mgmt-tx,mfp,txstatus-noack,wmi-10.x-CT,ratemask-CT,txrate-CT,get-temp-CT,tx-rc-CT,cust-stats-CT,retry-gt2-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT crc32 3e4cf97f
+[   20.310412] ath10k_pci 0000:00:00.0: board_file api 1 bmi_id N/A crc32 bebc7c08
+[   21.422739] ath10k_pci 0000:00:00.0: 10.1 wmi init: vdevs: 16  peers: 127  tid: 256
+[   21.440570] ath10k_pci 0000:00:00.0: wmi print 'P 128 V 8 T 410'
+[   21.446949] ath10k_pci 0000:00:00.0: wmi print 'msdu-desc: 1424  sw-crypt: 0 ct-sta: 0'
+[   21.455112] ath10k_pci 0000:00:00.0: wmi print 'alloc rem: 24984 iram: 38672'
+[   21.504634] ath10k_pci 0000:00:00.0: htt-ver 2.1 wmi-op 2 htt-op 2 cal file max-sta 128 raw 0 hwcrypto 1
+[   21.527554] ath10k_pci 0000:00:00.0: NOTE:  Firmware DBGLOG output disabled in debug_mask: 0x10000000
+[   21.664690] ath: EEPROM regdomain sanitized
+[   21.664707] ath: EEPROM regdomain: 0x64
+[   21.664712] ath: EEPROM indicates we should expect a direct regpair map
+[   21.664733] ath: Country alpha2 being used: 00
+[   21.664737] ath: Regpair used: 0x64
+[   21.739968] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   37.471422] br-lan: port 1(eth0) entered blocking state
+[   37.476734] br-lan: port 1(eth0) entered disabled state
+[   37.482377] device eth0 entered promiscuous mode
+[   39.542322] eth0: link up (1000Mbps/Full duplex)
+[   39.547055] br-lan: port 1(eth0) entered blocking state
+[   39.552393] br-lan: port 1(eth0) entered forwarding state
+[   39.651680] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   42.185424] ath10k_pci 0000:00:00.0: 10.1 wmi init: vdevs: 16  peers: 127  tid: 256
+[   42.203314] ath10k_pci 0000:00:00.0: wmi print 'P 128 V 8 T 410'
+[   42.209648] ath10k_pci 0000:00:00.0: wmi print 'msdu-desc: 1424  sw-crypt: 0 ct-sta: 0'
+[   42.217827] ath10k_pci 0000:00:00.0: wmi print 'alloc rem: 24984 iram: 38672'
+[   42.275809] ath10k_pci 0000:00:00.0: pdev param 0 not supported by firmware
+[   42.299470] ath10k_pci 0000:00:00.0: rts threshold -1
+[   42.327871] br-lan: port 2(wlan0) entered blocking state
+[   42.333320] br-lan: port 2(wlan0) entered disabled state
+[   42.339012] device wlan0 entered promiscuous mode
+[   45.737007] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+[   45.743714] br-lan: port 2(wlan0) entered blocking state
+[   45.749112] br-lan: port 2(wlan0) entered forwarding state
+root@OpenWrt:~# cat /proc/cpuinfo 
+system type             : Qualcomm Atheros QCA9558 ver 1 rev 0
+machine                 : Ubiquiti NanoBeam AC Gen1 (XC)
+processor               : 0
+cpu model               : MIPS 74Kc V5.0
+BogoMIPS                : 358.80
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 32
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+isa                     : mips1 mips2 mips32r1 mips32r2
+ASEs implemented        : mips16 dsp dsp2
+Options implemented     : tlb 4kex 4k_cache prefetch mcheck ejtag llsc dc_aliases perf_cntr_intr_bit cdmm contextconfig perf
+shadow register sets    : 1
+kscratch registers      : 0
+package                 : 0
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+
+root@OpenWrt:~# cat /proc/iomem 
+00000000-07ffffff : System RAM
+  00060000-005b1147 : Kernel code
+  005b1148-007721ff : Kernel data
+  008a0000-008d24c7 : Kernel bss
+10000000-11ffffff : pcie-controller@180c0000
+  10000000-101fffff : 0000:00:00.0
+    10000000-101fffff : ath
+  10200000-1020ffff : 0000:00:00.0
+14000000-14000fff : 180c0000.pcie-controller cfg_base
+18020000-1802001f : serial
+18040000-18040027 : 18040000.gpio gpio@18040000
+1804002c-1804006f : pinctrl-single
+18060008-1806000f : 18060008.wdt wdt@18060008
+1806001c-1806001f : 1806001c.reset-controller reset-controller@1806001c
+180600c0-180600c3 : 180600c0.reset-controller reset-controller@180600c0
+180c0000-180c0fff : 180c0000.pcie-controller crp_base
+180f0000-180f00ff : 180c0000.pcie-controller ctrl_base
+1f000000-1f00001b : 1f000000.spi spi@1f000000
+root@OpenWrt:~#</nowiki>
+</WRAP>\\
+==== OpenWrt Wifi Radio info ====
+Note that the NanoBeam AC does not seem to have the 2nd 2.4Ghz radio. Which is odd, because the original firmware did offer the 2nd SSID for management purposes.
+I am unsure if maybe only the Gen2 has an actual 2nd radio, or of the firmware I loaded does not address the correct chip
+
+<WRAP bootlog>
+<nowiki>
+
+root@OpenWrt:~# iwconfig
+lo        no wireless extensions.
+
+eth0      no wireless extensions.
+
+br-lan    no wireless extensions.
+
+wlan0     IEEE 802.11  ESSID:off/any
+          Mode:Managed  Access Point: Not-Associated   Tx-Power=0 dBm
+          RTS thr:off   Fragment thr:off
+          Encryption key:off
+          Power Management:off
+
+root@OpenWrt:~# iw list
+Wiphy phy0
+        max # scan SSIDs: 16
+        max scan IEs length: 199 bytes
+        max # sched scan SSIDs: 0
+        max # match sets: 0
+        max # scan plans: 1
+        max scan plan interval: -1
+        max scan plan iterations: 0
+        Retry short limit: 7
+        Retry long limit: 4
+        Coverage class: 0 (up to 0m)
+        Device supports AP-side u-APSD.
+        Available Antennas: TX 0x3 RX 0x3
+        Configured Antennas: TX 0x3 RX 0x3
+        Supported interface modes:
+                 * managed
+                 * AP
+                 * monitor
+                 * mesh point
+        Band 2:
+                Capabilities: 0x19ef
+                        RX LDPC
+                        HT20/HT40
+                        SM Power Save disabled
+                        RX HT20 SGI
+                        RX HT40 SGI
+                        TX STBC
+                        RX STBC 1-stream
+                        Max AMSDU length: 7935 bytes
+                        DSSS/CCK HT40
+                Maximum RX AMPDU length 65535 bytes (exponent: 0x003)
+                Minimum RX AMPDU time spacing: 8 usec (0x06)
+                HT TX/RX MCS rate indexes supported: 0-15
+                VHT Capabilities (0x338001b2):
+                        Max MPDU length: 11454
+                        Supported Channel Width: neither 160 nor 80+80
+                        RX LDPC
+                        short GI (80 MHz)
+                        TX STBC
+                        RX antenna pattern consistency
+                        TX antenna pattern consistency
+                VHT RX MCS set:
+                        1 streams: MCS 0-9
+                        2 streams: MCS 0-9
+                        3 streams: not supported
+                        4 streams: not supported
+                        5 streams: not supported
+                        6 streams: not supported
+                        7 streams: not supported
+                        8 streams: not supported
+                VHT RX highest supported: 0 Mbps
+                VHT TX MCS set:
+                        1 streams: MCS 0-9
+                        2 streams: MCS 0-9
+                        3 streams: not supported
+                        4 streams: not supported
+                        5 streams: not supported
+                        6 streams: not supported
+                        7 streams: not supported
+                        8 streams: not supported
+                VHT TX highest supported: 0 Mbps
+                Frequencies:
+                        * 5180 MHz [36] (23.0 dBm)
+                        * 5200 MHz [40] (23.0 dBm)
+                        * 5220 MHz [44] (23.0 dBm)
+                        * 5240 MHz [48] (23.0 dBm)
+                        * 5260 MHz [52] (23.0 dBm) (radar detection)
+                        * 5280 MHz [56] (23.0 dBm) (radar detection)
+                        * 5300 MHz [60] (23.0 dBm) (radar detection)
+                        * 5320 MHz [64] (23.0 dBm) (radar detection)
+                        * 5500 MHz [100] (23.0 dBm) (radar detection)
+                        * 5520 MHz [104] (23.0 dBm) (radar detection)
+                        * 5540 MHz [108] (23.0 dBm) (radar detection)
+                        * 5560 MHz [112] (23.0 dBm) (radar detection)
+                        * 5580 MHz [116] (23.0 dBm) (radar detection)
+                        * 5600 MHz [120] (23.0 dBm) (radar detection)
+                        * 5620 MHz [124] (23.0 dBm) (radar detection)
+                        * 5640 MHz [128] (23.0 dBm) (radar detection)
+                        * 5660 MHz [132] (23.0 dBm) (radar detection)
+                        * 5680 MHz [136] (23.0 dBm) (radar detection)
+                        * 5700 MHz [140] (23.0 dBm) (radar detection)
+                        * 5720 MHz [144] (23.0 dBm) (radar detection)
+                        * 5745 MHz [149] (30.0 dBm)
+                        * 5765 MHz [153] (30.0 dBm)
+                        * 5785 MHz [157] (30.0 dBm)
+                        * 5805 MHz [161] (30.0 dBm)
+                        * 5825 MHz [165] (30.0 dBm)
+                        * 5845 MHz [169] (disabled)
+                        * 5865 MHz [173] (disabled)
+        valid interface combinations:
+                 * #{ AP, mesh point } <= 8, #{ managed } <= 1,
+                   total <= 8, #channels <= 1, STA/AP BI must match, radar detect widths: { 20 MHz (no HT), 20 MHz, 40 MHz, 80 MHz }
+
+        HT Capability overrides:
+                 * MCS: ff ff ff ff ff ff ff ff ff ff
+                 * maximum A-MSDU length
+                 * supported channel width
+                 * short GI for 40 MHz
+                 * max A-MPDU length exponent
+                 * min MPDU start spacing
+        Device supports VHT-IBSS.
+root@OpenWrt:~#
+</nowiki>
+</WRAP>\\
+
+
+===== Notes =====
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ath79 QCA9558 AR9342 16flash 64ram 128ram 1port 2port gigabitethernet 0USB 2WNIC 802.11ac 802.11bgn InternalAntenna poe 24v_powered outdoor}}

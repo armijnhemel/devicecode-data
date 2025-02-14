@@ -1,0 +1,1457 @@
+====== Actiontec MI424WR REV. I======
+
+The Actiontec MI424WR Rev. I is a cable modem/router distributed by Verizon, Frontier, and Fibertec. It was released in 2011, and is powered by a Marvell 88F6560 SoC, from the Avanta family of SoCs.
+
+{{media:actiontec:mi424wrrevi.png?200|Actiontec MI424WR REV. I}}
+
+FIXME
+===== Getting started with a new Device Page =====
+  - This is an empty template that suggests the information that should be present on a well-constructed Device Page.
+  - There are several "fixme" tags throughout this template. As you fill in the page, remove those tags so that people can judge its completeness.
+  - When there's no more "fixme" left other than this one, delete it too.
+
+===== Keep the articles modular =====
+| Please include only model specific information, omit bla,bla and put everything generic into separate articles  |
+| If you have no time to write certain stuff, link to [[docs:start]]  |
+| [[docs:guide-quick-start:checks_and_troubleshooting]] should lead the way, do not explain this again  |
+| DO NOT provide a complete howto here! Instead //groom// the general HowTos.  |
+FIXME
+
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^Actiontec$", "model": "^MI424WR$", "version": "^I$"}
+} -->
+
+==== Building OEM kernel ====
+:!: Resulting kernel doesn't contain anything except kernel itself! No other software included. Installing the kernel image to the flash will make your device useless! Safe way of trying it is using [[toh:actiontec:mi424wr_rev._i#booting_oem_kernel|TFTP boot]]. :!:
+
+OEM source code available at:
+  * [[http://opensource.actiontec.com/mi424wri.html]]
+
+Kernel can be built inside Docker container using steps below.
+
+Start docker in privileged mode to be able using loop device. Loop device is required for building kernel.
+<code>
+docker run --name actiontec-40.20.2 --privileged --device /dev/loop0 -ti debian:10 bash
+</code>
+
+Inside docker execute (steps below are interactive so cannot be just copied and pasted):
+<code>
+adduser user
+passwd
+# toolchain contains `i386` binaries
+dpkg --add-architecture i386
+apt-get update
+# `bzip2` is required to unpack toolchain
+# `build-essential`, `bison`, `gawk` are required to build firmware
+# other tools are nice to have
+apt-get install bzip2 build-essential bison gawk file kmod less vim wget dc
+apt-get install libc6:i386
+# `sh` contains incorrect empty `$OSTYPE` value which confuses `make config`, `bash` doesn't have this issue
+rm /bin/sh 
+ln -s /bin/bash /bin/sh
+
+mkdir /usr/local/openrg
+cd /usr/local/openrg/
+wget http://opensource.actiontec.com/compilers_toolchains/i386-jungo-linux-gnu.tar.gz
+wget http://opensource.actiontec.com/compilers_toolchains/toolchain-arm-none-linux-gnueabi.jpkg
+wget http://opensource.actiontec.com/compilers_toolchains/toolchain-arm-actiontec-feroceon-linux-gnueabi.jpkg
+wget http://opensource.actiontec.com/compilers_toolchains/jpkg.tar.gz
+tar xzf i386-jungo-linux-gnu.tar.gz 
+tar xzf jpkg.tar.gz 
+./jpkg -x -C / toolchain-arm-none-linux-gnueabi.jpkg 
+./jpkg -x -C / toolchain-arm-actiontec-feroceon-linux-gnueabi.jpkg 
+
+su user
+cd
+wget http://opensource.actiontec.com/sourcecode/mi424wr/rev_i/actiontec_opensrc_mi424wr-rev-i_fw-40-20-2.tar.gz
+tar -zxvf actiontec_opensrc_mi424wr-rev-i_fw-40-20-2.tar.gz 
+cd opensource-mi424wr-rev-i/rg/
+# note that this configuration is not equal to the production ones and includes only busybox and the bare essentials.
+make config DIST=FEROCEON CONFIG_RG_GPL=y LIC=../jpkg_actiontec_gpl.lic 
+make -j4
+</code>
+
+Resulting image is located at ''/home/user/opensource-mi424wr-rev-i/rg/build/os/MI424WR-GEN3I.img''
+==== Booting OEM kernel ====
+In order to use TFTP boot you need access to device serial console. Connect device into network using first Ethernet LAN port.
+
+Booting using built kernel:
+  - set up TFTP server
+  - copy /home/user/opensource-mi424wr-rev-i/rg/build/os/MI424WR-GEN3I.img to /srv/tftp/openrg.img:
+    - <code>docker cp actiontec-40.20.2:/home/user/opensource-mi424wr-rev-i/rg/build/os/MI424WR-GEN3I.img /srv/tftp/openrg.img</code>
+  - boot up the device with serial console connected
+  - press any key until you see ''Marvell>>'' prompt
+  - set IP address environment variables:
+    - <code>set serverip <TFTP server IP></code>
+    - <code>set ipaddr <router IP></code>
+  - load firmware:
+    - <code>run openrg_net</code>
+  - in ''busybox'' prompt mount ''procfs'' manually:
+    - <code>mount -t proc p /proc</code>
+===== Experimental Versions =====
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+ *   The official Table of Hardware only lists current, stable versions of OpenWrt.  *
+ *   Use this space to describe any on-going efforts to create a newer version       *
+ *   of the firmware for this device. Provide links to firmware images,              *
+ *   active threads on the forum, or other sources of information.                   *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+Build instructions for installing OpenWrt are https://github.com/kenballus/openwrt-mi424wr-rev-i, along with an initramfs uImage that can be booted with TFTP.
+Further discussion at https://forum.doozan.com/read.php?2,78499.
+===== Hardware Highlights =====
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Actiontec$", "model": "^MI424WR$", "version": "^I$"}
+} -->
+
+==== Flash Layout ====
+<code>
+Flash layout:
+
+
+
+Section 00 Type FACTORY    Range 0x00000000-0x00020000 MaxSize 0x0001FF6C
+
+Flash file: /mnt/jffs2/rg_factory
+
+	Size 0x0000040A Name 'Downloaded at: Fri Dec 14 19:02:44 2007'
+
+	Checksum 0x0000EB9E Counter 0x0000000B Start Offset 0x00000000
+
+
+
+Section 01 Type CONF       Range 0x00000000-0x00020000 MaxSize 0x0001FF6C
+
+Flash file: /mnt/jffs2/rg_conf1
+
+	Size 0x000075B6 Name 'rg_conf'
+
+	Checksum 0x003A4EAB Counter 0x00012CED Start Offset 0x00000000
+
+
+
+Section 02 Type CONF       Range 0x00000000-0x00020000 MaxSize 0x0001FF6C
+
+Flash file: /mnt/jffs2/rg_conf2
+
+	Size 0x000075B6 Name 'rg_conf'
+
+	Checksum 0x003A1A25 Counter 0x00012CE9 Start Offset 0x00000000
+
+
+
+Section 03 Type BACKUP_CONF Range 0x00000000-0x00020000 MaxSize 0x0001FF6C
+
+Flash file: /mnt/jffs2/backup_rg_conf
+
+	Size 0x00007E70 Name 'rg_conf'
+
+	Checksum 0x003F08CB Counter 0x000095EE Start Offset 0x00000000
+
+
+
+Section 04 Type IMAGE      Range 0x00000000-0x00F00000 MaxSize 0x00EFFF6C
+
+Flash file: /mnt/jffs2/openrg1.img
+
+	Size 0x00636110 Name 'FEROCEON Version 4.7.5.3.31.2.19.40.21.24 Downloaded at: Fri Aug 12 00:32:36 2016'
+
+	Checksum 0x32418435 Counter 0x00009601 Start Offset 0x00000000
+
+
+
+Section 05 Type IMAGE      Range 0x00000000-0x00F00000 MaxSize 0x00EFFF6C
+
+Flash file: /mnt/jffs2/openrg2.img
+
+	Size 0x00636110 Name 'FEROCEON Version 4.7.5.3.31.2.19.40.21.24 Downloaded at: Fri Aug 12 00:34:32 2016'
+
+	Checksum 0x3241843E Counter 0x0000960C Start Offset 0x00000000
+
+
+
+Section 06 Type LOG        Range 0x00000000-0x00040000 MaxSize 0x0003FF6C
+
+Flash file: /mnt/jffs2/persistent_log
+
+	Size 0x00004A54 Name 'Persistent_log'
+
+	Checksum 0x00243A30 Counter 0x00012CEC Start Offset 0x00000000
+
+
+
+Total 7 sections found.
+</code>
+==== OEM easy installation ====
+
+| FIXME The instructions below are for Broadcom devices and only serve as an example. Don't leave them in place if they do not apply to a particular device! |
+
+This section deals with how you install OpenWrt from a device freshly opened.  Plus the steps required such as reset to factory defaults if the device has already been configured
+
+**Note:** Reset router to factory defaults if it has been previously configured.
+  *Browse to http://192.168.1.1/Upgrade.asp
+  *Upload .bin file to router
+  *Wait for it to reboot
+  *Telnet to 192.168.1.1 and set a root password, or browse to http://192.168.1.1 if LuCI is installed.
+
+==== OEM installation using the TFTP method ====
+
+->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+=== Specific values you need ===
+
+| Bootloader tftp server IPv4 address | FILL-IN |
+| Bootloader MAC address (special) | FILL-IN |
+| Firmware tftp image | [[:downloads|Latest OpenWrt release]] (**''NOTE:''** Name must contain //"tftp"//) |
+| TFTP Transfer Window | FILL-IN seconds |
+| TFTP Window Start | approximately FILL-IN seconds after power on |
+| TFTP Client Required IP Address | FILL-IN |
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the mtd command line tool. It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== LuCI Web Upgrade Process ===
+
+  * Browse to http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/ LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+=== Terminal Upgrade Process ===
+
+  * Login as root via SSH on 192.168.1.1
+  * Use the following commands to upgrade.
+
+<code>
+cd /tmp/
+wget http://http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+sysupgrade /tmp/xxx.abc
+</code>
+
+  * If sysupgrade does not support this router, use the following commands.
+
+<code>
+cd /tmp/
+wget http://http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+mtd write /tmp/xxx.abc linux && reboot</code>
+
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| vlan0 (eth0.0)   | LAN ports (1 to 4)   | None                    |
+| vlan1 (eth0.1)   | WAN port             | DHCP                    |
+| wl0              | WiFi                 | Disabled                |
+
+==== Switch Ports (for VLANs) ====
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | 4             |
+| LAN 1            | 3             |
+| LAN 2            | 2             |
+| LAN 3            | 1             |
+| LAN 4            | 0             |
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The Linksys WRT54GL has two buttons. They are Reset and Secure Easy Setup. Here, we merely name the buttons, so we can use them in the above Howto:
+^ BUTTON ^ Event ^
+| Reset | reset | 
+| Secure Easy Setup | ses | 
+
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedcurrentrel", "brand", "model", "version", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Actiontec$", "model": "^MI424WR$", "version": "^I$"}
+} -->
+
+==== Photos ====
+Model Number
+
+//Front://
+
+**Photo of front of the casing**
+
+//Back://
+
+**Photo of back of the casing**
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+  * To remove the cover do a/b/c
+
+//Main PCB//
+
+**Photo of PCB**
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+Serial port is available via J7 6-pin connector on PCB. First and last pins are marked by 1 and 6 respectively. First three pins are GND, TXD, and RXD.
+
+Serial console parameters: 115200, 8N1
+
+Photo of PCB with UART pins labeled:
+https://i.imgur.com/rZBZ4jf.png
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:
+
+**Photo of PCB with markings**
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Bootlogs =====
+==== OEM bootlog ====
+
+<WRAP bootlog>
+<nowiki>BootROM 1.34
+Booting from NAND flash
+BootROM: Image checksum verification PASSED
+
+ __   __                      _ _
+|  \/  | __ _ _ ____   _____| | |
+| |\/| |/ _` | '__\ \ / / _ \ | |
+| |  | | (_| | |   \ V /  __/ | |
+|_|  |_|\__,_|_|    \_/ \___|_|_|
+         _   _     ____              _
+        | | | |   | __ )  ___   ___ | |_
+        | | | |___|  _ \ / _ \ / _ \| __|
+        | |_| |___| |_) | (_) | (_) | |_
+         \___/    |____/ \___/ \___/ \__|
+ ** LOADER **
+
+
+U-Boot 2009.08 (May 22 2014 - 18:26:38) Marvell version: 2.1.6_NQ
+
+Board: MI424WR-I
+SoC:   88F6560 A0
+CPU:   Marvell Feroceon (Rev 1) - LE
+       CPU @ 1200Mhz, L2 @ 480Mhz
+       DDR3 @ 400Mhz, TClock @ 200Mhz
+PEX 0: Root Complex Interface, Detected Link X1
+PEX 1: Detected No Link.
+DRAM:  128 MB
+       CS 0: base 0x00000000 size 128 MB
+       Addresses 10M - 0M are saved for the U-Boot usage.
+NAND:  1bit HM ECC, Size: 128 MiB
+USB 0: Host Mode
+Shutting down unused interfaces:
+       PON
+       SATA
+       3xFE-PHY
+Modules Detected:
+       No PON module.
+       RGMIIA Module on Switch port #6.
+       RGMIIB Module on MAC0.
+       Ethernet Switch on MAC1.
+       QSGMII Module.
+Initialized 1545 PHY
+Net:   egiga0, egiga1 [PRIME]
+Hit any key to stop autoboot:  0
+### JFFS2 loading 'openrg1.img' to 0x2000000
+Scanning JFFS2 FS: ...
+Done.
+### JFFS2 load complete: 15728640 bytes loaded to 0x2000000
+### JFFS2 loading 'openrg2.img' to 0x3000000
+### JFFS2 load complete: 15728640 bytes loaded to 0x3000000
+Updating image section offsets with passed parameters
+Section 4 at address 0x2000000
+Section 5 at address 0x3000000
+Looking for active section/image:
+0. section: type:1 not an image
+1. section: type:3 not an image
+2. section: type:3 not an image
+3. section: type:6 not an image
+4. section: type:2 checking at address 0x2000000... ok: 'FEROCEON Version 4.7.5.3.31.2.19.40.21.18 Downloaded at: Fri Dec 14 19:03:08 2007' 0x6398f4@0x2000000 count:0xd
+5. section: type:2 checking at address 0x3000000... ok: 'FEROCEON Version 4.7.5.3.31.2.19.40.21.18 Downloaded at: Fri Dec 14 19:04:12 2007' 0x6398f4@0x3000000 count:0xe
+6. section: type:8 not an image
+Active section/image: 5 count:0xe. (246 ms)
+## Booting kernel from Legacy Image at 03000000 ...
+   Image Name:   OpenRG
+   Created:      2014-06-27  22:19:44 UTC
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    6527156 Bytes =  6.2 MB
+   Load Address: 01000000
+   Entry Point:  01000000
+   Verifying Checksum ... OK
+   Loading Kernel Image ... OK
+OK
+
+Starting kernel ...
+
+Uncompressing Linux.......................................................................................................................................................................................................................................................... done, booting the kernel.
+CPU: ARM926EJ-Sid(wt) [56251311] revision 1 (ARMv5TE)
+Machine: Feroceon-KW2
+Using UBoot passing parameters structure
+Memory policy: ECC disabled, Data cache writethrough
+<7>On node 0 totalpages: 32768
+<7>  DMA zone: 32768 pages, LIFO batch:7
+<7>  DMA32 zone: 0 pages, LIFO batch:0
+<7>  Normal zone: 0 pages, LIFO batch:0
+<7>  HighMem zone: 0 pages, LIFO batch:0
+CPU0: D VIVT write-back cache
+CPU0: I cache: 16384 bytes, associativity 4, 32 byte lines, 128 sets
+CPU0: D cache: 16384 bytes, associativity 4, 32 byte lines, 128 sets
+Built 1 zonelists
+<5>Kernel command line: console=ttyS0,115200
+PID hash table entries: 1024 (order: 10, 16384 bytes)
+Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+<6>Memory: 128MB 0MB 0MB 0MB = 128MB total
+<5>Memory: 121600KB available (2276K code, 632K data, 868K init)
+<7>Calibrating delay loop... 1196.03 BogoMIPS (lpj=5980160)
+Mount-cache hash table entries: 512
+<6>CPU: Testing write buffer coherency: ok
+Linux version 2.6.16.14feroceon #1 Fri Jun 27 15:19:34 PDT 2014
+CPU: ARM926EJ-Sid(wt) [56251311] revision 1 (ARMv5TE)
+Machine: Feroceon-KW2
+Using UBoot passing parameters structure
+Memory policy: ECC disabled, Data cache writethrough
+CPU0: D VIVT write-back cache
+CPU0: I cache: 16384 bytes, associativity 4, 32 byte lines, 128 sets
+CPU0: D cache: 16384 bytes, associativity 4, 32 byte lines, 128 sets
+Built 1 zonelists
+Kernel command line: console=ttyS0,115200
+PID hash table entries: 1024 (order: 10, 16384 bytes)
+Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+Memory: 128MB 0MB 0MB 0MB = 128MB total
+Memory: 121600KB available (2276K code, 632K data, 868K init)
+Mount-cache hash table entries: 512
+CPU: Testing write buffer coherency: ok
+NET: Registered protocol family 16
+
+CPU Interface
+-------------
+SDRAM_CS0 ....base 00000000, size 128MB
+SDRAM_CS1 ....no such
+SDRAM_CS2 ....no such
+SDRAM_CS3 ....no such
+DEVICE_CS0 ....no such
+DEVICE_CS1 ....no such
+DEVICE_CS2 ....no such
+DEVICE_CS3 ....no such
+PEX0_MEM ....base f3000000, size  16MB
+PEX0_IO ....base f2000000, size   1MB
+PEX1_MEM ....base f4000000, size  16MB
+PEX1_IO ....base f2100000, size   1MB
+INTER_REGS ....base f1000000, size   1MB
+NAND_NOR_CS ....base f8000000, size   2MB
+SPI_CS0 ....base f0000000, size  16MB
+SPI_CS1 ....no such
+SPI_CS2 ....no such
+SPI_CS3 ....no such
+SPI_CS4 ....no such
+SPI_CS5 ....no such
+SPI_CS6 ....no such
+SPI_CS7 ....no such
+SPI_B_CS0 ....no such
+BOOT_ROM_CS ....no such
+DEV_BOOTCS ....no such
+CRYPT1_ENG ....no such
+CRYPT2_ENG ....no such
+PNC_BM ....base f5000000, size   1MB
+ETH_CTRL ....base f5100000, size   1MB
+PON_CTRL ....base f5200000, size   1MB
+NFC_CTRL ....no such
+
+  Marvell Development Board (LSP Version KW2_LSP_1.0.4_P9_KERNEL_2.6.16.14_NQ)-- MI424WR-I  Soc: 88F6560 A0 LE
+
+ Detected Tclk 200000000 and SysClk 400000000
+Marvell USB EHCI Host controller #0: c7c95e00
+PEX0 interface detected Link X1
+PEX1 interface detected no Link.
+PCI: bus0: Fast back to back transfers disabled
+PCI: bus1: Fast back to back transfers enabled
+SCSI subsystem initialized
+usbcore: registered new driver usbfs
+usbcore: registered new driver hub
+RTC has been updated!!!
+RTC registered
+cpufreq: Init kirkwood cpufreq driver
+Feroceon Watchdog Timer: Initial timeout 2 sec
+JFFS2 version 2.2. (NAND) (C) 2001-2003 Red Hat, Inc.
+Initializing Cryptographic API
+io scheduler noop registered
+io scheduler anticipatory registered (default)
+io scheduler deadline registered
+io scheduler cfq registered
+
+Random: 0x19c7abc3
+Serial: 8250/16550 driver $Revision: 1.1.1.1.2.1.42.1 $ 4 ports, IRQ sharing disabled
+serial8250.0: ttyS0 at MMIO 0xf1012000 (irq = 33) is a 16550A
+0 - Base 0x00000000 , Size = 0x08000000.
+8 - Base 0xf3000000 , Size = 0x01000000.
+9 - Base 0xf2000000 , Size = 0x00100000.
+10 - Base 0xf4000000 , Size = 0x01000000.
+11 - Base 0xf2100000 , Size = 0x00100000.
+12 - Base 0xf1000000 , Size = 0x00100000.
+13 - Base 0xf8000000 , Size = 0x00200000.
+14 - Base 0xf0000000 , Size = 0x01000000.
+27 - Base 0xf5000000 , Size = 0x00100000.
+28 - Base 0xf5100000 , Size = 0x00100000.
+29 - Base 0xf5200000 , Size = 0x00100000.
+mvPncVirtBase = 0xc8a00000
+  o 2 Giga ports supported
+  o NETA acceleration mode 4
+  o BM supported: short buffer size is 256 bytes
+  o PnC supported
+  o HWF supported
+  o PMT supported
+  o RX Queue support: 1 Queues * 3072 Descriptors
+  o TX Queue support: 1 Queues * 3072 Descriptors
+  o Receive checksum offload supported
+  o Transmit checksum offload supported
+  o Driver ERROR statistics enabled
+  o Driver INFO statistics enabled
+  o Driver DEBUG statistics enabled
+  o Proc tool API enabled
+
+  o Loading network interface(s)
+
+  o Port 0 is connected to Linux netdevice
+        giga p=0: mtu=1500, mac=c094ffa2
+    o eth1, ifindex = 1, GbE port = 0
+
+  o Port 1 is connected to Linux netdevice
+        giga p=1: mtu=1500, mac=c094ffa2
+    o eth0, ifindex = 2, GbE port = 1
+
+NFTL driver: nftlcore.c $Revision: 1.1.1.1 $, nftlmount.c $Revision: 1.1.1.1 $
+Using Hamming 1-bit ECC for NAND device
+NAND device: Manufacturer ID: 0x92, Chip ID: 0xf1 (Unknown NAND 128MiB 3,3V 8-bit)
+Scanning device for bad blocks
+Using static partition definition
+Creating 2 MTD partitions on "nand_mtd":
+0x00200000-0x02200000 : "JFFS2"
+0x00000000-0x00200000 : "u-boot"
+ehci_marvell ehci_marvell.70059: Marvell Orion EHCI
+ehci_init: 1
+ehci_init: 2
+ehci_init: 3
+ehci_init: 4
+ehci_marvell ehci_marvell.70059: new USB bus registered, assigned bus number 1
+ehci_marvell ehci_marvell.70059: irq 23, io base 0xf1050100
+ehci_marvell ehci_marvell.70059: USB 2.0 started, EHCI 1.00, driver 10 Dec 2004
+Max current required for this configuration: 0 mA. Device is self-powered. Bus current: 0
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+USB Universal Host Controller Interface driver v2.3
+i2c /dev entries driver
+u32 classifier
+    OLD policer on
+NET: Registered protocol family 2
+IP route cache hash table entries: 2048 (order: 1, 8192 bytes)
+TCP established hash table entries: 8192 (order: 3, 32768 bytes)
+TCP bind hash table entries: 8192 (order: 3, 32768 bytes)
+TCP: Hash tables configured (established 8192 bind 8192)
+TCP reno registered
+NET: Registered protocol family 1
+NET: Registered protocol family 10
+6WIND/LSIIT IPv6 multicast forwarding 0.1 plus PIM-SM/SSM with *BSD API
+lo: Disabled Privacy Extensions
+IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+Freeing init memory: 868K
+usb 1-1: new high speed USB device using ehci_marvell and address 2
+Max current required for this configuration: 100 mA. Device is self-powered. Bus current: 500
+usb 1-1: configuration #1 chosen from 1 choice
+hub 1-1:1.0: USB hub found
+hub 1-1:1.0: 4 ports detected
+Version: 4.7.5.3.31.2.19.40.21.18
+Platform: Marvell Feroceon SoC
+Hardware Version:
+Compilation Time: 27-Jun-14 22:11:05
+Tag: Ntag-bhr-revI-ipv6-40-21-18
+Compilation Flags: LIC=../jpkg_actiontec_mv.lic ACTION_TEC_VERIZON=y ACTION_TEC_IPV6_FIREWALL=y CONFIG_IPV6=y CONFIG_UBOOT_UPGRADE_HOOK=y CONFIG_VERIZON_HPM=y CONFIG_BHR_REV_I=y DIST=FEROCEON
+User Information: bhr@swbuild /home/bhr/Rev-I/Verizon/tag-bhr-revI-ipv6-40-21-18/bhr/rg
+insmod: add-symbol-file build/debug/one_module.o 0xbf000000 -s .main_flow 0xbf031c98 -s .data 0xbf053a18 -s .bss 0xbf055160
+Loading license 27b32d1bd167c7d52db0af53010103e3a16793d6e6eac9a0834e90d89e552206ec4df0af922881aebdfff78776c203fbcf8f935f6ee840e0ab1d0f60a2664572e3df8e214cfde18cdd1abecb943e7262335df88b76fc2cf438462d3bba7707.ACTIONTEC
+loading license key: ACTIONTEC
+loading license key: ACTIONTEC
+insmod: add-symbol-file build/debug/kleds_mod.o 0xbf091000 -s .data 0xbf091dec -s .bss 0xbf091f80
+Empty flash at 0x00675330 ends at 0x00675800
+Empty flash at 0x00896b74 ends at 0x00897000
+Empty flash at 0x009ef96c ends at 0x009f0000
+Empty flash at 0x013ae2a8 ends at 0x013ae800
+Empty flash at 0x01770b38 ends at 0x01771000
+JFFS2 notice: (121) check_node_data: wrong data CRC in data node at 0x013ad800: read 0xd1ee7ef1, calculated 0x6571cb39.
+Press ESC to enter BOOT MENU mode.
+Userspace Watchdog has been enabled
+
+Userspace Watchdog heartbeat=5 seconds
+
+Initializing WMM components.
+Detected FEROCEON revision: B3A1.
+Detected FEROCEON revision: B3A1.
+insmod: add-symbol-file build/debug/EN2510_clnkdrv.o 0xbf094000 -s .data 0xbf09a810 -s .bss 0xbf09a9e0
+insmod: add-symbol-file build/debug/ath_hal.o 0xbf09c000 -s .data 0xbf1100e8 -s .bss 0xbf114f60
+ath_hal: 0.9.17.1 (AR5212, AR5416, RF5111, RF5112, RF2413, RF5413, RF2316, RF2317, DEBUG, REGOPS_FUNC, WRITE_EEPROM, 11D)
+insmod: add-symbol-file build/debug/wlan.o 0xbf116000 -s .data 0xbf14db58 -s .bss 0xbf14e2a0
+wlan: 0.8.4.2 (Atheros/multi-bss)
+insmod: add-symbol-file build/debug/ath_rate_atheros.o 0xbf150000 -s .data 0xbf155130 -s .bss 0xbf15eb80
+ath_rate_atheros: Version 2.0.1
+Copyright (c) 2001-2004 Atheros Communications, Inc, All Rights Reserved
+insmod: add-symbol-file build/debug/ath_dfs.o 0xbf160000 -s .data 0xbf167edc -s .bss 0xbf168040
+ath_dfs: Version 2.0.0
+Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+insmod: add-symbol-file build/debug/wlan_wep.o 0xbf16a000 -s .data 0xbf16b550 -s .bss 0xbf16b6a0
+insmod: add-symbol-file build/debug/wlan_tkip.o 0xbf16d000 -s .data 0xbf16fc00 -s .bss 0xbf16fd40
+insmod: add-symbol-file build/debug/wlan_ccmp.o 0xbf171000 -s .data 0xbf172efc -s .bss 0xbf173040
+insmod: add-symbol-file build/debug/wlan_xauth.o 0xbf175000 -s .data 0xbf175319 -s .bss 0xbf175460
+insmod: add-symbol-file build/debug/wlan_acl.o 0xbf177000 -s .data 0xbf1780ef -s .bss 0xbf178240
+wlan: mac acl policy registered
+insmod: add-symbol-file build/debug/wlan_scan_ap.o 0xbf17a000 -s .data 0xbf17cf5c -s .bss 0xbf17d0c0
+insmod: add-symbol-file build/debug/ath_pci.o 0xbf17f000 -s .data 0xbf1a2008 -s .bss 0xbf1a2ac0
+ath_pci: 0.9.4.5 (Atheros/multi-bss)
+ath_pci: CR-LSDK-1.4.0.112
+Chan  Freq  RegPwr  HT   CTL CTL_U CTL_L DFS
+   1  2412g     27        0    0    0     N
+   1  2412n     27  HT20  1    0    0     N
+   1  2412b     27        0    0    0     N
+   1  2412n     27  HT40  1    0    1     N
+   2  2417n     27  HT40  1    0    1     N
+   2  2417n     27  HT20  1    0    0     N
+   2  2417b     27        0    0    0     N
+   2  2417g     27        0    0    0     N
+   3  2422n     27  HT40  1    0    1     N
+   3  2422n     27  HT20  1    0    0     N
+   3  2422b     27        0    0    0     N
+   3  2422g     27        0    0    0     N
+   4  2427n     27  HT20  1    0    0     N
+   4  2427n     27  HT40  1    0    1     N
+   4  2427g     27        0    0    0     N
+   4  2427b     27        0    0    0     N
+   5  2432n     27  HT40  1    1    0     N
+   5  2432n     27  HT40  1    0    1     N
+   5  2432n     27  HT20  1    0    0     N
+   5  2432g     27        0    0    0     N
+   5  2432b     27        0    0    0     N
+   6  2437n     27  HT40  1    1    0     N
+   6  2437n     27  HT40  1    0    1     N
+   6  2437n     27  HT20  1    0    0     N
+   6  2437g     27        0    0    0     N
+   6  2437b     27        0    0    0     N
+   7  2442n     27  HT40  1    1    0     N
+   7  2442n     27  HT40  1    0    1     N
+   7  2442n     27  HT20  1    0    0     N
+   7  2442g     27        0    0    0     N
+   7  2442b     27        0    0    0     N
+   8  2447b     27        0    0    0     N
+   8  2447n     27  HT40  1    1    0     N
+   8  2447n     27  HT20  1    0    0     N
+   8  2447g     27        0    0    0     N
+   9  2452n     27  HT40  1    1    0     N
+   9  2452n     27  HT20  1    0    0     N
+   9  2452g     27        0    0    0     N
+   9  2452b     27        0    0    0     N
+  10  2457n     27  HT40  1    1    0     N
+  10  2457n     27  HT20  1    0    0     N
+  10  2457g     27        0    0    0     N
+  10  2457b     27        0    0    0     N
+  11  2462n     27  HT40  1    1    0     N
+  11  2462n     27  HT20  1    0    0     N
+  11  2462g     27        0    0    0     N
+  11  2462b     27        0    0    0     N
+dfs_init_radar_filters: dfs->dfs_rinfo.rn_numradars: 0
+DFS min filter rssiThresh = 18
+DFS max pulse dur = 131 ticks
+wifi0: 11b rates: 1Mbps 2Mbps 5.5Mbps 11Mbps
+wifi0: 11g rates: 1Mbps 2Mbps 5.5Mbps 11Mbps 6Mbps 9Mbps 12Mbps 18Mbps 24Mbps 36Mbps 48Mbps 54Mbps
+wifi0: 11nght20 rates: 1Mbps 2Mbps 5.5Mbps 11Mbps 6Mbps 9Mbps 12Mbps 18Mbps 24Mbps 36Mbps 48Mbps 54Mbps
+wifi0: 11nght20 MCS:  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+wifi0: 11nght40plus rates: 1Mbps 2Mbps 5.5Mbps 11Mbps 6Mbps 9Mbps 12Mbps 18Mbps 24Mbps 36Mbps 48Mbps 54Mbps
+wifi0: 11nght40plus MCS:  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+wifi0: 11nght40minus rates: 1Mbps 2Mbps 5.5Mbps 11Mbps 6Mbps 9Mbps 12Mbps 18Mbps 24Mbps 36Mbps 48Mbps 54Mbps
+wifi0: 11nght40minus MCS:  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+wifi0: mac 384.2 phy 15.15 radio 12.0
+wifi0: Use hw queue 1 for WME_AC_BE traffic
+wifi0: Use hw queue 0 for WME_AC_BK traffic
+wifi0: Use hw queue 2 for WME_AC_VI traffic
+wifi0: Use hw queue 3 for WME_AC_VO traffic
+wifi0: Use hw queue 8 for CAB traffic
+wifi0: Use hw queue 9 for beacons
+wifi0: Use hw queue 7 for UAPSD
+wifi0: Atheros 9287: mem=0xf3000000, irq=25 hw_base=0xc8860000
+insmod: add-symbol-file build/debug/mv88e60xx.o 0xbf1a4000 -s .data 0xbf1a67a4 -s .bss 0xbf1a6920
+U-Boot file '/etc/uboot-revI-128MbFlash.bin' loaded 543780 bytes
+U-Boot in NAND Flash device is up to date
+'nand_update_uboot' completed with retcode 0x0
+Active Image (section=5, rg_version=4.7.5.3.31.2.19, external_version=40.21.18)
+Main Config in section 1 is valid
+Backup Config in section 3 is not valid (retval=-2)
+Main Config (main_section=1, main_conf_ver=4.7.5.3.31.2.19, main_conf_ext_ver=40.21.18)
+rg_conf: Read section: 1. Write section: 2.
+insmod: add-symbol-file build/debug/log_chardev.o 0xbf1a8000 -s .data 0xbf1a8b9c -s .bss 0xbf1a8d20
+insmod: add-symbol-file build/debug/igmp_proxy_mod.o 0xbf1aa000 -s .data 0xbf1b9bac -s .bss 0xbf1b9d60
+insmod: add-symbol-file build/debug/rg_stp.o 0xbf1bc000 -s .data 0xbf1bee48 -s .bss 0xbf1befc0
+insmod: add-symbol-file build/debug/tcp_mss.o 0xbf1c0000 -s .data 0xbf1c0a1c -s .bss 0xbf1c0ba0
+insmod: add-symbol-file build/debug/rg_dhcp_pktfil.o 0xbf1c2000 -s .data 0xbf1c3430 -s .bss 0xbf1c35a0
+insmod: add-symbol-file build/debug/rg_ipv4.o 0xbf1c5000 -s .data 0xbf1c5470 -s .bss 0xbf1c55e0
+IPV4 device driver registered
+insmod: add-symbol-file build/debug/pppoe_relay.o 0xbf1c7000 -s .data 0xbf1ca489 -s .bss 0xbf1ca5e0
+insmod: add-symbol-file build/debug/rg_pppoe_relay.o 0xbf1de000 -s .data 0xbf1decbc -s .bss 0xbf1dee40
+insmod: add-symbol-file build/debug/usb_storage.o 0xbf1e0000 -s .data 0xbf1e65e8 -s .bss 0xbf1e7ba0
+Initializing USB Mass Storage driver...
+usbcore: registered new driver usb-storage
+USB Mass Storage support registered.
+insmod: add-symbol-file build/debug/btn.o 0xbf1e9000 -s .data 0xbf1e9cf0 -s .bss 0xbf1e9e80
+insmod: add-symbol-file build/debug/qos_ingress.o 0xbf1eb000 -s .data 0xbf1eb560 -s .bss 0xbf1eb6e0
+DNS Server switching to NORMAL state
+Initialized Persistent Log (MaxSize=100kb)
+Modules Detected:
+       No PON module.
+       RGMIIA Module on Switch port #6.
+       Ethernet Switch on MAC0.
+       GE-PHY on MAC1.
+       QSGMII Module.
+WAN swap requested: new WAN mode is GbE
+pool #0: pkt_size=0, buf_size=16 - 0 of 0 buffers free
+pool #1: pkt_size=0, buf_size=16 - 0 of 0 buffers free
+pool #2: pkt_size=0, buf_size=16 - 0 of 0 buffers free
+pool #3: pkt_size=256, buf_size=272 - 0 of 0 buffers free
+  o Loading network interface(s)
+
+  o Port 0 is connected to Linux netdevice
+    o eth0, ifindex = 2, GbE port = 0
+
+  o Port 1 is connected to Linux netdevice
+    o eth1, ifindex = 1, GbE port = 1
+
+mt_up:707 openrg_reconf!
+clink_api: debug: loaded '/lib/libEN2510_clnkapi.so': 0x3ff728
+clink_api: debug: resolved clnk_get_my_node_info:0x402b7e44 in Clink API Lib
+clink_api: debug: resolved clnk_get_network_node_info:0x402b7de4 in Clink API Lib
+clink_api: debug: resolved clnk_get_eth_stats:0x402b7ef8 in Clink API Lib
+clink_api: debug: resolved clnk_get_ephy_stats:0x402b7f58 in Clink API Lib
+clink_api: debug: resolved clnk_pass_to_seed:0x402b5ffc in Clink API Lib
+clink_api: debug: resolved clnk_write_cfg_file:0x402b6c58 in Clink API Lib
+clink_api: debug: resolved clnk_init:0x402b9710 inigmprx_lan_port_add_single: ifname=br0  ifindex=9
+ Clink API Lib
+clink_api: debug: resolved clnk_eth0: mac address changed
+destroy:0x402b94pool #0: pkt_size=1536, buf_size=1552 - 9216 of 9216 buffers added
+pool #3: pkt_size=256, buf_size=272 - 8176 of 8176 buffers added
+94 in Clink API port 0: setting MAC to 0x2, status: 0x243b
+Lib
+clink_api: eth0: link up
+debug: resolved eth0: started
+clnk_seed_to_keydevice eth0 entered promiscuous mode
+s:0x402b5fc4 in Clink API Lib
+clink_api: debug: resolved clnk_get_soc_opt:0x402b8848 in Clink API Lib
+clink_api: debug: resolved clnk_set_soc_opt:0x402b87ec in Clink API Lib
+clink_api: debug: resolved clnk_reset_device:0x402b9070 in Clink API Lib
+clink_api: debug: resBridge Managed Ports(eth0): 5
+olved clnk_get_pSTP: eth0/0 enters blocking mode
+rivacy_info:0x40STP: eth0/1 enters blocking mode
+2b7bcc in Clink STP: eth0/2 enters blocking mode
+API Lib
+clink_aSTP: eth0/3 enters blocking mode
+pi: debug: resolSTP: eth0/4 enters blocking mode
+ved clnk_get_priSTP: eth0/4 exits blocking mode
+vacy_node_info:0STP: port eth0/3 in BLOCKING mode
+x402b7b6c in CliSTP: port eth0/2 in BLOCKING mode
+nk API Lib
+clinSTP: port eth0/1 in BLOCKING mode
+k_api: debug: reSTP: port eth0/0 in BLOCKING mode
+solved clnk_get_STP: eth0/3 exits blocking mode
+privacy_stats:0xSTP: eth0/2 exits blocking mode
+402b7b0c in ClinSTP: eth0/1 exits blocking mode
+k API Lib
+clinkSTP: eth0/0 exits blocking mode
+_api: debug: resolved clnk_get_node_phy_data:0x402b7d84 in Clink API Lib
+clink_api: debug: resolved clnk_get_zip_info:0x402b7a58 in Clink API Lib
+clink_api: debug: resolved clnk_get_bridge_tBridge Managed Ports(eth0): 5
+able:0x402b8018 STP: eth0/0 enters blocking mode
+in Clink API LibSTP: eth0/1 enters blocking mode
+
+clink_api: debSTP: eth0/2 enters blocking mode
+ug: resolved clnSTP: eth0/3 enters blocking mode
+k_get_cam:0x402bSTP: eth0/4 enters blocking mode
+7fb8 in Clink APSTP: eth0/4 exits blocking mode
+I Lib
+clink_apiSTP: port eth0/3 in BLOCKING mode
+: debug: resolveSTP: port eth0/2 in BLOCKING mode
+d clnk_set_startSTP: port eth0/1 in BLOCKING mode
+_time:0x402b87a4STP: port eth0/0 in BLOCKING mode
+ in Clink API LiSTP: eth0/3 exits blocking mode
+b
+STP: eth0/2 exits blocking mode
+STP: eth0/1 exits blocking mode
+STP: eth0/0 exits blocking mode
+igmprx_lan_port_add_single: ifname=br0  ifindex=9
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+eth1: mac address changed
+pool #1: pkt_size=1536, buf_size=1552 - 9216 of 9216 buffers added
+pool #3: pkt_size=256, buf_size=272 - 8176 of 8176 buffers added
+port 1: setting MAC to 0x3, status: 0x2400
+eth1: started
+ADDRCONF(NETDEV_UP): eth1: link is not ready
+ath_reset_war = 0
+ I am before: 0
+ before ieee80211_check_mode_consistency
+ after ieee80211_check_mode_consistency
+ After RUN check
+ after radar check:
+Scan
+ I am before: 0
+Scan
+@@@ cts_mode = 1, cts_type = 0
+Resetting (ath_newstate); Code: 04
+device ath0 entered promiscuous mode
+Scheduling HOSTAPD on dev 'ath0'*****Channel 1 noiseFlr -121 intRssi 0
+
+ath_chan_set: Changing to channel 2412, Flags 10080, PF 40
+igmprx_lan_port_add_single: ifname=br0  ifindex=9
+igmprx_lan_port_add_single: ifname=ath0  ifindex=7
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+Starting clinkd: dev=clink1, cmd=/bin/EN2510_clinkd -Dt --microcode /etc/EN2510_dic.bin --firmware /etc/EN2510_soc.bin -f /etc/clink.conf.clink1 --mac-addr 18:1B:EB:F8:58:4C /dev/clink1
+
+12/15 00:00:03 -unhandled IOCTL 8946
+ Starting EN2510MoCA phy 10 reset:1, gpio:21
+ MII clinkd v1.08.02.21
+In clnk_init_pci_xmii function, iface: /dev/clink1
+Open CandD device: /dev/clink1
+12/15 00:00:03 - iface->fd = 3, ctx->clnkdvr = 1
+Starting clinkd: dev=clink0, cmd=/bin/EN2510_clinkd -Dt --microcode /etc/EN2510_dic.bin --firmware /etc/EN2510_soc.bin -f /etc/clink.conf.clink0 --mac-addr 18:1B:EB:F8:58:4B /dev/clink0
+
+MoCA phy 10 reset:0, gpio:21
+12/15 00:00:04 -unhandled IOCTL 8946
+ Starting EN2510MoCA phy 11 reset:1, gpio:22
+ MII clinkd v1.08.02.21
+In clnk_init_pci_xmii function, iface: /dev/clink0
+Open CandD device: /dev/clink0
+12/15 00:00:04 - iface->fd = 3, ctx->clnkdvr = 1
+mt_http_intercept_reconf: OpenRGigmprx_lan_port_add_single: ifname=br0  ifindex=9
+ initialization igmprx_lan_port_add_single: ifname=ath0  ifindex=7
+not completed yeigmprx_lan_port_add_single: ifname=eth0  ifindex=2
+t (state=0)
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+igmprx_lan_port_add_single: ifname=eth0  ifindex=2
+MoCA phy 11 reset:0, gpio:22
+qos_ingress_defaults_set: alloc not atomic in interrupt
+*****Channel 1 noiseFlr -122 intRssi 0
+ath_chan_set: Changing to channel 2417, Flags 10080, PF 40
+
+rm: cannot remove `/var/dbus/messagebus.pid': No such file or directory
+start dbus-daemon, try_count=1
+*****Channel 2 noiseFlr -121 intRssi 0
+ath_chan_set: Changing to channel 2422, Flags 10080, PF 0
+12/14 19:00:04 - netio_init returns 28028
+12/14 19:00:04 - netio_init returns 28028
+12/14 19:00:04 - Returned from elf_setup(), path=/etc/EN2510_soc.bin
+12/14 19:00:04 - Returned from uc_setup(), path=/etc/EN2510_dic.bin
+12/14 19:00:04 - Returned from elf_setup(), path=/etc/EN2510_soc.bin
+12/14 19:00:04 - Returned from uc_setup(), path=/etc/EN2510_dic.bin
+*****Channel 3 noiseFlr -121 intRssi 0
+ath_chan_set: Changing to channel 2427, Flags 10080, PF 0
+*****Channel 4 noiseFlr -122 intRssi 0
+ath_chan_set: Changing to channel 2432, Flags 10080, PF 0
+*****Channel 5 noiseFlr -121 intRssi 0
+ath_chan_set: Changing to channel 2437, Flags 10080, PF 0
+DEBUG pmd.c:164 PMD: Module entry!
+
+*****Channel 6 noiseFlr -121 intRssi 0
+ath_chan_set: Changing to channel 2442, Flags 10080, PF 0
+dbusrecv_msg.c: service(ctl.pmd) entering main loop!
+dbusrecv_getmsg: get msg failed!
+ERROR pmd.c:72 PMD: couldn't get any msg!
+
+dbusrecv_getmsg: get msg failed!
+ERROR pmd.c:72 PMD: couldn't get any msg!
+
+*****Channel 7 noiseFlr -121 intRssi 0
+ath_chan_set: Changing to channel 2447, Flags 10080, PF 0
+*****Channel 8 noiseFlr -121 intRssi 0
+ath_chan_set: Changing to channel 2452, Flags 10080, PF 0
+*****Channel 9 noiseFlr -122 intRssi 0
+ath_chan_set: Changing to channel 2457, Flags 10080, PF 40
+*****Channel 10 noiseFlr -119 intRssi 0
+ath_chan_set: Changing to channel 2462, Flags 10080, PF 40
+*****Channel 11 noiseFlr -119 intRssi 0
+
+find_best_11ng_centerchan: Finding best center channel for vap=ath0
+        index=-1088962892 - OLD_STATE:: Channel=0, noiseFlr=1, intRssi=-122
+                ******* channel 1 average rssi 6 noise floor -122 final average rssi -238
+        index=-1088962892 - OLD_STATE:: Channel=5, noiseFlr=6, intRssi=-121
+                ******* channel 6 average rssi 6 noise floor -121 final average rssi -236
+        index=-1088962892 - OLD_STATE:: Channel=10, noiseFlr=11, intRssi=-119
+                ******* channel 11 average rssi 4 noise floor -119 final average rssi -234
+Found best center channel 1 (index=0) for vap=ath0
+ic->ic_cwm.cw_width :0, ic->ic_cwm.cw_extoffset: 0
+ic->ic_cwm.cw_width :0, ic->ic_cwm.cw_extoffset: 0
+Resetting (ath_newstate); Code: 04
+ath_chan_set: Changing to channel 2412, Flags 10080, PF 40
+data_center cfg()
+*********start to capture NS nl sock=34********
+
+ portal Intialisation function is called ...
+echo "4096 349525 699050" > /proc/sys/net/ipv4/tcp_rmem
+echo "4096 349525 2796200" > /proc/sys/net/ipv4/tcp_wmem
+echo "699050" > /proc/sys/net/core/rmem_max
+echo "2796200" > /proc/sys/net/core/wmem_max
+echo "349525" > /proc/sys/net/core/rmem_default
+echo "349525" > /proc/sys/net/core/wmem_default
+udp mode is 0, enableServer=0
+ReverseUDPEcho: Interval not changed
+DiagnosticsStates is not changed.
+ReverseUDPEcho: Interval is 0.
+proxy_update_fw_rule_delayed:769 openrg_reconf!
+proxy_update_fw_rule_delayed:769 openrg_reconf!
+eth0 switch port 0 link up!
+Username: reconf_delayed:1820 openrg_reconf!
+Successfully to send dbus msg wan if changed!
+Successfully to send dbus msg eth status!
+dbusrecv_msg.c: service(ctl.rtd) entering main loop!
+dbusrecv_getmsg: get msg failed!
+ERROR rtd.c:121 fail to recv msg from msg bus!
+dbusrecv_getmsg: get msg failed!
+ERROR rtd.c:121 fail to recv msg from msg bus!
+DEBUG bhr2/cfg_bhr2.c:76 cfg_read_data success, len: 4204
+
+DEBUG accesscfg.c:170 after base64 decode, data len = 3152 bytes
+===protype_f=/etc/protype.xml,cfg_f=/etc/cfg.xml,pre_cfg_file=/tmp/cfg.xml,new_cfg_file=/tmp/cfg.xml====
+==tr69 cfg done==
+DEBUG rtd.c:280 sync Physical status when changed
+
+DEBUG rtd.c:224 link down, wanconnupdate
+
+Successfully to send msg!
+ERROR tr69_rut_route.c:60 Fail to get PPPConnOid
+
+diag_reconf_start:71 openrg_reconf!
+DEBUG wandev.c:234 Physical_WAN type: Ethernet
+
+DEBUG wandev.c:241 Physical_WAN device ID: 1
+
+DEBUG wandev.c:191 Physical_WAN type: Ethernet
+
+DEBUG wandev.c:198 Physical_WAN device ID: 1
+
+WARNING wandev.c:2229 Both PPPConn and IPConn are Disable!
+DEBUG wandev.c:2231 ======  RTD isLinkUp=0 =====
+Starting HOSTAPD on dev 'ath0'
+
+hostapd_start: hostapd_cmd=hostapd /etc/hostapd/topology_ap.conf
+hostapd_prepare_conf_file:326: openning conf file:/etc/hostapd/wpa-ath0.conf success!
+ath_reset_war = 0
+ath_reset_war = 0
+Resetting (ath_newstate); Code: 04
+
+find_best_11ng_centerchan: Finding best center channel for vap=ath0
+        index=-1088962892 - OLD_STATE:: Channel=0, noiseFlr=1, intRssi=-122
+                ******* channel 1 average rssi 6 noise floor -122 final average rssi -238
+        index=-1088962892 - OLD_STATE:: Channel=5, noiseFlr=6, intRssi=-121
+                ******* channel 6 average rssi 6 noise floor -121 final average rssi -236
+        index=-1088962892 - OLD_STATE:: Channel=10, noiseFlr=11, intRssi=-119
+                ******* channel 11 average rssi 4 noise floor -119 final average rssi -234
+Found best center channel 1 (index=0) for vap=ath0
+ic->ic_cwm.cw_width :0, ic->ic_cwm.cw_extoffset: 0
+ic->ic_cwm.cw_width :0, ic->ic_cwm.cw_extoffset: 0
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+
+<WRAP bootlog>
+<nowiki>
+
+BootROM 1.34
+Booting from NAND flash
+BootROM: Image checksum verification PASSED
+
+ __   __                      _ _
+|  \/  | __ _ _ ____   _____| | |
+| |\/| |/ _` | '__\ \ / / _ \ | |
+| |  | | (_| | |   \ V /  __/ | |
+|_|  |_|\__,_|_|    \_/ \___|_|_|
+         _   _     ____              _
+        | | | |   | __ )  ___   ___ | |_ 
+        | | | |___|  _ \ / _ \ / _ \| __| 
+        | |_| |___| |_) | (_) | (_) | |_ 
+         \___/    |____/ \___/ \___/ \__| 
+ ** LOADER **
+
+
+U-Boot 2009.08 (May 22 2014 - 18:26:38) Marvell version: 2.1.6_NQ
+
+Board: MI424WR-I
+SoC:   88F6560 A0
+CPU:   Marvell Feroceon (Rev 1) - LE
+       CPU @ 1200Mhz, L2 @ 480Mhz
+       DDR3 @ 400Mhz, TClock @ 200Mhz
+PEX 0: Root Complex Interface, Detected Link X1
+PEX 1: Detected No Link.
+DRAM:  128 MB
+       CS 0: base 0x00000000 size 128 MB
+       Addresses 10M - 0M are saved for the U-Boot usage.
+NAND:  1bit HM ECC, Size: 128 MiB
+USB 0: Host Mode
+Shutting down unused interfaces:
+       PON
+       SATA
+       3xFE-PHY
+Modules Detected:
+       No PON module.
+       RGMIIA Module on Switch port #6.
+       RGMIIB Module on MAC0.
+       Ethernet Switch on MAC1.
+       QSGMII Module.
+Initialized 1545 PHY
+Net:   egiga0, egiga1 [PRIME]
+Hit any key to stop autoboot: 0
+Marvell>> tftpboot PandoraBox-avanta-mi424-wr-2018-12-31-git-4b6a3d5ca-squashfs-factory.bin
+
+Using egiga1 device
+TFTP from server 192.168.1.101; our IP address is 192.168.1.201
+Filename 'PandoraBox-avanta-mi424-wr-2018-12-31-git-4b6a3d5ca-squashfs-factory.bin'.
+Load address: 0x2000000
+Loading: *#################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #########################################################
+done
+Bytes transferred = 13238272 (ca0000 hex)
+Marvell>> bootm
+
+## Booting kernel from Legacy Image at 02000000 ...
+   Image Name:   ARM PandoraBox Linux-3.14.79
+   Created:      2019-01-01  16:41:16 UTC
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    1652702 Bytes =  1.6 MB
+   Load Address: 00008000
+   Entry Point:  00008000
+   Verifying Checksum ... OK
+   Loading Kernel Image ... OK
+OK
+
+Starting kernel ...
+
+Uncompressing Linux... done, booting the kernel.
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Initializing cgroup subsys cpuset
+[    0.000000] Initializing cgroup subsys cpu
+[    0.000000] Initializing cgroup subsys cpuacct
+[    0.000000] Linux version 3.14.79 (jenkins@jenkins) (gcc version 5.5.0 (PandoraBox GCC 5.5.0 2018-12-31-git-4b6a3d5ca) ) #0 Mon Dec 31 13:03:10 2018
+[    0.000000] CPU: Feroceon 88FR131 [56251311] revision 1 (ARMv5TE), cr=00053977
+[    0.000000] CPU: VIVT data cache, VIVT instruction cache
+[    0.000000] Machine model: Actiontec MI424WR-I
+[    0.000000] Memory policy: Data cache writeback
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line: console=ttyS0,115200n8 earlyprintk
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] allocated 262144 bytes of page_cgroup
+[    0.000000] please try 'cgroup_disable=memory' option if you don't want memory cgroups
+[    0.000000] Memory: 124332K/131072K available (3511K kernel code, 161K rwdata, 1256K rodata, 134K init, 197K bss, 6740K reserved)
+[    0.000000] Virtual kernel memory layout:
+[    0.000000]     vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+[    0.000000]     fixmap  : 0xfff00000 - 0xfffe0000   ( 896 kB)
+[    0.000000]     vmalloc : 0xc8800000 - 0xff000000   ( 872 MB)
+[    0.000000]     lowmem  : 0xc0000000 - 0xc8000000   ( 128 MB)
+[    0.000000]     modules : 0xbf000000 - 0xc0000000   (  16 MB)
+[    0.000000]       .text : 0xc0008000 - 0xc04afe2c   (4768 kB)
+[    0.000000]       .init : 0xc04b0000 - 0xc04d183c   ( 135 kB)
+[    0.000000]       .data : 0xc04d2000 - 0xc04fa544   ( 162 kB)
+[    0.000000]        .bss : 0xc04fa544 - 0xc052bd00   ( 198 kB)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:114
+[    0.000010] sched_clock: 32 bits at 200MHz, resolution 5ns, wraps every 21474836475ns
+[    0.000102] Calibrating delay loop... 1186.81 BogoMIPS (lpj=593408)
+[    0.008043] pid_max: default: 32768 minimum: 301
+[    0.008181] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.008193] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.009959] Initializing cgroup subsys memory
+[    0.009987] Initializing cgroup subsys devices
+[    0.009997] Initializing cgroup subsys freezer
+[    0.010005] Initializing cgroup subsys net_cls
+[    0.010013] Initializing cgroup subsys blkio
+[    0.010020] Initializing cgroup subsys perf_event
+[    0.010050] Initializing cgroup subsys net_prio
+[    0.010116] CPU: Testing write buffer coherency: ok
+[    0.010356] Setting up static identity map for 0x10eb8 - 0x10ef4
+[    0.011754] pinctrl core: initialized pinctrl subsystem
+[    0.012363] regulator-dummy: no parameters
+[    0.012710] NET: Registered protocol family 16
+[    0.012993] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.014446] cpuidle: using governor ladder
+[    0.014477] Avanta: MV88F6560-Rev-2.
+[    0.014562] Feroceon L2: Cache support initialised, in WT override mode.
+[    0.026108] bio: create slab <bio-0> at 0
+[    0.029291] Switched to clocksource orion_clocksource
+[    0.029345] PandoraBox SPLICE initialized. rcv c78d0000 (sz:768) kvec c7811000 (sz:256) per 1 core
+[    0.031612] NET: Registered protocol family 2
+[    0.032383] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.032410] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.032434] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.032479] TCP: reno registered
+[    0.032491] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.032518] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.032694] NET: Registered protocol family 1
+[    0.032920] NetWinder Floating Point Emulator V0.97 (extended precision)
+[    0.033321] GPIO Resource maped.
+[    0.034620] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.048090] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.048103] jffs2: version 2.2 (SUMMARY) (ZLIB) (RTIME) (RUBIN) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.049060] msgmni has been set to 242
+[    0.049984] io scheduler noop registered
+[    0.049995] io scheduler deadline registered (default)
+[    0.050026] io scheduler cfq registered
+[    0.050344] io scheduler bfq registered
+[    0.050352] BFQ I/O-scheduler: v7r8
+[    0.051223] kirkwood-pinctrl f1018000.pinctrl: registered pinctrl driver
+[    0.051970] mvebu-pcie pcie-controller.1: PCI host bridge to bus 0000:00
+[    0.051989] pci_bus 0000:00: root bus resource [io  0x1000-0xfffff]
+[    0.052001] pci_bus 0000:00: root bus resource [mem 0xf3000000-0xf4000000]
+[    0.052014] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    0.052392] PCI: bus0: Fast back to back transfers disabled
+[    0.052408] pci 0000:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    0.053088] PCI: bus1: Fast back to back transfers disabled
+[    0.053173] pci 0000:00:01.0: BAR 8: assigned [mem 0xf3000000-0xf30fffff]
+[    0.053192] pci 0000:01:00.0: BAR 0: assigned [mem 0xf3000000-0xf300ffff 64bit]
+[    0.053214] pci 0000:00:01.0: PCI bridge to [bus 01]
+[    0.053228] pci 0000:00:01.0:   bridge window [mem 0xf3000000-0xf30fffff]
+[    0.136271] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    0.137865] f1012000.serial: ttyS0 at MMIO 0xf1012000 (irq = 33, base_baud = 12500000) is a 16550A
+[    0.634483] console [ttyS0] enabled
+[    0.639477] nand: device found, Manufacturer ID: 0x92, Chip ID: 0xf1
+[    0.645881] nand: Eon NAND 128MiB 3,3V 8-bit
+[    0.650185] nand: 128MiB, SLC, page size: 2048, OOB size: 64
+[    0.655890] Scanning device for bad blocks
+[    0.679255] Bad eraseblock 532 at 0x000004280000
+[    0.701639] 3 ofpart partitions found on MTD device orion_nand
+[    0.707512] Creating 3 MTD partitions on "orion_nand":
+[    0.712695] 0x000000000000-0x000000200000 : "u-boot"
+[    0.718808] 0x000000200000-0x000002200000 : "jffs2"
+[    0.724799] 0x000003000000-0x000008000000 : "firmware"
+[    0.741134] __nand_correct_data: uncorrectable ECC error
+[    0.789265] __nand_correct_data: uncorrectable ECC error[    0.828004] 2 uimage-fw partitions found on MTD device firmware
+[    0.833973] 0x000003000000-0x000003200000 : "kernel"
+[    0.840007] 0x000003200000-0x000008000000 : "ubi"
+[    0.846665] libphy: Fixed MDIO Bus: probed
+[    0.851108] libphy: orion_mdio_bus: probed
+[    0.858504] mvneta f1074000.ethernet eth0: Using hardware mac address 00:50:43:00:02:02
+[    0.868725] mvneta f1070000.ethernet eth1: Using hardware mac address 00:50:43:00:02:02
+[    0.879678] TCP: cubic registered
+[    0.884258] NET: Registered protocol family 10
+[    0.889733] NET: Registered protocol family 17
+[    0.894319] Bridge firewalling registered
+[    0.898632] 8021q: 802.1Q VLAN Support v1.8
+[    0.902900] PandoraBox Mass Storage accelerater v1.2 
+[    0.908621] registered taskstats version 1
+[    0.913562] regulator-dummy: disabling
+[    0.917911] UBI: auto-attach mtd4
+[    0.921271] UBI: attaching mtd4 to ubi0
+[    1.036680] UBI: scanning is finished
+[    1.051766] UBI: attached mtd4 (name "ubi", size 78 MiB) to ubi0
+[    1.057826] UBI: PEB size: 131072 bytes (128 KiB), LEB size: 129024 bytes
+[    1.064660] UBI: min./max. I/O unit sizes: 2048/2048, sub-page size 512
+[    1.071318] UBI: VID header offset: 512 (aligned 512), data offset: 2048
+[    1.078062] UBI: good PEBs: 623, bad PEBs: 1, corrupted PEBs: 0
+[    1.084021] UBI: user volume: 3, internal volumes: 1, max. volumes count: 128
+[    1.091203] UBI: max/mean erase counter: 2/0, WL threshold: 4096, image sequence number: 477332615
+[    1.100215] UBI: available PEBs: 0, total reserved PEBs: 623, PEBs reserved for bad PEB handling: 19
+[    1.109621] UBI: background thread "ubi_bgt0d" started, PID 829
+[    1.116140] UBI: ubiblock0_1 created from ubi0:1(rootfs)
+[    1.121500] ubiblock: device ubiblock0_1 (rootfs) set to be root filesystem
+[    1.128864] mvsw61xx 8.mvsw6171: Found MV88F6560 built-in at f1072004.mdio-bu:08
+[    1.136317] mvsw61xx 8.mvsw6171: Using indirect addressing
+[    1.166682] VFS: Mounted root (squashfs filesystem) readonly on device 254:1.
+[    1.174409] Freeing unused kernel memory: 132K (c04b0000 - c04d1000)
+[    1.751622] init: Console is alive
+[    2.794140] usbcore: registered new interface driver usbfs
+[    2.799913] usbcore: registered new interface driver hub
+[    2.805514] usbcore: registered new device driver usb
+[    2.813325] exFAT: Version 1.2.9
+[    2.817905] PandoraBox Button Driver init
+[    2.822105] Button [wps] mapped to GPIO27 and IRQ67
+[    2.827032] Button [reset] mapped to GPIO13 and IRQ53
+[    2.837592] SCSI subsystem initialized
+[    2.845001] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    2.852376] ehci-platform: EHCI generic platform driver
+[    2.858708] ehci-orion: EHCI orion driver
+[    2.862878] orion-ehci f1050000.ehci: EHCI Host Controller
+[    2.868439] orion-ehci f1050000.ehci: new USB bus registered, assigned bus number 1
+[    2.876249] orion-ehci f1050000.ehci: irq 23, io mem 0xf1050000
+[    2.887319] orion-ehci f1050000.ehci: USB 2.0 started, EHCI 1.00
+[    2.893565] usb usb1: New USB device found, idVendor=1d6b, idProduct=0002
+[    2.900409] usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+[    2.907685] usb usb1: Product: EHCI Host Controller
+[    2.912601] usb usb1: Manufacturer: Linux 3.14.79 ehci_hcd
+[    2.918127] usb usb1: SerialNumber: f1050000.ehci
+[    2.923597] hub 1-0:1.0: USB hub found
+[    2.927418] hub 1-0:1.0: 1 port detected
+[    2.933356] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    2.940381] ohci-platform: OHCI generic platform driver
+[    2.950755] usbcore: registered new interface driver usb-storage
+[    2.967160] init: - preinit -
+[    2.994020] random: nonblocking pool is initialized
+[    3.415409] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[    3.445378] usb 1-1: new high-speed USB device number 2 using orion-ehci
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    3.571646] usb 1-1: New USB device found, idVendor=05e3, idProduct=0608
+[    3.578409] usb 1-1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[    3.585604] usb 1-1: Product: USB2.0 Hub
+[    3.590746] hub 1-1:1.0: USB hub found
+[    3.594891] hub 1-1:1.0: 4 ports detected
+[    5.418338] mvneta f1074000.ethernet eth0: link up
+[    5.423196] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+Before mount_root
+[    5.608377] mount_root: loading kmods from internal overlay
+[    6.387655] UBIFS: background thread "ubifs_bgt0_2" started, PID 921
+[    6.418909] UBIFS: recovery needed
+[    6.525223] UBIFS: recovery completed
+[    6.529012] UBIFS: mounted UBI device 0, volume 2, name "rootfs_data"
+[    6.535503] UBIFS: LEB size: 129024 bytes (126 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[    6.544697] UBIFS: FS size: 66060288 bytes (63 MiB, 512 LEBs), journal size 3354624 bytes (3 MiB, 26 LEBs)
+[    6.554408] UBIFS: reserved for root: 3120190 bytes (3047 KiB)
+[    6.560284] UBIFS: media format: w4/r0 (latest is w4/r0), UUID 63B646DB-63A5-4E36-8B9A-C2911D3732BF, small LPT model
+[    6.572474] block: attempting to load /tmp/ubifs_cfg/upper/etc/config/fstab
+[    6.579678] block: unable to load configuration (fstab: Entry not found)
+[    6.586522] block: attempting to load /tmp/ubifs_cfg/etc/config/fstab
+[    6.595068] block: extroot: not configured
+[    6.601282] UBIFS: un-mount UBI device 0, volume 2
+[    6.606128] UBIFS: background thread "ubifs_bgt0_2" stops
+[    6.639589] UBIFS: background thread "ubifs_bgt0_2" started, PID 924
+[    6.720633] UBIFS: mounted UBI device 0, volume 2, name "rootfs_data"
+[    6.727133] UBIFS: LEB size: 129024 bytes (126 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[    6.736331] UBIFS: FS size: 66060288 bytes (63 MiB, 512 LEBs), journal size 3354624 bytes (3 MiB, 26 LEBs)
+[    6.746044] UBIFS: reserved for root: 3120190 bytes (3047 KiB)
+[    6.751922] UBIFS: media format: w4/r0 (latest is w4/r0), UUID 63B646DB-63A5-4E36-8B9A-C2911D3732BF, small LPT model
+[    7.257967] block: attempting to load /tmp/ubifs_cfg/upper/etc/config/fstab
+[    7.265134] block: unable to load configuration (fstab: Entry not found)
+[    7.271953] block: attempting to load /tmp/ubifs_cfg/etc/config/fstab
+[    7.280096] block: extroot: not configured
+[    7.285502] mount_root: switching to ubifs overlay
+After mount_root[    7.292742] urandom-seed: Seed file not found (/etc/urandom.seed)
+
+- early -
+- ubus -
+- init -
+Please press Enter to activate this console.
+[   10.423482] NET: Registered protocol family 8
+[   10.427890] NET: Registered protocol family 20
+[   10.473272] tun: Universal TUN/TAP device driver, 1.6
+[   10.478390] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[   10.499473] l2tp_core: L2TP core driver, V2.0
+[   10.508110] l2tp_netlink: L2TP netlink interface
+[   10.529972] gre: GRE over IPv4 demultiplexor driver
+[   10.540456] ip_gre: GRE over IPv4 tunneling driver
+[   10.566434] gpiodev: gpio device registered with major 252
+[   10.581101] PPP generic driver version 2.4.2
+[   10.602475] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   10.628880] nf_conntrack version 0.5.0 (1944 buckets, 7776 max)
+[   10.743166] Netfilter messages via NETLINK v0.30.
+[   10.757462] ip_set: protocol 6
+[   11.209355] i2c /dev entries driver
+[   11.364207] u32 classifier
+[   11.366962]     input device check on
+[   11.370653]     Actions configured
+[   11.422807] Mirror/redirect action on
+[   11.875489] fuse init (API version 7.22)
+[   11.917838] PandoraBox IP Bandwidth load.
+[   11.941829] usbcore: registered new interface driver cdc_wdm
+[   11.964377] Loading modules backported from Linux version v4.19-rc5-0-g6bf4ca7fbc85
+[   11.972096] Backport generated by backports.git v4.19-rc5-1-0-g05571dcd
+[   12.003487] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   12.037073] ctnetlink v0.93: registering with nfnetlink.
+[   12.079483] PPP MPPE Compression module registered
+[   12.089806] NET: Registered protocol family 24
+[   12.103451] PPTP driver version 0.8.5
+[   12.121801] usbcore: registered new interface driver ums-alauda
+[   12.135603] usbcore: registered new interface driver ums-cypress
+[   12.154442] usbcore: registered new interface driver ums-datafab
+[   12.169451] usbcore: registered new interface driver ums-freecom
+[   12.182704] usbcore: registered new interface driver ums-isd200
+[   12.198434] usbcore: registered new interface driver ums-jumpshot
+[   12.213797] usbcore: registered new interface driver ums-karma
+[   12.232443] usbcore: registered new interface driver ums-sddr09
+[   12.246267] usbcore: registered new interface driver ums-sddr55
+[   12.262821] usbcore: registered new interface driver ums-usbat
+[   12.281467] usbcore: registered new interface driver usblp
+[   12.311437] usbcore: registered new interface driver usbserial
+[   12.321425] usbcore: registered new interface driver usbserial_generic
+[   12.334226] usbserial: USB Serial support registered for generic
+[   12.475778] xt_time: kernel timezone is -0000
+[   12.492504] usbcore: registered new interface driver cdc_ether
+[   12.545705] l2tp_ppp: PPPoL2TP kernel driver, V2.0
+[   12.635627] usbcore: registered new interface driver qmi_wwan
+[   12.651826] usbcore: registered new interface driver rndis_host
+[   12.666383] usbcore: registered new interface driver sierra_net
+[   12.736801] usbcore: registered new interface driver option
+[   12.746416] usbserial: USB Serial support registered for GSM modem (1-port)
+[   12.774423] PCI: enabling device 0000:00:01.0 (0140 -> 0143)
+[   12.991291] ieee80211 phy0: Atheros AR9287 Rev:2 mem=0xc9380000, irq=25
+[   21.224699] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   21.243708] IPv6: ADDRCONF(NETDEV_UP): eth0.1: link is not ready
+[   21.252662] device eth0.1 entered promiscuous mode
+[   21.257519] device eth0 entered promiscuous mode
+[   21.271462] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   21.300799] IPv6: ADDRCONF(NETDEV_UP): eth0.2: link is not ready
+[   23.284205] mvneta f1074000.ethernet eth0: link up
+[   23.289310] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   23.297283] IPv6: ADDRCONF(NETDEV_CHANGE): eth0.1: link becomes ready
+[   23.303947] br-lan: port 1(eth0.1) entered forwarding state
+[   23.309602] br-lan: port 1(eth0.1) entered forwarding state
+[   23.315367] IPv6: ADDRCONF(NETDEV_CHANGE): eth0.2: link becomes ready
+[   23.325336] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   25.312312] br-lan: port 1(eth0.1) entered forwarding state
+[   25.846841] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+[   25.924684] device wlan0 entered promiscuous mode
+[   35.550127] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+[   35.556769] br-lan: port 2(wlan0) entered forwarding state
+[   35.562344] br-lan: port 2(wlan0) entered forwarding state
+[   37.568322] br-lan: port 2(wlan0) entered forwarding state
+
+PandoraBox_0202 login: root
+Password: 
+
+
+BusyBox v1.24.1 (2019-01-01 16:32:28 UTC) built-in shell (ash)
+
+
+  _______________________________________________________________ 
+ |    ____                 _                 ____               |
+ |   |  _ \ __ _ _ __   __| | ___  _ __ __ _| __ )  _____  __   |
+ |   | |_) / _` | '_ \ / _` |/ _ \| '__/ _` |  _ \ / _ \ \/ /   |
+ |   |  __/ (_| | | | | (_| | (_) | | | (_| | |_) | (_) >  <    |
+ |   |_|   \__,_|_| |_|\__,_|\___/|_|  \__,_|____/ \___/_/\_\   |
+ |                                                              |
+ |                  PandoraBox SDK Platform                     |
+ |                  The Core of SmartRouter                     |
+ |            Copyright 2013-2019 PandoraBox-Team               |
+ |                http://www.pandorabox.com.cn                  |
+ |______________________________________________________________|
+  Base on LEDE/OpenWrt (19.01, r4690, 2018-12-31-git-4b6a3d5ca)
+[root@PandoraBox_0202:/root]#
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+default U-Boot variables:
+<code>
+Marvell>> printenv
+bootcmd=ru jfs; ru jrun
+baudrate=115200
+loads_echo=0
+rootpath=/mnt/ARM_FS/
+netmask=255.255.255.0
+jfs=fsload 0x2000000 openrg1.img; fsload 0x3000000 openrg2.img; dualimage 0x2000000 0x3000000
+jnet=tftp 0x2000000 openrg.img; set openrg_start 0x2000000
+jrun=set bootargs $(console); bootm $(openrg_start)
+openrg_net=ru jnet; ru jrun
+console=console=ttyS0,115200
+CASset=min
+MALLOC_len=3
+ethprime=egiga1
+bootargs_root=root=/dev/nfs rw
+bootargs_end=:::DB88FXX81:eth0:none
+standalone=fsload 0x2000000 $(image_name);setenv bootargs $(console) root=/dev/mtdblock0 rw ip=$(ipaddr):$(serverip)$(bootargs_end) $(mvPhoneConfig); bootm 0x2000000;
+ethaddr=00:50:43:00:02:02
+eth1addr=00:50:43:00:02:02
+mv_pon_addr=00:50:43:02:00:00
+ethmtu=1500
+eth1mtu=1500
+mvNetConfig=mv_net_config=4,(00:50:43:11:11:11,0:1:2:3),mtu=1500
+mvPhoneConfig=mv_phone_config=dev0:fxs,dev1:fxs
+usb0Mode=host
+yuk_ethaddr=00:00:00:EE:51:81
+nandEcc=1bit
+netretry=no
+rcvrip=169.254.100.100
+loadaddr=0x02000000
+autoload=no
+eeeEnable=yes
+image_name=openrg.img
+ipaddr=192.168.1.201
+serverip=192.168.1.101
+jart=tftp 0x2000000 $(image_name);set bootargs $(console);bootm
+stdin=serial
+stdout=serial
+stderr=serial
+enaMonExt=no
+enaCpuStream=no
+enaWrAllo=no
+pexMode=RC
+disL2Cache=no
+setL2CacheWT=yes
+disL2Prefetch=yes
+enaICPref=yes
+enaDCPref=yes
+sata_dma_mode=yes
+netbsd_en=no
+vxworks_en=no
+bootdelay=1
+disaMvPnp=no
+enaAutoRecovery=yes
+pcieTune=no
+ethact=egiga1
+</code>
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>kirkwood 128NAND 128RAM ath9k DetachableAntenna GigabitEthernet FastEthernet 1NIC 1WNIC 5Port USB 2USB USB2.0 arm unsupported}}

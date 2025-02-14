@@ -1,0 +1,747 @@
+====== Kingston Mobilelite Wireless MLWG2 ======
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^MLWG2$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^MLWG2$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^MLWG2$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+Installing OpenWRT on this device is a little bit different due to the very limited OEM interface.
+
+This procedure works, but be ready to open up the device and solder the serial pins if anything goes bad! It's basically impossible to brick it anyway, if you are willing to flash via serial port.
+
+==== Prepare the install media ====
+
+Plug a FAT32-formatted USB pendrive on the host and put the following files:
+
+  cd /media/wherever_you_usb_is_mounter/ 
+  touch 'mlwG2_v;telnetd; .x.x.bin'
+  cp ~/Downloads/openwrt-19.07.4-ramips-mt7620-mlwg2-squashfs-sysupgrade.bin .
+
+umount the device.
+
+==== Flash the image ====
+
+Plug the USB Pendrive into the USB connector of the MLWG2.
+
+Connect to Wi-Fi network “MLWG2-xxxx” (replace xxxx with the last two bytes of the MAC address)
+
+Then telnet to 192.168.201.254 (username:admin; password:none):
+  telnet 192.168.201.254
+
+You will be greeted by something like:
+
+    (none) login: admin
+    
+    BusyBox v1.12.1 (2014-09-18 09:46:08 CST) built-in shell (ash)
+    Enter 'help' for a list of built-in commands.
+    
+    #
+
+At this point, issue the following commands to flash OpenWRT:
+
+    mtd_write write /media/USB1/openwrt-19.07.4-ramips-mt7620-mlwg2-squashfs-sysupgrade.bin KernelA
+    mtd_write -r write /media/USB1/openwrt-19.07.4-ramips-mt7620-mlwg2-squashfs-sysupgrade.bin KernelB
+
+At this point the device will reboot, and OpenWRT will boot.
+during the boot process you will see a flashing blue led, after boot is complete you should see two solid blue leds.
+
+==== If Your Device Seems Dead ====
+
+There is a bug in OpenWRT official builds which render the device like dead. Basically both the Wi-Fi and the Ethernet port are disabled after boot, making the device not accessible in any way except via the serial console. 
+
+Please see [[flyspray>3372|Link to bug]] for more details on the bug itself.
+
+If you happen to suffer from this problem, don't panic. Your device is most likely working perfectly. Open it up and hook an USB serial adapter as described at the end of this page, it's pretty simple (soldering required!). 
+
+After booting the device and logging in via the USB serial console, you must enable the Wi-Fi and add the eth0 device to the LAN interface as follows:
+
+  root@PortableWIFI:/etc/config# cat network 
+  
+  config interface 'loopback'
+        option ifname 'lo'
+        option proto 'static'
+        option ipaddr '127.0.0.1'
+        option netmask '255.0.0.0'
+  
+  config globals 'globals'
+        option ula_prefix 'fdf0:a4ca:5192::/48'
+  
+  config interface 'lan'
+        option type 'bridge'
+        option proto 'static'
+        option ifname 'eth0'
+        option netmask '255.255.255.0'
+        option ip6assign '60'
+        option ipaddr '192.168.1.1'
+  
+  config device 'lan_eth0_1_dev'
+        option name 'eth0'
+        option macaddr '00:26:b7:09:e9:32'
+  
+  root@PortableWIFI:/etc/config# cat wireless 
+  
+  config wifi-device 'radio0'
+        option type 'mac80211'
+        option channel '11'
+        option hwmode '11g'
+        option path 'platform/10180000.wmac'
+        option htmode 'HT20'
+  
+  config wifi-iface 'default_radio0'
+        option device 'radio0'
+        option network 'lan'
+        option mode 'ap'
+        option ssid 'OpenWrt'
+        option encryption 'open'
+
+For the wired network, this is the critical line:
+  option ifname 'eth0'
+
+
+Save, reboot your device, and now it will work just fine.
+
+
+
+
+
+
+===== Hardware =====
+==== Overview ====
+
+^ [[wp>Instruction set|Architecture]]             | MIPS                          |
+^ Vendor                                          | MediaTek (Ralink)             |
+^ [[docs:techref:bootloader]]                     | U-Boot 1.1.3                  |
+^ [[docs:techref:hardware:soc|System-On-Chip]]    | Ralink MT7620N                |
+^ [[docs:techref:hardware:cpu|CPU]]               | MIPS 24KEc V5.0               |
+^ CPU Speed                                       | 580 MHz                       |
+^ Flash                                           | 16 MB  Macronix MX25L12805D   |
+^ RAM                                             | 64 MB  SK Hynix H5PS5162KFR   |
+^ Wireless                                        | SoC                           |
+^ Ethernet                                        | 1x 10/100                     |
+^ USB                                             | Yes 1x (EHCI,OHCI)            |
+^ FCC ID                                          | ZME-MLWG2                     |
+
+==== MT7620N AP Documentation ====
+
+The Ralink (now MediaTek) MT7620N Application Processor is the one used in the MLWG2
+
+  * [[http://www.anz.ru/files/mediatek/MT7620_Datasheet.pdf]]
+  * [[http://www.anz.ru/files/mediatek/MT7620_ProgrammingGuide.pdf]]
+
+The stock firmware in the MLWG2 is based on the Ralink AP SDK 4.1.0.0
+
+  * [[http://wendang.baidu.com/view/553c114af01dc281e43af004.html]]
+
+===== Internal Photos =====
+
+Credits to [[https://forum.openwrt.org/viewtopic.php?pid=249543#p249543|katho, 2014-10-07]]
+
+== Photo 1 - The MLWG2 cover ==
+
+{{http://up.picr.de/19745415oh.jpg?640}}
+
+== Photo 2 - The MLWG2 after removing cover. Notice the 4 pads for the serial console ==
+
+{{http://up.picr.de/19745994ij.jpg?640}}
+
+== Photo 3 - PCB with the MT7620 AP and Flash ==
+
+{{http://up.picr.de/19745980tv.jpg?640}}
+
+== Photo 4 - Second PCB with Ethernet and SD-Card connectors ==
+
+{{http://up.picr.de/19745981jn.jpg?640}}
+
+== Photo 5 - The two PCBs stacked one on top of the other ==
+
+{{http://up.picr.de/19745982ys.jpg?640}}
+
+== Photo 6 - The two stacked PCBs (bottom view) ==
+
+{{http://up.picr.de/19745983cv.jpg?640}}
+
+
+
+===== Getting access to the MLWG2 serial console =====
+
+You may control the MLWG2 via the serial console that can be realized through:
+  * Soldering 4 header pins (2.54 mm pitch) to the 4 pads close to the Ethernet connector
+  * Connecting a USB-to-TTL (3.3Vdc) dongle to those header pins
+  * Plugging the USB-to-TTL dongle to a PC running a terminal emulator (COMx:57600,8,n,1)
+
+^ MLWG2 pad ^ Signal  ^ Notes                   ^ Connect to                ^
+| 1         | +3.3Vdc | Marked with a white dot | DO NOT CONNECT            |
+| 2         | TX      | Close to R139           | USB-to-TTL dongle pin "R" |
+| 3         | RX      | Close to R54            | USB-to-TTL dongle pin "T" |
+| 4         | GND     | -                       | USB-to-TTL dongle pin "G" |
+
+After connecting, type this to access the device (on linux!):
+
+    screen /dev/ttyUSB0 57600
+    
+To start a local console on the serial line, just hit enter after the device has booted (a line telling you to do so will appear during the boot log on the serial console).
+
+
+===== Bootlogs =====
+==== Factory dmesg ====
+<WRAP bootlog>
+<nowiki>Linux version 2.6.36+ (root@CVS2) (gcc version 3.4.2) #2 Thu Sep 18 10:05:08 CST 2014
+
+ The CPU feqenuce set to 580 MHz
+ PCIE: bypass PCIe DLL.
+ PCIE: Elastic buffer control: Addr:0x68 -> 0xB4
+ disable all power about PCIe
+ PCIE: PLL power down for MT7620N
+CPU revision is: 00019650 (MIPS 24Kc)
+Determined physical RAM map:
+ memory: 04000000 @ 00000000 (usable)
+Initrd not found or empty - disabling initrd
+Zone PFN ranges:
+  Normal   0x00000000 -> 0x00004000
+Movable zone start PFN for each node
+early_node_map[1] active PFN ranges
+    0: 0x00000000 -> 0x00004000
+On node 0 totalpages: 16384
+free_area_init_node: node 0, pgdat 805ae0c0, node_mem_map 81000000
+  Normal zone: 128 pages used for memmap
+  Normal zone: 0 pages reserved
+  Normal zone: 16256 pages, LIFO batch:3
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+Kernel command line: console=ttyS1,57600n8 root=/dev/ram0 console=ttyS0
+PID hash table entries: 256 (order: -2, 1024 bytes)
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+Writing ErrCtl register=0006c0eb
+Readback ErrCtl register=0006c0eb
+Memory: 54272k/65536k available (4927k kernel code, 11264k reserved, 890k data, 4620k init, 0k highmem)
+NR_IRQS:128
+console [ttyS1] enabled
+Calibrating delay loop... 386.04 BogoMIPS (lpj=772096)
+pid_max: default: 32768 minimum: 301
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+bio: create slab <bio-0> at 0
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+Switching to clocksource MIPS
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+UDP hash table entries: 256 (order: 0, 4096 bytes)
+UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+NET: Registered protocol family 1
+RT3xxx EHCI/OHCI init.
+JFFS2 version 2.2 (NAND) (SUMMARY) (ZLIB) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+fuse init (API version 7.15)
+msgmni has been set to 106
+Block layer SCSI generic (bsg) driver version 0.4 loaded (major 254)
+io scheduler noop registered (default)
+Ralink gpio driver initialized
+led=43, on=5, off=5, blinks,=4000, reset=1, time=4000
+led=40, on=4000, off=1, blinks,=1, reset=1, time=4000
+Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x10000500 (irq = 37) is a 16550A
+serial8250: ttyS1 at MMIO 0x10000c00 (irq = 12) is a 16550A
+brd: module loaded
+flash0: started
+deice id : c2 20 18 c2 20 (2018c220)
+MX25L12805D(c2 2018c220) (16384 Kbytes)
+mtd .name = raspi, .size = 0x01000000 (0M) .erasesize = 0x00000010 (0K) .numeraseregions = 65536
+Creating 6 MTD partitions on "raspi":
+0x000000000000-0x000000030000 : "Bootloader"
+0x000000030000-0x000000040000 : "Config"
+0x000000040000-0x000000050000 : "Factory"
+0x000000050000-0x000000800000 : "KernelA"
+0x000000800000-0x000000fb0000 : "KernelB"
+0x000000fb0000-0x000001000000 : "User_CFG"
+rdm_major = 253
+SMACCR1 -- : 0x0000000c
+SMACCR0 -- : 0x43762077
+Ralink APSoC Ethernet Driver Initilization. v3.0  256 rx/tx descriptors allocated, mtu = 1500!
+SMACCR1 -- : 0x0000000c
+SMACCR0 -- : 0x43762077
+PROC INIT OK!
+PPP generic driver version 2.4.2
+PPP MPPE Compression module registered
+NET: Registered protocol family 24
+PPTP driver version 0.8.5
+usbcore: registered new interface driver cdc_ether
+usbcore: registered new interface driver cdc_subset
+
+
+=== pAd = c01a5000, size = 807960 ===
+
+ RTMPAllocTxRxRingMemory, Status=0
+ RTMPAllocAdapterBlock, Status=0
+AP Driver version-2.7.1.2
+ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+rt3xxx-ehci rt3xxx-ehci: Ralink EHCI Host Controller
+rt3xxx-ehci rt3xxx-ehci: new USB bus registered, assigned bus number 1
+rt3xxx-ehci rt3xxx-ehci: irq 18, io mem 0x101c0000
+rt3xxx-ehci rt3xxx-ehci: USB 0.0 started, EHCI 1.00
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+rt3xxx-ohci rt3xxx-ohci: RT3xxx OHCI Controller
+rt3xxx-ohci rt3xxx-ohci: new USB bus registered, assigned bus number 2
+rt3xxx-ohci rt3xxx-ohci: irq 18, io mem 0x101c1000
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 1 port detected
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+usbcore: registered new interface driver usbserial
+usbserial: USB Serial Driver core
+USB Serial support registered for GSM modem (1-port)
+usbcore: registered new interface driver option
+option: v0.7.2:USB Driver for GSM modems
+MTK MSDC device init.
+mtk-sd: MediaTek MT6575 MSDC Driver
+nf_conntrack version 0.5.0 (848 buckets, 3392 max)
+IPVS: Registered protocols ()
+IPVS: Connection hash table configured (size=4096, memory=32Kbytes)
+IPVS: ipvs loaded.
+GRE over IPv4 demultiplexor driver
+gre: can't add protocol
+ip_tables: (C) 2000-2006 Netfilter Core Team, Type=Restricted Cone
+TCP cubic registered
+NET: Registered protocol family 10
+NET: Registered protocol family 17
+L2TP core driver, V2.0
+PPPoL2TP kernel driver, V2.0
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+msdc0 -> ops_get_cd return<0> <- msdc_ops_get_cd() : L<2273> PID<kworker/u:1><0x17>
+Freeing unused kernel memory: 4620k freed
+Algorithmics/MIPS FPU Emulator v1.5
+ufsd: module license 'Commercial product' taints kernel.
+Disabling lock debugging due to kernel taint
+ufsd:: trace mask set to 0000000f
+ufsd: driver (lke_8.9.0 lke_8.9.0_r225793_b93, LBD=ON, delalloc, ioctl, ugm, sd(1), wb, tr) loaded at c0355000
+NTFS support included
+exFAT/TexFAT support included
+optimized: speed
+Build_for__Kingston_wifi_card_reader_k2.6.36_2013-03-22_lke_8.9.0_r225793_b93
+
+ufsd: exfat can't store dates before Jan 1, 1980. Please update current date
+usb 1-1: new high speed USB device using rt3xxx-ehci and address 2
+devpts: called with bogus options
+hub 1-1:1.0: USB hub found
+hub 1-1:1.0: 4 ports detected
+usb 1-1.1: new high speed USB device using rt3xxx-ehci and address 3
+scsi0 : usb-storage 1-1.1:1.0
+scsi 0:0:0:0: Direct-Access     Generic  STORAGE DEVICE   0208 PQ: 0 ANSI: 0
+sd 0:0:0:0: Attached scsi generic sg0 type 0
+sd 0:0:0:0: [sda] 1003008 512-byte logical blocks: (513 MB/489 MiB)
+sd 0:0:0:0: [sda] Write Protect is off
+sd 0:0:0:0: [sda] Mode Sense: 0b 00 00 08
+sd 0:0:0:0: [sda] Assuming drive cache: write through
+sd 0:0:0:0: [sda] Assuming drive cache: write through
+ sda: sda1
+sd 0:0:0:0: [sda] Assuming drive cache: write through
+sd 0:0:0:0: [sda] Attached SCSI removable disk
+FAT: utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+led=11, on=1, off=4000, blinks,=1, reset=1, time=4000
+led=7, on=1, off=4000, blinks,=1, reset=1, time=4000
+Raeth v3.0 (Tasklet,SkbRecycle)
+
+phy_tx_ring = 0x0204a000, tx_ring = 0xa204a000
+
+phy_rx_ring0 = 0x0204b000, rx_ring0 = 0xa204b000
+SMACCR1 -- : 0x00000026
+SMACCR0 -- : 0xb7083d04
+CDMA_CSG_CFG = 81000000
+GDMA1_FWD_CFG = 20710000
+device vlan0001 entered promiscuous mode
+device eth2 entered promiscuous mode
+br0: port 1(vlan0001) entering learning state
+br0: port 1(vlan0001) entering learning state
+br0: port 1(vlan0001) entering forwarding state
+RX DESC a260c000  size = 2048
+RTMP_TimerListAdd: add timer obj c023abb8!
+RTMP_TimerListAdd: add timer obj c0206018!
+RTMP_TimerListAdd: add timer obj c0205fec!
+RTMP_TimerListAdd: add timer obj c0205fc0!
+RTMP_TimerListAdd: add timer obj c01ad088!
+RTMP_TimerListAdd: add timer obj c01acc7c!
+RTMP_TimerListAdd: add timer obj c01ad058!
+RTMP_TimerListAdd: add timer obj c01ad400!
+RTMP_TimerListAdd: add timer obj c01ad150!
+RTMP_TimerListAdd: add timer obj c01ad180!
+RTMP_TimerListAdd: add timer obj c01ad340!
+RTMP_TimerListAdd: add timer obj c01ad370!
+RTMP_TimerListAdd: add timer obj c020841c!
+RTMP_TimerListAdd: add timer obj c0208010!
+RTMP_TimerListAdd: add timer obj c02083ec!
+RTMP_TimerListAdd: add timer obj c0208794!
+RTMP_TimerListAdd: add timer obj c02084e4!
+RTMP_TimerListAdd: add timer obj c0208514!
+RTMP_TimerListAdd: add timer obj c020844c!
+RTMP_TimerListAdd: add timer obj c020847c!
+RTMP_TimerListAdd: add timer obj c02084ac!
+RTMP_TimerListAdd: add timer obj c0211524!
+RTMP_TimerListAdd: add timer obj c0211640!
+RTMP_TimerListAdd: add timer obj c0211550!
+RTMP_TimerListAdd: add timer obj c0208b3c!
+RTMP_TimerListAdd: add timer obj c01aa548!
+RTMP_TimerListAdd: add timer obj c0208850!
+APSDCapable[0]=0
+APSDCapable[1]=0
+APSDCapable[2]=0
+APSDCapable[3]=0
+APSDCapable[4]=0
+APSDCapable[5]=0
+APSDCapable[6]=0
+APSDCapable[7]=0
+APSDCapable[8]=0
+APSDCapable[9]=0
+APSDCapable[10]=0
+APSDCapable[11]=0
+APSDCapable[12]=0
+APSDCapable[13]=0
+APSDCapable[14]=0
+APSDCapable[15]=0
+default ApCliAPSDCapable[0]=0
+Key1Str is Invalid key length(4) or Type(1)
+Key2Str is Invalid key length(4) or Type(1)
+Key3Str is Invalid key length(4) or Type(1)
+Key4Str is Invalid key length(4) or Type(1)
+a4:45:62:41:b5:d2:1c:6d:4f:34:0f:5c:b1:2c:90:59:
+9a:d7:d1:48:e8:ae:89:15:91:c8:50:d3:0b:a6:3b:79:
+
+I/F(apcli0) Key1Str is Invalid key length!
+1. Phy Mode = 9
+2. Phy Mode = 9
+E2PROM: D0 target power=0xff20 
+E2PROM: 40 MW Power Delta= 0 
+3. Phy Mode = 9
+RTMP_TimerListAdd: add timer obj c01aa140!
+AntCfgInit: primary/secondary ant 0/1
+Initialize RF Central Registers for E2 !!!
+Initialize RF Central Registers for E3 !!!
+Initialize RF Channel Registers for E2 !!!
+Initialize RF Channel Registers for E3 !!!
+Reduce Power Consumption Support !!!
+Initialize RF DCCal Registers for E2 !!!
+Initialize RF DCCal Registers for E3 !!!
+D1 = 0, D2 = 4, CalCode = 9 !!!
+RT6352_Temperature_Init : BBPR49 = 0x0
+RT6352_Temperature_Init : TemperatureRef25C = 0xfffffff1
+Current Temperature from BBP_R49=0xffffffee
+ TX BW Filter Calibration !!!
+ RX BW Filter Calibration !!!
+LOFT Calibration Done!
+IQCalibration Start!
+IQCalibration Done! CH = 0, (gain= f, phase=3e)
+IQCalibration Start!
+IQCalibration Done! CH = 1, (gain= 4, phase=1c)
+TX IQ Calibration Done!
+RXIQ Sigma_i=0, Sigma_q=0, R_iq=0
+RXIQ calibration FAIL
+internal ALC is not enabled in NVM !
+MCS Set = ff 00 00 00 01
+ADC clcok selection for E3 !!!
+Apr clock selection !!!
+RTMP_TimerListAdd: add timer obj c0208e18!
+ADC clcok selection for E3 !!!
+Shielding clock selection !!!
+Main bssid = 00:26:b7:08:3d:04
+== rt28xx_init, Status=0
+0x1300 = 00064300
+device ra0 entered promiscuous mode
+br0: port 2(ra0) entering learning state
+br0: port 2(ra0) entering learning state
+br0: port 2(ra0) entering forwarding state
+vlan0001: no IPv6 routers present
+eth2: no IPv6 routers present
+br0: no IPv6 routers present
+ADC clcok selection for E3 !!!
+Shielding clock selection !!!
+led=11, on=1, off=4000, blinks,=1, reset=1, time=4000
+led=7, on=4000, off=1, blinks,=1, reset=1, time=4000
+ADC clcok selection for E3 !!!
+Shielding clock selection !!!
+ADC clcok selection for E3 !!!
+Shielding clock selection !!!
+led=43, on=1, off=4000, blinks,=1, reset=1, time=4000
+ra0: no IPv6 routers present
+ADC clcok selection for E3 !!!
+Shielding clock selection !!!
+RTMP_TimerListAdd: add timer obj c0250960!
+RTMP_TimerListAdd: add timer obj c0250b18!
+RTMP_TimerListAdd: add timer obj c02645a4!
+ADC clcok selection for E3 !!!
+Shielding clock selection !!!
+led=43, on=4000, off=1, blinks,=1, reset=1, time=4000
+RTMP_TimerListAdd: add timer obj c0251390!
+RTMP_TimerListAdd: add timer obj c0251548!
+RTMP_TimerListAdd: add timer obj c02645e0!
+Rcv Wcid(2) AddBAReq
+Start Seq = 00000000
+RTMP_TimerListAdd: add timer obj c02663b4!
+AP SETKEYS DONE - WPA2, AuthMode(7)=WPA2PSK, WepStatus(6)=AES, GroupWepStatus(4)=TKIP
+
+Rcv Wcid(1) AddBAReq
+Start Seq = 00000001
+RTMP_TimerListAdd: add timer obj c0266404!
+Rcv Wcid(2) AddBAReq
+Start Seq = 00000000
+RTMP_TimerListAdd: add timer obj c0266454!
+RTMP_TimerListAdd: add timer obj c026461c!
+RTMP_TimerListAdd: add timer obj c0264658!
+Rcv Wcid(1) AddBAReq
+Start Seq = 000001da
+Rcv Wcid(2) AddBAReq
+Start Seq = 00000128
+AP SETKEYS DONE - WPA2, AuthMode(7)=WPA2PSK, WepStatus(6)=AES, GroupWepStatus(4)=TKIP
+
+Rcv Wcid(2) AddBAReq
+Start Seq = 000001a4
+Rcv Wcid(1) AddBAReq
+Start Seq = 000001de
+# </nowiki>
+</WRAP>\\
+
+
+==== OpenWrt Bootlog (initramfs)====
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 3.14.27 (brown@brown) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r43857) ) #10 Tue Jan 6 21:12:10 CST 2015
+[    0.000000] Board has DDR2
+[    0.000000] Analog PMU set to hw control
+[    0.000000] Digital PMU set to hw control
+[    0.000000] SoC Type: Ralink MT7620N ver:2 eco:6
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019650 (MIPS 24KEc)
+[    0.000000] MIPS: machine is Kingston MLWG2
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,57600 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=0003c3e4
+[    0.000000] Readback ErrCtl register=0003c3e4
+[    0.000000] Memory: 56196K/65536K available (2398K kernel code, 124K rwdata, 488K rodata, 5492K init, 184K bss, 9340K reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:256
+[    0.000000] CPU Clock: 580MHz
+[    0.000000] systick: running - mult: 214748, shift: 32
+[    0.000000] genirq: Flags mismatch irq 7. 00014600 (timer) vs. 00014600 (systick)
+[    0.010000] Calibrating delay loop... 766.77 BogoMIPS (lpj=3833856)
+[    0.050000] pid_max: default: 32768 minimum: 301
+[    0.050000] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.060000] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.060000] pinctrl core: initialized pinctrl subsystem
+[    0.070000] NET: Registered protocol family 16
+[    0.080000] bio: create slab <bio-0> at 0
+[    0.080000] rt2880_gpio 10000600.gpio: registering 24 gpios
+[    0.090000] rt2880_gpio 10000600.gpio: registering 24 irq handlers
+[    0.090000] rt2880_gpio 10000638.gpio: registering 16 gpios
+[    0.100000] rt2880_gpio 10000638.gpio: registering 16 irq handlers
+[    0.100000] rt2880_gpio 10000660.gpio: registering 32 gpios
+[    0.110000] rt2880_gpio 10000660.gpio: registering 32 irq handlers
+[    0.110000] rt2880_gpio 10000688.gpio: registering 1 gpios
+[    0.120000] rt2880_gpio 10000688.gpio: registering 1 irq handlers
+[    0.120000] Switched to clocksource systick
+[    0.130000] NET: Registered protocol family 2
+[    0.130000] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.150000] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.160000] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.180000] TCP: reno registered
+[    0.180000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.180000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.210000] NET: Registered protocol family 1
+[    8.100000] rt-timer 10000100.timer: maximum frequency is 2441Hz
+[    8.110000] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    8.140000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    8.160000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    8.180000] msgmni has been set to 109
+[    8.180000] io scheduler noop registered
+[    8.180000] io scheduler deadline registered (default)
+[    8.200000] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    8.220000] 10000c00.uartlite: ttyS0 at MMIO 0x10000c00 (irq = 20, base_baud = 2500000) is a 16550A
+[    8.240000] console [ttyS0] enabled
+[    8.240000] console [ttyS0] enabled
+[    8.240000] bootconsole [early0] disabled
+[    8.240000] bootconsole [early0] disabled
+[    8.270000] m25p80 spi32766.0: mx25l12805d (16384 Kbytes)
+[    8.280000] 5 ofpart partitions found on MTD device spi32766.0
+[    8.300000] Creating 5 MTD partitions on "spi32766.0":
+[    8.300000] 0x000000000000-0x000000030000 : "u-boot"
+[    8.320000] 0x000000030000-0x000000040000 : "u-boot-env"
+[    8.320000] 0x000000040000-0x000000050000 : "factory"
+[    8.340000] 0x000000050000-0x000000fb0000 : "firmware"
+[    8.400000] 0x000000fb0000-0x000001000000 : "user-config"
+[    8.420000] ralink_soc_eth 10100000.ethernet (unregistered net_device): port 1 link up (100Mbps/Full duplex)
+[    8.440000] ralink_soc_eth 10100000.ethernet: loaded mt7620 driver
+[    8.460000] ralink_soc_eth 10100000.ethernet eth0: ralink at 0xb0100000, irq 5
+[    8.460000] rt3xxx-usbphy usbphy.3: loaded
+[    8.480000] rt2880_wdt 10000120.watchdog: Initialized
+[    8.480000] TCP: cubic registered
+[    8.500000] NET: Registered protocol family 17
+[    8.500000] 8021q: 802.1Q VLAN Support v1.8
+[    8.540000] Freeing unused kernel memory: 5492K (802f3000 - 80850000)
+procd: Console is alive
+procd: - watchdog -
+[    8.590000] usbcore: registered new interface driver usbfs
+[    8.610000] usbcore: registered new interface driver hub
+[    8.610000] usbcore: registered new device driver usb
+[    8.660000] SCSI subsystem initialized
+[    8.680000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    8.680000] ehci-platform: EHCI generic platform driver
+[    9.100000] rt3xxx-usbphy usbphy.3: remote usb device wakeup disabled
+[    9.120000] rt3xxx-usbphy usbphy.3: UTMI 16bit 30MHz
+[    9.120000] ehci-platform 101c0000.ehci: EHCI Host Controller
+[    9.140000] ehci-platform 101c0000.ehci: new USB bus registered, assigned bus number 1
+[    9.150000] ehci-platform 101c0000.ehci: irq 26, io mem 0x101c0000
+[    9.190000] ehci-platform 101c0000.ehci: USB 2.0 started, EHCI 1.00
+[    9.190000] hub 1-0:1.0: USB hub found
+[    9.210000] hub 1-0:1.0: 1 port detected
+[    9.210000] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    9.230000] ohci-platform: OHCI generic platform driver
+[    9.240000] ohci-platform 101c1000.ohci: Generic Platform OHCI controller
+[    9.260000] ohci-platform 101c1000.ohci: new USB bus registered, assigned bus number 2
+[    9.270000] ohci-platform 101c1000.ohci: irq 26, io mem 0x101c1000
+[    9.350000] hub 2-0:1.0: USB hub found
+[    9.350000] hub 2-0:1.0: 1 port detected
+[    9.370000] usbcore: registered new interface driver usb-storage
+[    9.530000] usb 1-1: new high-speed USB device number 2 using ehci-platform
+procd: - preinit -
+[    9.660000] 8021q: adding VLAN 0 to HW filter on device eth0
+[    9.700000] hub 1-1:1.0: USB hub found
+[    9.700000] hub 1-1:1.0: 4 ports detected
+[    9.720000] random: mktemp urandom read with 13 bits of entropy available
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+procd: - early -
+procd: - watchdog -
+procd: - ubus -
+procd: - init -
+Please press Enter to activate this console.
+[   15.240000] NET: Registered protocol family 10
+[   15.240000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   15.240000] Loading modules backported from Linux version master-2014-11-04-0-gf3660a2
+[   15.240000] Backport generated by backports.git backports-20141023-2-g4ff890b
+[   15.240000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   15.240000] nf_conntrack version 0.5.0 (963 buckets, 3852 max)
+[   15.240000] usbcore: registered new interface driver ums-alauda
+[   15.240000] usbcore: registered new interface driver ums-cypress
+[   15.240000] usbcore: registered new interface driver ums-datafab
+[   15.240000] usbcore: registered new interface driver ums-freecom
+[   15.240000] usbcore: registered new interface driver ums-isd200
+[   15.240000] usbcore: registered new interface driver ums-jumpshot
+[   15.240000] usbcore: registered new interface driver ums-karma
+[   15.240000] usbcore: registered new interface driver ums-sddr09
+[   15.240000] usbcore: registered new interface driver ums-sddr55
+[   15.240000] usbcore: registered new interface driver ums-usbat
+[   15.560000] xt_time: kernel timezone is -0000
+[   15.610000] cfg80211: Calling CRDA to update world regulatory domain
+[   15.620000] cfg80211: World regulatory domain updated:
+[   15.630000] cfg80211:  DFS Master region: unset
+[   15.640000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   15.660000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   15.680000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   15.690000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   15.710000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   15.730000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[   15.750000] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   15.750000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   15.780000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   15.840000] PPP generic driver version 2.4.2
+[   15.860000] NET: Registered protocol family 24
+[   15.900000] ieee80211 phy0: rt2x00_set_rt: Info - RT chipset 5390, rev 0500 detected
+[   15.920000] ieee80211 phy0: rt2x00_set_rf: Info - RF chipset 7620 detected
+[   22.110000] 8021q: adding VLAN 0 to HW filter on device eth0
+[   22.110000] device eth0.1 entered promiscuous mode
+[   22.130000] device eth0 entered promiscuous mode
+[   22.180000] br-lan: port 1(eth0.1) entered forwarding state
+[   22.200000] br-lan: port 1(eth0.1) entered forwarding state
+procd: - init complete -
+[   24.200000] br-lan: port 1(eth0.1) entered forwarding state
+
+
+
+BusyBox v1.22.1 (2015-01-06 02:30:44 CST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ CHAOS CALMER (Bleeding Edge, r43860)
+ -----------------------------------------------------
+  * 1 1/2 oz Gin            Shake with a glassful
+  * 1/4 oz Triple Sec       of broken ice and pour
+  * 3/4 oz Lime Juice       unstrained into a goblet.
+  * 1 1/2 oz Orange Juice
+  * 1 tsp. Grenadine Syrup
+ -----------------------------------------------------
+root@OpenWrt:/#</nowiki>
+</WRAP>\\
+
+===== UN-Official Pre-Built Images   =====
+
+These images (older 18.x.y) are NOT RECOMENDED. They are OLD and home-built. Latest 19.x.y do work but **be aware of the BUG reported on installation section!!!**
+
+Install OpenWrt on your MLWG2 using a USB stick or SDcard.
+
+This has been tested by others... \\
+As Always.... Use at your own Peril! ... No Warranty!
+
+USB/SDcard Factory to OpenWrt and OpenWrt to Factory Images. \\
+[[https://drive.google.com/open?id=0B0CKglNyN0URflpRWFMyWUFQa1dsRUJldlpoZTAtNGlHSTdJY041NGd2ZmRfSDRhNkNOSkU&authuser=0]]
+ 
+This OpenWrt Image has NO Password set!  \\
+It has **LuCI installed** the **WiFi is ENABLED** by default and is set to **"OpenWrt"**.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ramips MT7620N 16Flash 64RAM Serial MIPS MIPS32 24kec FastEthernet 1NIC 1WNIC rechargeable_battery portable_router usb_powered}}

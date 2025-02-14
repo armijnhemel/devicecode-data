@@ -1,0 +1,704 @@
+====== ZyXEL GS1900-10HP ======
+The ZyXEL GS1900-10HP is an 8 port gigabit <abbr title="Power over Ethernet">PoE+</abbr> switch with 2 additional SFP gigabit uplinks. It supports 802.3af and 802.3at with a [[https://www.zyxel.com/global/en/products/switch/8-10-16-24-48-port-gbe-smart-managed-switch-gs1900-series/specification|total PoE budget of 77W]].
+
+{{:media:zyxel:gs1900-10hp:gs1900-10hp-front.jpg?400|ZyXEL GS1900-10HP front}}
+{{:media:zyxel:gs1900-10hp:gs1900-10hp-back.jpg?400|ZyXEL GS1900-10HP back}}
+{{:media:zyxel:gs1900-10hp:gs1900-10hp-angled.jpg?178|ZyXEL GS1900-10HP angled view}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^Zyxel$", "model": "^GS1900-10HP$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^Zyxel$", "model": "^GS1900-10HP$"}
+} -->
+
+
+===== Development thread =====
+  * Development can be tracked in the following OpenWrt thread: [[https://forum.openwrt.org/t/support-for-rtl838x-based-managed-switches/57875/|Support for Realtek RTL838x based managed switches]].
+  * A very complete source of information is [[https://svanheule.net/switches/gs1900-10hp|Svanheule's wiki entry on the GS1900-10HP]].
+
+
+===== Installation =====
+/* stable release */
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Zyxel$", "model": "^GS1900-10HP$"}
+} -->
+
+
+
+
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+==== OEM installation using the TFTP method ====
+  - → [[docs:guide-user:troubleshooting:tftpserver#setting_up_tftp_server#bootloader_contains_tftp_client|Setting up a TFTP server]]
+  - → [[docs:guide-user:installation:generic.flashing.serial|Serial]]
+  - → [[docs:guide-user:installation:generic.flashing|Install OpenWrt]]
+
+=== Specific values needed for tftp ===
+
+<WRAP BOX>
+
+^ Bootloader tftp server IPv4 address  | 192.168.1.1   |
+^ Bootloader MAC address (special)     | N/A   |
+^ Firmware tftp image                  | [[:downloads|Ramdisk image from latest OpenWrt release]] (**''NOTE:''** Name must contain //"initramfs"//) |
+^ TFTP transfer window                 | FILL-IN seconds                                |
+^ TFTP window start                    | approximately FILL-IN seconds after power on   |
+^ TFTP client required IP address      | 192.168.1.111                                  |
+
+</WRAP>
+
+  * For now, installation is only possible through serial. This is a two-stage installation:
+    * First you'll copy over the OpenWrt RAM disk image, then boot it.
+    * Once OpenWrt is running from RAM, you can write the sysupgrade image as if you were running an already installed OpenWrt image.
+  * The device comes with exposed UART pins that are easily usable without needing to open the case. See the [[toh:zyxel:gs1900-10hp#serial|serial section below]] for how to wire your serial cable and the serial connection parameters.
+  * Configure your computer with a static IP (e.g. 192.168.1.111).
+  * The bootloader contains a TFTP client. Set up a TFTP server on your computer as per the instructions above and copy the RAM disk image into the server directory.
+  * Wire up your device and open a serial terminal (see 'Serial' above) with the connection parameters specified in the serial section below.
+  * Power up the router and interrupt the bootloader by hitting the space bar.
+  * Since the GS1900-10HP is a dual-partition device, you want to keep the OEM firmware on the backup partition for the time being. OpenWrt can only boot off the first partition (this is hardcoded in the DTS). To make sure we are manipulating the first partition, issue the following commands: ''setsys bootpartition 0; savesys''.
+  * Activate the network functionality by typing ''rtk network on'' and hitting Enter.
+  * If your TFTP server is functional, the following command will transfer the RAM disk onto the router: ''tftpboot 0x84f00000 192.168.1.111:openwrt-realtek-generic-zyxel_gs1900-10hp-initramfs-kernel.bin'', which you can then boot by issuing ''bootm''.
+  * Once OpenWrt has booted, hit //Enter// to activate the console and make sure you have a functional network connection to your computer. At this point, you can scp over the sysupgrade image to /tmp on the switch and just flash that: ''sysupgrade /tmp/openwrt-realtek-generic-zyxel_gs1900-10hp-squashfs-sysupgrade.bin''.
+
+----
+
+| {{:meta:icons:tango:48px-emblem-important.svg.png?nolink}} | <color #ed1c24>**OpenWrt configures the switch by default with a management VLAN ID 100 on the LAN port 1**</color>, so keep your serial connection until you have made sure you can SSH into it after flashing so you don't lock yourself out. If you would like a 'clean' ''/etc/config/network'' without VLANs (replace macaddr values by your own!), you can start with the configuration below. (**This appears to be not valid anymore for 23.05.4**) |
+
+<code bash>
+[..]
+
+config device 'switch'
+	option name 'switch'
+	option type 'bridge'
+	option macaddr 'xx:xx:xx:xx:xx:xx'
+
+config bridge-vlan 'lan_vlan'
+	option device 'switch'
+	option vlan '1'
+	option ports 'lan1 lan10 lan2 lan3 lan4 lan5 lan6 lan7 lan8 lan9'
+
+config interface 'lan'
+	option ifname 'switch.1'
+	option proto 'static'
+	option ipaddr '192.168.1.2/24'
+	option ip6assign '60'
+
+config device 'lan_switch_1_dev'
+	option name 'switch.1'
+	option macaddr 'xx:xx:xx:xx:xx:xx'
+
+[...]
+</code>
+
+
+/*** if info available: uncomment and fill in
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Specific configuration =====
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+</WRAP>
+***/
+
+
+/*** if info available: uncomment and fill in
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+The ZyXEL GS1900-10HP has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+</WRAP>
+***/
+
+==== PoE configuration ====
+For PoE control, you'll need the realtek-poe package, which is hosted on [[https://github.com/Hurricos/realtek-poe.git|GitHub]]. A patch to integrate the package into an OpenWrt buildroot can be found [[https://paste.debian.net/1278695/|here]].
+
+The **power budget** is set per board in ''/etc/board.d/02_network''. If yours isn't in there yet, please consider [[:submitting-patches|submitting a patch]] with the power budget as specified by the manufacturer.
+
+E.g.:
+
+    case $board in
+    netgear,gs110tpp-v1)
+    	ucidef_set_poe 130 "$lan_list"
+    	;;
+    zyxel,gs1900-10hp)
+    	ucidef_set_poe 77 "$lan_list"
+    	;;
+    zyxel,gs1900-8hp-v1|\
+    zyxel,gs1900-8hp-v2)
+    	ucidef_set_poe 70 "$lan_list"
+    	;;
+    esac
+
+Use ''/etc/config/poe'' to enable PoE on specific ports. The supported protocol allows OpenWrt to detect whether a device needs power or not, so you could just enable PoE for all devices, it wouldn't do any harm.
+
+    # cat /etc/config/poe 
+    config poe poe
+    	option budget	77
+    	option port1	1
+    	option port2	1
+    	option port3	0
+    	option port4	0
+    	option port5	0
+    	option port6	0
+    	option port7	0
+    	option port8	0
+
+Use **ubus** to obtain information on present power usage:
+
+    # ubus call poe info
+    {
+    	"ports": [
+    		"3.1W",
+    		"3W",
+    		"off",
+    		"off",
+    		"off",
+    		"off",
+    		"off",
+    		"off"
+    	],
+    	"power_budget": "77W",
+    	"power_consumption": "6.1W"
+    }
+
+==== SFP ====
+
+SFP modules 1000Base-T from 10Gtek were successfully tested with snapshot from 2021-03-08.
+
+===== Hardware =====
+==== Info ====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Zyxel$", "model": "^GS1900-10HP$"}
+} -->
+
+^ Architecture     | MIPS                             |
+^ Vendor           | Realtek                           |
+^ Bootloader       | U-Boot                           |
+^ System-On-Chip   | Realtek RTL8380M - MIPS 4KEc with MMU    |
+^ CPU/Speed        | 500 MHz                          |
+^ Flash chip       | Macronix MX25L12835F                           |
+^ Flash size       | 16 MiB                            |
+^ RAM              | Samsung K4B1G0846G DDR3 SDRAM                           |
+^ RAM size         | 128 MiB |
+^ Ethernet         | 8x 10/100/1000 Mbit/s w/ VLAN support    |
+^ SFP              | 2x 10/100/1000 Mbit/s |
+^ PoE chip         | Broadcom BCM59121B0KMLG |
+^ Switch           | Realtek          |
+^ Serial           | UART                  |
+^ JTAG             | ?          |
+
+
+/*** if info available: uncomment and fill in
+==== Flash Layout ====
+<WRAP BOX>
+FIXME //[[:docs:techref:flash.layout#discovery_how_to_find_out|Find out flash layout]], then add the flash layout table here (copy, paste, modify the [[docs:techref:flash.layout#partitioning_of_squashfs-images|example]]).//
+
+Please check out the article [[docs:techref:flash.layout|Flash layout]]. It contains examples and explanations that describe how to document the flash layout.
+</WRAP>
+***/
+
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+See top of the page for photos of the front and back, and an angled one. Hi-res PCB shot sourced from Biot's wiki. Click for higher resolution.
+
+{{media:zyxel:gs1900-10hp:gs1900-10hp-board.jpg?1000}}
+
+==== Opening the case ====
+
+<WRAP BOX>
+FIXME //Describe what needs to be done to open the device, e.g. remove rubber feet, adhesive labels, screws, ...//
+</WRAP>
+
+==== Serial ====
+
+It looks like pin order is wrong. The real is GND RX TX VCC
+
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+Serial is pretty straightforward on this switch. At the back is a hard power-on/off switch, and at the right side behind the grid a hard reset button and an angled UART serial connector. The vent slits have a bigger cutout right in front of the connector. The serial header can be connected to from the outside of the switch, trough the air vents with a standard 2.54mm header. Pins are, from top to bottom:
+  * Vcc (3.3V)
+  * TX
+  * RX
+  * GND
+
+Photo of serial connector - no need to open the case to hook up serial:
+
+{{:media:zyxel:gs1900-10hp:zyxel-serial-pins.jpg?direct&400|}}
+
+If you require to use it frequently then one solution is to solder an adapter cable with an audio jack and then connect an FTDI TTL-232R-3V3-AJ cable to it ({{:media:zyxel:gs1900-10hp:zyxel-serial-audio-jack-adapter.jpg?linkonly|photo}}).
+
+^ Serial connection parameters for ZyXEL GS1900-10HP v1 | 115200 baud, 8N1 |
+
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot Version: 2.0.0.60266 (Jul 17 2015 - 12:30:18)
+
+CPU:   500MHz
+DRAM:  128 MB
+FLASH: 16 MB
+Model: ZyXEL_GS1900_10HP
+SN:    S202L28001735
+MAC:   BC:CF:4F:D1:6B:32 - BC:CF:4F:D1:6B:3C
+
+Press SPACE to abort boot script:  0
+
+## Booting image from partition ... 1
+   Version:   V2.60.2
+   Created:   2020-09-22  14:19:52 UTC
+   Size:      7108660 Bytes = 6.8 MB
+   Verifying Checksum ... OK
+   Uncompressing Image ... OK
+
+Starting ...
+
+Linux version 2.6.19 (gcc version 3.4.4 mipssde-6.03.00-20051020) #2 PREEMPT Tue Sep 22 14:19:39 CST 2020
+CPU revision is: 00019070
+Determined physical RAM map:
+ memory: 04000000 @ 00000000 (usable)
+Built 1 zonelists.  Total pages: 16256
+Kernel command line: "console=ttyS0,115200 mem=64M" 
+Primary instruction cache 16kB, physically tagged, 4-way, linesize 16 bytes.
+Primary data cache 16kB, 2-way, linesize 16 bytes.
+Synthesized TLB refill handler (20 instructions).
+Synthesized TLB load handler fastpath (32 instructions).
+Synthesized TLB store handler fastpath (32 instructions).
+Synthesized TLB modify handler fastpath (31 instructions).
+PID hash table entries: 256 (order: 8, 1024 bytes)
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Memory: 56336k/65536k available (2055k kernel code, 9144k reserved, 416k data, 6024k init, 0k highmem)
+Mount-cache hash table entries: 512
+Checking for 'wait' instruction...  available.
+NET: Registered protocol family 16
+NET: Registered protocol family 2
+IP route cache hash table entries: 512 (order: -1, 2048 bytes)
+TCP established hash table entries: 2048 (order: 1, 8192 bytes)
+TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+TCP: Hash tables configured (established 2048 bind 1024)
+TCP reno registered
+squashfs: version 3.3 (2007/10/31) Phillip Lougher
+squashfs: LZMA suppport for slax.org by jro
+JFFS2 version 2.2. (NAND) (C) 2001-2006 Red Hat, Inc.
+io scheduler noop registered
+io scheduler anticipatory registered
+io scheduler deadline registered
+io scheduler cfq registered (default)
+Serial: 8250/16550 driver $Revision: 1.90 $ 1 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x0 (irq = 31) is a 16550A
+loop: loaded (max 8 devices)
+
+Probe: SPI CS1 Flash Type MX25L12845E
+Creating 7 MTD partitions on "Total SPI FLASH":
+0x00000000-0x00040000 : "LOADER"
+0x00040000-0x00050000 : "BDINFO"
+0x00050000-0x00060000 : "SYSINFO"
+0x00060000-0x00160000 : "JFFS2 CFG"
+0x00160000-0x00260000 : "JFFS2 LOG"
+0x00260000-0x00930000 : "RUNTIME"
+0x00930000-0x01000000 : "RUNTIME2"
+TCP cubic registered
+NET: Registered protocol family 1
+NET: Registered protocol family 10
+IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+Freeing unused kernel memory: 6024k freed
+Init RTCORE Driver Module....OK
+Init RTK Driver Module....OK
+board_conf: module license 'Realtek Semiconductor Corp.' taints kernel.
+Init RTDRV Driver Module....OK
+Press any key to continue
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot Version: 2.0.0.60266 (Jul 17 2015 - 12:30:18)
+
+CPU:   500MHz
+DRAM:  128 MB
+FLASH: 16 MB
+Model: ZyXEL_GS1900_10HP
+SN:    S202L28001735
+MAC:   BC:CF:4F:D1:6B:32 - BC:CF:4F:D1:6B:3C
+
+Press SPACE to abort boot script:  0 
+## Booting image from partition ... 0
+   Version:   MIPS OpenWrt Linux-5.4.80
+   Created:   2020-12-11   9:32:41 UTC
+   Size:      2838723 Bytes = 2.7 MB
+   Verifying Checksum ... OK
+   Uncompressing Image ... OK
+
+Starting ...
+
+[    0.000000] Linux version 5.4.80 (bjorn@canardo) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r14868+104-dd651e54cc5e)) #0 Fri Dec 11 09:32:41 2020
+[    0.000000] SoC Type: RTL8380
+[    0.000000] Kernel command line: console=ttyS0,115200 mem=64M quiet 
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019070 (MIPS 4KEc)
+[    0.000000] MIPS: machine is Zyxel GS1900-10HP Switch
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Using appended Device Tree.
+[    0.000000] Primary instruction cache 16kB, VIPT, 4-way, linesize 16 bytes.
+[    0.000000] Primary data cache 16kB, 2-way, VIPT, cache aliases, linesize 16 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000]   Normal zone: 288 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32768 pages, LIFO batch:7
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: console=ttyS0,115200
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 122260K/131072K available (4773K kernel code, 187K rwdata, 1096K rodata, 1232K init, 198K bss, 8812K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 32
+[    0.000000] random: get_random_bytes called from start_kernel+0x32c/0x518 with crng_init=0
+[    0.000000] CPU frequency from device tree: 500000000
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041786 ns
+[    0.000016] sched_clock: 32 bits at 250MHz, resolution 4ns, wraps every 8589934590ns
+[    0.008667] Calibrating delay loop... 497.66 BogoMIPS (lpj=995328)
+[    0.047584] pid_max: default: 32768 minimum: 301
+[    0.053104] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.061236] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.082068] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.092854] futex hash table entries: 256 (order: -1, 3072 bytes, linear)
+[    0.100651] pinctrl core: initialized pinctrl subsystem
+[    0.107782] NET: Registered protocol family 16
+[    0.195554] workqueue: max_active 576 requested for napi_workq is out of range, clamping between 1 and 512
+[    0.215274] clocksource: Switched to clocksource MIPS
+[    0.223876] NET: Registered protocol family 2
+[    0.230302] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    0.239655] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.248190] TCP bind hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.256028] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.263694] UDP hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.271014] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.279423] NET: Registered protocol family 1
+[    0.297840] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    0.321730] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.328206] jffs2: version 2.2 (NAND) (SUMMARY) (ZLIB) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.393448] pinctrl-single bb001000.pinmux: 32 pins, size 4
+[    0.400318] Probing RTL8231 GPIOs
+[    0.404027] rtl8231_init called, MDIO bus ID: 0
+[    0.459428] GPIO line 173 (poe_enable) hogged as output/high
+[    0.466933] Probing RTL838X GPIOs
+[    0.574546] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    0.583840] printk: console [ttyS0] disabled
+[    0.588681] b8002000.uart: ttyS0 at MMIO 0xb8002000 (irq = 31, base_baud = 12500000) is a 16550A
+[    0.598444] printk: console [ttyS0] enabled
+[    0.598444] printk: console [ttyS0] enabled
+[    0.607763] printk: bootconsole [early0] disabled
+[    0.607763] printk: bootconsole [early0] disabled
+[    0.619824] b8002100.uart: ttyS1 at MMIO 0xb8002100 (irq = 30, base_baud = 12500000) is a 16550A
+[    1.028589] brd: module loaded
+[    1.032963] Initializing rtl838x_nor_driver
+[    1.037813] SPI resource base is b8001200
+[    1.042377] Address mode is 3 bytes
+[    1.046351] rtl838x_nor_init called
+[    1.053084] rtl838x-nor b8001200.spi: mx25l12805d (16384 Kbytes)
+[    1.060013] 7 fixed-partitions partitions found on MTD device rtl838x_nor
+[    1.067685] Creating 7 MTD partitions on "rtl838x_nor":
+[    1.073625] 0x000000000000-0x000000040000 : "u-boot"
+[    1.081577] 0x000000040000-0x000000050000 : "u-boot-env"
+[    1.089925] 0x000000050000-0x000000060000 : "u-boot-env2"
+[    1.098289] 0x000000060000-0x000000160000 : "jffs"
+[    1.105961] 0x000000160000-0x000000260000 : "jffs2"
+[    1.113810] 0x000000260000-0x000000930000 : "firmware"
+[    1.141362] 2 uimage-fw partitions found on MTD device firmware
+[    1.148111] Creating 2 MTD partitions on "firmware":
+[    1.153761] 0x000000000000-0x0000002c0000 : "kernel"
+[    1.161608] 0x0000002c0000-0x0000006d0000 : "rootfs"
+[    1.169445] mtd: device 7 (rootfs) set to be root filesystem
+[    1.175866] random: fast init done
+[    1.179812] 1 squashfs-split partitions found on MTD device rootfs
+[    1.186831] 0x0000004c0000-0x0000006d0000 : "rootfs_data"
+[    1.195080] 0x000000930000-0x000001000000 : "runtime2"
+[    1.204981] libphy: Fixed MDIO Bus: probed
+[    1.215499] Probing RTL838X eth device pdev: 87c77a00, dev: 87c77a10
+[    1.267388] Found SoC ID: 8380: RTL8380, family 8380
+[    1.273022] rtl8380_init_mac
+[    1.276354] Using MAC 0000bccf4fd16b32
+[    1.280613] rtl838x_mdio_init called
+[    1.285026] rtl838x_mdio_reset called
+[    1.289233] libphy: rtl838x-eth-mdio: probed
+[    1.344945] Realtek RTL8218B (internal) mdio-bus:08: Detected internal RTL8218B
+[    1.353210] Firmware loaded. Size 1184, magic: 83808380
+[    3.870933] Realtek RTL8380 SERDES mdio-bus:18: Detected internal RTL8380 SERDES
+[    3.879367] Firmware loaded. Size 1184, magic: 83808380
+[    3.885319] SDS power down value: 3
+[    3.913381] PLL control register: aaaaaaaf
+[    3.918046] SDS power down value now: 3f
+[    3.922485] Configuration of SERDES done
+[    3.932053] In rtl838x_validate
+[    3.935772] In rtl838x_validate
+[    3.942880] NET: Registered protocol family 10
+[    3.961633] Segment Routing with IPv6
+[    3.966020] NET: Registered protocol family 17
+[    3.971941] 8021q: 802.1Q VLAN Support v1.8
+[    3.978054] i2c-gpio i2c-gpio-0: Slow GPIO pins might wreak havoc into I2C/SMBus bus timing
+[    3.987811] i2c-gpio i2c-gpio-0: using lines 184 (SDA) and 185 (SCL)
+[    3.995533] i2c-gpio i2c-gpio-1: Slow GPIO pins might wreak havoc into I2C/SMBus bus timing
+[    4.005245] i2c-gpio i2c-gpio-1: using lines 190 (SDA) and 191 (SCL)
+[    4.013024] libphy: SFP I2C Bus: probed
+[    4.017739] sfp sfp-p9: Host maximum power 1.0W
+[    4.023666] libphy: SFP I2C Bus: probed
+[    4.028189] WARNING: HIGH pin
+[    4.031712] WARNING: HIGH pin
+[    4.035226] sfp sfp-p10: Host maximum power 1.0W
+[    4.075476] Realtek RTL8218B (internal) rtl838x slave mii-0:08: Detected internal RTL8218B
+[    4.084810] Firmware loaded. Size 1184, magic: 83808380
+[    4.442686] sfp sfp-p9: module OEM              GLC-T            rev B    sn M0312A804        dc 130823  
+[    4.527605] sfp sfp-p10: module FiberStore       SFP1G-SX-85      rev      sn D87B2312465      dc 171202  
+[    6.597385] libphy: rtl838x slave mii: probed
+[    8.652504] rtl83xx-switch switch@bb000000 lan1 (uninitialized): PHY [mdio-bus:08] driver [Realtek RTL8218B (internal)]
+[    8.677861] rtl83xx-switch switch@bb000000 lan2 (uninitialized): PHY [mdio-bus:09] driver [Realtek RTL8218B (internal)]
+[    8.703753] rtl83xx-switch switch@bb000000 lan3 (uninitialized): PHY [mdio-bus:0a] driver [Realtek RTL8218B (internal)]
+[    8.729110] rtl83xx-switch switch@bb000000 lan4 (uninitialized): PHY [mdio-bus:0b] driver [Realtek RTL8218B (internal)]
+[    8.753950] rtl83xx-switch switch@bb000000 lan5 (uninitialized): PHY [mdio-bus:0c] driver [Realtek RTL8218B (internal)]
+[    8.779828] rtl83xx-switch switch@bb000000 lan6 (uninitialized): PHY [mdio-bus:0d] driver [Realtek RTL8218B (internal)]
+[    8.805187] rtl83xx-switch switch@bb000000 lan7 (uninitialized): PHY [mdio-bus:0e] driver [Realtek RTL8218B (internal)]
+[    8.830019] rtl83xx-switch switch@bb000000 lan8 (uninitialized): PHY [mdio-bus:0f] driver [Realtek RTL8218B (internal)]
+[    8.846123] rtl83xx-switch switch@bb000000 lan10 (uninitialized): switched to inband/1000base-x link mode
+[    8.858735] rtl83xx-switch switch@bb000000: configuring for fixed/internal link mode
+[    8.867610] DSA: tree 0 setup
+[    8.891112] rtl83xx-switch switch@bb000000: Link is Up - 1Gbps/Full - flow control off
+[    8.904115] VFS: Mounted root (squashfs filesystem) readonly on device 31:7.
+[    8.926181] Freeing unused kernel memory: 1232K
+[    8.931353] This architecture does not have kernel memory protection.
+[    8.938615] Run /sbin/init as init process
+[    9.740567] init: Console is alive
+[   10.113461] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[   10.229183] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[   10.251947] init: - preinit -
+[   11.606632] random: jshn: uninitialized urandom read (4 bytes read)
+[   11.728316] random: jshn: uninitialized urandom read (4 bytes read)
+[   12.562871] random: jshn: uninitialized urandom read (4 bytes read)
+[   12.638258] random: jshn: uninitialized urandom read (4 bytes read)
+[   12.794831] random: jshn: uninitialized urandom read (4 bytes read)
+[   12.953392] random: procd: uninitialized urandom read (4 bytes read)
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   17.397022] jffs2_scan_eraseblock(): End of filesystem marker found at 0x10000
+[   17.405205] jffs2_build_filesystem(): unlocking the mtd device... 
+[   17.405215] done.
+[   17.414330] jffs2_build_filesystem(): erasing all blocks after the end marker... 
+[   25.929462] done.
+[   25.940263] jffs2: notice: (1154) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[   25.960369] mount_root: overlay filesystem has not been fully initialized yet
+[   25.972373] mount_root: switching to jffs2 overlay
+[   25.981742] overlayfs: upper fs does not support tmpfile.
+- config restore -
+[   26.812399] urandom-seed: Seed file not found (/etc/urandom.seed)
+[   26.945543] procd: - early -
+[   29.200576] procd: - ubus -
+[   29.256758] random: ubusd: uninitialized urandom read (4 bytes read)
+[   29.264915] random: ubusd: uninitialized urandom read (4 bytes read)
+[   29.272288] random: ubusd: uninitialized urandom read (4 bytes read)
+[   29.283190] procd: - init -
+Please press Enter to activate this console.
+[   30.767803] kmodloader: loading kernel modules from /etc/modules.d/*
+[   30.839729] Mirror/redirect action on
+[   30.891653] u32 classifier
+[   30.894695]     input device check on
+[   30.898881]     Actions configured
+[   31.030322] xt_time: kernel timezone is -0000
+[   31.121329] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   31.132548] urngd: v1.0.2 started.
+[   31.302974] random: crng init done
+[   31.306913] random: 1 urandom warning(s) missed due to ratelimiting
+[   42.343571] In rtl838x_set_mac_hw
+[   42.347420] Using MAC 0000bccf4fd16b32
+[   42.377383] rtl838x_eth_open called: RX rings 8, TX rings 2
+[   42.383751] RESETTING 8380, CPU_PORT 28
+[   42.986157] rtl838x-eth bb00a300.ethernet eth0: configuring for fixed/internal link mode
+[   42.995196] In rtl838x_mac_config, mode 1
+[   43.002039] In rtl838x_mac_config, mode 1
+[   43.006631] In rtl838x_mac_link_up
+[   43.010563] rtl838x-eth bb00a300.ethernet eth0: Link is Up - 1Gbps/Full - flow control off
+[   43.064409] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   44.863822] device eth0 entered promiscuous mode
+[   44.869189] rtl83xx-switch switch@bb000000 lan2: configuring for phy/internal link mode
+[   44.878992] 8021q: adding VLAN 0 to HW filter on device lan2
+[   44.953711] switch: port 1(lan2) entered blocking state
+[   44.959708] switch: port 1(lan2) entered disabled state
+[   44.966494] device lan2 entered promiscuous mode
+[   45.049528] device switch entered promiscuous mode
+[   45.209576] rtl83xx-switch switch@bb000000 lan3: configuring for phy/internal link mode
+[   45.219403] 8021q: adding VLAN 0 to HW filter on device lan3
+[   45.324053] switch: port 2(lan3) entered blocking state
+[   45.330014] switch: port 2(lan3) entered disabled state
+[   45.336613] device lan3 entered promiscuous mode
+[   45.532764] rtl83xx-switch switch@bb000000 lan4: configuring for phy/internal link mode
+[   45.542450] 8021q: adding VLAN 0 to HW filter on device lan4
+[   45.612044] switch: port 3(lan4) entered blocking state
+[   45.618007] switch: port 3(lan4) entered disabled state
+[   45.659521] device lan4 entered promiscuous mode
+[   45.719915] rtl83xx-switch switch@bb000000 lan5: configuring for phy/internal link mode
+[   45.729445] 8021q: adding VLAN 0 to HW filter on device lan5
+[   45.791942] switch: port 4(lan5) entered blocking state
+[   45.797909] switch: port 4(lan5) entered disabled state
+[   45.840613] device lan5 entered promiscuous mode
+[   45.900179] rtl83xx-switch switch@bb000000 lan6: configuring for phy/internal link mode
+[   45.909837] 8021q: adding VLAN 0 to HW filter on device lan6
+[   45.980044] switch: port 5(lan6) entered blocking state
+[   45.986006] switch: port 5(lan6) entered disabled state
+[   46.027484] device lan6 entered promiscuous mode
+[   46.087904] rtl83xx-switch switch@bb000000 lan8: configuring for phy/internal link mode
+[   46.097454] 8021q: adding VLAN 0 to HW filter on device lan8
+[   46.169104] switch: port 6(lan8) entered blocking state
+[   46.175076] switch: port 6(lan8) entered disabled state
+[   46.223440] device lan8 entered promiscuous mode
+[   46.295692] rtl83xx-switch switch@bb000000 lan9: configuring for inband/sgmii link mode
+[   46.305047] 8021q: adding VLAN 0 to HW filter on device lan9
+[   46.352082] switch: port 7(lan9) entered blocking state
+[   46.358040] switch: port 7(lan9) entered disabled state
+[   46.364619] device lan9 entered promiscuous mode
+[   46.582946] rtl83xx-switch switch@bb000000 lan9: PHY [i2c:sfp-p9:16] driver [Marvell 88E1111]
+[   46.646744] rtl83xx-switch switch@bb000000 lan10: configuring for inband/1000base-x link mode
+[   46.656687] 8021q: adding VLAN 0 to HW filter on device lan10
+[   46.665061] switch: port 8(lan10) entered blocking state
+[   46.671126] switch: port 8(lan10) entered disabled state
+[   46.677766] device lan10 entered promiscuous mode
+[   46.701900] rtl83xx-switch switch@bb000000 lan7: configuring for phy/internal link mode
+[   46.711644] 8021q: adding VLAN 0 to HW filter on device lan7
+[   46.743130] switch: port 9(lan7) entered blocking state
+[   46.749127] switch: port 9(lan7) entered disabled state
+[   46.755788] device lan7 entered promiscuous mode
+[   46.776342] rtl83xx-switch switch@bb000000 lan1: configuring for phy/internal link mode
+[   46.785929] 8021q: adding VLAN 0 to HW filter on device lan1
+[   46.818394] switch: port 10(lan1) entered blocking state
+[   46.824488] switch: port 10(lan1) entered disabled state
+[   46.831168] device lan1 entered promiscuous mode
+[   47.528515] rtl83xx-switch switch@bb000000 lan10: Link is Up - 1Gbps/Full - flow control rx/tx
+[   47.555238] switch: port 8(lan10) entered blocking state
+[   47.561341] switch: port 8(lan10) entered forwarding state
+[   47.602593] IPv6: ADDRCONF(NETDEV_CHANGE): switch: link becomes ready
+[   47.635568] IPv6: ADDRCONF(NETDEV_CHANGE): switch.203: link becomes ready
+[   49.197676] rtl83xx-switch switch@bb000000 lan8: Link is Up - 1Gbps/Full - flow control rx/tx
+[   49.223755] switch: port 6(lan8) entered blocking state
+[   49.229702] switch: port 6(lan8) entered forwarding state
+[   49.839527] rtl83xx-switch switch@bb000000 lan7: Link is Up - 1Gbps/Full - flow control rx/tx
+[   49.849222] switch: port 9(lan7) entered blocking state
+[   49.855200] switch: port 9(lan7) entered forwarding state
+[   49.870941] rtl83xx-switch switch@bb000000 lan1: Link is Up - 1Gbps/Full - flow control rx/tx
+[   49.880661] switch: port 10(lan1) entered blocking state
+[   49.886723] switch: port 10(lan1) entered forwarding state
+[   50.749252] rtl83xx-switch switch@bb000000 lan9: Link is Up - 1Gbps/Full - flow control rx/tx
+[   50.758953] switch: port 7(lan9) entered blocking state
+[   50.764933] switch: port 7(lan9) entered forwarding state
+[  104.339960] rtl83xx-switch switch@bb000000 lan7: Link is Down
+[  104.346568] switch: port 9(lan7) entered disabled state
+[  104.358767] rtl83xx-switch switch@bb000000 lan7: Link is Up - 1Gbps/Full - flow control rx/tx
+[  104.368591] switch: port 9(lan7) entered blocking state
+[  104.374574] switch: port 9(lan7) entered forwarding state
+[  105.134521] rtl83xx-switch switch@bb000000 lan7: Link is Down
+[  105.141141] switch: port 9(lan7) entered disabled state
+[  107.183783] rtl83xx-switch switch@bb000000 lan7: Link is Up - 1Gbps/Full - flow control rx/tx
+[  107.193480] switch: port 9(lan7) entered blocking state
+[  107.199457] switch: port 9(lan7) entered forwarding state
+
+
+
+
+BusyBox v1.31.1 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r15116+25-d760a1e27ff8
+ -----------------------------------------------------
+
+root@gs1900-10hp:/# 
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>GigabitEthernet MIPS realtek PoE SFP}}

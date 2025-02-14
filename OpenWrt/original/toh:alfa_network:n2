@@ -1,0 +1,84 @@
+====== ALFA Network N2 ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+Outdoor AP/CPE
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^ALFA Network$", "model": "^N2$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^ALFA Network$", "model": "^N2$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^ALFA Network$", "model": "^N2$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+FIXME Please add the installation procedure here for V2 and non-C devices.
+
+==== Installation for N2C non-V2 ====
+
+The N2C-variation by default comes with a firmware that bugs out when attempting to upload a new firmware. This likely has something to do with the uploader being unable to extract kernel.image and rootfs.image to the filesystem root, where the upgrading script of this device looks for them. Working around this is fairly trivial, but somewhat risky - I have done four devices by this procedure, and none of them bricked, but there's no guarantee it might go awry for you. Double check every step you take. The only way to drop into the bootloader on these seems to be using the serial header, for which you have to open up the device. Only proceed if you're prepared to do this as a back-up plan.
+
+Furthermore, given the hardware restrictions of this device, OpenWRT updates might be far and few between for this device, though I will look into what it takes to keeping the images up-to-date.
+
+These instructions were written and executed on a (at the time) Debian Stable install running on the admin PC. Most commands should be similar in macos. On windows, it might be good to do this in the Ubuntu subsystem. 
+
+  - Log on to the original admin interface. Factory default is 192.168.2.1, but mine were set to 192.168.57.10 and onwards. Make that mental translation in case you see that IP further down these instructions. These instructions are written assuming you are willing and able to occasionally change the network settings of your workstation, depending on the context, given factory firmware default lives in the 192.168.2.x subnet, and OpenWRT default lives in the 192.168.1.x
+  - In the advanced settings of the factory web interface, disable telnet, enable ssh, and configure a password. You will only briefly be using this password so you can get away with 'hunter2'
+  - Download the firmware file specified in the above table. 
+  - Unpack it and retrieve a file named pb9x-2.6.31-jffs2, and a file named vmlinux.gz.uImage
+  - Using the file command on vmlinux.gz.uImage, verify its a "u-boot legacy uImage", and rename it to kernel.image (optional, but for my own sanity)
+  - Using the file command on pb9x-2.6.31-jffs2, verify its a "Squashfs filesystem", and rename it to rootfs.image (optional, but for my own sanity)
+  - The built-in ssh server does not allow for modern crypto, neither is scp installed, so copying these files over is unwieldy, but doable:
+    - <code>cat kernel.image | ssh -oKexAlgorithms=+diffie-hellman-group1-sha1 root@192.168.57.10 "cat > /tmp/kernel.image"</code>
+    - <code>cat rootfs.image | ssh -oKexAlgorithms=+diffie-hellman-group1-sha1 root@192.168.57.10 "cat > /tmp/rootfs.image"</code>
+  - These snippets will pipe the images to stdin of the ssh client. The ssh client will be setup to allow for legacy crypto. When executing these commands, you will be asked for the root password, which has been set in the web interface. Both files will be piped into the /tmp directory, for this one is rw. 
+  - Now log into your AP as root, like so: <code>ssh -oKexAlgorithms=+diffie-hellman-group1-sha1 root@192.168.57.10</code>
+  - Navigate to <code>/usr/sbin</code>, like so: <code>cd /usr/sbin</code>
+  - For my own sanity, I like to check if both images are actually there using <code>ls /tmp</code>
+  - For my own continued sanity, I like to check 'uploadFirmware.sh' for which block devices should take which image, like so: <code>cat uploadFirmware.sh</code>
+  - Check for the lines <code>flashcp -v /kernel.image /dev/mtd3 > /dev/console</code> and <code>flashcp -v /rootfs.image /dev/mtd2 > /dev/console</code> - If these lines are present, you are rocking the same stock firmware I am and you can proceed with caution.
+  - Now run <code>./sysupgrade.sh</code> - it dinks out because we're using /tmp and pivot_root is not there, but it handily kills all most of the processes, which intuitively seems important. You might be able to skip this step, but I didn't, and judging from the contents of this script, it really can't do harm so long as there are no .image's in the filesystem root
+  - Now use <code>./flashcp -v /tmp/kernel.image /dev/mtd3</code> to write the kernel image to the mtd3 block device. Writing the firmware will be done faster than erasing.
+  - Now use <code>./flashcp -v /tmp/rootfs.image /dev/mtd2</code> to write the rootfs image to the mtd2 block device. This will take a bit longer than the kernel. Furthermore, it's going to verify to 100% and then yell at you with a 'Bus Error'. That's **probably** happening because it's dropping back into the shell and trying to execute code that isn't memory resident. I would've done more research but I needed some functional access points in a pinch. 
+  - You are done. Unplug your AP.
+  - Drop out of the ssh session (It's broken, so if Ctrl-D doesn't work: strike Return - Tilde - Period - Return in that order)
+  - Switch your workstation over to an 192.168.1.x IP
+  - Start pinging 192.168.1.1 - It could take a minute or two before it comes up, but when it does, you can <code>ssh root@192.168.1.1</code> - set your <code>passwd</code> and have blast with the web interface at http://192.168.1.1/
+
+
+==== Flash layout ====
+
+alfa_nx_mtdlayout=mtdparts=spi0.0:256k(u-boot)ro,64k(u-boot-env)ro,6144k(rootfs),1600k(kernel),64k(nvram),64k(art)ro,7744k@0x50000(firmware) 
+
+
+===== Links =====
+
+
+===== Tags =====
+{{tag>AR7240 FastEthernet 2NIC 1WNIC outdoor 8flash 32ram}}

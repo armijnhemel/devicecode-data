@@ -1,0 +1,250 @@
+====== Western Digital My Book Live ("Single") / My Book Live Duo ======
+
+{{media:wd:wd_mybooklive_single_duo.jpg?400|Western Digital My Book Live "Single"/Duo}}
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^MyBook Live$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "cpucores", "rammb", "ethernet1gports", "sataports", "usbports"],
+  "filterColumns": {"model": "^MyBook Live$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^MyBook Live$"}
+} -->
+
+==== Important Notes ====
+
+<WRAP round important>
+**Warning: By installing OpenWrt, you will lose all existing data on your disk(s).**
+Their MBR (master boot record) containing the partition table will be overwritten.
+In addition, the original Western Digital firmware's disk format uses a nonstandard 64 kB block size, rendering the data inaccessible to OpenWrt and most other systems.
+**Back up your data to another drive before installing OpenWrt.**
+</WRAP>
+
+<WRAP round important>
+When sysupgrading from 19.07 (or earlier) to 21.02.1 (or later), the disk will be **reset to the default stock MBR** and any additional partitions will have to be recreated. In order to not lose your data see [[toh:western_digital:mybooklive#upgrading|Upgrading]] for instructions for before and after sysupgrading!
+</WRAP>
+
+<WRAP round important>
+**OpenWrt 21.02.0 contains a bug and fails to boot on My Book Live Duo.** This issue has been hotfixed with 21.02.**1** and permanently fixed for future versions.
+</WRAP>
+
+OpenWrt 17.01 contains a bug that prevents proper operation on the My Book Live Duo if two disks were used and either contained anything other or more than the default OpenWrt partitions. Another bug in 18.06.0 and 18.06.1 may cause OpenWrt on the My Book Live Duo to break after a sysupgrade. For all intents and purposes, **My Book Live Duo support started with OpenWrt 18.06.2**. Please see also the notes for MBL Duo below.
+
+<WRAP round important>
+Bear in mind that not all disks will work correctly in this device because it lacks any active or passive cooling mechanisms. For example using Seagate Constellation CS (ST1000NC001) in single drive version of MyBook Live will **severely** overheat the HDD (up to 10°C over maximum safe working temperature).
+
+tl;dr if possible use 5400rpm HDDs or SSD, otherwise you'll risk killing your disk.
+</WRAP>
+
+==== Installing OpenWrt ====
+
+Download the OpenWrt firmware image to your host computer. Use the ''factory'' image for an initial installation, the ''sysupgrade'' image is intended for updates.
+
+(Note: Up to OpenWrt 18.06, firmware images existed in two flavors, ''duo'' for the Duo and "not-duo" for the Single. Beginning in 19.07 there is only one firmware image that works with both Single and Duo variants.)
+
+Remove the disk from its enclosure (the right handside "Drive B" disk on MBL Duo) and connect it to a host computer running Linux, probably and most conveniently using a SATA-to-USB adapter.
+
+''gunzip'' the downloaded ''.img.gz'' file to receive the image file ending in ''.img''.
+
+**Warning:** The next step overwrites the target disk with a new MBR (master boot record) and a new partition table. **You will lose all existing data on the target disk.** If you choose the wrong device, you may accidentally overwrite your system disk or another disk you may care about, so double and triple check to make sure you are writing to the correct disk.
+
+Write the image file to the MBL disk using
+  # dd if=openwrt-xx.xx.x-apm821xx-sata-wd_mybooklive-xxx-factory.img of=/dev/sdx bs=1M
+Replace ''/dev/sdx'' with the actual device the MBL disk is attached to. This usually requires root privileges on your system.
+
+Once the write process has finished, you can disconnect the target disk and re-insert it into the MBL enclosure. In current OpenWrt versions ([[https://git.openwrt.org/?p=openwrt/openwrt.git;a=commit;h=abb4083fa06841ef5b094aee24a3b1f58403516b|since 22.03]]) the MBL defaults to its single ethernet port configured as DHCP client, so you will probably want to attach it to your existing network serving DHCP. You can then proceed to find the device on your network, log into and configure OpenWrt to your liking, add further partitions to the disk and install additional packages.
+
+==== Additional disk partitions ====
+
+Writing OpenWrt 21.02 or later to a disk creates two default partitions:
+
+  Number  Start (sector)    End (sector)  Size       Code  Name
+     1            8192           24575   8.0 MiB     8300  Linux filesystem
+     2           32768          294911   128.0 MiB   8300  Linux filesystem
+     
+(Prior to OpenWrt 21.02 the rootfs partition was larger at 256 MiB.)
+
+The My Book Live being a NAS, you will probably want to use the rest of your significantly larger disk. It is tempting to simply enlarge the second ("rootfs") partition to the end of the disk, but you would lose the ability to sysupgrade later -- sysupgrade would reset the partition to its default size and you would lose all additional data. The correct way is to create one or more additional partitions using ''fdisk'' (MBR) or ''gdisk'' (GPT for disks larger than 2TB) and, using ''fstab'', mount them into the file system where needed.
+
+[[commit>?p=openwrt/openwrt.git;a=commit;h=469ba337a73586573699be3999bfdf6f9ebe404f|The change in the default rootfs partition size with OpenWrt 21.02]] suggests that the size of the default partitions should be considered somewhat variable. For this reason it is sensible to start additional partitions not completely flush to the default partitions but rather with a bit of buffer inbetween (for example, starting the 3rd partition at sector 2097152, 1GB into the disk). This allows default partitions in future versions to expand without the danger of overwriting the beginning of an additional partition.
+
+This [[https://www.youtube.com/watch?v=RneEa9fZGqM | how to video]]  is performing the steps explained here with some brief performance review
+===== Notes for My Book Live Duo =====
+
+==== Drive enumeration ====
+
+Contrary to Western Digital documentation and nomenclature, the MBL Duo hardware enumerates its SATA ports beginning from the right: When viewed from the front, SATA port 0 is located in the right bay ("Drive B" in the manual), SATA port 1 in the left bay ("Drive A" in the manual). If disks are inserted in both bays, the disk in the right bay is assigned ''/dev/sda'', the disk in the left bay ''/dev/sdb''. OpenWrt will mount its root on ''/dev/sda2'', consequently boot will fail if the disk in the right bay does not contain OpenWrt. If both disks contain OpenWrt, all changes to its configuration will be made to the disk in the right bay.
+
+**When used with two disks, the MBL Duo requires the disk in the right bay ("Drive B" in the manual) to contain OpenWrt.**
+
+If only one disk is inserted it will be assigned ''/dev/sda'' regardless of the drive bay it is in. It is actually possible to hot-plug a disk into the other drive bay on a running system, but keep in mind that if you hotplug to the right drive bay, device enumeration will change after a reboot.
+
+==== Boot from USB-Stick on My Book Live Duo ====
+
+Currently, this is only possible on the latest -SNAPSHOT builds and only on the My Book Live Duo
+
+Download the OpenWrt firmware image to your host computer. Use the ''factory'' image for an initial installation, the ''sysupgrade'' image is intended for updates.
+
+''gunzip'' the downloaded ''.img.gz'' file to receive the image file ending in ''.img''.
+
+**Warning:** The next step overwrites the target USB-Stick with a new MBR (master boot record) and a new partition table. **You will lose all existing data on the target disk.** If you choose the wrong device, you may accidentally overwrite your system disk or another disk you may care about, so double and triple check to make sure you are writing to the correct disk.
+
+Insert the stick (port on the My Book Live is only USB 2.0) into an USB-Port on your PC and wait for it to enumerate.
+Make sure to unmount/prevent automounting of any partitions/volumes on the stick.
+Then write the image file to the USB-Stick using
+  # dd if=openwrt-...-apm821xx-sata-wd_mybooklive-factory.img of=/dev/sdx bs=1M
+Replace ''/dev/sdx'' with the actual device of the USB-Stick you want to override. This usually requires root privileges on your system.
+
+Then attach the prepared USB-Stick to the My Book Live DUOs sole USB-Port.
+
+Attach a serial cable to the My Book Live Duos CMOS/TTL serial port, power up the device and enter the u-boot prompt by hitting any key during boot up (there's a prompt for that, just be quick enough to react). In the u-boot prompt enter the following commands (make sure to not word-warp and that everything is copy&pasted properly. 
+
+It is recommended to test booting from the USB-Stick first without making any permanent modifications. To do that: enter the following commands.
+<code>
+setenv owrt_args 'setenv bootargs root=/dev/sdc2 rw rootfstype=squashfs,ext4 rootdelay=7'
+setenv owrt_bootusb 'ext2load usb 0:1 ${fdt_addr_r} /boot/apollo3g.dtb; ext2load usb 0:1 ${kernel_addr_r} /boot/uImage'
+setenv owrt_usb 'usb start; sata init; run owrt_bootusb owrt_args addtty; bootm ${kernel_addr_r} - ${fdt_addr_r}'
+run owrt_usb
+</code>
+
+if this worked, you can make it so that it tries to boot from the USB-Stick first and have the harddrives as a fallback:
+<code>
+setenv owrt_args 'setenv bootargs root=/dev/sdc2 rw rootfstype=squashfs,ext4 rootdelay=7'
+setenv owrt_bootusb 'ext2load usb 0:1 ${fdt_addr_r} /boot/apollo3g.dtb; ext2load usb 0:1 ${kernel_addr_r} /boot/uImage'
+setenv owrt_usb 'usb start;sata init;run owrt_bootusb owrt_args addtty; bootm ${kernel_addr_r} - ${fdt_addr_r}'
+setenv bootcmd 'run owrt_usb || run boot_sata_script_ap2nc'
+saveenv
+</code>
+
+===== Notes =====
+==== Hardware RNG ====
+
+This device is equipped with hardware RNG. Use commands below to activate it (as per OpenWrt docs [[docs:guide-user:services:rng|article]]).
+
+<code bash>
+# install necessary packages
+
+opkg update
+opkg install rng-tools
+
+# enable new RNG
+
+uci set system.@rngd[0].enabled="1"
+uci commit system
+/etc/init.d/rngd restart
+
+# set hardware RNG a disable software RNG
+
+uci set system.@rngd[0].device="/dev/hwrng"
+uci commit system
+service urngd disable && service urngd stop
+/etc/init.d/rngd restart
+</code>
+
+Hardware RNG is now active.
+
+==== Bugs and nonfunctional builds ====
+
+In OpenWrt 21.02.0 and 21.02.1, the USB port on the MBL Duo is nonfunctional. [[commit>?p=openwrt/openwrt.git;a=commit;h=a8ad881b830fe00bd2036c281693849d8f45c91a|Fixed with OpenWrt 21.02.2]].
+
+OpenWrt 21.02.0 fails to boot on MBL Duo. [[commit>?p=openwrt/openwrt.git;a=commit;h=bf30ad1408f91d579f344e7798a2f03754fd21fc|hotfixed with OpenWrt 21.02.1]], [[commit>?p=openwrt/openwrt.git;a=commit;h=bbb38524011b44ff683638d66c3d197078727df1|properly fixed in Snapshots]].
+
+OpenWrt up to 18.06.1 would, if both inserted drives contain OpenWrt, load kernel and dtb from SATA 1:1 (the disk in the left bay) while mounting the rootfs on SATA 0:1 (the disk in the right bay). This can lead to problems if the version of OpenWrt differs between the two drives, for example after a sysupgrade: The kernel and rootfs would mismatch and the system will at best not work properly, at worst fail to boot. [[commit>?p=openwrt/openwrt.git;a=commit;h=9671a2d2c8f91db78f0d4e084422743c9f66d38c|Fixed with OpenWrt 18.06.2]].
+
+OpenWrt up to 18.06.2 do not work correctly on an MBL Duo. It will fail to boot (boot loop) if two disks are used and either contains anything other than the two default OpenWrt partitions. [[commit>?p=openwrt/openwrt.git;a=commit;h=8a0ad2660a027e88550a08268093b7e0c993b556|Fixed with OpenWrt 18.06.2]].
+===== Upgrading =====
+
+==== Before upgrading =====
+
+**Before upgrading, always take down the data of your current partition table layout! Sysupgrade may reset the partition table to the default entries.**
+
+Use the command
+  fdisk -l /dev/sda  
+to print your current partition layout and save a copy of the data for safekeeping. (Note: fdisk can display GPT partitions, you can also substitute ''gdisk -l /dev/sda'' here.) Take particularly good note of the partition data for any additional partitions you created on your drive (begin sector, end sector, type code.)
+
+You should generally assume that sysupgrade could indiscriminately overwrite your current partition table with the default MBR partition table contained in the upgrade image. This happens if the partition layout for the two default OpenWrt partitions does not match between the current and the new image, either because the default sizes change (as has happened in OpenWrt 21.02) or because you modified the default partitions. It is also possible that the sysupgrade you are using to update from is not able to handle the partitions (e.g., older sysupgrades are not GPT aware, very old sysupgrades pre OpenWrt 17.01 are generally not able to retain partitions).
+
+If that happens, the new partition table will not include partition data for any additional partitions you created. The partitions and their data will still be on the hard disk, but you will have to recreate them in the partition table with their exact parameters.
+
+The reason to do this is that the partition table **will** be reset to the default **MBR** partition table if the default partition sizes differ between your old and the new OpenWrt version, or the sysupgrade you use to upgrade is not aware of GPT partition tables (or even partition tables in general).
+
+==== Upgrading ====
+
+OpenWrt on the MBL can be upgraded using the LuCI web interface and sysupgrade on the shell. Both directly take a gzipped image file ending in ''.img.gz'' which does not have to (and due to memory constraints probably shouldn't) be unzipped. OpenWrt 19.07 and later comes with ''factory'' and ''sysupgrade'' images, use the ''sysupgrade'' image to upgrade.
+
+==== Recreating missing partitions ====
+
+After sysupgrading, again use
+  fdisk -l /dev/sda
+to print the current partition table layout and compare with your previously saved partition layout data. Ideally, if your disk is using MBR and the default partition sizes did not change, sysupgrade will have retained your additional partitions and you are good to go.
+
+However, you might only see the two default partitions. In this case you will have to recreate the additional partitions in the partition table. First, compare the size of /dev/sda2 to see if it has changed after a sysupgrade:
+
+=== If the size of the default partitions has changed (MBR and GPT) ===
+
+Use ''fdisk'' (on MBR disks) or ''gdisk'' (on GPT disks) and recreate your additional partitions with the exact same begin sector, end sector, and type code (usually 83 for "Linux filesystem), just like you did when you originally created your partitions.
+
+With an MBR disk and ''fdisk'' you can simply append the missing partition data with the exact same parameters. After re-creating additional partitions, fdisk will recognize that the new partitions already contain a file system and ask you if you want to reset it -- which you should **decline**.
+
+With GPT, ''gdisk'' will ask you beforehand:
+  Found valid MBR and corrupt GPT. Which do you want to use? (Using the
+  GPT MAY permit recovery of GPT data.)
+     1 - MBR
+     2 - GPT
+     3 - Create blank GPT
+You should answer **1** here to carry over the parameters of the new default partition sizes from MBR, and then proceed to create a GPT partition table with your additional partitions.
+
+When you're done, write the partition table to disk and reboot. Your missing partitions should be restored with all of the data
+
+=== On a GPT disk, if the default partitions are unchanged ===
+
+If you previously used GPT on your disk, and the two default partitions did **not** change (compare carefully!), you can simply restore your old GPT partition table.
+
+''gdisk'' will ask you:
+  Found valid MBR and corrupt GPT. Which do you want to use? (Using the
+  GPT MAY permit recovery of GPT data.)
+   1 - MBR
+   2 - GPT
+   3 - Create blank GPT
+Here you can choose **2** to restore the backup GPT, write the partition table to disk, and reboot.
+
+==== Serial ====
+Internal J8 4-pin connector
+
+^ Pin Out   ^ Description   ^
+| Pin1      | 3.3V          |
+| Pin2      | RX            |
+| Pin3      | TX            |
+| Pin4      | GND           |
+
+{{media:wd:wd_mybook_live_uart.jpg?400|}}
+
+3.3V serial port voltage !!!
+
+COM port settings: Speed:115200, Data bits:8, Stop bits:1, Parity:none, Flow control:none
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>apm821xx APM82181 256RAM 1port GigabitEthernet NAS 12v_powered}}

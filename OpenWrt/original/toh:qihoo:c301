@@ -1,0 +1,774 @@
+====== Qihoo C301 ======
+
+This page includes only model specific information.  For generic informations you can refer to the following pages.
+
+  * [[docs:start]]
+  * [[docs:guide-quick-start:checks_and_troubleshooting]]
+
+
+Manufacturer's site (in Chinese): [[http://luyou.360.cn/parameter.html]]
+
+Forum (in Chinese): [[http://bbs.360safe.com/forum-2099-1.html]]
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^Qihoo hardware$", "model": "^C301$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^Qihoo hardware$", "model": "^C301$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Qihoo hardware$", "model": "^C301$"}
+} -->
+
+
+==== Flash Layout ====
+Please check out the article [[docs:techref:flash.layout]]. It contains an example and a couple of explanations.
+
+The following are output from OEM firmware's kernel log.
+
+<code>
+	ath-nor0: the flash image has SEAMA header
+	ath-nor0: squashfs filesystem found at offset 0x01160040
+	Creating 16 MTD partitions on "ath-nor0":
+	0x000001160060-0x0000019ae060 : "rootfs"
+	0x000000070000-0x000000f70000 : "upgrade"
+	0x000000050000-0x000000060000 : "devdata"
+	0x000000060000-0x000000070000 : "devconf"
+	0x000000ff0000-0x000001000000 : "radiocfg"
+	0x000000000000-0x000001000000 : "flash"
+	0x000000000000-0x000000040000 : "bootloader"
+	0x000000040000-0x000000050000 : "bdcfg"
+	0x000001000000-0x000001f00000 : "upgrade2"
+	0x000000fe0000-0x000000ff0000 : "action image config"
+	0x000001f00000-0x000002000000 : "privatedata"
+	0x000000fd0000-0x000000fe0000 : "warm start"
+	0x000001000000-0x000002000000 : "flash2"
+	0x000000f60000-0x000000f70000 : "devrev1"
+	0x000000f50000-0x000000f60000 : "devrev2"
+	0x000000f50000-0x000000f70000 : "devrev3"
+	cmdlinepart partition parsing not available
+	RedBoot partition parsing not available
+	No partitions found on flash bank 0
+</code>
+
+  * As can be seen from ranges of partition ''flash'' and ''flash2'', the device has 2 flash chips and each of them has a capacity of 16MiB.
+  * There are 2 firmwares on the device, one for normal use and the other as a backup for restoring back to OEM firmware.  ''upgrade'' and ''upgrade2'' are partitions for these purposes respectively.
+  * ''bootloader'' is for OEM U-Boot.
+  * ''bdcfg'' is for environment variables of U-Boot.
+  * ''radiocfg'' should contain wireless calibration data for 802.11 network.
+  * ''action image config'' contains records for deciding which firmware to load at boot time by OEM U-Boot.
+  * Purposes of ''devdata'', ''devconf'', ''privatedata'', ''warm start'', ''devrevN'' are currently unknown.
+
+==== OEM easy installation ====
+
+  - Setup your computer's network interface with an IP address in 192.168.1.0/24 network.
+  - Connect to LAN port of the device with a ethernet cable.
+  - Hold down the reset button at the back end of the board.
+  - Power on the device.
+  - Wait for about 20 seconds.
+  - Visit http://192.168.1.1 from your computer.
+  - Upload sysupgrade image from there.
+
+**Note** Patch for valid factory image generation is not merged yet, but using sysupgrade image should be okay.
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the mtd command line tool. It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== LuCI Web Upgrade Process ===
+
+  * Browse to http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/ LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+==== Restore back to OEM firmware ====
+
+OEM firmwares distributed by Qihoo are encrypted with AES-128-ECB with an
+RSA-1024 signature attached.
+
+  - Download a firmware from the OEM firmware updates page [[http://luyou.360.cn/rom.html]].
+  - Decrypt and extract firmwares suitable for use with OpenWrt with the following shell script (Also available at [[https://gist.github.com/yousong/9a68089ac73ff688e658|gist]]).
+  - Use only the generated sysupgrade image with OpenWrt's firmware update mechanism.
+  - ''.factory'' and ''.sysupgrade'' can be used with OEM U-Boot in the same way as installing OpenWrt.
+
+<code bash>
+# This snippet tries to extract a factory image for use with the OEM U-Boot to restore back to Qihoo's official image.
+#
+# You need at least
+#  - openssl enc command with aes-128-ecb support
+#  - tail :)
+#
+# Original OEM firmwares can be found at http://luyou.360.cn/rom.html
+#
+in="$1"
+[ -f "$in" ] || {
+	echo "No such file: $in" >&2
+	exit 1
+}
+out="$in.plain"
+out_factory="$out.seama.factory"
+out_sysupgrade="$out.seama.sysupgrade"
+
+# Decrypt with AES-128-ECB
+openssl enc -d -aes-128-ecb -K 95B8724B0763DF53469EE79B367F4599 -in "$in" -out "$out"
+
+# OEM firmwares distributed by Qihoo has the following structure.
+#	- 0x80 bytes of RSA-1024 signature
+#	- 0x01 byte for denoting the filename size size_fn
+#	- size_fn bytes for the filename
+#	- Sealed seama image header
+#	- Seama image header
+#	- Image content
+siz_rsa=0x80
+siz_fn=0x$(hexdump -s "$siz_rsa" -n 1 -e '/1 "%02x"' "$out")
+
+## Extract factory image.
+offset_sealed_seama=$(($siz_rsa + 1 + $siz_fn))
+tail_offset=$(($offset_sealed_seama + 1))
+tail -c +"$tail_offset" "$out" >"$out_factory"
+
+## Extract sysupgrade image.
+siz_meta=0x$(hexdump -s 6 -n 2 -e '/1 "%02x"' "$out_factory")
+tail_offset=$((12 + $siz_meta + 1))
+tail -c +"$tail_offset" "$out_factory" > "$out_sysupgrade"
+</code>
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Hardware =====
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+There are 4 unpopulated pins at the upper-left corner of the board, 3 of them are in a group and the rest 1 is alone.  115200 is the baudrate to use.
+
+<code>
+        -  -  -        -
+        ^  ^  ^        ^
+        |  |  |        |
+        tx |  |        |
+          gnd |        rx
+              vcc
+</code>
+
+You can enter OEM U-Boot console by pressing any key with your keyboard at boot time.
+
+**Photo of PCB with markings**
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+As long as OEM U-Boot is alive, you can try flashing a known-working firmware.
+
+===== Bootlogs =====
+==== OEM bootlog ====
+
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.4 (Mar 20 2014 - 10:59:14)
+
+SVN revision: 1025
+Target board: WRG-ND16
+
+DRAM:  
+sri
+Wasp 1.3
+wasp_ddr_initial_config(255): (32bit) ddr2 init
+128 MB
+Top of RAM usable for U-Boot at: 88000000
+Reserving 253k for U-Boot at: 87fc0000
+Reserving 192k for malloc() at: 87f90000
+Reserving 44 Bytes for Board Info at: 87f8ffd4
+Reserving 36 Bytes for Global Data at: 87f8ffb0
+Reserving 128k for boot params() at: 87f6ffb0
+Stack Pointer at: 87f6ff98
+Now running in RAM - U-Boot at: 87fc0000
+flash size 16 MB, sector count = 256
+Flash: 32 MB
+pci_init_board: PCIe PLL not set for 40MHz refclk
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ag934x_enet_initialize...
+ wasp  reset mask:c03300 
+WASP ----> S27 PHY 
+: cfg1 0x5 cfg2 0x7114
+eth0: 00:11:22:33:44:55
+s27 reg init 
+MEGA: athrs27_link_down all port...
+MEGA: athrs27_link_down all port...
+eth0 up
+WASP ----> S27 PHY 
+: cfg1 0xf cfg2 0x7214
+eth1: 00:11:22:33:44:56
+s27 reg init lan 
+ATHRS27: resetting s27
+ATHRS27: s27 reset done
+MEGA: athrs27_link_down all port...
+athrs27_phy_setup ATHR_PHY_CONTROL 0 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 0 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 1 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 1 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 2 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 2 :50
+athrs27_phy_setup ATHR_PHY_CONTROL 3 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 3 :50
+athrs27_phy_setup ATHR_PHY_CONTROL 4 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 4 :10
+MEGA: athrs27_link_down all port...
+eth1 up
+eth0, eth1
+Setting 0xb8116290 to 0x10202d0f
+Hit any key to stop autoboot:  1  0 
+Protect off 9FFE0000 ... 9FFEFFFF
+Un-Protecting sectors 254..254 in bank 1
+Un-Protected 1 sectors
+Erasing Flash...Erase Flash from 0x9ffe0000 to 0x9ffeffff in Bank # 1 
+First 0xfe last 0xfe sector size 0x10000
+info->bank = 0 
+ 254
+Erased 1 sectors
+Writing to Flash... write addr: 9ffe0000
+info->bank = 0 
+done
+Protecting sectors 254..254 in bank 1
+Protected 1 sectors
+## Booting image at 9f070000 ...
+Verifying Checksum ...
+image1trynum update 1
+Protect off 9FFE0000 ... 9FFEFFFF
+Un-Protecting sectors 254..254 in bank 1
+Un-Protected 1 sectors
+Erasing Flash...Erase Flash from 0x9ffe0000 to 0x9ffeffff in Bank # 1 
+First 0xfe last 0xfe sector size 0x10000
+info->bank = 0 
+ 254
+Erased 1 sectors
+Writing to Flash... write addr: 9ffe0000
+info->bank = 0 
+done
+Protecting sectors 254..254 in bank 1
+Protected 1 sectors
+1  3  1  0  0  0
+Uncompressing SEAMA linux.lzma ... OK
+do_boot_linux entry = 80002000
+## Transferring control to Linux (at address 00000000) ...
+## Giving linux memsize in bytes, 134217728
+
+Starting kernel ...
+
+Booting Atheros AR934x
+Linux version 2.6.31-svn2601 (chenjian@c2.lab.corp.qihoo.net) (gcc version 4.3.3 (GCC) ) #1 Tue Jul 22 18:55:30 CST 2014
+flash_size passed from bootloader = 0
+Use firmware region 1
+CPU revision is: 0001974c (MIPS 74Kc)
+ath_sys_frequency: cpu srif ddr srif cpu 560 ddr 480 ahb 240
+Determined physical RAM map:
+ memory: 02000000 @ 00000000 (usable)
+User-defined physical RAM map:
+ memory: 08000000 @ 00000000 (usable)
+Initrd not found or empty - disabling initrd
+Zone PFN ranges:
+  Normal   0x00000000 -> 0x00008000
+Movable zone start PFN for each node
+early_node_map[1] active PFN ranges
+    0: 0x00000000 -> 0x00008000
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+Kernel command line: console=ttyS0,115200 root=/dev/mtdblock0 rw mem=128m
+PID hash table entries: 512 (order: 9, 2048 bytes)
+Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+Writing ErrCtl register=00000000
+Readback ErrCtl register=00000000
+Memory: 111360k/131072k available (2900k kernel code, 19524k reserved, 857k data, 156k init, 0k highmem)
+NR_IRQS:128
+plat_time_init: plat time init done
+Calibrating delay loop... 279.55 BogoMIPS (lpj=559104)
+Mount-cache hash table entries: 512
+
+****************ALLOC***********************
+ Packet mem: 803e92e0 (0xe00000 bytes)
+********************************************
+
+NET: Registered protocol family 16
+ath_pcibios_init: bus 0
+ath_pcibios_init(232): PCI 0 CMD write: 0x356
+registering PCI controller with io_map_base unset
+bio: create slab <bio-0> at 0
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+pcibios_map_irq: IRQ 70 for bus 0
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+TCP: Hash tables configured (established 4096 bind 4096)
+TCP reno registered
+NET: Registered protocol family 1
+ATH GPIOC major 0
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+JFFS2 version 2.2 (NAND) (ZLIB) (RTIME) (c) 2001-2006 Red Hat, Inc.
+fuse init (API version 7.12)
+msgmni has been set to 217
+alg: No test for stdrng (krng)
+io scheduler noop registered
+io scheduler deadline registered (default)
+HDLC line discipline maxframe=4096
+N_HDLC line discipline registered.
+Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+serial8250.0: ttyS0 at MMIO 0xb8020000 (irq = 19) is a 16550A
+console [ttyS0] enabled
+brd: module loaded
+PPP generic driver version 2.4.2
+PPP MPPE Compression module registered
+NET: Registered protocol family 24
+ELBOX CFI physmap flash device: 1000000 at 9f000000
+cmdlinepart partition parsing not available
+RedBoot partition parsing not available
+No partitions found on flash bank 0
+ ATH serial flash !!
+ath-nor0: the flash image has SEAMA header
+ath-nor0: squashfs filesystem found at offset 0x001d0040
+Creating 16 MTD partitions on "ath-nor0":
+0x0000001d0060-0x000000a65060 : "rootfs"
+0x000000070000-0x000000f70000 : "upgrade"
+0x000000050000-0x000000060000 : "devdata"
+0x000000060000-0x000000070000 : "devconf"
+0x000000ff0000-0x000001000000 : "radiocfg"
+0x000000000000-0x000001000000 : "flash"
+0x000000000000-0x000000040000 : "bootloader"
+0x000000040000-0x000000050000 : "bdcfg"
+0x000001000000-0x000001f00000 : "upgrade2"
+0x000000fe0000-0x000000ff0000 : "action image config"
+0x000001f00000-0x000002000000 : "privatedata"
+0x000000fd0000-0x000000fe0000 : "warm start"
+0x000001000000-0x000002000000 : "flash2"
+0x000000f60000-0x000000f70000 : "devrev1"
+0x000000f50000-0x000000f60000 : "devrev2"
+0x000000f50000-0x000000f70000 : "devrev3"
+cmdlinepart partition parsing not available
+RedBoot partition parsing not available
+No partitions found on flash bank 0
+usbmon: debugfs is not available
+ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+Port Status 1c000004 
+ath-ehci ath-ehci.0: ATH EHCI
+ath-ehci ath-ehci.0: new USB bus registered, assigned bus number 1
+ehci_reset Intialize USB CONTROLLER in host mode: 13
+ehci_reset Port Status 1c000000 
+ath-ehci ath-ehci.0: irq 3, io mem 0x1b000000
+ehci_reset Intialize USB CONTROLLER in host mode: 13
+ehci_reset Port Status 1c000000 
+ath-ehci ath-ehci.0: USB 2.0 started, EHCI 1.00
+usb usb1: New USB device found, idVendor=1d6b, idProduct=0002
+usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+usb usb1: Product: ATH EHCI
+usb usb1: Manufacturer: Linux 2.6.31-svn2601 ehci_hcd
+usb usb1: SerialNumber: platform
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+u32 classifier
+Netfilter messages via NETLINK v0.30.
+nf_conntrack version 0.5.0 (2048 buckets, 8192 max)
+CONFIG_NF_CT_ACCT is deprecated and will be removed soon. Please use
+nf_conntrack.acct=1 kernel parameter, acct=1 nf_conntrack module option or
+sysctl net.netfilter.nf_conntrack_acct=1 to enable it.
+nf_conntrack_rtsp v0.6.21 loading
+nf_conntrack_rtsp  port #0: 554
+nf_conntrack_rtsp  port #1: 557
+xt_time: kernel timezone is -0000
+nf_nat_rtsp v0.6.21 loading
+BCM fast NAT: INIT
+ip_tables: (C) 2000-2006 Netfilter Core Team
+TCP cubic registered
+NET: Registered protocol family 17
+RPC: Registered udp transport module.
+RPC: Registered tcp transport module.
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+athwdt_init: Registering WDT success
+athwdt_timer_init:429: here jiffies:2151356928
+ath_otp_init: Registering OTP success
+ath_clksw_init: Registering Clock Switch Interface success
+VFS: Mounted root (squashfs filesystem) readonly on device 31:0.
+Freeing unused kernel memory: 156k freed
+ATHR_GMAC: Length per segment 1536
+ATHR_GMAC: fifo cfg 3 01f00140
+mac:0 Registering S27....
+ATHR_GMAC: RX TASKLET - Pkts per Intr:16
+ATHR_GMAC: Mac address for unit 0:bfff0000
+ATHR_GMAC: ff:ff:ff:ff:ff:ff 
+ATHR_GMAC: Max segments per packet :   1
+ATHR_GMAC: Max tx descriptor count :   128
+ATHR_GMAC: Max rx descriptor count :   128
+ATHR_GMAC: Mac capability flags    :   2580
+mac:1 Registering S27....
+ATHR_GMAC: RX TASKLET - Pkts per Intr:16
+ATHR_GMAC: Mac address for unit 1:bfff0006
+ATHR_GMAC: ff:ff:ff:ff:ff:ff 
+ATHR_GMAC: Max segments per packet :   1
+ATHR_GMAC: Max tx descriptor count :   128
+ATHR_GMAC: Max rx descriptor count :   128
+ATHR_GMAC: Mac capability flags    :   2D80
+ag9344_proc loading ... 
+Rebootm loading ... 
+devtype_module_init:SUCCESS
+match success
+smart wall init ok
+URLCHECK: init: in
+URLCHECK: white_host_init: host_cachep created
+URLCHECK: white_host_init: white list add 609
+DEFENDER: init: in
+DEFENDER: black_ip_init: black_ip_cachep created
+DEFENDER: black_ip_init: list created
+DEFENDER: black_ip_init: white list add 14
+heart_bleed: module license 'unspecified' taints kernel.
+Disabling lock debugging due to kernel taint
+syn 88888888</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.4 (Mar 20 2014 - 10:59:14)
+
+SVN revision: 1025
+Target board: WRG-ND16
+
+DRAM:  
+sri
+Wasp 1.3
+wasp_ddr_initial_config(255): (32bit) ddr2 init
+128 MB
+Top of RAM usable for U-Boot at: 88000000
+Reserving 253k for U-Boot at: 87fc0000
+Reserving 192k for malloc() at: 87f90000
+Reserving 44 Bytes for Board Info at: 87f8ffd4
+Reserving 36 Bytes for Global Data at: 87f8ffb0
+Reserving 128k for boot params() at: 87f6ffb0
+Stack Pointer at: 87f6ff98
+Now running in RAM - U-Boot at: 87fc0000
+flash size 16 MB, sector count = 256
+Flash: 32 MB
+pci_init_board: PCIe PLL not set for 40MHz refclk
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ag934x_enet_initialize...
+ wasp  reset mask:c03300 
+WASP ----> S27 PHY 
+: cfg1 0x5 cfg2 0x7114
+eth0: 00:11:22:33:44:55
+s27 reg init 
+MEGA: athrs27_link_down all port...
+MEGA: athrs27_link_down all port...
+eth0 up
+WASP ----> S27 PHY 
+: cfg1 0xf cfg2 0x7214
+eth1: 00:11:22:33:44:56
+s27 reg init lan 
+ATHRS27: resetting s27
+ATHRS27: s27 reset done
+MEGA: athrs27_link_down all port...
+athrs27_phy_setup ATHR_PHY_CONTROL 0 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 0 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 1 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 1 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 2 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 2 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 3 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 3 :50
+athrs27_phy_setup ATHR_PHY_CONTROL 4 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 4 :10
+MEGA: athrs27_link_down all port...
+eth1 up
+eth0, eth1
+Setting 0xb8116290 to 0x10202d0f
+Hit any key to stop autoboot:  1  0 
+Protect off 9FFE0000 ... 9FFEFFFF
+Un-Protecting sectors 254..254 in bank 1
+Un-Protected 1 sectors
+Erasing Flash...Erase Flash from 0x9ffe0000 to 0x9ffeffff in Bank # 1 
+First 0xfe last 0xfe sector size 0x10000
+info->bank = 0 
+ 254
+Erased 1 sectors
+Writing to Flash... write addr: 9ffe0000
+info->bank = 0 
+done
+Protecting sectors 254..254 in bank 1
+Protected 1 sectors
+## Booting image at 9f070000 ...
+Verifying Checksum ...
+image1trynum update 1
+Protect off 9FFE0000 ... 9FFEFFFF
+Un-Protecting sectors 254..254 in bank 1
+Un-Protected 1 sectors
+Erasing Flash...Erase Flash from 0x9ffe0000 to 0x9ffeffff in Bank # 1 
+First 0xfe last 0xfe sector size 0x10000
+info->bank = 0 
+ 254
+Erased 1 sectors
+Writing to Flash... write addr: 9ffe0000
+info->bank = 0 
+done
+Protecting sectors 254..254 in bank 1
+Protected 1 sectors
+1  3  1  0  0  0
+Uncompressing SEAMA linux.lzma ... OK
+do_boot_linux entry = 80002000
+## Transferring control to Linux (at address 00000000) ...
+## Giving linux memsize in bytes, 134217728
+
+Starting kernel ...
+
+
+
+OpenWrt kernel loader for AR7XXX/AR9XXX
+Copyright (C) 2011 Gabor Juhos <juhosg@openwrt.org>
+Decompressing kernel... done!
+Starting kernel at 80060000...
+
+[    0.000000] Linux version 3.10.49 (yousong@debian) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r41490) ) #6 Thu Sep 25 11:05:29 CST 2014
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 0001974c (MIPS 74Kc)
+[    0.000000] SoC: Atheros AR9344 rev 3
+[    0.000000] Clocks: CPU:560.000MHz, DDR:480.000MHz, AHB:240.000MHz, Ref:40.000MHz
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x07ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x07ffffff]
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line:  board=QIHOO-C301 console=ttyS0,115200 mtdparts=spi0.0:256k(u-boot)ro,64k(u-boot-env),64k(devdata),64k(devconf),15744k(firmware),64k(warm_start),64k(action_image_config),64k(radiocfg)ro;spi0.1:15360k(upgrade2),1024k(privatedata) rootfstype=squashfs,jffs2 noinitrd
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 126248k/131072k available (2239k kernel code, 4824k reserved, 603k data, 228k init, 0k highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:51
+[    0.000000] Calibrating delay loop... 278.93 BogoMIPS (lpj=1394688)
+[    0.070000] pid_max: default: 32768 minimum: 301
+[    0.070000] Mount-cache hash table entries: 512
+[    0.080000] NET: Registered protocol family 16
+[    0.080000] MIPS: machine is Qihoo 360 C301
+[    0.100000] registering PCI controller with io_map_base unset
+[    0.540000] bio: create slab <bio-0> at 0
+[    0.540000] PCI host bridge to bus 0000:00
+[    0.550000] pci_bus 0000:00: root bus resource [mem 0x10000000-0x13ffffff]
+[    0.550000] pci_bus 0000:00: root bus resource [io  0x0000]
+[    0.560000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.560000] pci 0000:00:00.0: BAR 0: assigned [mem 0x10000000-0x101fffff 64bit]
+[    0.570000] pci 0000:00:00.0: BAR 6: assigned [mem 0x10200000-0x1020ffff pref]
+[    0.570000] pci 0000:00:00.0: using irq 40 for pin 1
+[    0.580000] Switching to clocksource MIPS
+[    0.580000] NET: Registered protocol family 2
+[    0.590000] TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+[    0.590000] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.600000] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.600000] TCP: reno registered
+[    0.600000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.610000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.620000] NET: Registered protocol family 1
+[    0.630000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.640000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.650000] msgmni has been set to 246
+[    0.650000] io scheduler noop registered
+[    0.660000] io scheduler deadline registered (default)
+[    0.660000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.690000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11) is a 16550A
+[    0.700000] console [ttyS0] enabled, bootconsole disabled
+[    0.700000] console [ttyS0] enabled, bootconsole disabled
+[    0.710000] ath79-spi ath79-spi: master is unqueued, this is deprecated
+[    0.720000] m25p80 spi0.0: found mx25l12805d, expected m25p80
+[    0.720000] m25p80 spi0.0: mx25l12805d (16384 Kbytes)
+[    0.730000] 8 cmdlinepart partitions found on MTD device spi0.0
+[    0.740000] Creating 8 MTD partitions on "spi0.0":
+[    0.740000] 0x000000000000-0x000000040000 : "u-boot"
+[    0.750000] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.750000] 0x000000050000-0x000000060000 : "devdata"
+[    0.760000] 0x000000060000-0x000000070000 : "devconf"
+[    0.770000] 0x000000070000-0x000000fd0000 : "firmware"
+[    0.800000] 2 seama-fw partitions found on MTD device firmware
+[    0.800000] 0x000000070000-0x0000001b0000 : "kernel"
+[    0.810000] 0x0000001b0000-0x000000fd0000 : "rootfs"
+[    0.820000] mtd: device 6 (rootfs) set to be root filesystem
+[    0.820000] 1 squashfs-split partitions found on MTD device rootfs
+[    0.830000] 0x0000003b0000-0x000000fd0000 : "rootfs_data"
+[    0.840000] 0x000000fd0000-0x000000fe0000 : "warm_start"
+[    0.840000] 0x000000fe0000-0x000000ff0000 : "action_image_config"
+[    0.850000] 0x000000ff0000-0x000001000000 : "radiocfg"
+[    0.860000] m25p80 spi0.1: found mx25l12805d, expected m25p80
+[    0.860000] m25p80 spi0.1: mx25l12805d (16384 Kbytes)
+[    0.870000] 2 cmdlinepart partitions found on MTD device spi0.1
+[    0.870000] Creating 2 MTD partitions on "spi0.1":
+[    0.880000] 0x000000000000-0x000000f00000 : "upgrade2"
+[    0.890000] 0x000000f00000-0x000001000000 : "privatedata"
+[    0.910000] libphy: ag71xx_mdio: probed
+[    1.460000] ag71xx-mdio.1: Found an AR934X built-in switch
+[    2.500000] eth0: Atheros AG71xx at 0xba000000, irq 5, mode:GMII
+[    3.050000] ag71xx ag71xx.0: connected to PHY at ag71xx-mdio.1:00 [uid=004dd042, driver=Generic PHY]
+[    3.060000] eth1: Atheros AG71xx at 0xb9000000, irq 4, mode:MII
+[    3.070000] TCP: cubic registered
+[    3.070000] NET: Registered protocol family 17
+[    3.080000] 8021q: 802.1Q VLAN Support v1.8
+[    3.090000] VFS: Mounted root (squashfs filesystem) readonly on device 31:6.
+[    3.100000] Freeing unused kernel memory: 228K (80327000 - 80360000)
+procd: Console is alive
+procd: - watchdog -
+[    5.220000] usbcore: registered new interface driver usbfs
+[    5.230000] usbcore: registered new interface driver hub
+[    5.230000] usbcore: registered new device driver usb
+[    5.240000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    5.250000] ehci-platform: EHCI generic platform driver
+[    5.260000] ehci-platform ehci-platform: EHCI Host Controller
+[    5.260000] ehci-platform ehci-platform: new USB bus registered, assigned bus number 1
+[    5.270000] ehci-platform ehci-platform: TX-TX IDP fix enabled
+[    5.280000] ehci-platform ehci-platform: irq 3, io mem 0x1b000000
+[    5.300000] ehci-platform ehci-platform: USB 2.0 started, EHCI 1.00
+[    5.300000] hub 1-0:1.0: USB hub found
+[    5.310000] hub 1-0:1.0: 1 port detected
+procd: - preinit -
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    7.960000] eth0: link up (1000Mbps/Full duplex)
+jffs2 is not ready - marker found
+6+0 records in
+6+0 records out
+2104+0 records in
+2104+0 records out
+[   10.260000] eth0: link down
+procd: - early -
+procd: - watchdog -
+procd: - ubus -
+procd: - init -
+Please press Enter to activate this console.
+[   12.000000] NET: Registered protocol family 10
+[   12.010000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   12.020000] Loading modules backported from Linux version master-2014-05-22-0-gf2032ea
+[   12.030000] Backport generated by backports.git backports-20140320-37-g5c33da0
+[   12.060000] cfg80211: Calling CRDA to update world regulatory domain
+[   12.060000] cfg80211: World regulatory domain updated:
+[   12.070000] cfg80211:  DFS Master region: unset
+[   12.070000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   12.080000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   12.090000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   12.100000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   12.110000] cfg80211:   (5170000 KHz - 5250000 KHz @ 160000 KHz), (N/A, 2000 mBm), (N/A)
+[   12.110000] cfg80211:   (5250000 KHz - 5330000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   12.120000] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   12.130000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   12.140000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   12.190000] ath10k_pci 0000:00:00.0: BAR 0: assigned [mem 0x10000000-0x101fffff 64bit]
+[   12.200000] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[   12.500000] ath10k: pci irq legacy irq_mode 0 reset_mode 0
+[   12.590000] ath10k: otp stream is empty, using board.bin contents
+[   13.420000] ath10k: qca988x hw2.0 (0x4100016c, 0x043222ff) fw 10.1.467.2-1 api 2 htt 2.1
+[   13.960000] cfg80211: Calling CRDA for country: US
+[   13.970000] cfg80211: Regulatory domain changed to country: US
+[   13.970000] cfg80211:  DFS Master region: FCC
+[   13.980000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   13.990000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 3000 mBm), (N/A)
+[   13.990000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 1700 mBm), (N/A)
+[   14.000000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz), (N/A, 2300 mBm), (0 s)
+[   14.010000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 3000 mBm), (N/A)
+[   14.020000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+[   14.050000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   14.090000] nf_conntrack version 0.5.0 (1976 buckets, 7904 max)
+[   14.160000] xt_time: kernel timezone is -0000
+[   14.170000] PPP generic driver version 2.4.2
+[   14.190000] NET: Registered protocol family 24
+[   14.230000] ieee80211 phy1: Atheros AR9340 Rev:0 mem=0xb8100000, irq=47
+[   21.550000] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   21.550000] jffs2_build_filesystem(): unlocking the mtd device... done.
+[   21.560000] jffs2_build_filesystem(): erasing all blocks after the end marker... [   26.110000] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   26.110000] device eth0 entered promiscuous mode
+[   26.140000] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   26.180000] IPv6: ADDRCONF(NETDEV_UP): eth1: link is not ready
+[   26.710000] eth0: link up (1000Mbps/Full duplex)
+[   26.710000] br-lan: port 1(eth0) entered forwarding state
+[   26.720000] br-lan: port 1(eth0) entered forwarding state
+[   26.720000] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   26.760000] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   28.230000] eth1: link up (100Mbps/Full duplex)
+[   28.230000] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+
+[   28.720000] br-lan: port 1(eth0) entered forwarding state
+
+
+
+BusyBox v1.22.1 (2014-09-25 10:54:16 CST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ CHAOS CALMER (Bleeding Edge, r42666)
+ -----------------------------------------------------
+  * 1 1/2 oz Gin            Shake with a glassful
+  * 1/4 oz Triple Sec       of broken ice and pour
+  * 3/4 oz Lime Juice       unstrained into a goblet.
+  * 1 1/2 oz Orange Juice
+  * 1 tsp. Grenadine Syrup
+ -----------------------------------------------------
+root@OpenWrt:/# [   81.680000] done.
+[   81.680000] jffs2: notice: (931) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+procd: - init complete -
+
+root@OpenWrt:/# </nowiki>
+</WRAP>\\
+
+
+===== Notes =====
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>FastEthernet 1NIC 1WNIC 3Port USB USB2.0 ath9k ath10k DetachableAntenna 128RAM 16Flash MIPS MIPS32 74K}}

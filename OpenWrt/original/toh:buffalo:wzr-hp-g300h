@@ -1,0 +1,490 @@
+====== Buffalo WZR-HP-G300NH ======
+
+{{:media:buffalo:wzr-hp-g300nh.jpg?400}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^WZR-HP-G300NH$"}
+} -->
+
+| {{:meta:icons:tango:48px-dialog-warning.svg.png?nolink}} | **''NOTE:''** More recent versions of the WZR-HP-G300NH have had a <color red>hardware change without bumping the revision number</color> or changing the hardware label.\\ The newer hardware appears to have the rtl8366rb Ethernet switch while older hardware had the rtl8366s switch. New hardware with rtl8366rb switch is supported in OpenWrt trunk since at least r28133. |
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^WZR-HP-G300NH$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^WZR-HP-G300NH$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+For OpenWRt 21.02 and up, please make sure you choose the right image for your device. To do that, you need to first lookup the specific model code from the label on the back of your device in order to choose the right firmware. The model code is a 4-charactor alphanumerical number (e.g., B0B0, A0D0, etc) on the right hand side of the sticker.
+
+  * **A0D0**: Use "wzr-hp-g300nh-rb"-type images. ("wzr-hp-g300nh-s"-type images will boot, but will enter failsafe mode without network support. If you did that, you will have to use serial terminal to flash firmware and recover).
+  * **B0B0**: Use "wzr-hp-g300nh-s"-type images. ("wzr-hp-g300nh-rb"-type images will boot, but will constantly enter failsafe mode).
+
+See this thread for more details: https://forum.openwrt.org/t/buffalo-wzr-300hp-and-21-02/107521/8
+==== OEM installation using the TFTP method ====
+-> [[toh:buffalo:wzr-hp-ag300h#installation_using_the_tftp_method_always_working|WZR-HP-AG300H - Installation using the TFTP method]]
+
+| {{:meta:icons:tango:dialog-information.png?nolink}} | **''<color red>NOTE #1:</color>''** The [[docs:techref:bootloader]] of the WZR-HP-G300NH has a very short time frame in which it will accept a new firmware transfer over TFTP: it is about 4 sec long, approximately 10-20 sec after powering it on.\\ Here is [[http://www.youtube.com/watch?v=8xfSzR2Mu-8|a video]] showing the console output of the boot process, with all LEDs in view for reference.\\ The usable time window gets even shorter when your OS starts negotiating the network connection before it allows you to send data over it. And your OS is going to do that every time, when the other device gets powered on! \\ So to be able to use the entire time span available you need to either add a static arp route or put a switch between the router and you host machine. In case you do not have a switch, in Windows try turning off //Media Sensing// and in Linux prefer a static network configuration over the //[[wp>NetworkManager]]//. It is further recommended to make a static ARP entry for the router (see below). \\ Users have found that 'smart' or managed switches sometimes will not allow flashing even with static arp entries sometimes – the simpler the switch the better here.\\ **''<color red>NOTE #2:</color>''** As the Windows stack can interfere with the process, see [[https://forum.openwrt.org/viewtopic.php?id=30468|forum post]], it is recommended to use some Linux to perform the upload!\\ **''<color red>FYI:</color>''** The OEM version of [[docs:techref:bootloader:uboot]] on the G300NH always uses the IP address ''192.168.11.1'' and the MAC address ''02:aa:bb:cc:dd:20'' when listening for a new firmware. It also expects the sending IP address to be ''192.168.11.2''. Values belong to the bootloader and are independent of the ones used by OEM firmware or OpenWrt! \\ The computer used for the install must be connected to the LAN port on the router closest to the WAN port.  On my device this is labeled LAN 4, and it corresponds to port 0 per the information below.  |
+
+=== Preparation ===
+
+  - Download\\ either
+    - A suitable OpenWrt firmware image, e.g. [[https://downloads.openwrt.org/releases/19.07.4/targets/ar71xx/generic/openwrt-19.07.4-ar71xx-generic-wzr-hp-g300nh-squashfs-tftp.bin|OpenWrt-19.07.4-ar71xx-generic-wzr-hp-g300nh-squashfs-tftp.bin]] or [[http://downloads.openwrt.org/snapshots/trunk/ar71xx/openwrt-ar71xx-generic-wzr-hp-g300nh-squashfs-tftp.bin|latest trunk]] (**''NOTE:''** Name must contain //"tftp"//).\\ or
+    - A suitable "revert to stock" image. [[https://forum.openwrt.org/viewtopic.php?id=34212|This forum thread]] has links and information about these.\\ or
+    - The U-Boot recovery TFTP server can also receive original Buffalo stock firmware images and flash them.
+  - Connect the LAN port next to the WAN port of the router with some network switch and that switch with your host machine. Leave the router powered off.
+  - Buffalo WZR-HP-G300NH's U-Boot defaults to IP 192.168.11.1 with MAC 02-aa-bb-cc-dd-1a (confirmed for: old hardware rev B0 B0 with U-Boot 1.06, newer hardware rev A0 D0 with U-Boot 1.07).\\ **''NOTE:''** Its MAC address is printed on the label of the router as //"SSID"// => SSID: 1122334455FF ≙ MAC: 11:22:33:44:55:FF but you may need to use the MAC address ''02:AA:BB:CC:DD:1A'' instead of the one on the label! FIXME
+  - The TFTP recovery time frame will open roughly 12 seconds after the Diag LED lights up on boot (there's roughly a 2 secs delay after plugging in power) and waits for 4 seconds before closing (note the shorter time window on [[#locked_u-boot_too_short_time_tftp_window|newer hardware]]). See video [[http://youtu.be/8dVkJ1G0KJs|Buffalo WZR-HP-G300NH U-Boot boot sequence with timer]].\\ If you have serial access to the router then start the TFTP PUT when you see the last line of <code>
+tftp server(receive) go, waiting:4[sec]
+Trying eth1
+eth1 link down
+FAIL
+Trying eth0
+eth0 is duplex
+ag7100_check_link: _100BASET
+Load address: 0x81f00000</code>
+
+=== Linux ===
+To send the firmware to the device, you can use either `curl` or a TFTP client.
+
+
+  - Find **your computer**'s network interface:<code>
+ip link</code>
+    - You should see something like `enp3s0`, or if using an older system something like `eth0`
+  - Prepare your computer's network interface ("Ethernet port") to use the right IP address<code>
+sudo ip address add dev enp3s0 192.168.11.2/24</code> 
+    - If using an older system, you may need to use: <code>ifconfig eth0:1 192.168.11.2</code>
+  - Temporarily add a static arp entry for the router's MAC address:<code>
+sudo arp -s 192.168.11.1 02:aa:bb:cc:dd:1a</code>
+    - You may need to install some tools if `arp` isn't already installed: <code>sudo apt install net-tools</code>
+  - Then, prepare sending the upgrade file:
+    - If using curl:<code>
+curl -T openwrt-ar71xx-generic-wzr-hp-g300nh-squashfs-tftp.bin tftp://192.168.11.1</code>
+    - Or, if using a TFTP client:
+      - Install a TFTP client, if you don't already have one installed<code>
+sudo apt-get install tftp</code>
+      - Now you must be quick: <code>tftp -m binary 192.168.11.1 -c put openwrt-ar71xx-generic-wzr-hp-g300nh-squashfs-tftp.bin</code> and immediately after hitting enter...
+  - Power on the G300H!
+
+//The advantage of the curl approach is that it uses a more generic tool (and does't timeout as easily?). It also works on OSX.//
+
+
+=== Windows ===
+
+This was tested on a Windows 7 multi-homed PC with several private networks: 10.0.0.0/24 (with DNS/Gateway), 192.168.0.0/24, 192.168.1.0/24, 192.168.2.0/24, 192.168.11.0/24.
+Realtek Gigabit NIC 1GBit/s with 1GBit/s switch. Additional VirtualBox network/NIC. Windows 7 Firewall enabled, all default (not even [[http://windows.microsoft.com/en-US/windows7/What-is-Internet-Control-Message-Protocol-ICMP|inbound ICMPv4 enabled]]!).
+
+  - Install a TFTP client, e.g. [[http://tftpd32.jounin.net/|Tftpd32]] or [[http://technet.microsoft.com/en-us/library/ff698993.aspx|Windows' TFTP client]] via Add Windows Features ([[http://windows.microsoft.com/en-US/windows-vista/Turn-Windows-features-on-or-off|Vista]], [[http://windows.microsoft.com/en-US/windows7/Turn-Windows-features-on-or-off|Windows 7]]).
+  - Start the TFTP client once to allow it for private networks in the Windows firewall.
+  - Prepare the network card which is connected to the switch by adding the IP 192.168.11.2 with subnet mask 255.255.255.0 to it.
+  - Setup a temporary ARP route to the router on the network card which is connected to the switch. "route print" will show all active NICs in your PC at the top of the output, use the relevant device number (1st value of line) ("11" is used in the example below). For unknown reasons there may be already a wrong ARP route to the router's MAC, so check and remove if present.<code>
+set ROUTERIP=192.168.11.1
+set ROUTERMAC=02-aa-bb-cc-dd-1a
+
+cls & arp -a & echo. & echo Look for %ROUTERMAC% and delete all ip addresses which are not %ROUTERIP% with arp -d ip
+
+@REM On newer Windows (e.g. 7) use netsh. Have to get interface number of LAN network card first.
+route print
+set INTERFACE=11
+netsh interface ipv4 add neighbors %INTERFACE% %ROUTERIP% %ROUTERMAC%
+
+@REM On older Windows (e.g. XP) use arp
+arp -s %ROUTERIP% %ROUTERMAC%</code>
+  - Prepare the TFTP client for flashing.\\ For Tftpd32 go to the "Tftp Client" tab, enter the router's IP address as "Host", select the wanted TFTP image as "Local File", place the mouse over the "Put" button.\\ For Windows' TFTP client type the command inside the console:<code>tftp -i %ROUTERIP% PUT openwrt-ar71xx-generic-wzr-hp-g300nh-squashfs-tftp.bin</code>
+  - Now you must be quick: immediately after starting the TFTP PUT (e.g. by clicking or hitting enter)...
+  - power on the G300H!
+  - After a succesfull transfer/flash remove the temporary ARP route:<code>arp -d %ROUTERIP%</code>
+
+=== TFTP image received by router ===
+
+  - If the red //"DIAG"//-LED begins to flash rapidly then the router has received the image and is flashing the new firmware. If flashing stops then router will boot the new firmware.
+  - Obtain IP address per DHCP and follow the [[docs:guide-quick-start:walkthrough_login|First Login]] steps to complete installation.
+
+==== Migrate from DD-WRT to OpenWrt ====
+  - Enable SSH on the router
+  - Login to the router via SSH
+  - Change directory to ''/tmp'' and download the OpenWrt firmware image file as linked to in the [[toh:buffalo:wzr-hp-g300h#installation|installation section above]]. We recommend you use the latest stable release unless recommended otherwise at the top of this page, so substitute the URL below with the latest applicable.<code>
+cd /tmp
+wget https://downloads.openwrt.org/releases/19.07.0/targets/ar71xx/generic/openwrt-19.07.0-ar71xx-generic-wzr-hp-g300nh-squashfs-sysupgrade.bin
+</code>
+  - Overwrite current firmware with the downloaded one:<code>
+mtd -r write openwrt-ar71xx-generic-wzr-hp-g300nh-squashfs-sysupgrade.bin linux</code>
+
+After flashing, the router should go down for a reboot and return running OpenWrt.
+
+==== Locked U-Boot, too short time TFTP window ====
+Newer versions (HW v2, U-Boot 1.07) and Japanese versions of WZR-HP-G300NH are shipped with a locked U-Boot by default, preventing from flashing any unofficial firmware via TFTP. It is possible to flash DD-WRT via buffalo's WebInterface and then flash OpenWrt via ''mtd'', as explained in previous section, but then you loose the ability to re-flash via TFTP if anything goes wrong. After messing a bit with the U-Boot via serial console and comparing U-Boot variables with non-Japanese WZR-HP-G300NH, found out an interesting fact. Simply typing:<code>
+ar7100> setenv accept_open_rt_fmt 1
+ar7100> saveenv
+ar7100> reset
+</code>
+
+This forces U-Boot to accept any firmware via TFTP. Confirmed with OpenWrt 10.03. (__Not checked with newer hardware yet__).
+
+Additionally newer versions (e.g. HW v2 with U-Boot 1.07) have only a TFTP time window of 1 (ONE!) second.
+It will be easier to hit when setting it to 4 seconds like the older versions:<code>
+ar7100> setenv tftp_wait 4
+ar7100> saveenv
+ar7100> reset
+</code>
+
+There is another way to set U-Boot variables without serial access. Japanese and other languages OAM (Operations, Administration and Maintenance) "user frendly" firmware have a special hidden maintenance page, accessible at http://your.router.ip.address/cgi-bin/cgi?req=frm&frm=py-db/55debug.html, using a special username (bufpy) and password (otdpopy+<root password if any>). Make sure you don't have the usual authenticated root web session active at the same time (clear the browser cache for your router's page), otherwise you'll get an empty page saying "---- UNDER CONSTRUCTION --- ". Once connected to the special page, you can activate telnetd by clicking the link, and access the OAM OS using telnet. Once there, you can use the "ubootenv" command to set the above mentioned variables easily (tested & confirmed OK on Japanese WZR-HP-G300NH A0 A1, U-Boot 1.02).
+
+<code>
+# ubootenv -h
+Usage:
+ubootenv [option] [item] [value]...
+
+    [option]: {set, get, del,list}....
+    [item]:   Uboot environment variable name
+    [value]:  Value of Uboot environment variable
+</code>
+===== Failed upgrade =====
+
+===== Solid red DIAG light on newer versions ======
+If something goes wrong, and the red DIAG light goes on immediately at boot time and stays on indefinitely, your flash may have failed or you have a G300NH2 (A1 A0) version.
+
+You can use the TFTP method to recover the router, but you have to use the buffalo factory image that has the file extension 'enc'. This will bring you back the the factory firmware, but you won't have to solder anything or buy a new router.
+
+===== Slow flash of red DIAG light =====
+The red DIAG light may also flash slowly, and your router not boot properly. This appears to also be a sign of a failed upgrade.
+
+You can also use the TFTP method to recover the router here. In this case, you just need a 'tftp' image. This will bring back the router do default state and you will lose any configuration you had before the upgrade (you had backups, right?) but you won't have to solder anything or buy a new router.
+
+==== Upgrade OpenWrt ====
+->[[docs:guide-user:installation:generic.sysupgrade]]
+
+
+===== Basic Configuration =====
+->[[docs:guide-quick-start:checks_and_troubleshooting]]
+
+===== Specific Configuration =====
+
+==== VLAN Tagging for WAN ====
+Note that the WAN port is connected to eth1 and not eth0, and that the LUCI web interface does not list eth1 for VLANs.\\
+To tag the WAN port create the VLAN ID under "Network => Switch" and assign it to "CPU".
+Under "Network => Interface" edit the "WAN" interface and use for its "Physical Settings" the "Custom Interface": eth1.<VLAN ID>\\
+Example: VLAN ID 7 for German Telekom VDSL would be eth1.7
+
+==== Sample Single DMZ Port Configuration ====
+
+This configuration demonstrates configuring a single port ([[#network_port_assignments|LAN 1 / Port 3]])
+on the WZR-HP-G300NH as a DMZ using the rtl8366s switch.
+
+:!: **Do not forget** to follow the [[docs:guide-user:firewall:dmz#setting_up_the_firewall|Firewall DMZ setup guide]] if you want your DMZ to be of any use.
+
+<code>config 'interface' 'loopback'
+	option 'ifname' 'lo'
+	option 'proto' 'static'
+	option 'ipaddr' '127.0.0.1'
+	option 'netmask' '255.0.0.0'
+
+config 'interface' 'lan'
+	option 'ifname' 'eth0.1'
+	option 'type' 'bridge'
+	option 'proto' 'static'
+	option 'ipaddr' '192.168.1.1'
+	option 'netmask' '255.255.255.0'
+
+config 'interface' 'wan'
+	option 'ifname' 'eth1'
+	option 'proto' 'pppoe'
+	option 'username' '-------'
+	option 'password' '-------'
+
+config 'switch'
+	option 'name' 'rtl8366s'
+        option 'enable' '1'
+        option 'enable_vlan' '1'
+        option 'reset' '1'
+
+config 'switch_vlan' 'eth0_1'
+	option 'device' 'rtl8366s'
+	option 'vlan' '1'
+	option 'ports' '0 1 2 5t'
+
+config 'switch_vlan' 'eth0_2'
+	option 'device' 'rtl8366s'
+	option 'vlan' '2'
+	option 'ports' '3 5t'
+
+config 'interface' 'dmz'
+       option 'ifname' 'eth0.2'
+       option 'proto' 'static'
+       option 'ipaddr' 192.168.2.1
+       option 'netmask' 255.255.255.0</code>
+
+
+
+==== Network Port Assignments ====
+|**port 0**| LAN 4|
+|**port 1**| LAN 3|
+|**port 2**| LAN 2|
+|**port 3**| LAN 1|
+|**port 4**| Unpopulated/unusable |
+|**port 5**| CPU|
+
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set|Architecture]]    | [[wp>MIPS architecture|MIPS]] |
+^ Vendor          | [[wp>Qualcomm Atheros]] |
+^ [[docs:techref:bootloader]]     | crippled [[docs:techref:bootloader:uboot|U-Boot]]  |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | AR9132 |
+^ [[docs:techref:hardware:cpu|CPU]]/Speed       | [[http://www.mips.com/products/cores/32-64-bit-cores/mips32-24k/|MIPS 24K]]c V7.4 400 MHz |
+^ Flash-Chip      | [[http://www.cypress.com/part/s29gl256p11tfi010|S29GL256P11TFI01]] cfi-flash |
+^ Flash size      | 32 MiB |
+^ RAM             | 64 MiB |
+^ Wireless        | Atheros AR9160 BB/MAC and AR9103 2.4 GHz 3x3 MIMO radio b/g/n |
+^ Ethernet        | ?    |
+^ Internet        | n/a  |
+^ USB             | Yes 1 x 2.0  |
+^ Serial          | [[#Serial|Yes]], 3.3V, no header |
+^ JTAG            | ?    |
+
+
+==== Internal Architecture ====
+{{:media:buffalo:wzr-hp-g300nh.png|}}
+
+
+==== Flash Layout ====
+->[[docs:techref:flash.layout]] has an example flash layout and all explanations required to understand this. Here the naked hex-values for the WZR-HP-G300NH:
+
+^ Start          ^  End           ^  Description    ^
+| 0x000000000000 | 0x000000040000 | "u-boot"        |
+| 0x000000040000 | 0x000000060000 | "u-boot-env"    |
+| 0x000000060000 | 0x000000160000 | "kernel"        |
+| 0x000000160000 | 0x000001fc0000 | "rootfs"        |
+| 0x000000880000 | 0x000001fc0000 | "rootfs_data"   |
+| 0x000001fc0000 | 0x000001fe0000 | "user_property" |
+| 0x000001fe0000 | 0x000002000000 | "art"           |
+| 0x000000060000 | 0x000001fc0000 | "firmware"      |
+
+
+==== Photos ====
+{{http://upload.wikimedia.org/wikipedia/commons/1/12/WZR-HP-G300NH_back.jpg?320x240&direct}}
+{{http://upload.wikimedia.org/wikipedia/commons/c/ce/WZR-HP-G300NH_down.jpg?320x240&direct}}
+{{http://upload.wikimedia.org/wikipedia/commons/7/79/WZR-HP-G300NH_up.jpg?320x240&direct}}
+
+==== Serial ====
+
+Pinout (J1 header):
+
+| **Pin 1**   | VCC +3.3V      |
+| **Pin 2**   | GND            |
+| **Pin 3**   | TX             |
+| **Pin 4**   | RX             |
+| Settings    | 115200,8,N,1   |
+
+==== Buttons ====
+^ Physical button                                  ^ Name of button                   ^
+| Reset                                            | reset/BTN_0 (pressed,released)   |
+| AOSS                                             | wps/BTN_1 (pressed,released)     |
+| USB Eject                                        | BTN_2 (pressed,released)         |
+| Movie Engine (on)                                | BTN_3 released, BTN_4 pressed    |
+| Movie Engine (off)                               | BTN_3 pressed, BTN_4 released    |
+| Router (on)                                      | BTN_5 released, BTN_6 released   |
+| Router (off)                                     | BTN_5 pressed, BTN_6 released    |
+| Router (auto)                                    | BTN_5 released, BTN_6 pressed    |
+^ gpio_button_hotplug (added into table: r30753)   ^^
+| Router (on=>off)                                 | BTN_5 pressed                    |
+| Router (off=>auto)                               | BTN_5 released, BTN_6 pressed    |
+| Router (auto=>off)                               | BTN_6 released, BTN_5 pressed    |
+| Router (off=>on)                                 | BTN_5 released                   |
+
+
+=== USB Eject Button ===
+
+To make the USB eject button functional, first modify ''/etc/hotplug.d/button/00-button'' [[docs:guide-user:hardware:hardware.button#using_atheros_00-button_uci| as shown here]] and [[toh/buffalo/wzr-hp-g300h#leds|activate the USB LED.]]
+
+Next add a system config for the button with the following commands:
+
+<code>
+uci add system button    
+uci set system.@button[-1].button=BTN_2
+uci set system.@button[-1].action=pressed
+uci set system.@button[-1].handler=/usr/bin/usb-umount
+uci commit system
+</code>
+
+Then create ''/usr/bin/usb-umount'' and paste the following:
+
+<code>
+
+# Assumes possibility of up to 1 mounted partition and 1 swap - you will need to modify this if you have more
+umount `mount | grep sda | cut -f 1 -d ' '`
+swapoff `cat /proc/swaps | grep sda | cut -f 1 -d ' '`
+# Check that no sda partitions are in use, then turn off USB LED
+sdainuse=0
+sdamount=`mount | grep sda | cut -f 1 -d ' '`
+sdaswap=`cat /proc/swaps | grep sda | cut -f 1 -d ' '`
+if [ -n "$sdamount" ]; then
+	sdainuse=1
+fi
+if [ -n "$sdaswap" ]; then
+        sdainuse=1
+fi
+if [ $sdainuse -lt 1 ]; then
+	echo 0 > /sys/class/leds/wzr-hp-g300nh\:blue\:usb/brightness
+fi
+
+</code>
+
+You need to reboot for the button config to take effect. When you press the button, it will dismount and swapoff any partitions on the SD card, and turn off the USB LED if successful.
+
+==== LEDs ====
+To turn on the blue LED when a USB device is attached you can modify /etc/hotplug.d/usb/10-usb (tested with 10.03.1-RC5):
+| ''case "$ACTION" in
+        add)
+                # update LEDs
+                echo 255 > /sys/class/leds/wzr-hp-g300nh\:blue\:usb/brightness
+                ;;
+        remove)
+                # update LEDs
+                echo 0 > /sys/class/leds/wzr-hp-g300nh\:blue\:usb/brightness
+                ;;
+esac'' |
+**Note:** Future versions may allow the use of triggers, see this [[https://dev.openwrt.org/browser/trunk/target/linux/ar71xx/base-files/etc/uci-defaults/wzr-hp-g300nh|check-in]] for uci defaults
+
+=====Troubleshooting/Bugs=====
+
+==== uboot-envtools missing config by default ====
+For some reason, uboot-envtools config is not present after the package is installed. It is fairly easy to create it manually by accessing the command line:
+
+<code>
+# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00040000 00020000 "u-boot"
+mtd1: 00020000 00020000 "u-boot-env"
+mtd2: 00100000 00020000 "kernel"
+mtd3: 01e60000 00020000 "rootfs"
+mtd4: 01a40000 00020000 "rootfs_data"
+mtd5: 00020000 00020000 "user_property"
+mtd6: 00020000 00020000 "art"
+mtd7: 01f60000 00020000 "firmware"
+
+# hexdump -C /dev/mtd1 | head
+00000410  63 72 63 3d 44 38 42 32  45 30 41 31 00 73 74 64  |crc=D8B2E0A1.std|
+00000420  69 6e 3d 73 65 72 69 61  6c 00 73 74 64 6f 75 74  |in=serial.stdout|
+00000430  3d 73 65 72 69 61 6c 00  73 74 64 65 72 72 3d 73  |=serial.stderr=s|
+00000440  65 72 69 61 6c 00 6c 6f  61 64 61 64 64 72 3d 38  |erial.loadaddr=8|
+00000450  31 46 30 30 30 30 30 00  65 74 68 61 63 74 3d 65  |1F00000.ethact=e|
+00000460  74 68 30 00 61 63 63 65  70 74 5f 6f 70 65 6e 5f  |th0.accept_open_|
+00000470  72 74 5f 66 6d 74 3d 31  00 00 00 00 00 00 00 00  |rt_fmt=1........|
+00000480  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+</code>
+
+By running above commands, we had confirmed that uboot environment is indeed at /dev/mtd1, starting at offset 0x40000 and having size of 0x20000 bytes. Now, use these values to create configuration:
+<code>
+# opkg install uboot-envtools
+# TAB=$(echo -e "\t")
+# cat > /etc/fw_env.config << EOF
+#MTD device name${TAB}Device offset${TAB}Env. size${TAB}Flash sector size
+/dev/mtd1${TAB}${TAB}0x40000${TAB}${TAB}0x20000${TAB}${TAB}0x20000
+EOF
+# fw_printenv
+bootargs=console=ttyS0,115200 root=31:03 rootfstype=jffs2 init=/sbin/init mtdparts=ar9100-nor0:256k(u-boot),128k(u-boot-env),1024k(uImage),31104k(rootfs),128k@32640k(ART),128k@32512k(properties)
+bootcmd=bootm 0xbe060000
+bootdelay=4
+baudrate=115200
+
+ . . .
+</code>
+
+Also, fw_setenv symbolic link doesn't seem to be deployed by the uboot-envtools package, one can set it by:
+<code>
+ln -sf /usr/sbin/fw_printenv /usr/sbin/fw_setenv
+</code>
+
+==== After VLAN setup, router is inaccessible ====
+Do not use VLAN0 if there is another tagged VLAN; use another number.
+See [[https://dev.openwrt.org/ticket/7168|ticket 7168]].
+
+
+==== Unable to transfer image via TFTP (transfer times out then router boots normally) ====
+I was unable to transfer the image using my PC with a gigabit network interface. My laptop, which only has a 100Mb network card worked. It may be possible to transfer the image by switching the port down to 100Mb speed.
+
+On linux, use (As root):
+
+''      ethtool -s [network interface name. e.g. eth0] speed 100 duplex full autoneg off''
+
+==== Wireless network down after a period of time (10sec ~ 5min) ====
+My wireless connection always shuts down automatically after a period of time, disable 802.11n capability solves the problem.
+<code>
+uci set wireless.radio0.hwmode=11g
+uci commit wireless
+wifi
+</code>
+
+The solution above didn't work for me, I've filed a [[https://dev.openwrt.org/ticket/8343|ticket 8343]]
+
+==== SSH does not start after changing the password ====
+https://dev.openwrt.org/ticket/7047\\
+\\
+When you login into the router for the first time via telnet and change the password, telnet will be disabled and ssh will be enabled. However, due to a bug in backfire 10.03 this takes **2-3 minutes** to happen. If you restart openssh before this is completed you will not have telnet access or ssh access! I would leave the telnet connection open until you can confirm that you can login via ssh.
+
+
+==== WAN DHCP Won't Renew ====
+On OpenWrt the WAN port and LAN ports do not share the same MAC address (printed on the back of the router), the MAC of the WAN port is set to 1 increment higher than the LAN. Example: Printed MAC (00:1D:2C:3B:4A:00), LAN (00:1D:2C:3B:4A://00//), WAN (00:1D:2C:3B:4A://01//). A hard reset of the cable modem should* allow the router to receive a new lease. Some modems are finicky to what types of devices they hand leases to, so one may try setting the MAC of a PC to the WAN address for OpenWrt, connecting the PC in place of the router, receiving a lease from the modem and then connecting the router again. 
+
+
+
+=====U-Boot Console=====
+When you see the following, press CTRL-C to interrupt.
+
+<code>
+tftp server(receive) go, waiting:4[sec]
+Trying eth1
+eth1 link down
+FAIL
+Trying eth0
+eth0 is duplex
+ag7100_check_link: _100BASET
+Load address: 0×81f00000
+</code>
+
+Then you’ll get this:
+
+<code>
+Abort
+no file was loaded.
+### main_loop entered: bootdelay=4
+### main_loop: bootcmd=”bootm 0×81f00000″
+Hit any key to stop autoboot: 0
+</code>
+
+At this point Hit CTRL-C again.
+
+
+===== Failsafe mode=====
+In the event that you mess up the configuration, lose your password or otherwise need to reset your device, and the factory reset button in the hole at the bottom of the device (press min. 30s then power-cycle) doesn't work, you need to use failsafe mode. 
+
+The fail safe mode is the same as the [[:toh:buffalo:whr-g125#failsafe_mode|WHR-G125]] router.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>GigabitEthernet 5Port 2NIC USB 802.11bgn ath9k 64Ram 32Flash MIPS MIPS32 24Kc}}

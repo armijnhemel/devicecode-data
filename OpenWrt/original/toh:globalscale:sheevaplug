@@ -1,0 +1,319 @@
+====== Globalscale SheevaPlug  ======
+
+There are a lot of advantages to put OpenWrt on a SheevaPlug, for example:
+  *  Have a system it can be shutdown as a modem.
+  *  Use an external USB hard drive and spin it down for noise reduction.
+  *  Have fast restart of the system, very good thing for a PBX
+  *  Etc ...
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"model": "^Sheevaplug$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "ethernet1gports", "sataports", "usbports"],
+  "filterColumns": {"model": "^Sheevaplug$"}
+} -->
+
+===== Installation =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^Sheevaplug$"}
+} -->
+  - Update uboot:<code bash>
+setenv ipaddr '192.168.0.111'
+setenv serverip '192.168.0.1'
+tftpboot u-boot.kwb
+nand erase 0x0 0x100000
+nand write 0x800000 0x0 0x100000
+reset</code>
+  - Install OpenWRT:<code bash>
+setenv ethaddr 00:50:43:01:xx:xx
+saveenv
+setenv ipaddr '192.168.0.111'
+setenv serverip '192.168.0.1'
+tftpboot openwrt-kirkwood-globalscale_sheevaplug-squashfs-factory.bin
+nand erase.part ubi
+nand write 0x800000 ubi 0x600000
+reset</code>
+
+===== Old installation instructions =====
+
+==== What You Need To Know ====
+
+  - The jffs2-nand support is only available on the barrier_breaker version.
+  - The rootfs size reserved by u-boot will be too small by default.
+  - Never use /snapshots/trunk/kirkwood/uboot-kirkwood-sheevaplug/ to update your u-boot.
+
+==== Preparations ====
+Might look like a bad joke, but in fact when I started the SheevaPlug port I'd only read the Wiki documentation. All the necessary info for build it on you own devices is there.
+
+  - You will be using OpenWrt Buildroot for this, so read [[docs:guide-developer:toolchain:start|about it]]
+  - Pull OpenWrt Buildroot per svn/git and install its prerequisites on your system: [[docs:guide-developer:toolchain:install-buildsystem|OpenWrt Buildroot – Installation]]
+  - See howto use it [[docs:guide-developer:toolchain:start|OpenWrt Buildroot – Usage]]
+  - In case questions pop up, cf. [[docs:techref:buildroot|OpenWrt Buildroot – Technical Reference]] (Work in Progress)
+
+Debian 7 : 
+<code>
+sudo apt-get install libncurses5-dev zlib1g-dev gawk subversion build-essential libncurses5-dev zlib1g-dev gawk git ccache gettext libssl-dev xsltproc
+</code>
+
+**''Note:''** If you simply and swiftly want to cross compile a program, see [[docs:guide-developer:toolchain:crosscompile]].
+
+==== Procedure ====
+
+=== 1. Pull OpenWrt Buildroot and install its dependencies ===
+  * [[docs:guide-developer:toolchain:install-buildsystem|OpenWrt Buildroot – Installation]]
+
+==== 2. Pull sources for BARRIER BREAKER ====
+<code>
+cd ~
+mkdir -p ~/openwrt
+cd ~/openwrt
+svn co svn://svn.openwrt.org/openwrt/branches/barrier_breaker
+cd barrier_breaker
+</code>
+
+<code>
+make menuconfig
+</code>
+<code>
+  - Target System ---> Marvell Kirkwood
+  - Target Profile ---> Generic (default)
+  - Save and Exit
+</code>
+<code>
+make kernel_menuconfig
+  - System Type  ---> Marvell Kirkwood Implementations  --->
+ [*] Marvell eSATA SheevaPlug Reference Board
+ [*] Marvell SheevaPlug Reference Board
+  - Save and Exit
+</code>
+
+<code>
+./scripts/feeds update -a
+./scripts/feeds install -a
+make defconfig
+make prereq
+make oldconfig
+</code>
+
+<code>
+make menuconfig
+  - LuCI  ---> 1. Collections  ---> <*> luci-ssl
+  - Target Images  ---> [*] jffs2 for NAND
+  - Save and Exit
+</code>
+
+Then we start the compilation
+
+<code>
+make
+</code>
+
+It results in a minimally functioning system , but that probably a wrong thing to stop you work here.
+The better is build all others available packages as module, especially kernel-modules. That because lot of packages can depends of kernel sign. That can take days to generate all packages as opkg format, but that a good way for never have to recompile anything.
+
+=== 3. Prepare a TFTP server ===
+
+Unfortunately for you I have use a TFTP server for inject both kernel and rootfs image on the SheevaPlug NAND. I have use Debian 7 host for all my test, then the exemple is for GNU/Linux system. For other OS it should be possible, you just have to put openwrt-kirkwood-uImage and openwrt-kirkwood-generic-jffs2-nand-2048-128k.img on the "root" of you tftp server.
+
+<code>
+apt-get install tftpd-hpa
+</code>
+
+Take a look on /etc/default/tftpd-hpa file , it should look like that:
+<code>
+# /etc/default/tftpd-hpa
+RUN_DAEMON="yes"
+TFTP_USERNAME="tftp"
+TFTP_DIRECTORY="/srv/tftp"
+TFTP_ADDRESS="0.0.0.0:69"
+TFTP_OPTIONS="--secure --verbose"
+</code>
+then
+<code>
+/etc/init.d/tftpd-hpa restart
+[ ok ] Restarting HPA's tftpd: in.tftpd.
+</code>
+
+copy openwrt-kirkwood-uImage and openwrt-kirkwood-generic-jffs2-nand-2048-128k.img on /srv/tftp/ directory
+<code>
+cp ./bin/kirkwood/openwrt-kirkwood-uImage /srv/tftp/
+cp ./bin/kirkwood/openwrt-kirkwood-generic-jffs2-nand-2048-128k.img /srv/tftp/
+</code>
+
+Very hard , that all
+
+=== 4. Deal with u-boot ===
+You probably have to update you u-boot , you can found it here: http://people.debian.org/~tbm/u-boot/
+And you should follow that doc: http://www.cyrius.com/debian/kirkwood/sheevaplug/uboot-upgrade/   
+
+Never use the u-boot file generate by OpenWrt SDK, or found on anywhere of OpenWrt, that simply break you device. Prefer Debian u-boot file.
+
+  - Connect the sheevaPlug MiniUSB to a USB port of you computer
+  - Open a terminal session
+  - Use screen or Minicom
+
+<code>
+screen /dev/ttyUSB0 115200
+</code>
+
+Start by creating a backup of you u-boot environment variables, by printenv and copy past the result inside you favorite text editor.
+<code>
+Marvell>> printenv
+</code>
+
+Unset almost every variables by use : sentenv VARIABLE_NAME '' when it's pretty clean inject it environment setting :
+<code>
+ setenv loadaddr '0x6400000'
+ setenv console 'console=ttyS0,115200 panic=20'
+ setenv bootargs_root 'root=/dev/mtdblock2 rootfstype=jffs2'
+ setenv kernel_name 'openwrt-kirkwood-uImage'
+ setenv rootfs_name 'openwrt-kirkwood-generic-jffs2-nand-2048-128k.img'
+ setenv download_kernel 'mw $(loadaddr) 0xffff 0x300000; tftp $(loadaddr) $(kernel_name);'
+ setenv flash_kernel 'nand erase 0x100000 0x400000; nand write.e $(loadaddr) 0x100000 0x400000;'
+ setenv download_rootfs 'mw $(loadaddr) 0xffff 0x200000; tftp $(loadaddr) $(rootfs_name);'
+ setenv flash_rootfs 'nand erase 0x500000 0xfb00000; nand write.e $(loadaddr) 0x500000 0x900000;'
+ setenv load_openwrt 'setenv bootargs $(console) $(bootargs_root); nand read $(loadaddr) 0x100000 0x400000; bootm $(loadaddr)'
+ setenv bootcmd 'run load_openwrt'
+ saveenv
+</code>
+<code>
+ setenv arcNumber '2097
+</code>
+If you have an eSATA SheevaPlug >>> you have to inform u-boot <<< If you have an eSATA SheevaPlug, type:
+<code>
+setenv machid a76
+</code>
+Found you ethadd and replace 'XX:XX:XX:XX:XX:XX' by you true Mac Addr, you can found with you MAC Addr on a sticker put on the back of you device
+<code>
+ setenv ethaddr 'XX:XX:XX:XX:XX:XX'
+</code>
+As you imagine you should save you setting
+<code>
+saveenv
+</code>
+If you have DHCP it inject TFTP information:
+<code>
+ dhcp;run download_kernel;run flash_kernel;run download_rootfs;run flash_rootfs;reset;
+</code>
+Else:
+<code>
+ setenv ipaddr '192.168.1.100'
+ setenv serverip '192.168.1.10'
+ run download_kernel;run flash_kernel;run download_rootfs;run flash_rootfs;reset;
+</code>
+where **ipaddr** is you IP address on you network, and **serverip** the TFTP server IP adress on you network.
+
+=== 5. First boot ===
+  At first boot, the filesytem ill take a moment to grow the rootfs partition to MAX size, ot can be slow (5 minutes)
+
+
+==== Troubleshooting ====
+
+Download a valide u-boot from here : 
+http://people.debian.org/~tbm/u-boot/
+
+<code>
+cd $HOME
+wget http://people.debian.org/~tbm/u-boot/2013.10-2/sheevaplug/u-boot.kwb
+wget http://people.debian.org/~tbm/u-boot/2013.10-2/sheevaplug/uboot.elf
+</code>
+
+Install openocd for can unbrike you SheevaPlug device.
+
+<code>
+sudo apt-get update && apt-get install openocd telnet screen
+</code>
+
+Power connect the SheevaPlug and connect the miniusb port to you computer.
+
+Open a terminal session and initialize openocd:
+<code>
+#openocd -f /usr/share/openocd/scripts/board/sheevaplug.cfg -s /usr/share/openocd/scripts
+</code>
+
+<code>
+Open On-Chip Debugger 0.5.0 (2011-08-09-08:45)
+Licensed under GNU GPL v2
+For bug reports, read
+	http://openocd.berlios.de/doc/doxygen/bugs.html
+Info : only one transport option; autoselect 'jtag'
+2000 kHz
+trst_and_srst separate srst_gates_jtag trst_push_pull srst_open_drain
+adapter_nsrst_delay: 200
+jtag_ntrst_delay: 200
+dcc downloads are enabled
+Warn : use 'feroceon.cpu' as target identifier, not '0'
+sheevaplug_load_uboot
+Info : clock speed 2000 kHz
+Error: JTAG scan chain interrogation failed: all zeroes
+Error: Check JTAG interface, timings, target power, etc.
+Error: Trying to use configured scan chain anyway...
+Error: feroceon.cpu: IR capture error; saw 0x00 not 0x01
+Warn : Bypassing JTAG setup events due to errors
+Info : Embedded ICE version 0
+Info : feroceon.cpu: hardware has 1 breakpoint/watchpoint unit
+Error: unexpected Feroceon EICE version signature
+</code>
+
+Download a valide u-boot.elf
+Copy it on you home 
+Open a other terminal session and connect you with telnet on localhost 4444.
+<code>
+user@youhost:~$ telnet localhost 4444
+Trying ::1...
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+Open On-Chip Debugger
+>
+</code>
+You obtain a prompt, that the moment to inject a valid u-boot and write it on the NAND.
+<code>
+reset;sheevaplug_init;load_image u-boot.elf;resume 0x00600000
+</code>
+
+
+Now you can see Uboot starting to run "screen /dev/ttyUSB0 115200"  you are ready to start restoring your plug.
+
+Reference Documents:
+https://newit.co.uk/forum/index.php?topic=2835.0;wap2</hidden>
+
+===== Notes =====
+
+I don't provide any image that because my images, don't respect default OpenWrt configuration, I have totally made my own thing, via the amazing OpenWrt SDK.
+It's still an OpenWrt but it's ready out of the box for my own personal usage. Here is what I have done:
+
+<code>
+ Compile nativelly the entire GNU Core Utilities, and not install busybox
+ Compile nativelly NTPD
+ Compile nativelly SSHD and not install dropbear
+ Compile nativelly Asterisk 11 - chan_sscp-b (for Cisco support)
+ Compile nativelly DJBDNS and not dnsmasq then not install dhcp server thing
+ Compile nativelly StrangSwan an IPSEC thing
+ Not install Luci
+ Inject all my default config file, via the ./script/env and ./file/ directory
+</code>
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>kirkwood 512NAND 512ram 1port gigabitethernet 1USB USB2.0 0wnic wall_plug microSD mains_powered}}

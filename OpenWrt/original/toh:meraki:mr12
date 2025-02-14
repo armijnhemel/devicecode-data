@@ -1,0 +1,432 @@
+====== Meraki MR12 ======
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^Meraki$", "model": "^MR12$"}
+} -->
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["unsupported_functions"],
+  "filterColumns": {"brand": "^Meraki$", "model": "^MR12$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^Meraki$", "model": "^MR12$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Meraki$", "model": "^MR12$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+===== Build and install =====
+Note (Dec 12, 2020): Please see the MR16 install page for an overview of the new installation process. The ath79 target will soon be supported in Snapshot and as of OpenWrt 20, and it is recommended to use it over the ar71xx target which will be deprecated after OpenWrt 19.
+
+{{page>meta:infobox:outdated&noheader&nofooter&noeditbtn}}
+{{page>meta:infobox:cleanup&noheader&nofooter&noeditbtn}}
+
+For flashing builds after Dec 12, 2020, the following can be used to tftpboot an updated image on the MR12 for flashing.
+
+<code>
+setenv bootcmd bootm 0x9f0a0000; saveenv;
+tftpboot 0x81100000 openwrt-23.05.5-ath79-generic-meraki_mr12-initramfs-kernel.bin;
+bootm 0x81100000;
+</code>
+
+Once booted, you can flash the squashfs-sysupgrade.bin file from LUCI.
+
+Note that if you previously had a mac partition for storing MAC address information in LEDE/OpenWrt, you will need to recreate the config partition with your mac at the expected offset. To do this you can use the following reference:
+
+<code>
+opkg update; opkg install kmod-mtd-rw;
+insmod mtd-rw.ko i_want_a_brick=1
+(
+  dd if=/dev/zero bs=1 count=$((0x66)) ; # Pad the first 102 bytes
+  echo -ne '\x00\x18\x0a\x12\x34\x56'  ; # Add in MAC address
+  dd if=/dev/zero bs=1 count=$((0x20000-0x66-0x6)) ; # Pad the rest
+) > /tmp/mac.bin
+mtd write /tmp/mac.bin config;
+</code>
+
+==== Requirements ====
+| **Build:** [[https://github.com/riptidewave93/Openwrt-MR12|riptide_wave's build of CC]]       |
+| **Method:** [[docs:guide-user:installation:generic.flashing.tftp| TFTP Installation Setup]]   |
+| **Serial interface (pin out details below)**                                                  |
+
+==== Step by Step Flashing Guide ====
+
+**Read the full guide before proceeding and make sure you understand the implications of the flash commands.  Any error is likely to brick your device.  At this time there is no way to recover from a bricked MR12 short of desoldering the SOIC and reprogramming.**
+
+Built on Ubuntu 14.04 LTS, this guide assumes you have a basic working knowledge of the command line and know your way around permissions, copying files etc.
+
+Links are provided as additional reading and guidance. 
+
+=== Compile Your Own Build (optional) ===
+
+  * Configure build environment as per [[docs:guide-developer:toolchain:install-buildsystem|recommended instructions]]. 
+  * Clone sources from git or svn, recommended r42685.  [[https://dev.openwrt.org/wiki/GetSource|Instructions here]].
+  * Clone [[https://github.com/riptidewave93/Openwrt-MR12|riptidewave's git files/patches]] into separate directory and merge into above clone. 
+  * [[docs:guide-developer:toolchain:use-buildsystem#image_configuration|make menuconfig && make kernel_menuconfig]]
+  * Change the Target Profile in menuconfig to Meraki MR12 and Machine Selection/Atheros in kernel_menuconfig to Meraki MR12.
+  * [[docs:guide-developer:toolchain:use-buildsystem#building_images|make]] 
+  * Built files will be in [[docs:guide-developer:toolchain:use-buildsystem#locating_images|<buildroot>/bin/ar71xx]].  You require the files:
+ 
+<code>
+
+To boot from TFTP: openwrt-ar71xx-generic-mr12-initramfs-uImage.bin
+To flash to the device: openwrt-ar71xx-generic-mr12-kernel.bin & openwrt-ar71xx-generic-mr12-rootfs-squashfs.bin
+
+</code>
+
+=== Configure Your PC and Then Flash: ===
+
+  * A video now exists that illustrates the following steps and includes some detail not fully explained here. [[https://www.youtube.com/watch?v=StyuaTFF2So|Link]].
+  * Configure your PC to a static IP (It appears at least some devices require this to be 192.168.1.101) with a subnet mask of 255.255.255.0.
+  * Temporarily disable any software firewall.
+  * Configure TFTP server (see video) and place the above files in the /tftp directory. [[http://kin.klever.net/pumpkin|Pumpkin TFTP]] works well in Windows.
+  * Make sure you have a serial connection to your MR12 using the below hook up. Guide was put together using one of [[http://www.ebay.com/itm/Mini-CP2102-USB-2-0-to-UART-TTL-6PIN-Connector-Serial-Useful-Converter-Module-/190685792376|these]].
+  * Start the TFTP server on your machine and connect the ethernet cable to the 10/100/1000 port on the MR12. This is the port closest to the power connector (the other port will be disabled).
+  * Configure PuTTY (or your favorite terminal program) for the COM port used by your serial adapter (this should be shown in Device Manager) and a speed of 115200. Note that the COM port shown in the video will likely differ from yours. [[http://www.chiark.greenend.org.uk/~sgtatham/putty|PuTTY]].
+  * Power up the router and interrupt the boot sequence by hitting Enter in PuTTY *immediately*. This should take you to the boot loader, which you can recognize by the "ar7240" command prompt. If you are having trouble interrupting the boot sequence, such as it not interrupting even though you are pressing a key, try swapping the Rx and Tx pins on the serial connection. Rx and Tx should match up if you are the above part.
+  * Run the following command on the MR12 terminal: 
+
+<code>tftpboot 0x81000000 openwrt-ar71xx-generic-mr12-initramfs-uImage.bin; bootm</code>
+
+  * Test boot, [[:docs:guide-quick-start:walkthrough_login|login]], and configure connectivity.  If happy/successful, move on. 
+  * Reboot the MR12 and interrupt the boot loader once more.  To install follow the flash commands below to commit the images to the MR12.  ***Warning this is irreversible and WILL destroy the MR12's factory shipped image***
+  * Check, double check and probably triple check each of the commands to ensure they are EXACTLY as below before hitting enter on each.   
+
+==== Flash Commands ====
+
+With many thanks to riptide_wave.  [[https://forum.openwrt.org/viewtopic.php?pid=256607#p256607|Source]].
+
+* Note: These commands will differ if using a build other than Riptide's. For example, if you're using the CC release build from [[https://downloads.openwrt.org/chaos_calmer/15.05/ar71xx/generic|here]].
+
+<code>tftpboot 0x80010000 openwrt-ar71xx-generic-mr12-kernel.bin;erase 0x9fda0000 +0x240000;cp.b 0x80010000 0x9fda0000 0x240000
+tftpboot 0x80010000 openwrt-ar71xx-generic-mr12-rootfs-squashfs.bin;erase 0x9f080000 +0xD20000;cp.b 0x80010000 0x9f080000 0xD20000
+setenv bootcmd bootm 0x9fda0000; saveenv; boot</code>
+
+
+=== LEDE - Setting hardware MAC Address ===
+
+Note that as of 2016-10-26, users of LEDE on the MR12 and MR16 can now properly set their hardware MAC address to prevent MAC conflicts, or needing to set this with every reset. To verify if your installed firmware supports this, run **//cat /proc/mtd | grep mac//** and if you see a "mac" partition like the example below, you can then follow the below steps to set your MAC address.
+
+<code>
+root@lede:~# cat /proc/mtd | grep mac
+mtd5: 00010000 00010000 "mac"
+</code>
+
+If you see the "mac" partition like the above example you can continue, otherwise the following process will not work and MAY BE DAMAGING to your device.
+
+To set your MAC, do the following.
+
+  * Get your MAC from the bottom of the device. In this example, we use 00:18:0a:33:44:55
+  * Convert your mac to somthing we can use with hex & echo. SO with the above mac, we would change it to:
+  * <code>
+\x00\x18\x0a\x33\x44\x55
+</code>
+  * With this, we can now erase our mac partition and set the MAC address using the following commands:
+  *<code>
+mtd erase mac
+echo -n -e '\x00\x18\x0a\x33\x44\x55' > /dev/mtd5
+sync && reboot
+</code>
+  * Once done your board will reboot, and should have the correct MAC set on the eth and wireless interfaces.
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                                                     |
+^ Vendor           | Atheros                                                  |
+^ Bootloader       | U-boot                                                   |
+^ System-On-Chip   | Atheros (AR7242/7241)                                    |
+^ CPU Speed        | 400MHz                                                   |
+^ Flash-Chip       | Macronix                                                 |
+^ Flash size       | 16MiB                                                    |
+^ RAM              | Nanya 64 MiB DDR                                         |
+^ Wireless         | AR9283-AL1A                                              |
+^ Switch           | Onboard?                                                 |
+^ Ethernet ports   | 1x Gigabit AR8021-BL1E, 802.3af POE capable & 1x 100mb   |
+^ USB              | No                                                       |
+^ Serial           | [[#serial|Yes]]                                          |
+^ JTAG             | ???                                                      |
+^ Comments         | Uses same PCB as MR62 (outdoor housing).                 |
+
+
+==== Serial ====
+
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+Connect on J1-4 as pictured below, though J1 can be omitted. (J1 has square solder off on reverse of board) 
+
+| **J1:** Vcc   |
+| **J2:** RX    |
+| **J3:** TX    |
+| **J4:** GND   |
+
+
+
+===== Flash Layout =====
+==== Stock ====
+<code>
+[ 1.132] 0x00000000-0x00080000 : "Uboot & env"
+[ 1.174] 0x00080000-0x000a0000 : "board config"
+[ 1.216] 0x000a0000-0x000c0000 : "panic"
+[ 1.258] 0x000c0000-0x002c0000 : "storage"
+[ 1.300] 0x00fe0000-0x01000000 : "caldata"
+[ 1.329] 0x002c0000-0x007e0000 : "part1"
+[ 1.371] 0x00940000-0x00e60000 : "part2"
+[ 1.413] 0x00000000-0x01000000 : "ALL"
+</code>
+
+==== OpenWrt ====
+<code>
+Atheros AR71xx SPI Controller driver version 0.2.4
+m25p80 spi0.0: mx25l12805d (16384 Kbytes)
+7 cmdlinepart partitions found on MTD device spi0.0
+Creating 7 MTD partitions on "spi0.0":
+0x000000000000-0x000000040000 : "u-boot"
+0x000000040000-0x000000080000 : "u-boot-env"
+0x000000080000-0x000000180000 : "kernel"
+0x000000180000-0x000000780000 : "rootfs"
+mtd: partition "rootfs" set to be root filesystem
+split_squashfs: no squashfs found in "spi0.0"
+0x000000780000-0x0000007c0000 : "nvram"
+0x0000007c0000-0x000001000000 : "art"
+0x000000080000-0x000000780000 : "firmware"
+</code>
+
+Reference: [[docs:techref:flash.layout|The OpenWrt Flash Layout]]
+
+
+===== Boot Log =====
+
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.4-g0c3911dd (Mar 3 2011 - 17:08:51)
+
+PB93 (ar7241 - Virian) U-boot
+DRAM:
+sri
+ar7240_ddr_initial_config(133): virian ddr1 init
+#### TAP VALUE 1 = 0x2, 2 = 0x2 [0x0: 0x0]
+64 MB
+Top of RAM usable for U-Boot at: 84000000
+Reserving 272k for U-Boot at: 83fb8000
+Reserving 192k for malloc() at: 83f88000
+Reserving 44 Bytes for Board Info at: 83f87fd4
+Reserving 36 Bytes for Global Data at: 83f87fb0
+Reserving 128k for boot params() at: 83f67fb0
+Stack Pointer at: 83f67f98
+Now running in RAM - U-Boot at: 83fb8000
+id read 0x100000ff
+flash size 16MB, sector count = 256
+Flash: 16 MB
+*** Warning - bad CRC, using default environment
+
+In: serial
+Out: serial
+Err: serial
+Net: ag7240_enet_initialize...
+Fetching MAC Address from 0x83fe7ea0
+Virian External MII mode MDC CFG Value ==> 6
+: cfg1 0xf cfg2 0x7014
+eth0 link down
+eth0: 00:03:7f:e0:00:2a
+ATHRSF1_PHY: PHY unit 0x0, address 0x4, ID 0xd04e,
+ATHRSF1_PHY: Port 0, Neg Success
+ATHRSF1_PHY: unit 0 port 0 phy addr 4
+eth0 up
+eth0
+RESET is un-pushed
+Hit any key to stop autoboot: 0
+part0: Copying image to memory ... done.
+part0: Checking sha1 (from 0x80060000 length 4355864) ... match
+part0: sha1 calculated: 98da1ae203ddb734494bb4311c1fed1cfdf870b1
+## Starting application at 0x80060000 ...
+starting stage2
+decompressing embedded kernel image 0x81a021b0(0x425545)
+got osize 0ff7a10
+....................done
+starting linux
+Booting AR7240(Python)...
+[ 0.000] Linux version 2.6.16.16-meraki-ar7100 (ralucam@b5station) (gcc version 4.5.3 (GCC) ) #2 Fri Sep 28 15:33:34 PDT 2012
+[ 0.000] flash_size passed from bootloader = -1
+[ 0.000] setting it to 16 anyway
+[ 0.000] CPU revision is: 00019374
+[ 0.000] Determined physical RAM map:
+[ 0.000] memory: 04000000 @ 00000000 (usable)
+[ 0.000] Built 1 zonelists
+[ 0.000] Kernel command line: "console=ttyS0,115200 root=01:00 rd_start=0x80600000 rd_size=8388608 init=/sbin/init"
+[ 0.000] Primary instruction cache 64kB, physically tagged, 4-way, linesize 32 bytes.
+[ 0.000] Primary data cache 32kB, 4-way, linesize 32 bytes.
+[ 0.000] Synthesized TLB refill handler (20 instructions).
+[ 0.000] Synthesized TLB load handler fastpath (32 instructions).
+[ 0.000] Synthesized TLB store handler fastpath (32 instructions).
+[ 0.000] Synthesized TLB modify handler fastpath (31 instructions).
+[ 0.000] Cache parity protection disabled
+[ 0.000] PID hash table entries: 512 (order: 9, 8192 bytes)
+[ 0.000] Using 200.000 MHz high precision timer.
+[ 0.001] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[ 0.002] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[ 0.009] Memory: 47640k/65536k available (1443k kernel code, 17840k reserved, 352k data, 14552k init, 0k highmem)
+[ 0.032] Mount-cache hash table entries: 512
+[ 0.033] Checking for 'wait' instruction... available.
+[ 0.035] unpacking initramfs....done in 0.175000
+[ 0.213] NET: Registered protocol family 16
+[ 0.214] PCI init:ar7240_pcibios_init
+[ 0.215] ar7240_pcibios_init(298): PCI CMD write: 0x356
+[ 0.226] Algorithmics/MIPS FPU Emulator v1.5
+[ 0.238] Returning IRQ 48
+[ 0.561] JFFS2 version 2.2. (C) 2001-2003 Red Hat, Inc.
+[ 0.562] Initializing Cryptographic API
+[ 0.563] io scheduler noop registered
+[ 0.564] io scheduler deadline registered (default)
+[ 0.608] Serial: 8250/16550 driver $Revision: 1.90 $ 1 ports, IRQ sharing disabled
+[ 0.622] serial8250: ttyS0 at MMIO 0x0 (irq = 19) is a 16550A
+[ 0.664] AG7240: Length per segment 1536
+[ 0.665] AG7240: Max segments per packet 2
+[ 0.666] AG7240: Max tx descriptor count 200
+[ 0.667] AG7240: Max rx descriptor count 252
+[ 0.668] AG7240: fifo cfg 3 01f00140
+[ 0.669] AG7240CHH: Mac address for unit 0
+[ 0.670] AG7240CHH: 00:03:7f:ff:ff:ff
+[ 0.885] AG7240CHH: Mac address for unit 1
+[ 0.886] AG7240CHH: 00:03:7f:ff:ff:fe
+[ 1.115] tun: Universal TUN/TAP device driver, 1.6
+[ 1.116] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[ 1.131] Creating 8 MTD partitions on "ar7100-nor0":
+[ 1.132] 0x00000000-0x00080000 : "Uboot & env"
+[ 1.174] 0x00080000-0x000a0000 : "board config"
+[ 1.216] 0x000a0000-0x000c0000 : "panic"
+[ 1.258] 0x000c0000-0x002c0000 : "storage"
+[ 1.300] 0x00fe0000-0x01000000 : "caldata"
+[ 1.329] 0x002c0000-0x007e0000 : "part1"
+[ 1.371] 0x00940000-0x00e60000 : "part2"
+[ 1.413] 0x00000000-0x01000000 : "ALL"
+[ 1.455] i2c /dev entries driver
+[ 1.470] NET: Registered protocol family 2
+[ 1.489] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[ 1.490] TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+[ 1.491] TCP bind hash table entries: 4096 (order: 3, 32768 bytes)
+[ 1.492] TCP: Hash tables configured (established 4096 bind 4096)
+[ 1.493] TCP reno registered
+[ 1.494] TCP bic registered
+[ 1.495] NET: Registered protocol family 1
+[ 1.496] NET: Registered protocol family 17
+[ 1.497] ar7240wdt_init: Registering WDT success
+[ 1.516] Freeing unused kernel memory: 14552k freed
+init started: BusyBox v1.1.0 (2012.05.16-07:00+0000) multi-call binary
+
+Please press Enter to activate this console. : sysctl: error: 'kernel.softlockup_panic' is an unknown key
+: sysctl: error: 'kernel.hung_task_panic' is an unknown key
+: sysctl: error: 'vm.panic_on_oom' is an unknown key
+[ 2.790] module load for dummy load 0.062000 init 0.061000 total 0.123000
+[ 2.896] ag7240_ring_alloc Allocated 3200 at 0x83186000
+[ 2.897] ag7240_ring_alloc Allocated 4032 at 0x831c8000
+[ 2.899] Virian CFG Value ==> 6
+[ 2.900] Virian MDC CFG Value ==> 6
+[ 2.901] ATHRSF1_PHY: athr_reg_init
+[ 2.902] Setting PHY...
+[ 2.903] ATHRSF1_PHY: Port 0, Neg Success
+[ 2.904] ATHRSF1_PHY: unit 0 phy addr 4 Not enabling interrupts in AR7242 yet...
+[ 2.983] ag7240_ring_alloc Allocated 3200 at 0x8101a000
+[ 2.984] ag7240_ring_alloc Allocated 4032 at 0x832ba000
+[ 2.986] Virian mac 1 CFG Value ==> 6
+[ 2.987] Virian MDC CFG Value ==> 6
+[ 2.988] ATHRS26: resetting s26
+[ 3.089] ATHRS26: s26 reset done
+[ 3.093] Setting PHY...
+[ 5.070] ath_hal: module license 'Proprietary' taints kernel.
+[ 5.125] ath_hal: 0.9.17.1 (AR5416, DEBUG, REGOPS_FUNC, PRIVATE_DIAG, WRITE_EEPROM, 11D, AH_SUPPORT_EEPROM_AR9287)
+[ 5.132] module load for ath_hal load 0.065000 init 0.007000 total 0.072000
+[ 5.412] ath_dfs: Version 2.0.0
+[ 5.412] Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+[ 5.413] module load for ath_dfs load 0.067000 init 0.001000 total 0.068000
+[ 5.574] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+[ 5.575] module load for ath_rate_atheros load 0.068000 init 0.001000 total 0.069000
+[ 5.782] wlan: 0.8.4.2 (Atheros/multi-bss)
+[ 5.783] module load for wlan load 0.114000 init 0.001000 total 0.115000
+[ 5.944] ath_spectral: Version 2.0.0
+[ 5.944] Copyright (c) 2005-2009 Atheros Communications, Inc. All Rights Reserved
+[ 5.945] SPECTRAL module built on Sep 28 2012 15:32:12
+[ 5.946] module load for ath_spectral load 0.068000 init 0.002000 total 0.070000
+[ 6.128] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+[ 6.129] module load for ath_dev load 0.088000 init 0.001000 total 0.089000
+[ 6.305] module load for proclikefs load 0.064000 init 0.000000 total 0.064000
+Single synchronous check for reset
+[ 6.550] ath_pci: 0.9.4.5 (Atheros/multi-bss)
+[ 6.622] Overriding DFS domain with 1
+[ 6.624] DFS min filter rssiThresh = 18
+[ 6.625] DFS max pulse dur = 131 ticks
+[ 6.627] ath_descdma_setup: tx DMA map: a03a0000 (75776) -> 3a0000 (75776)
+[ 6.628] ath_descdma_setup: beacon DMA map: a12a7000 (2960) -> 12a7000 (2960)
+[ 6.629] ath_descdma_setup: rx DMA map: a3f90000 (37888) -> 3f90000 (37888)
+[ 6.694] wifi0: Atheros 9280: mem=0x10000000, irq=48 hw_base=0xb0000000 ver=0x80 rev=0x2
+[ 6.695] module load for ath_pci load 0.081000 init 0.145000 total 0.226000
+[ 7.078] module load for merakiclick load 0.268000 init 0.002000 total 0.270000
+[ 7.086] click: starting router thread pid 424 (83197880)
+[ 7.315] module load for pca9534 load 0.062000 init 0.061000 total 0.124000
+[ 7.484] wlan: mac acl policy registered
+[ 7.485] module load for wlan_acl load 0.063000 init 0.001000 total 0.064000
+[ 7.635] module load for wlan_ccmp load 0.043000 init 0.000000 total 0.043000
+[ 7.829] module load for wlan_scan_ap load 0.066000 init 0.000000 total 0.066000
+[ 8.002] module load for wlan_scan_sta load 0.066000 init 0.000000 total 0.066000
+[ 8.173] module load for wlan_tkip load 0.064000 init 0.000000 total 0.064000
+[ 8.344] module load for wlan_wep load 0.063000 init 0.000000 total 0.063000
+[ 8.513] module load for wlan_xauth load 0.062000 init 0.000000 total 0.062000
+
+init-boot: boot 29 build 19-94893 board ar7100 mac 00:18:0A:21:A4:3D
+: modules: Module: dummy .text=0xc0053000 .data=0xc00534f0 .bss=0xc0053640
+: modules: Module: ath_hal .text=0xc00b2000 .data=0xc00f73a0 .bss=0xc00fae20
+: modules: Module: ath_dfs .text=0xc0066000 .data=0xc006ec40 .bss=0xc006edc0
+: modules: Module: ath_rate_atheros .text=0xc0060000 .data=0xc0063990 .bss=0xc0063d00
+: modules: Module: wlan .text=0xc0162000 .data=0xc01a2050 .bss=0xc01a39c0
+: modules: Module: ath_spectral .text=0xc008f000 .data=0xc0097f00 .bss=0xc0098080
+: modules: Module: ath_dev .text=0xc01a5000 .data=0xc01cdf30 .bss=0xc01ce320
+: modules: Module: proclikefs .text=0xc005c000 .data=0xc005d0e0 .bss=0xc005d220
+: modules: Module: ath_pci .text=0xc0107000 .data=0xc01139c0 .bss=0xc0113f80
+: modules: Module: merakiclick .text= .data= .bss=
+: modules: Module: pca9534 .text=0xc009c000 .data=0xc009c770 .bss=0xc009cbc0
+: modules: Module: wlan_acl .text=0xc009e000 .data=0xc009ee30 .bss=0xc009ef80
+: modules: Module: wlan_ccmp .text=0xc0050000 .data=0xc0051c00 .bss=0xc0051d40
+: modules: Module: wlan_scan_ap .text=0xc00ac000 .data=0xc00ade10 .bss=0xc00adf60
+: modules: Module: wlan_scan_sta .text=0xc00a6000 .data=0xc00a87b0 .bss=0xc00a8900
+: modules: Module: wlan_tkip .text=0xc011c000 .data=0xc011ecd0 .bss=0xc011ee20
+: modules: Module: wlan_wep .text=0xc0122000 .data=0xc01234f0 .bss=0xc0123640
+: modules: Module: wlan_xauth .text=0xc0115000 .data=0xc0115230 .bss=0xc0115380</nowiki>
+</WRAP>\\
+
+===== Photos =====
+{{http://i.imgur.com/QFNYFs0.jpg?300}}
+{{http://i.imgur.com/cpi06Ox.jpg?300}}
+{{http://i.imgur.com/Qved3sk.jpg?300}}
+{{http://i.imgur.com/xwQOpnK.jpg?300}}
+{{http://i.imgur.com/3wxN2Go.jpg?300}}
+{{http://i.imgur.com/wLaHzZd.jpg?300}}
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ar71xx AR7241 AR7242 16Flash 64RAM 1port gigabitethernet 1WNIC mips}}

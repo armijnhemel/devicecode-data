@@ -1,0 +1,791 @@
+====== TP-Link EAP225 series ======
+
+The EAP family is a business-class of routers made by TP-Link, which can also be operated a TP-Links management-solution. The EAP 225 series are dual-band devices for different environments. The Outdoor and Wall models can only be powered by 802.3af/at PoE (48 V DC). The other models can also be powered via a 12V DC power supply.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^EAP225"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpucores", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "vlan", "switch"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^EAP225"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^EAP225"}
+} -->
+
+**OpenWrt Factory Firmware:** Use this file the first time you flash OpenWrt onto the router as it came from the "factory." \\
+**OpenWrt Sysupgrade Firmware:** Use this file to upgrade an OpenWrt "system" to a newer OpenWrt version.\\
+**OEM Stock Firmware:** Use this file to restore the router to the "stock" firmware as it shipped from the manufacturer.
+
+→ [[docs:guide-user:installation:generic.flashing|Install OpenWrt]]
+
+===== Switching back to vendor firmware =====
+
+==== Backup of vendor firmware ====
+
+If you like to back up the current content of the flash before putting OpenWrt on it, there is an easy way (tested with v1.7.0). The following commands assume the EAP-225-outdoor model. Change the given file names as you see fit.:
+
+  - log in via SSH (as you need before flashing too)
+  - ''mkdir /tmp/logdump/fw-backup'' (that's one of the few places you can write to)
+  - ''cd /dev; for part in mtdblock*; do dd bs=1 if=$part of=/tmp/logdump/fw-backup/$part.bin; done'' dump all mtd-partitions byte-wise
+  - ''dmesg >/tmp/logdump/fw-backup/kernel-log.txt'' also keep the dmesg output for later
+  - ''cat /proc/mtd >/tmp/logdump/fw-backup/mtd-partitions.txt'' also keep the mtd-layout
+  - ''tar -cf /tmp/logdump/eap225-outdoor.tar /tmp/logdump/fw-backup/*'' make all a tar-archive
+  - transfer file out of the device (there is no scp or netcat) using one of these methods:
+    - ''tftp -p -l /tmp/logdump/eap225-outdoor.tar -r eap225-outdoor.tar <your tftp-server>'' transfer the archive via TFTP
+    - log out from the device, and dd via ssh: ''ssh [user@device.address] "dd if=/tmp/logdump/eap225-outdoor.tar" > eap225-outdoor.tar''
+
+==== Revert back to stock from backup ====
+
+If you have a backup of the flash contents from the stock firmware, you can create an sysupgrade image to revert back to stock:
+You will need two partitions from the backup:
+  - kernel partition (should be mtdblock3, ca. 1.5MB): will identify as an ELF file, first bytes 0x7F 'E' 'L' 'F'
+  - rootfs partition (should be mtdblock4, ca. 13MB): will identify as a squashfs archive, first bytes "hsqs"
+
+If these two partitions are concatenated, you have effectively created a sysupgrade file you can use from OpenWrt.
+   cd /tmp/logdump
+   cat ./fw-backup/mtdblock3.bin ./fw-backup/mtdblock4.bin > ./eap225-backup-sysupgrade.bin
+   tftp -p -l /tmp/logdump/eap225-backup-sysupgrade.bin -r eap225-backup-sysupgrade.bin <your tftp-server>
+
+==== Revert to stock from vendor image ====
+Alternatively, if you don't have a backup, a sysupgrade file can be created using the ''tplink-safeloader'' tool from the OpenWrt sources, and a FW upgrade file from TP-Link.
+
+E.g. on Debian (or related like Ubuntu):
+  apt-get update && apt-get install binutils git openssh-server binwalk wget
+  git clone https://git.openwrt.org/project/firmware-utils.git
+  cd firmware-utils/src
+  cc -o tplink-safeloader tplink-safeloader.c md5.c -Wall --std=gnu99
+  cd -
+  cp openwrt/tools/firmware-utils/src/tplink-safeloader ./
+  wget $TP_LINK_ORIGINAL_FIRMWARE_URL_FROM_OFFICIAL_WEBSITE
+  ./tplink-safeloader -z $TP_LINK_ORIGINAL_FIRMWARE_FILENAME -o eap225-stock-sysupgrade.bin
+
+===== Installing OpenWrt =====
+==== EAP225 v3+, EAP225-Outdoor, EAP225-Wall v2====
+
+The EAP225-Outdoor, EAP225-Wall v2, EAP225 v3, and later models can be installed via the web interface after disabling Firmware Signature Check. For EAP225 v1/v2 a different procedure is required; see next section.
+
+  - Upgrade the firmware to version v5.0.3, which fixes a bug that may cause the EAP to reboot abnormally during firmware upgrading and cause the device to brick
+  - Enable the SSH-Server via the web interface (Either a DHCP hands out an IP or use the fallback IPv4 ''192.168.0.254'').
+  - ssh into the target device and run ''cliclientd stopcs'' to disable Firmware Signature Check. (''ssh -oPubkeyAcceptedAlgorithms=+ssh-rsa -o HostKeyAlgorithms=ssh-rsa -oKexAlgorithms=+diffie-hellman-group1-sha1 admin@192.168.0.254''). Failing to disable Firmware signature check before upgrading to an OpenWRT factory image will lead to "Bad file" error while trying to upgrade from the web interface.
+  - upload the factory image via the web interface, rename the firmware to something with less than 63 characters length.
+  - After the successfull update, the device can be reached at the default ip address 192.168.1.1
+
+==== EAP225 v1/v2 ====
+:!: **Note1:** SSH client must support RSA keys <=1024 bits in length. See workaround below.
+:!: **Note2:** v2 uses same factory image as v1
+
+  - Upgrade the firmware to version v1.4.0 (that's a strict requirement for the patch to work!)
+  - Enable SSH access if you haven't already done so
+  - Exploit the user management page in the web interface to start telnetd  by changing the username to ''%%;/usr/sbin/telnetd -l/bin/sh&%%''
+  - Immediately change the malformed username back to something valid (e.g. 'admin') to make ssh work again.
+  - Use telnet to connect to your router (''%%telnet ${device-ip}%%'') and issue ''%%chmod 777 /tmp%%'' to make it writable
+  - Extract /usr/bin/uclited from the device via ssh: ''%%ssh -oPubkeyAcceptedAlgorithms=+ssh-rsa -oHostKeyAlgorithms=ssh-rsa -oKexAlgorithms=+diffie-hellman-group1-sha1 admin@${device-ip} "dd if=/usr/bin/uclited" > uclited%%''
+  - Create a copy of the file so that the patch can be applied later: ''%%cp uclited uclited-patched%%''
+  - Check if the md5sum matches 4bd74183c23859c897ed77e8566b84de: ''%%md5sum uclited%%''
+  - Apply the binary patch to uclited: ''%%echo "000d2354: 24020000 00000000" | xxd -r - uclited-patched%%''
+  - Check if the md5sum matches 4107104024a2e0aeaf6395ed30adccae: ''%%md5sum uclited-patched%%''
+  - Copy the patched uclited binary back to the device at /tmp/uclited: ''%%ssh -oPubkeyAcceptedAlgorithms=+ssh-rsa -o HostKeyAlgorithms=ssh-rsa -oKexAlgorithms=+diffie-hellman-group1-sha1 admin@${device-ip} "dd of=/tmp/uclited" < uclited-patched%%''
+  - Upload the factory image to /tmp/upgrade.bin: ''%%ssh -oPubkeyAcceptedAlgorithms=+ssh-rsa -o HostKeyAlgorithms=ssh-rsa -oKexAlgorithms=+diffie-hellman-group1-sha1 admin@${device-ip} "dd of=/tmp/upgrade.bin" < openwrt-ath79-generic-tplink_eap225-v1-squashfs-factory.bin%%''
+  - Finally, install OpenWrt (via the telnet session): ''%%chmod +x /tmp/uclited && /tmp/uclited -u%%''
+
+=== Workaround for SSH key length ===
+The SSH server (dropbear) on the factory image uses weak crypto algorithms and short key length. Openssh clients distributed with most modern Linux distributions do not support this by default. Here are some options to workaround this:
+   - Use alternative SSH client: ''%%openssh-client-ssh1%%'' package
+   - Update the host key length:
+     - telnet to the router
+     - run command ''%%/usr/local/sbin/dropbearkey -t rsa -f /tmp/dropbear_rsa_host_key2 -s 2048%%''
+     - kill currently running dropbear process
+     - run command ''%%/usr/local/sbin/dropbear -p 22 -r /tmp/dropbear_rsa_host_key2 -d /tmp/dropbear_dss_host_key -L%%''
+     - now you should be able to SSH using the ssh commands supplied
+
+==== Entering OpenWrt Fail-Safe mode ====
+
+For some reasons, if you can't access any longer your EAP-225-Wall (The same procedure should work for all the EAP225 Serie devices) under OpenWrt because you made bad changes to your configuration making your router inaccessible via ssh or LuCI, you can still boot it in fail-safe mode in order to restore the default configuration :
+
+     - Change your PC IP settings to a static address : ''IP:192.168.1.100  MASK: 255.255.255.0''
+     - Unpower the router
+     - Connect your PC to any port of the EAP-225-Wall.
+     - Repower the router, the LED will stay bright a few seconds, then it will start flashing slowly : Right after it starts flashing slowly, press repeatedly the ''home button'' 4 times per second until the LED is flashing fast.
+     - The LED flashing fast means your are now booting into OpenWrt fail-safe mode, with the default configuration of the router, and can ''ssh'' to ''root@192.168.1.1'', from here, original default settings can be restored by entering the command : ''firstboot && reboot now'' and confirm ''y'' to proceed to the reinstallation of the default configuration.
+     - After the EAP-225 reboot, the router is back into the default OpenWrt configuration, as if you installed OpenWrt for the first time on it.
+
+
+
+==== Embedded Switch Configuration (Artheros AR8229) Important Informations ====
+
+This text is being written for the **EAP-225-Wall-V2** but it may apply to the whole EAP-225 serie (Check the embedded switch IC used with the command ''swconfig dev switch0 list'', if it displays that the switch IC model is ''Artheros AR8229'', then this section's informations apply to your specific EAP-225 model too).
+
+As some of you may know, due to driver issues, OpenWrt for the EAP-225 serie is still using ''swconfig'' to configure VLANs and the embedded switch, but not the new ''DSA (Distributed Switch Architecture)'' implementation, replacing ''swconfig'' and offering much better and more reliable configurations of these embedded switch VLAN enabled integrated circuits.
+
+But ''swconfig'' is not any more under active development by OpenWrt developers, and until ''DSA'' is available for the EAP-225 serie, we have to use ''swconfig'' 'as is' to configure VLANs and the embedded switch IC. The embedded switch used in the EAP-255-Wall V2 device is the Artheros AR8229, and it has some **very specific limitations you must know in order to configure it well**.
+
+//**If you ignore these limitations, the embedded switch configuration will not execute properly, you will get random behaviours or partial erroneous configuration, and you will bump your head on walls for weeks because most of your VLANs and switch ports config will not work at all or as expected, until you read this section up to its end.
+**//
+
+__Here are the limitations of the AR8229 :__
+  * Internal VLAN table of the AR8229 has only 16 entries, this means, from the OpenWrt point of view, that the VLAN numbers you can use in your configurations is limited to 0 to 15. Using any VLAN number greater than 15 will simply be ignored.
+  * Still, VID number for a given VLAN number entry can be set in the normal range from 0 to 4095, as usual.
+  * The other big limitation, **for a given physical port** on the AR8229 switch, is that **you cannot mix tagged VLANs with an untagged VLAN**. If you mix them, the corresponding physical port configuration will simply be ignored and the port will not be configured.
+
+You must use these informations carefully when creating your ''swconfig'' configuration in the ''/etc/config/network'' file to configure the switch and all your VLANs. This means that for each VLAN configured, you must always use ''option vlan 'x''' and ''option vid 'y''', **but don't use** the simpler syntax using only ''option vlan 'x''' with no line defining the VID, having the VID being equal automatically to the VLAN number. This last mode of configuration is to be avoided because as VLAN numbers cannot be greater than 15, it means you cannot configure VLANs with VID greater than 15 with this method.
+
+With all this in mind, you should go well with configuring the AR8229 of your EAP-225-Wall V2
+
+In case of doubts, don't forget to use the command ''swconfig dev switch0 show'' to display the whole configuration of the AR8229 Switch IC, it's the best way to ensure your switch and VLAN configurations were correctly taken into consideration.
+
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+taken via dmesg on a EAP225 Outdoor v1 (5.0.0 Build 20200918 Rel. 58628)
+<WRAP bootlog>
+<nowiki>
+# dmesg
+
+[    0.000000] Linux version 3.3.8 (jenkins@sohoiapbuild) (gcc version 4.3.3 (GCC) ) #1 Fri Sep 18 16:05:12 CST 2020
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019750 (MIPS 74Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA956X rev 0
+[    0.000000] Clocks: CPU:775.000MHz, DDR:650.000MHz, AHB:258.333MHz, Ref:25.000MHz
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00008000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] Early memory PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00008000
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000] free_area_init_node: node 0, pgdat 802d94e0, node_mem_map 81000000
+[    0.000000]   Normal zone: 256 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32512 pages, LIFO batch:7
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line:  0x9f040000 console=ttyS0,115200 root=31:04 rootfstype=squashfs init=/init mtdparts=spi0.0:128k(u-boot),64k(pation-table),64k(product-info),1536k(kernel),13568k(rootfs),192k(config),512k(mutil-log),256k(oops),64k(ART) mem=128M board=AP152
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 126596k/131072k available (2034k kernel code, 4476k reserved, 500k data, 180k init, 0k highmem)
+[    0.000000] SLUB: Genslabs=9, HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:83
+[    0.000000] Calibrating delay loop... 385.84 BogoMIPS (lpj=1929216)
+[    0.060000] pid_max: default: 32768 minimum: 301
+[    0.060000] Mount-cache hash table entries: 512
+[    0.070000] NET: Registered protocol family 16
+[    0.070000] gpiochip_add: registered GPIOs 0 to 22 on device: ath79
+[    0.080000] MIPS: machine is Qualcomm Atheros AP152 reference board
+[    0.600000] Max resets limit reached exiting...
+[    0.610000] 
+[    0.610000] WLAN firmware dump buffer allocation of 2097152 bytes @ address 0x87a00000- SUCCESS !!!
+[    0.620000] registering PCI controller with io_map_base unset
+[    0.620000] ar71xx: using random MAC address for eth0
+[    0.830000] bio: create slab <bio-0> at 0
+[    0.830000] PCI host bridge to bus 0000:00
+[    0.830000] pci_bus 0000:00: root bus resource [mem 0x12000000-0x13ffffff]
+[    0.840000] pci_bus 0000:00: root bus resource [io  0x0001]
+[    0.840000] pci 0000:00:00.0: [168c:0056] type 0 class 0x000280
+[    0.840000] pci 0000:00:00.0: reg 10: [mem 0x00000000-0x001fffff 64bit]
+[    0.840000] pci 0000:00:00.0: PME# supported from D0 D3hot
+[    0.840000] pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    0.850000] pci 0000:00:00.0: using irq 40 for pin 1
+[    0.850000] Switching to clocksource MIPS
+[    0.860000] NET: Registered protocol family 2
+[    0.860000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.860000] TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.870000] TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.870000] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.880000] TCP reno registered
+[    0.880000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.890000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.890000] NET: Registered protocol family 1
+[    0.900000] PCI: CLS 0 bytes, default 32
+[    0.910000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.910000] msgmni has been set to 247
+[    0.920000] io scheduler noop registered
+[    0.920000] io scheduler deadline registered (default)
+[    0.930000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.950000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11) is a 16550A
+[    0.960000] console [ttyS0] enabled, bootconsole disabled
+[    0.970000] m25p80 spi0.0: found en25q128a, expected m25p80
+[    0.980000] m25p80 spi0.0: en25q128a (16384 Kbytes)
+[    0.980000] 9 cmdlinepart partitions found on MTD device spi0.0
+[    0.990000] Creating 9 MTD partitions on "spi0.0":
+[    0.990000] 0x000000000000-0x000000020000 : "u-boot"
+[    1.000000] 0x000000020000-0x000000030000 : "pation-table"
+[    1.010000] 0x000000030000-0x000000040000 : "product-info"
+[    1.010000] 0x000000040000-0x0000001c0000 : "kernel"
+[    1.020000] 0x0000001c0000-0x000000f00000 : "rootfs"
+[    1.030000] mtd: partition "rootfs" set to be root filesystem
+[    1.030000] 0x000000f00000-0x000000f30000 : "config"
+[    1.040000] 0x000000f30000-0x000000fb0000 : "mutil-log"
+[    1.050000] 0x000000fb0000-0x000000ff0000 : "oops"
+[    1.050000] 0x000000ff0000-0x000001000000 : "ART"
+[    1.060000] ag71xx_mdio: probed
+[    1.070000] eth0: Atheros AG71xx at 0xb9000000, irq 4
+[    1.620000] ar8033_config_init 132 0xe=0
+[    1.630000] ar8033_config_init 135 0xe=0
+[    1.630000] ar8033_config_init 142 0xe=1732
+[    1.640000] ar8033_config_init 146 0xe=1732
+[    1.640000] ar8033_config_init 152 0x00=1000
+[    1.650000] ag71xx ag71xx.0: eth0: connected to PHY at ag71xx-mdio.0:04 [uid=004dd074, driver=Qualcomm Atheros AR8033 PHY]
+[    1.660000] TCP cubic registered
+[    1.660000] NET: Registered protocol family 17
+[    1.670000] 8021q: 802.1Q VLAN Support v1.8
+[    1.670000] ### of_selftest(): No testcase data in device tree; not running tests
+[    1.680000] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    1.690000] Freeing unused kernel memory: 180k freed
+[    2.710000] mtdoops: Attached to MTD device 7
+[    2.710000] mtdoops: ready 0, 1
+[    3.000000] xt_time: kernel timezone is -0000
+[    3.010000] nf_conntrack version 0.5.0 (1980 buckets, 15840 max)
+[    3.160000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    3.280000] Ebtables v2.0 registered
+[    3.350000] ---portal module open ok
+[    3.360000] Register vlan_manage hooks success.
+[    3.410000] [Debug gpio_parse_conf:271] Open File /etc/EAP225-Outdoor_1.0/gpio.conf SUCCESS!!
+[    3.430000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 14, readCount 256
+[    3.430000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 44, readCount 256
+[    3.440000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 6 , readCount 256
+[    3.450000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 7 , readCount 256
+[    3.460000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 2 , readCount 256
+[    3.470000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 7 , readCount 256
+[    3.470000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 44, readCount 256
+[    3.480000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 6 , readCount 256
+[    3.490000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 7 , readCount 256
+[    3.500000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 2 , readCount 256
+[    3.500000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 7 , readCount 256
+[    3.510000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 44, readCount 256
+[    3.520000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 7 , readCount 247
+[    3.530000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 6 , readCount 240
+[    3.540000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 6 , readCount 234
+[    3.540000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 6 , readCount 228
+[    3.550000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 2 , readCount 222
+[    3.560000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 51, readCount 220
+[    3.570000] [Debug gpio_parse_conf:360] Ignore line (0), skipLen 44, readCount 169
+[    3.570000] [Debug gpio_parse_conf:388] GPIO Parse OK:  led_green   led(1) low (0) low (0) 7
+[    3.580000] [Debug gpio_parse_conf:388] GPIO Parse OK:  led_yellow  led(1) low (0) high(1) 9
+[    3.590000] [Debug gpio_parse_conf:388] GPIO Parse OK:  btn_reset   btn(2) low (0) high(1) 2
+[    3.600000] [Debug btn_netlink_init:179] btn: create netlink socket SUCCESS.
+[    3.610000] [Debug wdt_module_init:249] Create watchdog proc dir SUCCESS.
+[    3.620000] [Debug led_entry_handler:765] Create led_green   proc dir SUCCESS.
+[    3.620000] [Debug led_entry_handler:765] Create led_yellow  proc dir SUCCESS.
+[    3.630000] [Debug btn_entry_handler:857] Init button: btn_reset 2 2 0 success.
+[    3.700000] rate_limit: module license 'BSD' taints kernel.
+[    3.700000] Disabling lock debugging due to kernel taint
+[    4.400000] [Debug btn_netlink_receive:72] BTN netlink with user space daemon 332 SUCCESS.
+[    5.580000] [Debug led_proc_write:633] Write led_yellow.
+[    5.580000] [Debug led_common_write_proc:472] Execute LED action:    { 1   0   0   0   0 }
+[    5.610000] [Debug led_proc_write:633] Write led_green.
+[    5.610000] [Debug led_common_write_proc:472] Execute LED action:    { 2   0   0   0   0 }
+[    6.490000] [Debug led_proc_write:633] Write led_green.
+[    6.490000] [Debug led_common_write_proc:472] Execute LED action:    { 5   0   0   0   0 }
+[    6.510000] [NOTICE led_common_write_proc:509] pledconf->backup.mode 0 1
+[    6.570000] device eth0 entered promiscuous mode
+[    6.600000] 
+[    6.600000] Disable VlanManage, data.enable(0), data.vid(1)
+[    6.610000] mspi_read_id get id=0x1c
+[    6.710000] 
+[    6.710000] manage vlan set port: ssh (22), http (80), https (443)
+[    6.710000] 
+[    6.710000] manage vlan set port: ssh (22), http (80), https (443)
+[    6.730000] mspi_read_id get id=0x1c
+[    7.060000] ath_hal: 0.9.17.1 (AR9380, REGOPS_FUNC, WRITE_EEPROM, 11D)
+[    7.120000] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+[    7.130000] ath_spectral: Version 2.0.0
+[    7.130000] Copyright (c) 2005-2009 Atheros Communications, Inc. All Rights Reserved
+[    7.130000] SPECTRAL module built on Sep 18 2020 16:13:05
+[    7.140000] ath_dfs: Version 2.0.0
+[    7.140000] Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+[    7.160000] ath_tx99: Version 2.0
+[    7.160000] Copyright (c) 2010 Atheros Communications, Inc, All Rights Reserved
+[    7.350000] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+[    8.490000] __ath_attach: Set global_scn[0]
+[    8.500000] *** All the minfree values should be <= ATH_TXBUF-32, otherwise default value will be used instead ***
+[    8.510000] ACBKMinfree = 48
+[    8.510000] ACBEMinfree = 32
+[    8.510000] ACVIMinfree = 16
+[    8.520000] ACVOMinfree = 0
+[    8.520000] CABMinfree = 48
+[    8.520000] UAPSDMinfree = 0
+[    8.520000] ATH_TXBUF=2700
+[    8.540000] Enterprise mode: 0x03bda000
+[    8.540000] 
+[    8.540000] ART Version : -48.0.0
+[    8.540000] SW Image Version : -48.0.0.0.0
+[    8.550000] Board Revision :  
+[    8.550000] ar9300_attach: nf_2_nom -110 nf_2_max -60 nf_2_min -125 
+[    8.560000] SPECTRAL : get_capability not registered
+[    8.560000] HAL_CAP_PHYDIAG : Capable
+[    8.560000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 237)
+[    8.560000] SPECTRAL : get_capability not registered
+[    8.560000] HAL_CAP_RADAR   : Capable
+[    8.560000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[    8.560000]  (spectral_attach : 242)
+[    8.560000] SPECTRAL : get_capability not registered
+[    8.560000] HAL_CAP_SPECTRAL_SCAN : Capable
+[    8.560000] SPECTRAL : get_tsf64 not registered
+[    8.560000] spectral_init_netlink 78 NULL SKB
+[    8.560000] SPECTRAL : No ADVANCED SPECTRAL SUPPORT
+[    8.570000] SPECTRAL :----- module attached
+[    8.580000] ath_get_caps[6410] rx chainmask mismatch actual 3 sc_chainmak 0
+[    8.580000] ath_get_caps[6385] tx chainmask mismatch actual 3 sc_chainmak 0
+[    8.590000] band steering initialized for direct attach hardware 
+[    8.600000] ieee80211_bsteering_attach: Band steering initialized
+[    8.600000] ath_attach_dfs[13091] dfsdomain 1
+[    8.610000] dfs_attach: event log enabled by default
+[    8.620000] SPECTRAL : module already attached
+[    8.630000] ath_tx_paprd_init sc 86448000 PAPRD disabled in HAL
+[    8.640000] wifi0: Atheros 956X: mem=0xb8100000, irq=47
+[    8.640000] ath_pci:  (Atheros/multi-bss)
+[    8.640000] ol_ath_pci_probe: PCI device id 0056 :0056
+[    8.640000] ath_pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    8.640000] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[    8.650000]  *********** Besra *************
+[    8.650000] 
+[    8.650000] __ol_ath_attach() Allocated scn 85e40380
+[    8.660000] ath_pci 0000:00:00.0: ath DEBUG: sc=0x8729d000
+[    8.660000] 
+[    8.660000]  ol_ath_pci_configure : num_desired MSI set to 0
+[    8.660000] 
+[    8.660000]  Using PCI Legacy Interrupt
+[    8.660000] chip_id 0xc chip_revision 0x0 
+[    8.670000] 
+[    8.670000]  CLOCK PLL skipped 
+[    8.670000] HIF_PCIDeviceProbed: setting the target pll frac ffffffff intval ffffffff
+[    8.670000] HIF_PCIDeviceProbed: no frac provided, skipping pre-configuring PLL
+[    8.670000] __ol_ath_attach: dev name wifi1
+[    8.670000] ol_ath_attach interface_id 1
+[    8.670000] ol_ath_attach() BMI inited.
+[    8.670000] ol_ath_attach() BMI Get Target Info.
+[    8.670000] Chip id: 0xc, chip version: 0x1000000
+[    8.680000] 
+[    8.680000]  CE WAR Disabled
+[    8.680000] eth0: link up (100Mbps/Full duplex)
+[    8.680000] br0: port 1(eth0) entered forwarding state
+[    8.680000] br0: port 1(eth0) entered forwarding state
+[    8.690000] NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+[    8.690000] ol_ath_attach() configure Target .
+[    8.690000] 
+[    8.690000]  Target Version is 1000000
+[    8.690000] 
+[    8.690000]  Flash Download Address  c0000 
+[    8.700000] ol_transfer_bin_file: flash data file defined
+[    8.700000] Cal location [0]: 00004000
+[    8.710000] 
+[    8.710000]  wifi1 NAND FLASH Select OFFSET 0x5000
+[    8.720000] qc98xx_verify_checksum: flash checksum passed: 0xde4c
+[    8.730000] ol_transfer_bin_file 3582: Download Flash data len 12064
+[    8.740000] Board extended Data download address: 0x0
+[    8.760000] 
+[    8.760000]  Board data initialized
+[    8.760000] ol_ath_download_firmware: Download OTP, flash download ADDRESS 0xc0000
+[    8.760000] 
+[    8.760000]  Selecting  OTP binary for CHIP Version 0
+[    8.810000] ol_transfer_bin_file 3402: downloading file 0, Download data len 8964
+[    8.850000] 
+[    8.850000]  First OTP send param 8000
+[    9.090000] ol_ath_download_firmware :First OTP download and Execute is good address:0x6000 return param 4660
+[    9.100000] ol_ath_download_firmware:##Board Id 24 , CHIP Id 0
+[    9.110000] ol_ath_download_firmware: BOARDDATA DOWNLOAD TO address 0xc0000
+[    9.110000] 
+[    9.110000]  wifi1: Selecting board data file name boardData_2_0_QCA9888_5G_YA105.bin
+[    9.110000] ol_transfer_bin_file: Board Data File download to address=0xc0000 file name=QCA9888/hw.2/boardData_2_0_QCA9888_5G_YA105.bin
+[    9.130000] ol_transfer_bin_file 3402: downloading file 3, Download data len 12064
+[    9.130000] Board extended Data download address: 0x0
+[    9.150000] ol_ath_download_firmware: Using 0x1234 for the remainder of init
+[    9.150000] 
+[    9.150000]  Selecting  OTP binary for CHIP Version 0
+[    9.160000] ol_transfer_bin_file 3402: downloading file 0, Download data len 8964
+[    9.190000] 
+[    9.190000]  [Flash] : Ignore Module param
+[    9.200000] 
+[    9.200000]  Second otp download Param 10000 
+[    9.450000] ol_ath_download_firmware : Second OTP download and Execute is good, param=0x0 
+[    9.460000] 
+[    9.460000]  Mission mode: Firmware CHIP Version 0
+[    9.550000] ol_swap_seg_alloc: Successfully allocated memory for SWAP size=262144 
+[    9.550000] Swap: bytes_left to copy: fw:16; dma_page:61457
+[    9.550000] Swap: wrong length read:0
+[    9.550000] ol_swap_wlan_memory_expansion: Swap total_bytes copied: 200687 Target address 419540 
+[    9.550000] scn=85e40380  target_write_addr=419540 seg_info=871c9c10 
+[    9.550000] ol_transfer_swap_struct:Code swap structure successfully downloaded for bin type =2 
+[    9.550000] bin_filename=QCA9888/hw.2/athwlan.bin swap_filename=/lib/firmware/QCA9888/hw.2/athwlan.codeswap.bin 
+[    9.550000] ol_transfer_bin_file: Downloading firmware file: QCA9888/hw.2/athwlan.bin
+[    9.910000] ol_transfer_bin_file 3402: downloading file 1, Download data len 354624
+[   11.280000] ol_ath_attach() Download FW done. 
+[   11.280000] ol_ath_attach() HT Create .
+[   11.280000] ol_ath_attach() HIF Claim.
+[   11.280000] ol_ath_attach() BMI Done. 
+[   11.280000] ol_ath_attach 7615 host_enable 0 nss_nwifi_offload 0
+[   11.280000] ol_ath_set_default_tgt_config : AC Minfree buffer allocation through module param (umac.ko)
+[   11.280000]  OL_ACBKMinfree : 0
+[   11.280000]  OL_ACBEMinfree : 0
+[   11.280000]  OL_ACVIMinfree : 0
+[   11.280000]  OL_ACVOMinfree : 0
+[   11.280000] ol_ath_attach() WMI attached. wmi_handle 85ea0000 
+[   11.290000] CE_recv_buf_enqueue 877 Populate last entry 512 for CE 5
+[   11.290000] CE_recv_buf_enqueue 886 CE 5 wi 511 dest_ptr 0x55cc820 nbytes 0 recv_ctxt 0x8558f840
+[   11.290000] Startup Mode-0 set
+[   11.290000] 
+[   11.290000] <=== cfg max peer id 1056 ====>
+[   11.290000] HTC Service:0x0300 ep:1 TX flow control disabled
+[   11.300000] htt_peer_map_timer_init Enter pdev 85658000 hrtimer 8565c800
+[   11.310000] 
+[   11.310000]  htt_alloc_peer_map_mem : Alloc Success : host q vaddr 856d0000 paddr 56d0000
+[   11.320000] 
+[   11.320000]  htt_alloc_peer_map_mem : Flush Interval Configured to 256 pkts
+[   11.330000] CE_pkt_dl_len_set CE 4 Pkt download length 64
+[   11.330000] ol_txrx_pdev_attach: 2500 tx desc's allocated ; range starts from 85300000
+[   11.330000] HTC Service:0x0100 ep:2 TX flow control disabled
+[   11.340000] wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event 
+[   11.340000] Firmware_Build_Number:99 
+[   11.340000] num_rf_chain:0x00000002  ht_cap_info:0x0000085b  vht_cap_info:0x339979f2  vht_supp_mcs:0x0000fffa
+[   11.350000] 
+[   11.350000]  RES CFG Support wmi_service_bitmap 9778 
+[   11.360000] 
+[   11.360000]  Sending Ext resource cfg: HOST PLATFORM as 1 and fw_feature_bitmap as 50 to TGT 
+[   11.370000] ol_ath_service_ready_event: tt_support: 1
+[   11.370000] ol_ath_service_ready_event: periodic_chan_stats: 0
+[   11.370000] Peer Caching Enabled ; num_peers = 530, num_active_peers = 52 num_tids = 104, num_vdevs = 17
+[   11.370000] idx 1 req 2  num_units 1 num_unit_info 12 unit size 256 actual units 53 
+[   11.370000] ol_ath_alloc_host_mem_chunk req_id 2 idx 0 num_units 53 unit_len 256,
+[   11.380000] idx 2 req 3  num_units 1 num_unit_info 12 unit size 1024 actual units 53 
+[   11.380000] ol_ath_alloc_host_mem_chunk req_id 3 idx 1 num_units 53 unit_len 1024,
+[   11.380000] idx 3 req 4  num_units 1 num_unit_info 12 unit size 4096 actual units 53 
+[   11.390000] ol_ath_alloc_host_mem_chunk req_id 4 idx 2 num_units 53 unit_len 4096,
+[   11.390000] idx 0 req 1  num_units 0 num_unit_info 2 unit size 872 actual units 531 
+[   11.390000] ol_ath_alloc_host_mem_chunk req_id 1 idx 3 num_units 265 unit_len 872,
+[   11.400000] ol_ath_alloc_host_mem_chunk req_id 1 idx 4 num_units 266 unit_len 872,
+[   11.410000] idx 4 req 5  num_units 0 num_unit_info 2 unit size 1892 actual units 531 
+[   11.410000] ol_ath_alloc_host_mem_chunk req_id 5 idx 5 num_units 132 unit_len 1892,
+[   11.420000] ol_ath_alloc_host_mem_chunk req_id 5 idx 6 num_units 133 unit_len 1892,
+[   11.430000] ol_ath_alloc_host_mem_chunk req_id 5 idx 7 num_units 133 unit_len 1892,
+[   11.440000] ol_ath_alloc_host_mem_chunk req_id 5 idx 8 num_units 133 unit_len 1892,
+[   11.450000] chunk 0 len 13568 requested ,ptr  0x5274000 
+[   11.450000] chunk 1 len 54272 requested ,ptr  0x5320000 
+[   11.450000] chunk 2 len 217088 requested ,ptr  0x5340000 
+[   11.450000] chunk 3 len 231080 requested ,ptr  0x5380000 
+[   11.450000] chunk 4 len 231952 requested ,ptr  0x53c0000 
+[   11.450000] chunk 5 len 249744 requested ,ptr  0x4c00000 
+[   11.450000] chunk 6 len 251636 requested ,ptr  0x4c40000 
+[   11.450000] chunk 7 len 251636 requested ,ptr  0x4c80000 
+[   11.450000] chunk 8 len 251636 requested ,ptr  0x4cc0000 
+[   11.490000] wmi_ready_event_rx:  WMI UNIFIED READY event 
+[   11.500000] ol_ath_connect_htc() WMI is ready
+[   11.500000] target uses HTT version 2.2; host uses 2.2
+[   11.500000] ol_ath_attach() connect HTC. 
+[   11.500000] bypasswmi : 0
+[   11.500000] ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+[   11.500000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2) flags 0x2150
+[   11.500000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4) flags 0xa0
+[   11.500000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x8) flags 0xc0
+[   11.500000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x20) flags 0xd0
+[   11.500000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x40) flags 0x150
+[   11.500000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x800) flags 0x10080
+[   11.500000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2000) flags 0x20080
+[   11.500000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4000) flags 0x40080
+[   11.500000] Add VHT80 channel: 5210
+[   11.500000] Add VHT80 channel: 5290
+[   11.500000] Add VHT80 channel: 5530
+[   11.500000] Add VHT80 channel: 5610
+[   11.500000] Add VHT80 channel: 5690
+[   11.500000] Add VHT80 channel: 5775
+[   11.500000] Skipping VHT80 channel 5825
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5290
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5210
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5610
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5530
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5530
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5210
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5610
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5210
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5690
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5690,5210
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5775
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5775,5210
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5530
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5290
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5610
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5290
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5690
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5690,5290
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5775
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5775,5290
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5690
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5690,5530
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5775
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5775,5530
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5775
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5775,5610
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5690,5775
+[   11.500000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5775,5690
+[   11.500000] ol_ath_phyerr_attach: called
+[   11.500000] OL Resmgr Init-ed
+[   11.500000] ieee80211_bsteering_attach: Band steering initialized
+[   11.500000] ol_if_spectral_setup
+[   11.500000] SPECTRAL : get_capability not registered
+[   11.500000] HAL_CAP_PHYDIAG : Capable
+[   11.500000] SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 237)
+[   11.500000] SPECTRAL : get_capability not registered
+[   11.500000] HAL_CAP_RADAR   : Capable
+[   11.500000] SPECTRAL : Need to fix the capablity check for SPECTRAL
+[   11.500000]  (spectral_attach : 242)
+[   11.500000] SPECTRAL : get_capability not registered
+[   11.500000] HAL_CAP_SPECTRAL_SCAN : Capable
+[   11.500000] SPECTRAL : get_tsf64 not registered
+[   11.500000] spectral_init_netlink 78 NULL SKB
+[   11.510000] rate power table override is only supported for AR98XX
+[   11.510000] ol_if_dfs_setup: called 
+[   11.510000] ol_if_dfs_attach: called; ptr=85339974, radar_info=872cbae8
+[   11.510000] dfs_attach: event log enabled by default
+[   11.520000] ol_ath_attach() UMAC attach . 
+[   11.520000] 
+[   11.520000]  BURSTING enabled by default
+[   11.520000] 
+[   11.520000] ****************************************************
+[   11.530000]                   tp mesh init                   
+[   11.530000] ****************************************************
+[   11.540000] __ol_ath_attach: needed_headroom reservation 44
+[   11.550000] ol_ath_thermal_mitigation_attach: --
+[   11.850000] ath_attach_dfs[13091] dfsdomain 1
+[   11.860000] dfs_attach: event log enabled by default
+[   12.030000] wlan_vap_create : enter. devhandle=0x865c0380, opmode=IEEE80211_M_HOSTAP, flags=0x1
+[   12.030000] 
+[   12.040000] ieee80211_mbo_vattach:MBO Initialized 
+[   12.040000] wlan_vap_create : exit. devhandle=0x865c0380, opmode=IEEE80211_M_HOSTAP, flags=0x1.
+[   12.040000] 
+[   12.050000] VAP device ath0 created osifp: (87269380) os_if: (85df8000)
+[   12.070000] ath_attach_dfs[13091] dfsdomain 2
+[   12.080000] dfs_attach: event log enabled by default
+[   12.240000] siwfreq
+[   12.250000] Set freq vap 0 stop send + 85df8000
+[   12.250000] Set freq vap 0 stop send -85df8000
+[   12.290000] Set wait done --85df8000
+[   12.300000]  
+[   12.300000]  DES SSID SET=TP-Link_2.4GHz_088612 
+[   12.340000] Set beacon rate: 1000 
+[   12.340000] wlan_set_param : This rate is not allowed. Please try a valid rate.
+[   12.360000] Set bcast rate: 1000 
+[   12.360000] Rate is not allowed in current mode:
+[   12.380000] Set mcast rate: 1000 
+[   12.380000] Rate is not allowed in current mode:
+[   12.390000] Set mgmt rate: 1000 
+[   12.400000] Set data minrate: 0 
+[   12.410000] Set sta minrate: 1000 
+[   12.430000] Set disable CCK rate: 0 
+[   12.520000] device ath0 entered promiscuous mode
+[   12.620000]  ieee80211_ioctl_siwmode: imr.ifm_active=131712, new mode=3, valid=1 
+[   12.620000]  DEVICE IS DOWN ifname=ath0
+[   12.630000]  DEVICE IS DOWN ifname=ath0
+[   12.640000] ar9300_override_ini: reset 0x9e14, 0x317b5de2
+[   12.720000] br0: port 2(ath0) entered forwarding state
+[   12.720000] br0: port 2(ath0) entered forwarding state
+[   12.720000] 8021q: adding VLAN 0 to HW filter on device ath0
+[   12.730000] ar9300_override_ini: reset 0x9e14, 0x3179e162
+[   12.770000] isCountryCodeValid: EEPROM regdomain 0x0
+[   12.770000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2) flags 0x2150
+[   12.770000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4) flags 0xa0
+[   12.770000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x8) flags 0xc0
+[   12.770000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x20) flags 0xd0
+[   12.770000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x40) flags 0x150
+[   12.770000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x800) flags 0x10080
+[   12.770000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2000) flags 0x20080
+[   12.770000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4000) flags 0x40080
+[   12.770000] Add VHT80 channel: 5210
+[   12.770000] Add VHT80 channel: 5290
+[   12.770000] Add VHT80 channel: 5530
+[   12.770000] Add VHT80 channel: 5610
+[   12.770000] Skipping VHT80 channel 5660
+[   12.770000] Skipping VHT80 channel 5680
+[   12.770000] Skipping VHT80 channel 5700
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5290
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5210
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5610
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5530
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5530
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5210
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5610
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5210
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5530
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5290
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5610
+[   12.770000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5290
+[   12.840000] set improve dfs switch = 1
+[   12.940000] wmi_unified_vdev_create_send: ID = 0 Type = 1, Subtype = 0 VAP Addr = cc:32:e5:08:86:13:
+[   12.950000] ieee80211_mbo_vattach:MBO Initialized 
+[   12.960000] VAP device ath10 created osifp: (8663e380) os_if: (84de0000)
+[   12.970000] isCountryCodeValid: EEPROM regdomain 0x0
+[   12.980000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2) flags 0x2150
+[   12.980000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4) flags 0xa0
+[   12.980000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x8) flags 0xc0
+[   12.980000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x20) flags 0xd0
+[   12.980000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x40) flags 0x150
+[   12.980000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x800) flags 0x10080
+[   12.980000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2000) flags 0x20080
+[   12.980000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4000) flags 0x40080
+[   12.980000] Add VHT80 channel: 5210
+[   12.980000] Add VHT80 channel: 5290
+[   12.980000] Add VHT80 channel: 5530
+[   12.980000] Add VHT80 channel: 5610
+[   12.980000] Skipping VHT80 channel 5660
+[   12.980000] Skipping VHT80 channel 5680
+[   12.980000] Skipping VHT80 channel 5700
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5290
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5210
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5610
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5530
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5530
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5210
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5210,5610
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5210
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5530
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5530,5290
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5290,5610
+[   12.980000] Add VHT160/VHT80_80 pri80 and sec80 centers: 5610,5290
+[   13.030000] ME Pool succesfully initialized vaddr - 84e00000 paddr - 0
+[   13.030000] num_elems = 1424 buf_size - 64 pool_size = 102528
+[   13.040000] Enable MCAST_TO_UCAST
+[   13.110000] set channellimit = 0
+[   13.160000] siwfreq
+[   13.160000] Set freq vap 0 stop send + 84de0000
+[   13.170000] Set freq vap 0 stop send -84de0000
+[   13.200000] Set wait done --84de0000
+[   13.210000]  
+[   13.210000]  DES SSID SET=TP-Link_5GHz_088613 
+[   13.250000] Set beacon rate: 6000 
+[   13.260000] Set bcast rate: 6000 
+[   13.270000] Configuring BCAST RATE is deffered as channel is not yet set for VAP 
+[   13.280000] Set mcast rate: 6000 
+[   13.280000] Configuring MCAST RATE is deffered as channel is not yet set for VAP 
+[   13.300000] Set mgmt rate: 6000 
+[   13.300000] Configuring MGMT RATE is deffered as channel is not yet set for VAP 
+[   13.320000] Set data minrate: 0 
+[   13.320000] Disable data minrate
+[   13.330000] bw_nss_val: 0x0
+[   13.340000] Set sta minrate: 6000 
+[   13.340000] Set sta minrate: 6000
+[   13.360000] Set disable CCK rate: 0 
+[   13.390000] WARNING: Fragmentation with HT mode NOT ALLOWED!!
+[   13.460000] device ath10 entered promiscuous mode
+[   13.500000]  ieee80211_ioctl_siwmode: imr.ifm_active=66176, new mode=3, valid=1 
+[   13.510000]  DEVICE IS DOWN ifname=ath10
+[   13.520000]  DEVICE IS DOWN ifname=ath10
+[   13.550000] br0: port 3(ath10) entered forwarding state
+[   13.550000] br0: port 3(ath10) entered forwarding state
+[   13.550000] 8021q: adding VLAN 0 to HW filter on device ath10
+[   13.620000] 
+[   13.620000] manage vlan set ssid vlan: idx (0), intfName (ath0), vlan (0)
+[   13.630000] 
+[   13.630000] manage vlan set ssid vlan: idx (1), intfName (ath10), vlan (0)
+[   13.720000] tp mesh events being sent to PID:815
+[   13.840000] wmi_unified_vdev_create_send: ID = 1 Type = 1, Subtype = 0 VAP Addr = d2:32:e5:08:86:13:
+[   13.850000] ieee80211_mbo_vattach:MBO Initialized 
+[   13.850000] VAP device bkhap1 created osifp: (87275380) os_if: (84e58000)
+[   13.870000]  ieee80211_ioctl_siwmode: imr.ifm_active=66176, new mode=3, valid=1 
+[   14.060000] set channellimit = 0
+[   14.090000] osif_vap_init: Scan in progress.. Cancelling it. vap: 0x84de0000 
+[   14.170000]  
+[   14.170000]  DES SSID SET=mesh_cc32e5088612 
+[   14.200000] device bkhap1 entered promiscuous mode
+[   14.210000]  ieee80211_ioctl_siwmode: imr.ifm_active=66176, new mode=3, valid=1 
+[   14.220000]  DEVICE IS DOWN ifname=bkhap1
+[   14.220000]  DEVICE IS DOWN ifname=bkhap1
+[   14.370000] osif_vap_init: Scan in progress.. Cancelling it. vap: 0x84e58000 
+[   14.410000] br0: port 4(bkhap1) entered forwarding state
+[   14.410000] br0: port 4(bkhap1) entered forwarding state
+[   14.420000] [Debug led_proc_write:633] Write led_yellow.
+[   14.430000] [Debug led_common_write_proc:472] Execute LED action:    { 1   0   0   0   0 }
+[   14.450000] [Debug led_proc_write:633] Write led_green.
+[   14.450000] [Debug led_common_write_proc:472] Execute LED action:    { 3   0   500 500 4 }
+[   14.490000] Switching to Tx Mode-0
+[   15.480000] ar9300_override_ini: reset 0x9e14, 0x317b5de2
+[   15.500000] mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+[   15.520000] ar9300_override_ini: reset 0x9e14, 0x317b5de2
+[   15.540000] ar9300_override_ini: reset 0x9e14, 0x3179e162
+[   16.460000] mspi_read_id get id=0x1c
+[   17.420000] [Debug led_proc_write:633] Write led_green.
+[   17.430000] [Debug led_common_write_proc:472] Execute LED action:    { 7   0   0   0   0 }
+[   19.950000] ACS failed to derive the channel. So,selecting channel with least BSS 
+[   19.960000] random channel is 40 
+[   19.980000] ******** ACS report ******** 
+[   19.980000]  Channel | BSS  | minrssi | maxrssi | NF | Ch load | spect load | sec_chan 
+[   19.990000] ---------------------------------------------------------------------
+[   20.000000]  5180( 36)   35        6        27   -100      18           0          1   
+[   20.000000]  5200( 40)   10        5        15   -100       4           0          1   
+[   20.010000]  5220( 44)   23        4        23   -100      15           0          1   
+[   20.020000]  5240( 48)   22        4        29    -99      10           0          1   
+[   20.030000]  5260( 52)   11       17        26   -100       7           0          1   
+[   20.040000]  5280( 56)   13       12        22   -100       6           0          1   
+[   20.050000]  5300( 60)   14        4        24   -101      11           0          1   
+[   20.050000]  5320( 64)    9       15        29   -101       5           0          1   
+[   20.060000]  5500(100)   20       18        42   -100      13           0          1   
+[   20.070000]  5520(104)   17       19        36   -100      11           0          1   
+[   20.080000]  5540(108)    5        5        21   -100       5           0          1   
+[   20.090000]  5560(112)   19       10        39    -99      13           0          1   
+[   20.100000]  5580(116)    6        3        24    -99       6           0          1   
+[   20.100000]  5600(120)    1        9         9   -100       1           0          1   
+[   20.110000]  5620(124)    6        4        26   -100       3           0          1   
+[   20.120000]  5640(128)    0        0         0   -100       1           0          1   
+[   20.130000]  5660(132)    1        5         5   -100       1           0          1   
+[   20.140000]  5680(136)    1       21        21   -100       2           0          1   
+[   20.140000]  5700(140)    6       11        20   -101       3           0          0   
+[   20.150000] OL vap_start +
+[   20.160000] OL vap_start -
+[   20.160000] ol_ath_vap_set_param: Now supported MCAST RATE is 6000(kbps) and rate code: 0x3
+[   20.170000] ol_ath_vap_set_param: Now supported BCAST RATE is 6000(kbps) and rate code: 0x3
+[   20.180000] ol_ath_vap_set_param: Now supported BCAST RATE is 6000(kbps) and rate code: 0x3
+[   20.180000] ol_ath_vap_set_param: Now supported MCAST RATE is 6000(kbps) and rate code: 0x3
+[   20.190000] OL vap_start +
+[   20.200000] OL vap_start -
+[   24.580000] tp dfs events being sent to PID:358
+[   59.410000] <mesh core kernel>[debug]proc_write_config_func(770): set lbd switch to 0
+[   59.440000] br0: port 4(bkhap1) entered disabled state
+[   59.510000] [Debug led_proc_write:633] Write led_green.
+[   59.520000] [Debug led_common_write_proc:472] Execute LED action:    { 7   0   0   0   0 }
+[  164.870000] 
+[  164.870000] manage vlan set port: ssh (22), http (80), https (443)
+[  997.220000] device ath0 left promiscuous mode
+[  997.220000] br0: port 2(ath0) entered disabled state
+[  997.240000]  DEVICE IS DOWN ifname=ath0
+[  997.250000]  DEVICE IS DOWN ifname=ath0
+[  997.270000] ieee80211_mbo_vdetach: MBO terminated
+[ 1018.630000] device ath10 left promiscuous mode
+[ 1018.630000] br0: port 3(ath10) entered disabled state
+[ 1018.650000]  DEVICE IS DOWN ifname=ath10
+[ 1018.660000]  DEVICE IS DOWN ifname=ath10
+[ 1018.680000] ol_ath_vap_delete: wmi_unified_vdev_delete_send done ID = 0 VAP Addr = cc:32:e5:08:86:13:
+[ 1018.690000] ieee80211_mbo_vdetach: MBO terminated
+</nowiki>
+</WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ath79 QCA9563 16flash 128ram gigabitethernet 802.11abgnac PoE ceiling outdoor wall_embedded}}

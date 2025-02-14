@@ -1,0 +1,648 @@
+====== devolo dLAN pro 500 wireless plus ======
+Devolo, the device manufacturer, added support for it in OpenWrt. This is great!
+
+<WRAP center centeralign round box 50%>
+Please transfer the content of [[toh/devolo/dlan-pro-wireless-500-plus]] here, and when done, delete [[toh/devolo/dlan-pro-wireless-500-plus]]. 
+</WRAP>
+
+The dLAN pro 500 Wireless plus (also spelled "dLAN 500 wireless+") is a device with:
+  * WiFi (compatible with the ath9k driver)
+  * An ethernet interface with a 3 ethernet ports switch (The switch can be configured with "swconfig")
+  * A [[wp>Power-line_communication|Powerline]] network interface
+  * 128MB of RAM
+  * About 7.5MB of usable flash space for OpenWrt
+
+===== Status =====
+TODO:
+  * Delete the old [[dlan_pro_wireless_500_plus]] page
+  * Finish documenting the hardware, especially the powerline ethernet interface
+  * Add saner switch default in OpenWrt and LEDE
+  * Handle the PLC configuration and firmware loading in OpenWrt and LEDE
+  * Replace the non-free firmware by a free software implementation
+
+Tested:
+  * WiFi in client mode
+  * Ethernet
+  * The LEDS
+  * The switch
+  * The powerline interface (Not well documented yet)
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^dlan pro wireless 500 plus$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^dlan pro wireless 500 plus$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^dlan pro wireless 500 plus$"}
+} -->
+
+==== Flash Layout ====
+^ Layer0       |raw NOR flash memory chip (m25p80 compatible [[wp>Serial Peripheral Interface Bus|spi]]0.0) 8192 KiB|||||||||
+^ Layer1 partition     |mtd0|mtd1|mtd2|mtd3|mtd4||||mtd8|
+^ Layer1 name          |u-boot|u-boot-env|Config1|Config2|firmware||||art|
+^ Layer1 size (KiB)    |256KiB|64KiB|64KiB|64KiB|7680KiB||||64KiB|
+^ Layer2 partition     |:::|:::|:::|:::|mtd5|mtd6|||:::|
+^ Layer2 name          |:::|:::|:::|:::|kernel|rootfs|||:::|
+^ Layer3 partition     |:::|:::|:::|:::|:::|-|mtd7||:::|
+^ Layer3 name          |:::|:::|:::|:::|:::|-|rootfs_data||:::|
+
+<code>
+$ cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00040000 00010000 "u-boot"
+mtd1: 00010000 00010000 "u-boot-env"
+mtd2: 00010000 00010000 "Config1"
+mtd3: 00010000 00010000 "Config2"
+mtd4: 00780000 00010000 "firmware"
+mtd5: 00140000 00010000 "kernel"
+mtd6: 00640000 00010000 "rootfs"
+mtd7: 00110000 00010000 "rootfs_data"
+mtd8: 00010000 00010000 "art"
+</code>
+
+==== OEM installation using the TFTP method ====
+=== Installation procedure ====
+The devices comes with a bootloader called u-boot. It's the first software that runs on the device.
+
+At boot, if the internal button is pressed, the bootloader will load and flash a file named "uploadfile" from a tftp server at 192.168.0.100.
+
+This permits us to easily install OpenWrt, but it will erase the original system while doing it. That means that we cannot backup the original system by using this installation procedure.
+
+=== Preparation ===
+So to install OpenWrt, you need to do a bit of preparation first.
+
+++++Setup tftp server|
+Start by connecting an Ethernet cable between the device and your computer.
+
+Then assign the "192.168.0.100" IP address to your the Ethernet card of your computer.
+There are many ways to do that, here are two examples where it is done with the command line on GNU/Linux, it can also be done graphically:
+
+<code>
+sudo ifconfig eth0 192.168.0.100 netmask 255.255.255.0 up
+or:
+sudo ip addr add 192.168.0.100 dev eth0
+sudo ip link set dev eth0 up
+</code>
+
+"eth0" is the name of the Ethernet interface, it might vary across computers and distribution. To list all the interfaces name with the command line under GNU/Linux you can use the following command:
+
+<code>
+ls /sys/class/net/
+</code>
+
+Note that on other operating systems the commands might vary.
+
+When this is done you will need to setup a TFTP server on your computer. We will use dnsmasq for that because it can be run just by typing one command and also because as it is extensively used in OpenWrt devices, and because of that OpenWrt users tend to know it better.
+
+The advantage of dnsmasq is also that it's already present by default in many GNU/Linux distributions. To verify if we already have it simply type:
+
+<code>
+dnsmasq --version
+</code>
+
+If we have it, it will print something like that: 
+
+<code>
+Dnsmasq version 2.76  Copyright (c) 2000-2016 Simon Kelley
+Compile time options: IPv6 GNU-getopt DBus i18n IDN DHCP DHCPv6 no-Lua TFTP conntrack ipset auth DNSSEC > loop-detect inotify
+
+This software comes with ABSOLUTELY NO WARRANTY.
+Dnsmasq is free software, and you are welcome to redistribute it
+under the terms of the GNU General Public License, version 2 or 3.
+</code>
+
+Else it will look like that:
+<code>
+bash: dnsmasq: command not found
+</code>
+
+If we don't have dnsmasq installed, we need to install it.
+Again, there are many ways to do it, and it can probably also be done graphically. Here I will again only include command line examples.
+On debian based GNU/Linux distributions (such as Debian, Ubuntu, Trisquel and so on) you can install it with:
+
+<code>
+sudo apt-get install dnsmasq
+</code>
+
+Once we have dnsmasq, we then need to create the directory where the files made accessible trough tftp resides. In the context of server programs like tftp servers, this is often called the tftp root directory. We will create this directory with:
+
+<code>
+sudo mkdir tftp
+</code>
+
+We then need to put the OpenWrt sysupgrade file (Also called image) in this directory, so download that file ("openwrt-15.05.1-ar71xx-generic-dlan-pro-500-wp-squashfs-sysupgrade.bin" at the time of writing), and copy it file in the tftp directory we just created as "uploadfile".
+We now need to start the tftp server, we can do that with:
+
+<code>
+sudo dnsmasq --no-daemon --interface=eth0 --dhcp-range=192.168.0.101,192.168.0.255,12h --dhcp-option=121,192.168.0.100 --enable-tftp=eth0 --tftp-root="$(pwd)/tftp/" --dhcp-script=/bin/echo
+</code>
+Here ''$(pwd)'' will indicate to look for the tftp directory inside the current directory (pwd means "print working directory" and the ''$()'' is used to run commands within commands). 
+++++
+
+
+++++Knowing what is going on|
+It is also a good idea to get some debug logs while doing it.
+Since dnsmasq is not that verbose, we will use the command line version of wireshark (Sometimes called tshark or wireshark-cli). It can "describe in english" what is going on.
+
+Due to legal constraints, it is a strongly advised to make sure that the device is directly connected to your computer trough an Ethernet cable. This will make sure that you do not capture other people's traffic.
+
+To get an idea of what is going on, first make sure that your Ethernet interface is activated. To do that you can run:
+<code>
+sudo ifconfig eth0 up
+Or:
+sudo ip link set dev eth0 up
+</code>
+
+Then to print what is going on run:
+<code>
+sudo tshark -i eth0
+</code>
+
+As usual, "eth0" the name of your laptop's Ethernet interface.
+
+For instance if the device tries to download the file named "uploadfile" we should have something like that:
+
+<code>
+12 19.125597004 192.168.0.249 → 192.168.0.100 TFTP 71 Read Request, File: uploadfile, Transfer type: octet, timeout=1
+Then if everything is fine it will actually download the file:
+13 19.164418286 192.168.0.100 → 192.168.0.249 TFTP 558 Data Packet, Block: 1
+14 19.164585137 192.168.0.249 → 192.168.0.100 TFTP 60 Acknowledgement, Block: 1
+15 19.164651556 192.168.0.100 → 192.168.0.249 TFTP 558 Data Packet, Block: 2
+16 19.165579327 192.168.0.249 → 192.168.0.100 TFTP 60 Acknowledgement, Block: 2
+[...]
+</code>
+
+Dnsmasq also prints some message when it happens:
+<code>
+dnsmasq-tftp: sent [...]/uploadfile to 192.168.0.249
+tftp 6356996 192.168.0.249 [...]/uploadfile
+</code>
+
+However it will not print anything if something goes wrong. In the other hand, tshark will have some information that might help understanding why it is not working.
+
+Tshark can also detect if your Ethernet interface is not up/activated. In that case it will simply refuse to work, complain, and exit:
+
+<code>
+sudo tshark -i eth0
+Running as user "root" and group "root". This could be dangerous.
+tshark: Lua: Error during loading:
+[string "/usr/share/wireshark/init.lua"]:44: dofile has been disabled due to running Wireshark as superuser. See https://wiki.wireshark.org/CaptureSetup/CapturePrivileges for help in running Wireshark as an unprivileged user.
+Capturing on 'eth0'
+tshark: The capture session could not be initiated due to error getting information on pipe/socket: Permission denied.
+
+0 packets captured
+</code>
+++++
+
+=== Installation ===
+
+Then get a power strip with a button and put the power strip on the table where your computer is located and plug the device(The "dlan pro 500 wireless plus") in it, to easily power-on/power-off the device.
+
+You also need to get a screwdriver that can press the internal button: That button is barely visible from the outside, it is hidden under the black cover, on the bottom-right of the device. It can be pressed by using a screwdriver in the second hole from the bottom-right.
+
+Then to make the device install OpenWrt:
+
+  * Power it off (with the power strip button for instance) and start pressing the hidden-button.
+  * Power on the device (with the power strip button for instance), while keeping pressing the hidden-button.
+  * The device will then start downloading OpenWrt. This will only be visible on your laptop with tshark, or the dnsmasq logs, as described above.
+  * At this point you can stop pressing the button, if you are not sure, you should rather wait a bit more and only stop pressing the button when the WiFi led becomes blue and start blinking (this happens when it starts flashing OpenWrt).
+  * The device won't respond to pings during the flashing, even when it is downloading the file.
+  * Do not turn off the device during that procedure. At the end it will reboot and the LEDs will then stop being blue.
+  * [[docs:guide-quick-start:walkthrough_login|Finish the OpenWrt install as usual]]
+
+
+=== Specific values needed for tftp ===
+
+^ TFTP server IPv4 address  | 192.168.0.100   |
+^ Firmware TFTP image                  | [[:downloads|Latest OpenWrt release]] |
+^ Firmware filename on TFTP server     | uploadfile |
+
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+===== Debricking =====
+Installing OpenWrt doesn't reflash the booloader.
+
+So if you didn't reflash it by yourself, you can easily recover just by re-installing an image trough the [[dlan_pro_wireless_500_plus#oem_installation_using_the_tftp_method|TFTP installation procedure]].
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | Ethernet(LAN) and WiFi         ||
+| eth0             | Powerline ethernet interface   ||
+| eth1             | Ethernet interface (bridged with WiFi in br-lan) ||
+| wlan0            | WiFi interface ridged (bridged with WiFi in br-lan) ||
+
+==== Powerline Ethernet interface ====
+=== Powerline introduction ===
+The powerline ethernet interface name is eth0.
+Unfortunately it doesn't work without a (non-free) firmware and a configuration file.
+OpenWrt and LEDE do not ship them as they would need the right to redistribute them.
+
+They can however be extracted from the vendor firmware update or avpromanager.bin file.
+It is currently easier download the firmware update from devolo's website and extract all the files of the firmware update with binwalk.
+
+Once this is done you have to first make sure to get the right firmware and configuration files.
+On my device you can spot "MT2555" in the top right of the device as seen on {{:media:devolo:dlan-pro-wireless-500-plus-bottom.jpg?linkonly|this image}}
+
+So first start by looking, on the top-left of the bottom of your device for either:
+  * MT2554
+  * MT2555
+  * MT2556
+
+In the extracted firmware update, in /usr/intfw you will have the following files:
+  * 2554.pib: This is a configuration file
+  * 2555.pib: This is a configuration file
+  * 2556.pib: This is a configuration file
+  * int6x00.nvm: This is the powerline chip firmware
+
+You can then copy int6x00.nvm to the devolo dlan pro wireless 500 plus.
+
+For the configuration file, it's more complicated as it must be modified to make the powerline chip work properly.
+
+=== Generating the configuration data ===
+To do that you must first install open-plc-utils on a computer (The source code is at [[https://github.com/qca/open-plc-utils.git]]).
+Once this is done you can then modify the configuration data. You need to configure several parameters:
+  * A [[wp>MAC_Address|MAC address]] (MAC)
+  * A Network Membership Key (NMK)
+  * A Device Access Key (DAK)
+
+The MAC address can be retrived by running, on the devolo dlan pro wireless 500 plus:
+
+<code>
+ifconfig eth0
+</code>
+
+The Device Access Key (DAK) and the Network Membership Key (NMK) can be generated.
+However the Network Membership key (NMN) can be used to join a network (more on that later)
+
+For now we will just generate a valid configuration data file:
+
+<code>
+$ MAC=<the mac address of eth0 on the devolo>
+$ DAK=$(rkey secret.key -D)
+$ NMK=$(rkey secret.key -M)
+$ modpib -v -M ${MAC} -N ${NMK} -D ${DAK} 2555.pib
+$ setpib 2555.pib 7 byte 0
+</code>
+
+=== Loading the firmware ===
+Theses are the commands used to manually load the powerline firmware on the devolo dlan wireless 500 plus:
+<code>
+$ echo 1 > "/sys/class/gpio/gpio13/value"
+$ ifconfig "eth0" up
+$ amptool -i "eth0" -Iar
+$ ampboot -i "eth0" -P "bin/2555.pib" -N "bin/int6x00.nvm"
+</code>
+
+=== Joining networks ===
+Using the same Network Membership Key between devices is a way to make device join the same network.
+
+On some (other) powerline devices, the only way to pair devices together is to push a button and wait for the devices to connect together.
+
+open-plc-utils also has documentation and utilities to be compatible with this button push pairing.
+
+==== Switch Ports (for VLANs) ====
+By default, the switch configuration allow devices on the different Ethernet ports to talk to the dlan pro wireless 500 plus, but do not allow such devices to talk to other devices on a different Ethernet port of the switch, this can be very confusing.
+
+To allow devices to talk to other devices on a different Ethernet port, the switch configuration needs to be changed.
+
+
+To change it temporarily, until the next boot/reboot, you can run the following command:
+<code>
+swconfig dev switch0 set enable_vlan 1
+</code>
+
+Or to do the change it in a more permanent way, you can add the following to /etc/config/network:
+
+<code>
+config 'switch' 'switch0'
+	option 'enable_vlan' '1'
+	option 'apply' '1'
+</code>
+
+It will then be applied at next reboot.
+
+It is probably also possible to do the change trough other ways, like trough the web interface (luci).
+
+==== Buttons ====
+The Devolo Dlan pro wireless 500 plus has the following buttons:
+
+^ BUTTON                ^ Event   ^
+| ON/OFF (Wireless)     | ?       |
+| WPS                   | ?       |
+| dLAN                  | ?       |
+| Hidden reset button   | ?       |
+
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"model": "^dlan pro wireless 500 plus$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+The pictures below are also licensed under the [[https://creativecommons.org/licenses/by-sa/4.0/|creative commons cc-by-sa]]. They show the device in its case from all angles:
+
+{{media:devolo:dlan-pro-wireless-500-plus-top.jpg?300|}}
+{{media:devolo:dlan-pro-wireless-500-plus-bottom.jpg?300|}}
+{{media:devolo:dlan-pro-wireless-500-plus-ethernet-side.jpg?300|}}
+{{media:devolo:dlan-pro-wireless-500-plus-side-1.jpg?300|}}
+{{media:devolo:dlan-pro-wireless-500-plus-side-2.jpg?300|}}
+
+==== Opening the case ====
+
+{{page>meta:infobox:high_voltage&noheader&nofooter&noeditbtn}}
+
+The hardware is made of two PCBs stacked together with pin-header-connectors:
+  * The upper PCB has the "power supply" part.
+  * The lower PCB has the "Access point" part.
+
+:!: **WARNING** :!:
+Since the power supply is integrated into the unit, you should not open it.
+  * The voltage and current provided by your house's electricity can kill you.
+  * Operating the device while it's opened can kill you.
+  * Opening the device while it's unplugged, can also kill you, this is because it has capacitors that can hold some electricity for a while.
+
+DO NOT IGNORE THIS WARNING.
+If you die, you will not be able to contribute to free and open source software anymore.
+
+In doubt, DO NOT OPEN THE DEVICE. If you open it, YOU MIGHT DIE.
+
+Opening the device will most probably also void your warranty.
+
+Because of the above I didn't try to find the serial and JTAG ports on this device.
+Do not even think of operating the device while open, as it is even more dangerous.
+
+There is an empty SOIC-8 emplacement on the "Access point PCB" that isn't populated,
+but the pins aren't connected to the WSON-8 flash chip pins.
+
+The details (chip marking names and so on) are inside the pictures EXIF, they can for instance be viewed with okular.
+
+PCB Pictures:
+  * [[https://archive.org/details/dlan-pro-wireless-500-plus_cover-internal.jpg]]
+  * [[https://archive.org/details/dlan-pro-wireless-500-plus_power-pcb-top.jpg]]
+  * [[https://archive.org/details/dlan-pro-wireless-500-plus_power-pcb-bottom.jpg]]
+  * [[https://archive.org/details/dlan-pro-wireless-500-plus_soc-pcb-top.jpg]]
+  * [[https://archive.org/details/dlan-pro-wireless-500-plus_soc-pcb-bottom.jpg]]
+
+
+===== Bootlogs =====
+
+==== OpenWrt bootlog ====
+FIXME Provide OpenWrt boot log
+
+==== LEDE custom build bootlog ====
+<WRAP bootlog>
+<nowiki># dmesg
+[    0.000000] Linux version 4.4.61 (gnutoo@second-laptop) (gcc version 5.4.0 (LEDE GCC 5.4.0 r3270-09a8183ce8) ) #0 Fri May 5 18:00:57 2017
+[    0.000000] MyLoader: sysp=80020044, boardp=00800223, parts=00004480
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001974c (MIPS 74Kc)
+[    0.000000] SoC: Atheros AR9344 rev 3
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] No valid device tree found, continuing without
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000] free_area_init_node: node 0, pgdat 8040a3d0, node_mem_map 81000000
+[    0.000000]   Normal zone: 256 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32768 pages, LIFO batch:7
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line:  board=dLAN-pro-500-wp console=ttyS0,115200 mtdparts=spi0.0:256k(u-boot)ro,64k(u-boot-env)ro,64k(Config1)ro,64k(Config2)ro,7680k@0x70000(firmware),64k(art)ro mem=128M rootfstype=squashfs,jffs2 noinitrd
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 125140K/131072K available (2967K kernel code, 157K rwdata, 748K rodata, 280K init, 200K bss, 5932K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:51
+[    0.000000] Clocks: CPU:560.000MHz, DDR:450.000MHz, AHB:225.000MHz, Ref:40.000MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 6825930166 ns
+[    0.000009] sched_clock: 32 bits at 280MHz, resolution 3ns, wraps every 7669584382ns
+[    0.008290] Calibrating delay loop... 278.93 BogoMIPS (lpj=1394688)
+[    0.081137] pid_max: default: 32768 minimum: 301
+[    0.086171] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.093219] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.103153] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.113676] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.120865] NET: Registered protocol family 16
+[    0.127007] MIPS: machine is devolo dLAN pro 500 Wireless+
+[    0.574961] clocksource: Switched to clocksource MIPS
+[    0.581709] NET: Registered protocol family 2
+[    0.587123] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.594551] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.601361] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.608214] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.614435] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.621382] NET: Registered protocol family 1
+[    0.626104] PCI: CLS 0 bytes, default 32
+[    0.630059] Crashlog allocated RAM at address 0x3f00000
+[    0.649661] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.655941] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.669029] io scheduler noop registered
+[    0.673212] io scheduler deadline registered (default)
+[    0.678921] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.686142] console [ttyS0] disabled
+[    0.710019] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 2500000) is a 16550A
+[    0.719208] console [ttyS0] enabled
+[    0.726629] bootconsole [early0] disabled
+[    0.737952] m25p80 spi0.0: found s25sl064p, expected m25p80
+[    0.743618] m25p80 spi0.0: s25sl064p (8192 Kbytes)
+[    0.748554] 6 cmdlinepart partitions found on MTD device spi0.0
+[    0.754557] Creating 6 MTD partitions on "spi0.0":
+[    0.759437] 0x000000000000-0x000000040000 : "u-boot"
+[    0.766629] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.773607] 0x000000050000-0x000000060000 : "Config1"
+[    0.780362] 0x000000060000-0x000000070000 : "Config2"
+[    0.787100] 0x000000070000-0x0000007f0000 : "firmware"
+[    0.802460] 2 uimage-fw partitions found on MTD device firmware
+[    0.808514] 0x000000070000-0x0000001b0000 : "kernel"
+[    0.815130] 0x0000001b0000-0x0000007f0000 : "rootfs"
+[    0.821731] mtd: device 6 (rootfs) set to be root filesystem
+[    0.827552] 1 squashfs-split partitions found on MTD device rootfs
+[    0.833829] 0x0000006e0000-0x0000007f0000 : "rootfs_data"
+[    0.840931] 0x0000007f0000-0x000000800000 : "art"
+[    0.862957] libphy: ag71xx_mdio: probed
+[    0.888594] libphy: ag71xx_mdio: probed
+[    1.476880] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:RGMII
+[    2.066722] ag71xx-mdio.1: Found an AR934X built-in switch
+[    2.109089] eth1: Atheros AG71xx at 0xba000000, irq 5, mode:GMII
+[    2.117360] NET: Registered protocol family 10
+[    2.125559] NET: Registered protocol family 17
+[    2.130157] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    2.143103] 8021q: 802.1Q VLAN Support v1.8
+[    2.153903] VFS: Mounted root (squashfs filesystem) readonly on device 31:6.
+[    2.162399] Freeing unused kernel memory: 280K (8042a000 - 80470000)
+[    3.335965] init: Console is alive
+[    3.339624] init: - watchdog -
+[    4.256542] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    4.377282] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    4.385539] init: - preinit -
+[    5.103388] eth0: link up (1000Mbps/Full duplex)
+[    5.127899] random: procd: uninitialized urandom read (4 bytes read, 8 bits of entropy available)
+[    7.370676] jffs2: notice: (411) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[    7.388072] mount_root: switching to jffs2 overlay
+[    7.407891] urandom-seed: Seeding with /etc/urandom.seed
+[    7.537186] eth0: link down
+[    7.551169] procd: - early -
+[    7.554192] procd: - watchdog -
+[    8.249132] procd: - ubus -
+[    8.451855] random: ubusd: uninitialized urandom read (4 bytes read, 14 bits of entropy available)
+[    8.461452] random: ubusd: uninitialized urandom read (4 bytes read, 14 bits of entropy available)
+[    8.470707] random: ubusd: uninitialized urandom read (4 bytes read, 14 bits of entropy available)
+[    8.483710] random: ubusd: uninitialized urandom read (4 bytes read, 14 bits of entropy available)
+[    8.492948] random: ubusd: uninitialized urandom read (4 bytes read, 14 bits of entropy available)
+[    8.502631] random: ubusd: uninitialized urandom read (4 bytes read, 14 bits of entropy available)
+[    8.512022] random: ubusd: uninitialized urandom read (4 bytes read, 14 bits of entropy available)
+[    8.521567] procd: - init -
+[    9.201984] kmodloader: loading kernel modules from /etc/modules.d/*
+[    9.218396] tun: Universal TUN/TAP device driver, 1.6
+[    9.223528] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[    9.234474] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    9.253403] Loading modules backported from Linux version wt-2017-01-31-0-ge882dff19e7f
+[    9.261577] Backport generated by backports.git backports-20160324-13-g24da7d3c
+[    9.276739] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    9.289959] nf_conntrack version 0.5.0 (1959 buckets, 7836 max)
+[    9.316280] Netfilter messages via NETLINK v0.30.
+[    9.612592] xt_time: kernel timezone is -0000
+[    9.678555] nf_tables: (c) 2007-2009 Patrick McHardy <kaber@trash.net>
+[    9.760387] ath: EEPROM regdomain: 0x37
+[    9.760406] ath: EEPROM indicates we should expect a direct regpair map
+[    9.760420] ath: Country alpha2 being used: AW
+[    9.760430] ath: Regpair used: 0x37
+[    9.772929] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[    9.777801] ieee80211 phy0: Atheros AR9340 Rev:3 mem=0xb8100000, irq=47
+[    9.858892] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   11.064893] random: jshn: uninitialized urandom read (4 bytes read, 18 bits of entropy available)
+[   11.165071] random: ubusd: uninitialized urandom read (4 bytes read, 18 bits of entropy available)
+[   11.970234] eth0: link up (1000Mbps/Full duplex)
+[   20.172699] eth0: link down
+[   20.239255] device eth1 entered promiscuous mode
+[   20.323572] br-lan: port 1(eth1) entered forwarding state
+[   20.329138] br-lan: port 1(eth1) entered forwarding state
+[   20.387717] eth0: link up (1000Mbps/Full duplex)
+[   21.506178] br-lan: port 1(eth1) entered disabled state
+[   21.846784] eth1: link up (1000Mbps/Full duplex)
+[   21.895059] br-lan: port 1(eth1) entered forwarding state
+[   21.900591] br-lan: port 1(eth1) entered forwarding state
+[   23.553734] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+[   23.638880] device wlan0 entered promiscuous mode
+[   23.643750] br-lan: port 2(wlan0) entered forwarding state
+[   23.649393] br-lan: port 2(wlan0) entered forwarding state
+[   23.707613] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+[   23.895010] br-lan: port 1(eth1) entered forwarding state
+[   25.645010] br-lan: port 2(wlan0) entered forwarding state
+[   44.851108] random: nonblocking pool is initialized
+[  477.023372] eth1: link down
+[  477.026551] br-lan: port 1(eth1) entered disabled state
+[  478.524283] eth1: link up (1000Mbps/Full duplex)
+[  478.529031] br-lan: port 1(eth1) entered forwarding state
+[  478.534594] br-lan: port 1(eth1) entered forwarding state
+[  480.532546] br-lan: port 1(eth1) entered forwarding state
+[  760.021614] eth1: link down
+[  760.024801] br-lan: port 1(eth1) entered disabled state
+[  803.022261] eth1: link up (1000Mbps/Full duplex)
+[  803.027003] br-lan: port 1(eth1) entered forwarding state
+[  803.032559] br-lan: port 1(eth1) entered forwarding state
+[  805.030432] br-lan: port 1(eth1) entered forwarding state
+[10443.947240] eth1: link down
+[10443.950417] br-lan: port 1(eth1) entered disabled state
+[10489.447846] eth1: link up (1000Mbps/Full duplex)
+[10489.452588] br-lan: port 1(eth1) entered forwarding state
+[10489.458147] br-lan: port 1(eth1) entered forwarding state
+[10491.456088] br-lan: port 1(eth1) entered forwarding state</nowiki>
+</WRAP>\\
+
+
+==== U-boot version ====
+The u-boot has very early init code from atheros (grep for FPGA in the diff).
+
+=== U-boot OS(Kernel + rootfs) reflashing sequence ===
+At power up, if the internal button is pressed, u-boot will initiate the TFTP reflash procedure.
+TFTP reflash procedure:
+  * u-boot will save the environment variables that it will override (IP addresses and so on).
+  * It then override the environment with the following configuration:
+    * IP address of the dlan: 192.168.0.249
+    * IP address of the TFTP server: 192.168.0.100
+  * It then loads an image to memory ("tftp 0x8006000 uploadfile").
+  * After that it restores the original the environment.
+  * It the download didn't fail, it then erases the kernel and rootfs partitions ("erase 0x9f070000 + 0x780000")
+  * If the download didn't fail and if the downloaded image is smaller than the kernel+rootfs partition size, it flashes it to that partition ("cp.b 0x8006000 0x9f070000 0x<transfer size>")
+
+==== Vendor sources ====
+As required by the GPL, devolo publish u-boot source code. Most of the information
+above is derived from that source code.
+
+The sources can be found on devolo websites as:
+  * gpl-source-dlan-pro-500-wireless-plus.tar.bz2 FIXME Please provide link
+  * oss-license-info-dlan-pro-500-wireless-plus.pdf FIXME Please provide link
+
+===== See also =====
+  * [[dlan_pro_1200_wifi_ac|dLAN pro 1200+ WiFi ac]]
+
+
+===== License =====
+This page is licensed under all the following licenses:
+  * [[https://creativecommons.org/licenses/by-sa/4.0/]]
+  * [[https://creativecommons.org/licenses/by-sa/3.0/]]
+  * [[https://creativecommons.org/licenses/by-nc-sa/3.0/]]
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ar71xx AR9344 8Flash 128RAM 3Port GigabitEthernet VLAN wlan 3button PLC ath9k internalantenna MIPS MIPS32 U-boot wall_plug mains_powered}}

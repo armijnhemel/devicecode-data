@@ -1,0 +1,1491 @@
+====== Ubiquiti airCube ISP / AC ======
+
+The Ubiquiti Network airCube ISP is a cube shaped 2.4 GHz with internal 2x2 MIMO antennas. It can be supplied via a USB connector or via PoE. There are four 10/100 Mbps ports (1 * WAN + 3 * LAN). An optional PoE passthrough from the first LAN port to the WAN port is possible from the hardware.
+
+{{media:ubiquiti:aircube_isp_closed.jpg?600|Ubiquiti airCube ISP}}
+
+The AC has a similar shape with slightly different features and a 2.4 + 5 GHz WLAN.
+
+Please note that most of this page is based on the ISP because that was the initial port.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^airCube (ISP|AC)$"}
+} -->
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["unsupported_functions"],
+  "filterColumns": {"model": "^airCube (ISP|AC)$"}
+} -->
+
+Untested:
+  * Doing something more with WLAN than the basic access point functions
+
+Missing:
+  * LED support
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^airCube (ISP|AC)$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^airCube (ISP|AC)$"}
+} -->
+
+
+==== Via OEM Web Interface ====
+
+=== Quick and Simple Method for Aircube ISP and Aircube AC ===
+
+This method uses a prepared configuration file for installation. See the detailed method below for more details.
+
+  * First **make sure that you have either Firmware 2.5.0 or 2.8.3**. If you need to downgrade, you might have to use TFTP recovery for that. See either the [[toh:ubiquiti:aircube_isp#back_to_stock_firmware|Back to Stock Firmware]] section or the [[https://help.ui.com/hc/en-us/articles/360007287313-airCube-TFTP-Recovery|official guide from the manufacturer]] for how to do that.
+  * Get the configuration from {{ :media:ubiquiti:aircube_isp_remove_signaturecheck_config_firmware_2.5.0.tgz |here for ISP 2.5.0}}, from {{ :media:ubiquiti:aircube_isp_remove_signaturecheck_config_firmware_2.8.3.tgz |here for ISP 2.8.3}} or from {{ :media:ubiquiti:aircube_ac_remove_signaturecheck_config_firmware_2.8.3.tgz |here for AC 2.8.3}}.
+  * Connect to 192.168.1.1 in your browser and upload the configuration.
+  * Apply the config and reboot the device.
+  * Log in again. The above configuration uses the following settings:
+    * IP: 192.168.1.1
+    * user: ''ubnt''
+    * password: ''password''.
+  * For 2.5.0 visit http://192.168.1.1:8080/lua. For 2.8.3 visit http://192.168.1.1:8000/lua. Make sure that it is `http` without `s` You should see the output of a script with a ''******** Done ********'' at the end. The changes done by this script are not permanent. If you reboot the device before uploading the firmware you'll have to repeat this step.
+  * Now you can upload the factory installation image as a firmware update through the web UI.
+
+:!: **If you go back to stock firmware make sure to reset the configuration.** Otherwise the script will still be accessible which introduces security holes.
+
+=== Detailled Method ===
+
+You don't want to use a prepared configuration because you don't trust the one generating the config (which is a good thing!) or because you are just interested in doing it yourself. Here is the detailed guide how to create the config:
+
+//Background Information:// Basically this method injects a configuration that starts a second web server that executes a lua script. To do that the original configuration is downloaded, the uhttpd config is adapted, the lua handler is added and the configuration is uploaded again. The lua handler can call a script that mounts an overlayfs and modifies the ''fwupdate.real'' binary so that an unsigned image is accepted. The overlayfs is necessary because a security system (called tomoyo) doesn't allow binaries in other locations than /sbin/fwupdate.real (and maybe some more) to access the flash when executed via network.
+
+Step-by-step procedure:
+
+  * Up- or downgrade the Firmware to 2.8.3 (or 2.5.0). **The version is important because a binary file has to be modified!**
+  * Download a configuration.
+  * Unpack it (it's just a tar gz file without an ending).
+  * Add the following to uhttpd (use 8080 instead of 8000 for firmware 2.5.0 if you want the exact same config like downloadable above): <code>
+config 'uhttpd' 'other'
+	list listen_http    0.0.0.0:8000
+	list listen_http    [::]:8000
+	option 'home'       '/tmp/persistent/config/patch/www'
+	option lua_prefix   '/lua'
+	option lua_handler  '/tmp/persistent/config/patch/handler.lua'
+</code>
+
+  * Create a ''patch'' subfolder.
+  * Create an empty ''patch/www'' subfolder.
+  * Create a ''patch/handler.lua'' with the following content: <code lua handler.lua>
+function handle_request(env)
+    uhttpd.send("Status: 200 OK\r\n")
+    uhttpd.send("Content-Type: text/plain\r\n\r\n")
+
+    local command = "/bin/sh /tmp/persistent/config/patch/patch.sh 2>&1"
+
+    local proc = assert(io.popen(command))
+    for line in proc:lines() do
+        uhttpd.send(line.."\r\n")
+    end
+    proc:close()
+end
+</code>
+
+  * Create a ''patch/patch.sh'' with the following content: <code bash patch.sh>
+#!/bin/sh -x
+
+set -e
+set -u
+set -x
+
+UBNTBOX_PATCHED="/tmp/fwupdate.real"
+MD5FILE="/tmp/patchmd5"
+
+# 2.5.0:
+# cat <<EOF > ${MD5FILE}
+# c33235322da5baca5a7b237c09bc8df1  /sbin/fwupdate.real
+# EOF
+
+# 2.8.3:
+cat <<EOF > ${MD5FILE}
+f6b3a605704f3d8d8ed489f4a5f20584  /sbin/fwupdate.real
+EOF
+
+# check md5 of files that will be patched
+if ! md5sum -c ${MD5FILE}
+then
+        echo "******** Error when checking files. Refuse to do anything. ********"
+        exit 0
+fi
+
+# prepare some overlay functionality
+LOWERDIR="/tmp/lower_root"
+mkdir -p ${LOWERDIR}
+mount -t squashfs -oro /dev/mtdblock3 ${LOWERDIR}
+overlay_some_path()
+{
+        PATH_TO_OVERLAY=$1
+        ALIAS=$2
+        UPPERDIR="/tmp/over_${ALIAS}"
+        WORKDIR="/tmp/over_${ALIAS}_work"
+
+        mkdir -p ${UPPERDIR}
+        mkdir -p ${WORKDIR}
+
+        mount -t overlay -o lowerdir=${LOWERDIR}${PATH_TO_OVERLAY},upperdir=${UPPERDIR},workdir=${WORKDIR} overlay ${PATH_TO_OVERLAY}
+}
+
+# patch the ubntbox binary.
+overlay_some_path "/sbin" "sbin"
+
+# 2.5.0: Only one patch to disable signature check
+# echo -en '\x10' | dd of=/sbin/fwupdate.real conv=notrunc bs=1 count=1 seek=24598
+
+# 2.8.3: Two patches to disable signature and version check
+echo -en '\x65\x00' | dd of=/sbin/fwupdate.real conv=notrunc bs=1 count=2 seek=26484
+echo -en '\x10' | dd of=/sbin/fwupdate.real conv=notrunc bs=1 count=1 seek=25586
+
+echo "******** Done ********"
+</code>
+
+  * Make the lua script and the shell script executable.
+  * Repack the configuration.
+  * Follow the steps from the "Quick and Simple Method" above.
+
+==== Via Serial Console + U-Boot ====
+
+  * Connect the serial port via a level converter
+  * Power the system and stop U-Boot with pressing any key when ''Hit any key to stop autoboot'' is displayed. Note: Pressing space multiple times until U-Boot reaches that location works well.
+  * Connect a PC with the IP 192.168.1.100 (or some other in that net) running a TFTP-Server to one of the LAN ports. Copy the sysupgrade image to the server.
+  * Execute the commands from the following U-Boot output (everything with an ''ath>'' at the front is a command:
+
+  ath> setenv serverip 192.168.1.100
+  ath> tftpboot 0x81000000 openwrt-ath79-generic-ubnt_acb-isp-squashfs-sysupgrade.bin
+  eth0 link down
+  enet1 port1 up
+  dup 1 speed 1000
+  Using eth1 device
+  TFTP from server 192.168.1.100; our IP address is 192.168.1.20
+  Filename 'openwrt-ath79-generic-ubnt_acb-isp-squashfs-factory.bin'.
+  Load address: 0x81000000
+  Loading: #################################################################
+           #################################################################
+           #################################################################
+           #################################################################
+           #################################################################
+           #################################################################
+           #######
+  done
+  Bytes transferred = 2031620 (1f0004 hex)
+  ath> erase 0x9f050000 0x9ffaffff
+  Erasing flash... 
+  First 0x5 last 0xfa sector size 0x10000
+   250
+  Erased 246 sectors
+  ath> cp.b 0x81000000 0x9f050000 ${filesize}
+  Copy to Flash... write addr: 9f050000
+  done
+  ath> reset
+
+  * Your device should boot OpenWrt now. Congratulations: You're done.
+
+==== Back to Stock Firmware ====
+
+See [[https://help.ui.com/hc/en-us/articles/360007287313-airCube-TFTP-Recovery]]
+
+Basically you connect a PC with a IP address in the 192.168.1.0/24 net (not .20)
+to one of the ports (WAN or LAN). Then you press the reset button //really//
+long while powering up the device. This will put the router in rescue mode. Then
+you can just push one of the official firmware images via tftp to the device.
+For example with
+
+  atftp --option "timeout 1" --option "mode octet"  -p -l ACB.ar934x.v1.1.2.1df584efad.171220.1334.bin 192.168.1.20
+
+**NOTE:** For airCubes which had a firmware >= 2.8.0, you can only flash >= 2.8.1 (not 2.8.0!). For airCubes which had firmware < 2.8.0, you can flash anything <= 2.8.0.
+===== Hardware (ISP) =====
+==== Info ====
+^ Architecture     | MIPS                                        |
+^ Vendor           | Qualcomm Atheros                            |
+^ Bootloader       | U-Boot                                      |
+^ System-On-Chip   | Qualcomm / Atheros QCA9533-BL3A (MIPS 24Kc) |
+^ CPU/Speed        | 650MHz                                      |
+^ Flash size       | 16 MiB                                      |
+^ Flash Chip       | Macronix MX25L12835FMT                      |
+^ RAM size         | 64 MiB                                      |
+^ RAM Chip         | Winbond W9751G6KB-25                        |
+^ Wireless         | //SoC-integrated//: QCA9533                 |
+^ Ethernet         | 4 ports with 10/100 Mbit/s                  |
+^ USB              | No / only for power supply                  |
+^ Power            | USB or PoE                                  |
+^ Serial           | via pinheader                               |
+
+==== Flash Layout ====
+
+^   Ubiquiti airCube ISP Flash Layout stock firmware           ^^^^^^^^
+^ Layer0       |                       Macronix MX25L12835FMT      16384KiB                                                   ||||||
+^ Layer1       |  mtd0            |  mtd1                |  mtd2            |  mtd3            |  mtd4          |  mtd5            |
+^ Size in KiB  |  256KiB          |  64KiB               |  1024KiB         |  14720KiB        |  256KiB        |  64KiB           |
+^ Name         |  **//u-boot//**  |  **//u-boot-env//**  |  **//kernel//**  |  **//rootfs//**  |  **//cfg//**   |  **//EEPROM//**  |
+^ mountpoint   |  none            |  none                |  none            |  /               |  none          |  none            |
+^ filesystem   |  none            |  none                |  none            |  SquashFS 4.0    |  none          |  none            |
+
+/* FIXME: Make sure that this is the same as [[inbox/ubiquiti/ubiquiti_nanostation_ac]] and use the table from there for the OpenWrt layout */
+
+EEPROM = Atheros radio calibration data\\
+
+cfg = Ubiquiti config partition. Most likely formatted like described here: [[toh:ubiquiti:ubiquiti_wa_cfg_partition|Ubiquiti cfg partition]] (**NOTE: That hasn't been checked!**)
+
+==== Opening the case ====
+
+There are two clips on each side (total of eight). See the red arrows in the
+image for the locations. Carefully lift the case right above the transparent LED
+plastic. Note: The surface of the case scratches quite easily. So be careful if
+you want to avoid scratches.
+
+{{media:ubiquiti:aircube_isp_opened.jpg?400|airCube ISP opened}}
+
+A (not really high quality) video how to open the case can be found here: [[https://www.youtube.com/watch?v=R9fAyl5hsrg]]
+
+Detailled internal photos can be found on the FCC-ID page: [[https://fccid.io/SWX-ACBISP/Internal-Photos/Internal-Photos-3616813.pdf]]
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+There is a (not populated) four pin header for a serial port between the
+Ethernet connectors and the micro USB connector port. The pinout is as follows
+(in the image from bottom to top):
+
+  - 3V3
+  - Rx (input into router)
+  - Tx (output from router)
+  - GND
+
+Baudrate and setting is 115200, 8N1. The console port can work with 3.3V levels.
+
+{{media:ubiquiti:aircube_isp_serial.jpg?300|airCube ISP serial connector}}
+
+==== LED-Controller ====
+
+**Not yet supported. This is only a description of the protocol.**
+
+The LED is controlled by a small 10 pin SONiX 8-Bit microcontroller (8F26E611LA) on the board. It is controlled via SPI.
+
+**Note:** The following is based on reverse engineering with a logic analyzer and analysis of the original driver. No guarantee for being complete or accurate.
+
+**Note 2:** Although I didn't find an upgrade path, it is possible that Ubiquiti can somehow change the content of the controller. The analysis is done on a ACB.ar934x.v2.4.0.cb22320.180904.1044 firmware.
+
+The pinout of the controller is as follows:
+
+  * Pin 1: SPI chip select
+  * Pin 2: PWM for LED
+  * Pin 3 and 4: Seems to be unused. Could be programming interface (Embedded ICE clock and data pin according to data sheet)
+  * Pin 5: SPI MISO
+  * Pin 6: SPI MOSI
+  * Pin 7: SPI SCK
+  * Pin 8 and 9: VDD
+  * Pin 10: VSS
+
+The SPI pins are connected to the following SoC-pins:
+
+  * CS: GPIO 1
+  * MISO: ?
+  * MOSI: GPIO 2
+  * SCK: GPIO 3
+
+The original module for the leds (''uh_leds'') allows to echo the text ''test'' followed by a hex number to be put to ''/proc/sys/uh_leds''. That sends the hex number to the SPI bus.
+
+Higher two bits set a mode. Lower six bits are a parameter.
+
+  * Mode: 00 -> set brightness between 0x00 (min) and 0x3F (max)
+  * Mode: 01 -> pulsing pattern (min -> max -> min) with an interval. From some tests, the period is about (50ms + 102ms * parameter). There is a slightly different pattern starting from <mode> + 0x10 (longer gap between the pulses) but the time still follows that calculation.
+  * Mode: 10 -> same as 01 but with only a ramp from min to max. Again a slight jump in the pattern at <mode> + 0x10.
+  * Mode: 11 -> blinking (off -> 25% -> off -> 25% -> ...) with a period of (105ms * parameter)
+
+==== PoE pass through ====
+
+This means that power can be sent into to the 24V in port, and then be sent to another device connected to the WAN/PoE passthrough port.
+This will NOT work with a power supply connected to the USB port.
+
+PoE pass through can be enabled or disabled with GPIO 11 (based on info from original firmware).
+
+  uci set system.poe_passthrough.value='1'
+  uci commit system
+
+A reboot is needed for the setting to be activated.
+
+Live change is done this way:
+
+  echo out > /sys/class/gpio/gpio11/direction 
+  echo 1 > /sys/class/gpio/gpio11/value  
+
+to turn on poe passthrough,
+
+  echo out > /sys/class/gpio/gpio11/direction 
+  echo 0 > /sys/class/gpio/gpio11/value  
+
+turns it off.
+
+Be aware that the powersupply needs to be at least 12 Watts to be able to drive both the airCube and whatever else is connected into the passthrough port. It also sends out 24V, standard for Ubiquiti.
+
+Warning: This means that 48V equipment will not work, and might be destroyed if connected to it.
+
+===== OEM firmware 2.4.0 (ISP) =====
+
+Tested firmware version: ACB.ar934x.v2.4.0.cb22320.180904.1044
+
+The original firmware is based on OpenWrt.
+
+You can login with the user `ubnt` and the password printed on the label on the bottom of the device.
+
+==== Infos from U-Boot ====
+
+<WRAP bootlog><nowiki>
+U-Boot 1.1.4-s1055 (Sep 19 2017 - 16:00:36)
+
+DRAM:  64 MB
+Flash: 16 MB (0xc2, 0 0x20, 0x18)
+*** Warning *** : PCIe WLAN Module not found !!!
+In:    serial
+Out:   serial
+Err:   serial
+Net:   eth0, eth1
+Board: Ubiquiti Networks QCA953X board (e8f7-148738.0160.0030)
+Radio: 0777:e8f7
+Hit any key to stop autoboot:  0 
+ath> printenv
+bootdelay=1
+baudrate=115200
+ethaddr=0x00:0xaa:0xbb:0xcc:0xdd:0xee
+ubntctrl=enabled
+serverip=192.168.1.254 
+mtdparts=mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(rootfs),256k(cfg),64k(EEPROM)
+bootcmd=bootm 0x9f050000
+bootargs=console=ttyS0,115200 root=31:03 rootfstype=squashfs init=/sbin/init panic=3 board=AIRCUBE
+ipaddr=192.168.1.20 
+stdin=serial
+stdout=serial
+stderr=serial
+ubntaddr=80200020
+appinitdone=true
+ethact=eth0
+
+Environment size: 445/65532 bytes
+ath> bdinfo
+boot_params = 0x83F7BFB0
+memstart    = 0x80000000
+memsize     = 0x04000000
+flashstart  = 0x9F000000
+flashsize   = 0x01000000
+flashoffset = 0x00028DF4
+ethaddr     = 00:AA:BB:CC:DD:EE
+ip_addr     = 192.168.1.20
+baudrate    = 115200 bps
+ath> mtdparts
+
+device nor0 <spi0.0>, # parts = 6
+ #: name                        size            offset          mask_flags
+ 0: u-boot                      0x00040000      0x00000000      0
+ 1: u-boot-env                  0x00010000      0x00040000      0
+ 2: kernel                      0x00400000      0x00050000      0
+ 3: rootfs                      0x00b60000      0x00450000      0
+ 4: cfg                         0x00040000      0x00fb0000      0
+ 5: EEPROM                      0x00010000      0x00ff0000      0
+
+active partition: nor0,0 - (u-boot) 0x00040000 @ 0x00000000
+
+defaults:
+mtdids  : nor0=spi0.0
+mtdparts: mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(rootfs),256k(cfg),64k(EEPROM)
+ath> 
+</nowiki></WRAP>\\
+
+==== Bootlog and output of some commands ====
+
+<WRAP bootlog><nowiki>
+U-Boot 1.1.4-s1055 (Sep 19 2017 - 16:00:36)
+
+DRAM:  64 MB
+Flash: 16 MB (0xc2, 0 0x20, 0x18)
+*** Warning *** : PCIe WLAN Module not found !!!
+In:    serial
+Out:   serial
+Err:   serial
+Net:   eth0, eth1
+Board: Ubiquiti Networks QCA953X board (e8f7-148738.0160.0030)
+Radio: 0777:e8f7
+Hit any key to stop autoboot:  0 
+## Booting image at 9f050000 ...
+   Image Name:   MIPS OpenWrt Linux-4.1.16
+   Created:      2018-09-04   5:28:33 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1280210 Bytes =  1.2 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum at 0x9f050040 ...OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+[    0.000000] Linux version 4.1.16 (jenkins@9284c466547f) (gcc version 5.2.0 (OpenWrt GCC 5.2.0 r48688) ) #1 Tue Sep 4 10:44:06 EEST 2018
+[    0.000000] flash_size passed from bootloader = 16
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019374 (MIPS 24Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA9533 ver 2 rev 0
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,115200 root=31:03 rootfstype=squashfs init=/sbin/init panic=3 board=AIRCUBE mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(rootfs),256k(cfg),64k(EEPROM) mem=64M
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 60292K/65536K available (2859K kernel code, 144K rwdata, 712K rodata, 240K init, 266K bss, 5244K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:83
+[    0.000000] Clocks: CPU:650.000MHz, DDR:390.844MHz, AHB:216.666MHz, Ref:25.000MHz
+[    0.000000] clocksource MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 5880801374 ns
+[    0.000009] sched_clock: 32 bits at 325MHz, resolution 3ns, wraps every 6607641598ns
+[    0.007454] Calibrating delay loop... 432.53 BogoMIPS (lpj=2162688)
+[    0.069990] pid_max: default: 32768 minimum: 301
+[    0.074511] Security Framework initialized
+[    0.078388] TOMOYO Linux initialized
+[    0.081842] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.088097] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.098225] clocksource jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.108373] NET: Registered protocol family 16
+[    0.114108] MIPS: machine is Ubiquiti airCube
+[    0.146647] ar724x-pci ar724x-pci.0: PCIe link is down
+[    0.151547] registering PCI controller with io_map_base unset
+[    0.156992] Ubiquiti airCube ISP
+[    0.602253] PCI host bridge to bus 0000:00
+[    0.606125] pci_bus 0000:00: root bus resource [mem 0x10000000-0x11ffffff]
+[    0.612723] pci_bus 0000:00: root bus resource [io  0x0000]
+[    0.618010] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.624508] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.633043] Switched to clocksource MIPS
+[    0.638530] NET: Registered protocol family 2
+[    0.643705] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.650336] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.656470] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.662612] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.668198] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.674553] NET: Registered protocol family 1
+[    0.679889] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.705530] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.711067] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.723310] io scheduler noop registered
+[    0.727007] io scheduler deadline registered (default)
+[    0.732135] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+�[    0.762228] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 1562500) is a 16550A
+[    0.770439] console [ttyS0] enabled
+[    0.770439] console [ttyS0] enabled
+[    0.777585] bootconsole [early0] disabled
+[    0.777585] bootconsole [early0] disabled
+[    0.789618] m25p80 spi0.0: found mx25l12805d, expected m25p80
+[    0.796785] m25p80 spi0.0: mx25l12805d (16384 Kbytes)
+[    0.802047] 6 cmdlinepart partitions found on MTD device spi0.0
+[    0.808210] Creating 6 MTD partitions on "spi0.0":
+[    0.813189] 0x000000000000-0x000000040000 : "u-boot"
+[    0.819372] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.825812] 0x000000050000-0x000000450000 : "kernel"
+[    0.831801] 0x000000450000-0x000000fb0000 : "rootfs"
+[    0.837807] mtd: device 3 (rootfs) set to be root filesystem
+[    0.843742] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.849439] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.881023] libphy: ag71xx_mdio: probed
+[    1.476007] ag71xx ag71xx.0: connected to PHY at ag71xx-mdio.1:04 [uid=004dd042, driver=Generic PHY]
+[    1.486289] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:MII
+[    2.075604] ag71xx-mdio.1: Found an AR934X built-in switch
+[    2.119035] eth1: Atheros AG71xx at 0xba000000, irq 5, mode:GMII
+[    2.127067] NET: Registered protocol family 10
+[    2.135503] NET: Registered protocol family 17
+[    2.140191] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    2.153439] 8021q: 802.1Q VLAN Support v1.8
+[    2.167114] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    2.176464] Freeing unused kernel memory: 240K (80404000 - 80440000)
+[    2.207999] Calling /sbin/tomoyo-init to load policy. Please wait.
+15 domains. 17 A[    3.279985] TOMOYO: 2.5.0
+CL entries.
+32 [    3.283271] Mandatory Access Control activated.
+KB used by policy.
+[    3.679212] init: Console is alive
+[    3.683201] init: - watchdog -
+[    5.627844] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    5.808710] ubnthal: module license 'Proprietary' taints kernel.
+[    5.815013] Disabling lock debugging due to kernel taint
+[    5.896000] ubnthal: initializing...
+[    5.899758] ubnthal: initialised, board found, sysid = 0xe8f7, name = airCube ISP
+[    5.907514] ubnthal: host_board_t size: 7320B, boards table size: 14kB
+[    5.938486] usbcore: registered new interface driver usbfs
+[    5.944348] usbcore: registered new interface driver hub
+[    5.949956] usbcore: registered new device driver usb
+[    5.961798] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    5.970444] ehci-platform: EHCI generic platform driver
+[    5.976044] ehci-platform ehci-platform: EHCI Host Controller
+[    5.982025] ehci-platform ehci-platform: new USB bus registered, assigned bus number 1
+[    5.992359] ehci-platform ehci-platform: irq 3, io mem 0x1b000000
+[    6.013084] ehci-platform ehci-platform: USB 2.0 started, EHCI 1.00
+[    6.020569] hub 1-0:1.0: USB hub found
+[    6.024918] hub 1-0:1.0: 1 port detected
+[    6.032767] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    6.041057] ohci-platform: OHCI generic platform driver
+[    6.047461] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    6.065608] init: - preinit -
+Please press Enter to activate this console.
+
+
+airCube-ISP login: ubnt
+Password: 
+
+
+BusyBox v1.24.1 () built-in shell (ash)
+
+       _      _____ Ubiquiti
+      (_)    /  __ \     | |
+  __ _ _ _ __| /  \/_   _| |__   ___
+ / _` | | '__| |   | | | | '_ \ / _ \
+| (_| | | |  | \__/\ |_| | |_) |  __/
+ \__,_|_|_|   \____/\__,_|_.__/ \___|
+    Dirty Diamond v2.4.0        cb22320.180904.1044
+ubnt@airCube-ISP:/# uname -a
+Linux airCube-ISP 4.1.16 #1 Tue Sep 4 10:44:06 EEST 2018 mips GNU/Linux
+ubnt@airCube-ISP:~# cat /proc/cpuinfo 
+system type             : Qualcomm Atheros QCA9533 ver 2 rev 0
+machine                 : Ubiquiti airCube
+processor               : 0
+cpu model               : MIPS 24Kc V7.4
+BogoMIPS                : 432.53
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 16
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+isa                     : mips1 mips2 mips32r1 mips32r2
+ASEs implemented        : mips16
+shadow register sets    : 1
+kscratch registers      : 0
+package                 : 0
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+
+ubnt@airCube-ISP:~# cat /proc/mtd 
+dev:    size   erasesize  name
+mtd0: 00040000 00010000 "u-boot"
+mtd1: 00010000 00010000 "u-boot-env"
+mtd2: 00400000 00010000 "kernel"
+mtd3: 00b60000 00010000 "rootfs"
+mtd4: 00040000 00010000 "cfg"
+mtd5: 00010000 00010000 "EEPROM"
+ubnt@airCube-ISP:~# ifconfig -a
+lan0      Link encap:Ethernet  HWaddr B6:FB:E4:63:2C:2D  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:5 
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:20 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:20 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:1532 (1.4 KiB)  TX bytes:1532 (1.4 KiB)
+
+wan0      Link encap:Ethernet  HWaddr B4:FB:E4:63:2C:2D  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:4 
+
+wlan0     Link encap:Ethernet  HWaddr B4:FB:E4:62:2C:2D  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+ubnt@airCube-ISP:~# cd /etc/init.d
+ubnt@airCube-ISP:/etc/init.d# cat /proc/ubnthal/board.inc 
+<?
+$board_id="0xe8f7";
+$cpu_revision="0x00000160";
+$board_name="airCube ISP";
+$board_raw_name="airCube ISP";
+$board_shortname="ACB";
+$board_model="ACB-ISP";
+$board_timestamp="1533689463";
+$board_bom="13-00581-02";
+$board_hwaddr="B4FBE4622C2D";
+$board_netmodes=7;
+$reboot_time=40;
+$upgrade_time=150;
+$radio_count=2;
+$radio1_name="";
+$radio1_shortname="";
+$radio1_bus="pci";
+$radio1_devdomain=2400;
+$radio1_ccode=840;
+$radio1_ccode_fixed=0;
+$radio1_ccode_locked=0;
+$radio1_subsystemid="0xe8f7";
+$radio1_subvendorid="0x0777";
+$radio1_txpower_max=19;
+$radio1_txpower_min=0;
+$radio1_txpower_offset=0;
+$radio1_low_txpower_atten=0;
+$radio1_low_txpower_limit=0;
+$radio1_ieee_modes=21;
+$radio1_ieee_mode="auto";
+$radio1_ant_count=1;
+$radio1_def_antenna=1;
+$radio1_ant_id[0]=1;
+$radio1_ant_name[0]=dict_translate("Feed only");
+$radio1_ant_gain[0]=3;
+$radio1_ant_builtin[0]=1;
+$radio1_caps=752877588;
+$radio1_eirp_limit=0;
+$radio1_distance_limit_km=0;
+$radio1_regdomain_flags="bom=0x0,ts=0x5b6a3e77";
+$radio1_chains=2;
+$radio1_ieee_mode_a=1;
+$radio1_low_txpower_mode=0;
+$radio1_legacy=0;
+$radio1_chanbw="20,40";
+$radio1_ext_channel=1;
+$radio1_ptp_only=1;
+$radio1_ptp_sta=1;
+$radio1_ptmp_only=1;
+$radio1_ptmp_sta=1;
+$radio2_name="";
+$radio2_shortname="";
+$radio2_bus="ahb";
+$radio2_devdomain=0;
+$radio2_ccode=0;
+$radio2_ccode_fixed=0;
+$radio2_ccode_locked=0;
+$radio2_subsystemid="0x0000";
+$radio2_subvendorid="0x0000";
+$radio2_txpower_max=0;
+$radio2_txpower_min=0;
+$radio2_txpower_offset=0;
+$radio2_low_txpower_atten=0;
+$radio2_low_txpower_limit=0;
+$radio2_ieee_modes=0;
+$radio2_ieee_mode="11naht";
+$radio2_ant_count=0;
+$radio2_def_antenna=0;
+$radio2_caps=0;
+$radio2_eirp_limit=0;
+$radio2_distance_limit_km=0;
+$radio2_regdomain_flags="bom=0x0,ts=0x5b6a3e77";
+$radio2_chains=1;
+$radio2_low_txpower_mode=0;
+$radio2_legacy=1;
+$radio2_chanbw="5,10,20,40,80";
+$radio2_ext_channel=1;
+$radio_outdoor=1;
+$feature_advanced_ethernet=1;
+$feature_poe_passthrough=1;
+$poe_passthrough_gpio=11;
+$feature_advanced_ethernet_phy=1;
+$feature_ext_reset=0;
+$eth_mac_count=1;
+$eth_mac1_max_mtu=2024;
+$feature_rssi_leds=0;
+>
+ubnt@airCube-ISP:/etc/init.d# cat /proc/ubnthal/board.info 
+board.sysid=0xe8f7
+board.cpurevision=0x00000160
+board.name=airCube ISP
+board.shortname=ACB
+board.model=ACB-ISP
+board.timestamp=1533689463
+board.bom=13-00581-02
+board.netmodes=7
+board.hwaddr=B4FBE4622C2D
+board.reboot=40
+board.upgrade=150
+board.phycount=1
+board.phy.1.maxmtu=2024
+board.fcc_unii_activated=0
+board.fcc_unii_switchable=0
+radio.1.name=
+radio.1.shortname=
+radio.1.bus=pci
+radio.1.subsystemid=0xe8f7
+radio.1.subvendorid=0x0777
+radio.1.txpower.max=19
+radio.1.txpower.min=0
+radio.1.txpower.offset=0
+radio.1.ieee_modes=21
+radio.1.antennas=1
+radio.1.def_antenna=1
+radio.1.antenna.1.id=1
+radio.1.antenna.1.name=Feed only
+radio.1.antenna.1.gain=3
+radio.1.antenna.1.builtin=1
+radio.1.caps=752877588
+radio.1.eirp.limit=0
+radio.1.regdomain_flags="bom=0x0,ts=0x5b6a3e77"
+radio.1.devdomain=2400
+radio.1.ccode=840
+radio.1.ccode_fixed=0
+radio.1.ccode_locked=0
+radio.1.ptp_only=1
+radio.1.ptp_sta=1
+radio.1.ptmp_only=1
+radio.1.ptmp_sta=1
+radio.1.distance_limit_km=0
+radio.1.chanbw="20,40"
+radio.2.name=
+radio.2.shortname=
+radio.2.bus=ahb
+radio.2.subsystemid=0x0000
+radio.2.subvendorid=0x0000
+radio.2.txpower.max=0
+radio.2.txpower.min=0
+radio.2.txpower.offset=0
+radio.2.ieee_modes=0
+radio.2.antennas=0
+radio.2.def_antenna=0
+radio.2.caps=0
+radio.2.eirp.limit=0
+radio.2.regdomain_flags="bom=0x0,ts=0x5b6a3e77"
+radio.2.devdomain=0
+radio.2.ccode=0
+radio.2.ccode_fixed=0
+radio.2.ccode_locked=0
+radio.2.distance_limit_km=0
+radio.2.chanbw="5,10,20,40,80"
+feature.rssi.leds=0
+feature.ext_reset=0
+ubnt@airCube-ISP:/etc/init.d#
+</nowiki></WRAP>\\
+
+===== OEM firmware 2.8.3 (ISP) =====
+
+Tested firmware version: ACB.ar934x.v2.8.3.f1a1344.210726.1457
+
+==== Infos from U-Boot ====
+
+<WRAP bootlog><nowiki>
+U-Boot 1.1.4-g50288c5d (Feb 18 2021 - 14:55:35)
+
+DRAM:  64 MB
+Flash: 16 MB (0xc2, 0 0x20, 0x18)
+*** Warning *** : PCIe WLAN Module not found !!!
+In:    serial
+Out:   serial
+Err:   serial
+Net:   eth0, eth1
+Board: Ubiquiti Networks QCA953X board (e8f7-148738.0160.0030)
+Radio: 0777:e8f7
+Hit any key to stop autoboot:  0
+ath> printenv
+bootdelay=1
+baudrate=115200
+ethaddr=0x00:0xaa:0xbb:0xcc:0xdd:0xee
+ubntctrl=enabled
+serverip=192.168.1.254
+mtdparts=mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(rootfs),256k(cfg),64k(EEPROM)
+bootcmd=bootm 0x9f050000
+bootargs=console=ttyS0,115200 root=31:03 rootfstype=squashfs init=/sbin/init panic=3 board=AIRCUBE
+ipaddr=192.168.1.20
+stdin=serial
+stdout=serial
+stderr=serial
+ubntaddr=80200020
+appinitdone=true
+ethact=eth0
+
+Environment size: 444/65532 bytes
+ath> bdinfo
+boot_params = 0x83F77FB0
+memstart    = 0x80000000
+memsize     = 0x04000000
+flashstart  = 0x9F000000
+flashsize   = 0x01000000
+flashoffset = 0x0002ACC4
+ethaddr     = 00:AA:BB:CC:DD:EE
+ip_addr     = 192.168.1.20
+baudrate    = 115200 bps
+ath> mtdparts
+
+device nor0 <spi0.0>, # parts = 6
+ #: name                        size            offset          mask_flags
+ 0: u-boot                      0x00040000      0x00000000      0
+ 1: u-boot-env                  0x00010000      0x00040000      0
+ 2: kernel                      0x00400000      0x00050000      0
+ 3: rootfs                      0x00b60000      0x00450000      0
+ 4: cfg                         0x00040000      0x00fb0000      0
+ 5: EEPROM                      0x00010000      0x00ff0000      0
+
+active partition: nor0,0 - (u-boot) 0x00040000 @ 0x00000000
+
+defaults:
+mtdids  : nor0=spi0.0
+mtdparts: mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(rootfs),256k(cfg),64k(EEPROM)
+ath>
+</nowiki></WRAP>\\
+
+==== Bootlog and output of some commands ====
+
+<WRAP bootlog><nowiki>
+
+U-Boot 1.1.4-g50288c5d (Feb 18 2021 - 14:55:35)
+
+DRAM:  64 MB
+Flash: 16 MB (0xc2, 0 0x20, 0x18)
+*** Warning *** : PCIe WLAN Module not found !!!
+In:    serial
+Out:   serial
+Err:   serial
+Net:   eth0, eth1
+Board: Ubiquiti Networks QCA953X board (e8f7-148738.0160.0030)
+Radio: 0777:e8f7
+Hit any key to stop autoboot:  0
+## Booting image at 9f050000 ...
+   Image Name:   MIPS OpenWrt Linux-4.1.16
+   Created:      2021-07-26  14:38:35 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1299906 Bytes =  1.2 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum at 0x9f050040 ...OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+[    0.000000] Linux version 4.1.16 (builder@c99d18f50953) (gcc version 5.2.0 (OpenWrt GCC 5.2.0 r48688) ) #1 Mon Jul 26 14:57:18 UTC 2021
+[    0.000000] flash_size passed from bootloader = 16
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019374 (MIPS 24Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA9533 ver 2 rev 0
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,115200 root=31:03 rootfstype=squashfs init=/sbin/init panic=3 board=AIRCUBE mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(rootfs),256k(cfg),64k(EEPROM) mem=64M
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 60224K/65536K available (2902K kernel code, 142K rwdata, 720K rodata, 256K init, 268K bss, 5312K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:83
+[    0.000000] Clocks: CPU:650.000MHz, DDR:390.551MHz, AHB:216.666MHz, Ref:25.000MHz
+[    0.000000] clocksource MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 5880801374 ns
+[    0.000009] sched_clock: 32 bits at 325MHz, resolution 3ns, wraps every 6607641598ns
+[    0.007452] Calibrating delay loop... 432.53 BogoMIPS (lpj=2162688)
+[    0.069991] pid_max: default: 32768 minimum: 301
+[    0.074513] Security Framework initialized
+[    0.078392] TOMOYO Linux initialized
+[    0.081841] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.088097] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.098243] clocksource jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.108384] NET: Registered protocol family 16
+[    0.114272] MIPS: machine is Ubiquiti airCube
+[    0.146787] ar724x-pci ar724x-pci.0: PCIe link is down
+[    0.151686] registering PCI controller with io_map_base unset
+[    0.157132] Ubiquiti airCube ISP
+[    0.604481] PCI host bridge to bus 0000:00
+[    0.608357] pci_bus 0000:00: root bus resource [mem 0x10000000-0x11ffffff]
+[    0.614978] pci_bus 0000:00: root bus resource [io  0x0000]
+[    0.620240] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.626737] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.635304] Switched to clocksource MIPS
+[    0.640752] NET: Registered protocol family 2
+[    0.645915] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.652544] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.658680] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.664829] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.670414] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.676721] NET: Registered protocol family 1
+[    0.682142] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.707344] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.712870] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.724979] io scheduler noop registered
+[    0.728755] io scheduler deadline registered (default)
+[    0.733834] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.763852] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 1562500) is a 16550A
+[    0.772068] console [ttyS0] enabled
+[    0.772068] console [ttyS0] enabled
+[    0.779212] bootconsole [early0] disabled
+[    0.779212] bootconsole [early0] disabled
+[    0.791229] m25p80 spi0.0: found mx25l12805d, expected m25p80
+[    0.798351] m25p80 spi0.0: mx25l12805d (16384 Kbytes)
+[    0.803628] 6 cmdlinepart partitions found on MTD device spi0.0
+[    0.809795] Creating 6 MTD partitions on "spi0.0":
+[    0.814756] 0x000000000000-0x000000040000 : "u-boot"
+[    0.820939] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.827383] 0x000000050000-0x000000450000 : "kernel"
+[    0.833362] 0x000000450000-0x000000fb0000 : "rootfs"
+[    0.839393] mtd: device 3 (rootfs) set to be root filesystem
+[    0.845268] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.851049] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.882388] libphy: ag71xx_mdio: probed
+[    1.478263] ag71xx ag71xx.0: connected to PHY at ag71xx-mdio.1:04 [uid=004dd042, driver=Generic PHY]
+[    1.488516] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:MII
+[    2.077909] ag71xx-mdio.1: Found an AR934X/QCA953X built-in switch
+[    2.123668] eth1: Atheros AG71xx at 0xba000000, irq 5, mode:GMII
+[    2.131720] NET: Registered protocol family 10
+[    2.140065] NET: Registered protocol family 17
+[    2.144752] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    2.158022] 8021q: 802.1Q VLAN Support v1.8
+[    2.173424] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    2.182899] Freeing unused kernel memory: 256K (80410000 - 80450000)
+[    2.209518] Calling /sbin/tomoyo-init to load policy. Please wait.
+15 domains. 17 A[    3.173002] TOMOYO: 2.5.0
+CL entries.
+32 [    3.176310] Mandatory Access Control activated.
+KB used by policy.
+[    3.568889] init: Console is alive
+[    3.572788] init: - watchdog -
+[    5.670757] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    5.922487] ubnthal: module license 'Proprietary' taints kernel.
+[    5.928786] Disabling lock debugging due to kernel taint
+[    6.009806] ubnthal: initializing...
+[    6.013568] ubnthal: initialised, board found, sysid = 0xe8f7, name = airCube ISP
+[    6.021331] ubnthal: host_board_t size: 7320B, boards table size: 14kB
+[    6.052304] usbcore: registered new interface driver usbfs
+[    6.058170] usbcore: registered new interface driver hub
+[    6.063764] usbcore: registered new device driver usb
+[    6.075188] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    6.083839] ehci-platform: EHCI generic platform driver
+[    6.089434] ehci-platform ehci-platform: EHCI Host Controller
+[    6.095423] ehci-platform ehci-platform: new USB bus registered, assigned bus number 1
+[    6.105741] ehci-platform ehci-platform: irq 3, io mem 0x1b000000
+[    6.125344] ehci-platform ehci-platform: USB 2.0 started, EHCI 1.00
+[    6.132872] hub 1-0:1.0: USB hub found
+[    6.137215] hub 1-0:1.0: 1 port detected
+[    6.144849] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    6.153015] ohci-platform: OHCI generic platform driver
+[    6.159482] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    6.169250] init: - preinit -
+Please press Enter to activate this console.
+
+airCube-ISP login: ubnt
+Password:
+
+
+BusyBox v1.24.1 () built-in shell (ash)
+
+       _      _____ Ubiquiti
+      (_)    /  __ \     | |
+  __ _ _ _ __| /  \/_   _| |__   ___
+ / _` | | '__| |   | | | | '_ \ / _ \
+| (_| | | |  | \__/\ |_| | |_) |  __/
+ \__,_|_|_|   \____/\__,_|_.__/ \___|
+    Dirty Diamond v2.8.3        f1a1344.210726.1457
+ubnt@airCube-ISP:~# uname -a
+Linux airCube-ISP 4.1.16 #1 Mon Jul 26 14:57:18 UTC 2021 mips GNU/Linux
+ubnt@airCube-ISP:~# cat /proc/cpuinfo
+system type             : Qualcomm Atheros QCA9533 ver 2 rev 0
+machine                 : Ubiquiti airCube
+processor               : 0
+cpu model               : MIPS 24Kc V7.4
+BogoMIPS                : 432.53
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 16
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+isa                     : mips1 mips2 mips32r1 mips32r2
+ASEs implemented        : mips16
+shadow register sets    : 1
+kscratch registers      : 0
+package                 : 0
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+
+ubnt@airCube-ISP:~# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00040000 00010000 "u-boot"
+mtd1: 00010000 00010000 "u-boot-env"
+mtd2: 00400000 00010000 "kernel"
+mtd3: 00b60000 00010000 "rootfs"
+mtd4: 00040000 00010000 "cfg"
+mtd5: 00010000 00010000 "EEPROM"
+ubnt@airCube-ISP:~# ifconfig -a
+br-lan    Link encap:Ethernet  HWaddr B6:FB:E4:63:2C:2D
+          inet addr:192.168.1.1  Bcast:192.168.1.255  Mask:255.255.255.0
+          inet6 addr: fe80::b4fb:e4ff:fe63:2c2d/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:182 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:282 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:16108 (15.7 KiB)  TX bytes:341279 (333.2 KiB)
+
+lan0      Link encap:Ethernet  HWaddr B6:FB:E4:63:2C:2D
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:186 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:292 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100
+          RX bytes:19425 (18.9 KiB)  TX bytes:342801 (334.7 KiB)
+          Interrupt:5
+
+lldp1     Link encap:Ethernet  HWaddr B6:FB:E4:63:2C:2D
+          inet6 addr: fe80::b4fb:e4ff:fe63:2c2d/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:6 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:801 (801.0 B)
+
+lldp2     Link encap:Ethernet  HWaddr B6:FB:E4:63:2C:2D
+          inet6 addr: fe80::b4fb:e4ff:fe63:2c2d/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:4 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:560 (560.0 B)
+
+lldp3     Link encap:Ethernet  HWaddr B6:FB:E4:63:2C:2D
+          inet6 addr: fe80::b4fb:e4ff:fe63:2c2d/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:6 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:801 (801.0 B)
+
+lo        Link encap:Local Loopback
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:156 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:156 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:331414 (323.6 KiB)  TX bytes:331414 (323.6 KiB)
+
+wan0      Link encap:Ethernet  HWaddr B4:FB:E4:63:2C:2D
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:4
+
+wlan0     Link encap:Ethernet  HWaddr B4:FB:E4:62:2C:2D
+          inet6 addr: fe80::b6fb:e4ff:fe62:2c2d/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:26 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:6508 (6.3 KiB)
+
+ubnt@airCube-ISP:~# cat /proc/ubnthal/board.inc
+<?
+$board_id="0xe8f7";
+$cpu_revision="0x00000160";
+$board_name="airCube ISP";
+$board_raw_name="airCube ISP";
+$board_shortname="ACB";
+$board_model="ACB-ISP";
+$board_timestamp="1533689463";
+$board_bom="13-00581-02";
+$board_hwaddr="B4FBE4622C2D";
+$board_hwaddr_eth0="B4FBE4632C2D";
+$board_hwaddr_eth1="B6FBE4632C2D";
+$board_netmodes=7;
+$reboot_time=40;
+$upgrade_time=150;
+$radio_count=2;
+$radio1_name="";
+$radio1_shortname="";
+$radio1_bus="pci";
+$radio1_devdomain=2400;
+$radio1_ccode=840;
+$radio1_ccode_fixed=0;
+$radio1_ccode_locked=0;
+$radio1_subsystemid="0xe8f7";
+$radio1_subvendorid="0x0777";
+$radio1_txpower_max=19;
+$radio1_txpower_min=0;
+$radio1_txpower_offset=0;
+$radio1_low_txpower_atten=0;
+$radio1_low_txpower_limit=0;
+$radio1_ieee_modes=21;
+$radio1_ieee_mode="auto";
+$radio1_ant_count=1;
+$radio1_def_antenna=1;
+$radio1_ant_id[0]=1;
+$radio1_ant_name[0]=dict_translate("Feed only");
+$radio1_ant_gain[0]=3;
+$radio1_ant_builtin[0]=1;
+$radio1_caps=752877588;
+$radio1_eirp_limit=0;
+$radio1_distance_limit_km=0;
+$radio1_regdomain_flags="bom=0x0,ts=0x5b6a3e77";
+$radio1_chains=2;
+$radio1_ieee_mode_a=1;
+$radio1_low_txpower_mode=0;
+$radio1_legacy=0;
+$radio1_chanbw="20,40";
+$radio1_ext_channel=1;
+$radio1_ptp_only=1;
+$radio1_ptp_sta=1;
+$radio1_ptmp_only=1;
+$radio1_ptmp_sta=1;
+$radio2_name="";
+$radio2_shortname="";
+$radio2_bus="ahb";
+$radio2_devdomain=0;
+$radio2_ccode=0;
+$radio2_ccode_fixed=0;
+$radio2_ccode_locked=0;
+$radio2_subsystemid="0x0000";
+$radio2_subvendorid="0x0000";
+$radio2_txpower_max=0;
+$radio2_txpower_min=0;
+$radio2_txpower_offset=0;
+$radio2_low_txpower_atten=0;
+$radio2_low_txpower_limit=0;
+$radio2_ieee_modes=0;
+$radio2_ieee_mode="11naht";
+$radio2_ant_count=0;
+$radio2_def_antenna=0;
+$radio2_caps=0;
+$radio2_eirp_limit=0;
+$radio2_distance_limit_km=0;
+$radio2_regdomain_flags="bom=0x0,ts=0x5b6a3e77";
+$radio2_chains=1;
+$radio2_low_txpower_mode=0;
+$radio2_legacy=1;
+$radio2_chanbw="5,10,20,40,80";
+$radio2_ext_channel=1;
+$radio_outdoor=1;
+$feature_advanced_ethernet=1;
+$feature_poe_passthrough=1;
+$poe_passthrough_gpio=11;
+$feature_advanced_ethernet_phy=1;
+$feature_ext_reset=0;
+$eth_mac_count=1;
+$eth_mac1_max_mtu=2024;
+$feature_rssi_leds=0;
+>
+ubnt@airCube-ISP:~# cat /proc/ubnthal/board.info
+board.sysid=0xe8f7
+board.cpurevision=0x00000160
+board.name=airCube ISP
+board.shortname=ACB
+board.model=ACB-ISP
+board.timestamp=1533689463
+board.bom=13-00581-02
+board.netmodes=7
+board.hwaddr=B4FBE4622C2D
+board.hwaddr_eth0=B4FBE4632C2D
+board.hwaddr_eth1=B6FBE4632C2D
+board.reboot=40
+board.upgrade=150
+board.phycount=1
+board.phy.1.maxmtu=2024
+board.fcc_unii_activated=0
+board.fcc_unii_switchable=0
+radio.1.name=
+radio.1.shortname=
+radio.1.bus=pci
+radio.1.subsystemid=0xe8f7
+radio.1.subvendorid=0x0777
+radio.1.txpower.max=19
+radio.1.txpower.min=0
+radio.1.txpower.offset=0
+radio.1.ieee_modes=21
+radio.1.antennas=1
+radio.1.def_antenna=1
+radio.1.antenna.1.id=1
+radio.1.antenna.1.name=Feed only
+radio.1.antenna.1.gain=3
+radio.1.antenna.1.builtin=1
+radio.1.caps=752877588
+radio.1.eirp.limit=0
+radio.1.regdomain_flags="bom=0x0,ts=0x5b6a3e77"
+radio.1.devdomain=2400
+radio.1.ccode=840
+radio.1.ccode_fixed=0
+radio.1.ccode_locked=0
+radio.1.ptp_only=1
+radio.1.ptp_sta=1
+radio.1.ptmp_only=1
+radio.1.ptmp_sta=1
+radio.1.distance_limit_km=0
+radio.1.chanbw="20,40"
+radio.2.name=
+radio.2.shortname=
+radio.2.bus=ahb
+radio.2.subsystemid=0x0000
+radio.2.subvendorid=0x0000
+radio.2.txpower.max=0
+radio.2.txpower.min=0
+radio.2.txpower.offset=0
+radio.2.ieee_modes=0
+radio.2.antennas=0
+radio.2.def_antenna=0
+radio.2.caps=0
+radio.2.eirp.limit=0
+radio.2.regdomain_flags="bom=0x0,ts=0x5b6a3e77"
+radio.2.devdomain=0
+radio.2.ccode=0
+radio.2.ccode_fixed=0
+radio.2.ccode_locked=0
+radio.2.distance_limit_km=0
+radio.2.chanbw="5,10,20,40,80"
+feature.rssi.leds=0
+feature.ext_reset=0
+ubnt@airCube-ISP:~#
+</nowiki></WRAP>\\
+
+===== OpenWrt bootlog =====
+<WRAP bootlog><nowiki>
+U-Boot 1.1.4-s1055 (Sep 19 2017 - 16:00:36)
+
+DRAM:  64 MB
+Flash: 16 MB (0xc2, 0 0x20, 0x18)
+*** Warning *** : PCIe WLAN Module not found !!!
+In:    serial
+Out:   serial
+Err:   serial
+Net:   eth0, eth1
+Board: Ubiquiti Networks QCA953X board (e8f7-148738.0160.0030)
+Radio: 0777:e8f7
+Hit any key to stop autoboot:  0 
+## Booting image at 9f050000 ...
+   Image Name:   MIPS OpenWrt Linux-4.14.113
+   Created:      2019-05-01   5:25:55 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1701692 Bytes =  1.6 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum at 0x9f050040 ...OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+[    0.000000] Linux version 4.14.113 (buildbot@1be523fcdeb0) (gcc version 7.4.0 (OpenWrt GCC 7.4.0 r9915-d6643aca34)) #0 Wed May 1 05:25:55 2019
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019374 (MIPS 24Kc)
+[    0.000000] MIPS: machine is Ubiquiti airCube ISP
+[    0.000000] SoC: Qualcomm Atheros QCA9533 ver 2 rev 0
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] random: get_random_bytes called from start_kernel+0x8c/0x47c with crng_init=0
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,115200n8 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 57956K/65536K available (3998K kernel code, 157K rwdata, 952K rodata, 1220K init, 211K bss, 7580K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 51
+[    0.000000] CPU clock: 650.000 MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 5880801374 ns
+[    0.000009] sched_clock: 32 bits at 325MHz, resolution 3ns, wraps every 6607641598ns
+[    0.008273] Calibrating delay loop... 432.53 BogoMIPS (lpj=2162688)
+[    0.074873] pid_max: default: 32768 minimum: 301
+[    0.079965] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.086938] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.098916] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.109357] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.115902] pinctrl core: initialized pinctrl subsystem
+[    0.124365] NET: Registered protocol family 16
+[    0.158551] clocksource: Switched to clocksource MIPS
+[    0.165184] NET: Registered protocol family 2
+[    0.170857] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.178228] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.185012] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.191914] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.198095] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.205059] NET: Registered protocol family 1
+[    0.214514] Crashlog allocated RAM at address 0x3f00000
+[    0.221780] workingset: timestamp_bits=30 max_order=14 bucket_order=0
+[    0.234358] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.240568] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.262472] io scheduler noop registered
+[    0.266611] io scheduler deadline registered (default)
+[    0.274621] pinctrl-single 1804002c.pinmux: 576 pins at pa b804002c size 72
+[    0.283144] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.292670] console [ttyS0] disabled
+[    0.296489] 18020000.uart: ttyS0 at MMIO 0x18020000 (irq = 9, base_baud = 1562500) is a 16550A
+[    0.305658] console [ttyS0] enabled
+[    0.305658] console [ttyS0] enabled
+[    0.313223] bootconsole [early0] disabled
+[    0.313223] bootconsole [early0] disabled
+[    0.332708] m25p80 spi0.0: mx25l12805d (16384 Kbytes)
+[    0.337998] 5 fixed-partitions partitions found on MTD device spi0.0
+[    0.344639] Creating 5 MTD partitions on "spi0.0":
+[    0.349617] 0x000000000000-0x000000040000 : "u-boot"
+[    0.355715] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.362176] 0x000000050000-0x000000fb0000 : "firmware"
+[    0.371760] 2 uimage-fw partitions found on MTD device firmware
+[    0.377885] Creating 2 MTD partitions on "firmware":
+[    0.383080] 0x000000000000-0x0000001a0000 : "kernel"
+[    0.389192] 0x0000001a0000-0x000000f60000 : "rootfs"
+[    0.395109] mtd: device 4 (rootfs) set to be root filesystem
+[    0.401071] 1 squashfs-split partitions found on MTD device rootfs
+[    0.407477] 0x0000003b0000-0x000000f60000 : "rootfs_data"
+[    0.413954] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.419807] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.427137] libphy: Fixed MDIO Bus: probed
+[    0.769000] libphy: ag71xx_mdio: probed
+[    0.774418] libphy: ar8xxx-mdio: probed
+[    0.787645] switch0: Atheros AR8229 rev. 1 switch registered on mdio-bus.0
+[    1.180891] ag71xx 19000000.eth: connected to PHY at mdio-bus.0:1f:04 [uid=004dd042, driver=Generic PHY]
+[    1.191461] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode: mii
+[    1.530443] ag71xx 1a000000.eth: connected to PHY at fixed-0:00 [uid=00000000, driver=Generic PHY]
+[    1.540548] eth1: Atheros AG71xx at 0xba000000, irq 5, mode: gmii
+[    1.549036] NET: Registered protocol family 10
+[    1.559083] Segment Routing with IPv6
+[    1.562997] NET: Registered protocol family 17
+[    1.567636] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.581072] 8021q: 802.1Q VLAN Support v1.8
+[    1.587180] hctosys: unable to open rtc device (rtc0)
+[    1.597032] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    1.614354] Freeing unused kernel memory: 1220K
+[    1.619071] This architecture does not have kernel memory protection.
+[    2.212751] init: Console is alive
+[    2.216558] init: - watchdog -
+[    2.487463] random: fast init done
+[    3.138465] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    3.260681] usbcore: registered new interface driver usbfs
+[    3.266452] usbcore: registered new interface driver hub
+[    3.272145] usbcore: registered new device driver usb
+[    3.285256] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    3.294140] ehci-platform: EHCI generic platform driver
+[    3.300662] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    3.318797] init: - preinit -
+[    4.153647] random: jshn: uninitialized urandom read (4 bytes read)
+[    4.328429] random: jshn: uninitialized urandom read (4 bytes read)
+[    4.479967] random: jshn: uninitialized urandom read (4 bytes read)
+[    5.263648] IPv6: ADDRCONF(NETDEV_UP): eth1: link is not ready
+[    5.269869] IPv6: ADDRCONF(NETDEV_UP): eth1.1: link is not ready
+[    5.318243] urandom_read: 4 callbacks suppressed
+[    5.318253] random: procd: uninitialized urandom read (4 bytes read)
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    6.339763] eth1: link up (1000Mbps/Full duplex)
+[    6.344585] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+[    6.351588] IPv6: ADDRCONF(NETDEV_CHANGE): eth1.1: link becomes ready
+[    8.607988] mount_root: jffs2 not ready yet, using temporary tmpfs overlay
+[    8.646616] urandom-seed: Seed file not found (/etc/urandom.seed)
+[    8.755877] eth1: link down
+[    8.781941] procd: - early -
+[    8.785049] procd: - watchdog -
+[    9.438714] procd: - watchdog -
+[    9.442323] procd: - ubus -
+[    9.471417] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.495478] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.503670] procd: - init -
+Please press Enter to activate this console.
+[    9.933113] kmodloader: loading kernel modules from /etc/modules.d/*
+[    9.948147] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    9.964701] Loading modules backported from Linux version v4.19.32-0-g3a2156c839c7
+[    9.972609] Backport generated by backports.git v4.19.32-1-0-g1c4f7569
+[    9.983133] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    9.999482] nf_conntrack version 0.5.0 (1024 buckets, 4096 max)
+[   10.083207] xt_time: kernel timezone is -0000
+[   10.166302] PPP generic driver version 2.4.2
+[   10.173884] NET: Registered protocol family 24
+[   10.271502] ieee80211 phy0: Atheros AR9531 Rev:2 mem=0xb8100000, irq=12
+[   10.319105] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   23.570722] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   23.577876] jffs2_build_filesystem(): unlocking the mtd device... 
+[   23.577881] done.
+[   23.586340] jffs2_build_filesystem(): erasing all blocks after the end marker... 
+[   27.567816] IPv6: ADDRCONF(NETDEV_UP): eth1: link is not ready
+[   27.582949] eth1: link up (1000Mbps/Full duplex)
+[   27.587754] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+[   27.648933] br-lan: port 1(eth1.1) entered blocking state
+[   27.654528] br-lan: port 1(eth1.1) entered disabled state
+[   27.660581] device eth1.1 entered promiscuous mode
+[   27.665534] device eth1 entered promiscuous mode
+[   27.762749] br-lan: port 1(eth1.1) entered blocking state
+[   27.768350] br-lan: port 1(eth1.1) entered forwarding state
+[   27.774417] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   27.893198] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   28.579093] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   78.293511] done.
+[   78.295562] jffs2: notice: (1070) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[   78.499126] overlayfs: upper fs does not support tmpfile.
+[  129.278605] random: crng init done
+
+
+
+BusyBox v1.30.1 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r9915-d6643aca34
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@OpenWrt:/# 
+</nowiki></WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>QCA9533 16Flash 64RAM 4port FastEthernet 802.11bgn PoE}}

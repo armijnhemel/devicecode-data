@@ -1,0 +1,761 @@
+======Meraki MR16======
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^MR16$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^MR16$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^MR16$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Installation process ====
+
+=== ath79 (OpenWrt Snapshot and 20 onwards) ===
+
+  * Requires TFTP server at 192.168.1.101, w/ initramfs & sysupgrade Snapshot .bin files above
+  * Open shell case and connect a USB to TTL cable to upper serial headers (see beginning of the [[https://github.com/btvmeshnet/hardware/blob/master/platforms/Meraki/MR16/flashing/Flash-MR16.md|Tomesh guide]] for this)
+  * Power on the router; connect to U-boot over 115200-baud connection (usu. ''sudo screen /dev/ttyUSB0 115200'')
+  * Interrupt U-boot process with <Enter>, and boot OpenWrt initramfs by running:
+
+<code>
+setenv bootcmd bootm 0xbf0a0000; saveenv;
+tftpboot 2000000 <filename-of-initramfs-kernel>.bin;
+bootm 2000000;
+</code>
+
+  * Copy (via scp) sysupgrade .bin to ''/tmp'' on MR16
+
+<code>
+scp <filename-of-sysupgrade> root@192.168.1.1:/tmp
+</code>
+If you get error ''ash: /usr/libexec/sftp-server: not found'':
+[[https://www.openssh.com/txt/release-9.0|As of OpenSSH 9.0]] scp will use the newer SFTP protocol by default which OpenWrt does not support. Use the -O option to force the usage of the (old) secure copy protocol.
+<code>
+scp -O <filename-of-sysupgrade> root@192.168.1.1:/tmp
+</code>
+
+  * Run (via serial): ''sysupgrade /tmp/<filename-of-sysupgrade>.bin''
+
+=== Notes ===
+The manner of storing MAC addresses is different between the ath79 and ar71xx targets; in ath79 it is at 0x66 of the 'config' partition, where the OEM firmware stores it. This config partition is set as read-only. If you are migrating from ar71xx and used the method mentioned above to upgrade, you could use kmod-mtd-rw to add the MAC back in. A no-serial-connection method for doing this is described below.
+
+Again, this may BRICK YOUR DEVICE, so make *sure* to have your serial cable handy.
+
+==== Migrating from ar71xx to ath79 with no serial connection (from OpenWrt v. <= 19 to OpenWrt v. >= 20) ====
+
+Migrating directly from ar71xx has not been thoroughly tested, but one method has been used a couple of times with good success, migrating 18.06.2 to a full image produced as of this commit. Please note that these instructions are only for experienced users, and/or those still able to open their device up to flash it via the serial headers should anything go wrong.
+
+1) Install kmod-mtd-rw and uboot-envtools
+
+2) Run ''insmod mtd-rw.ko i_want_a_brick=1''
+
+3) Modify ''/etc/fw_env.config'' to point to the ''u-boot-env'' partition. See the [[:docs:techref:bootloader:uboot.config]] for more details. The file ''/etc/fw_env.config'' should contain:
+
+<code>
+       # MTD device   env offset  env size    sector size
+       /dev/mtd1      0x00000     0x10000     0x10000
+</code>
+
+4) Run ''fw_printenv'' to verify that you can read the U-Boot environment correctly, as per the link above.
+
+5) Run ''fw_setenv bootcmd bootm 0xbf0a0000'' to set a new boot address.
+
+6) Manually modify ''/lib/upgrade/common.sh'''s get_image function, from ...
+
+<code>
+       cat "$from" 2>/dev/null | $cmd
+</code>
+
+... to ...
+       
+<code>
+       (
+         dd if=/dev/zero bs=1 count=$((0x66)) ; # Pad the first 102 bytes
+         echo -ne '\x00\x18\x0a\x12\x34\x56'  ; # Add in MAC address
+         dd if=/dev/zero bs=1 count=$((0x20000-0x66-0x6)) ; # Pad the rest
+         cat "$from" 2>/dev/null ; # Push the firmware
+       ) | $cmd
+</code>
+
+During the upgrade process, this will pad the image by 128K of zeroes-plus-MAC-address, in order for the ar71xx's firmware partition -- which starts at 0xbf080000 -- to be instead aligned with the ath79 firmware partition, which starts 128K later at 0xbf0a0000.
+
+7) Copy the sysupgrade image into /tmp, as above
+
+8) Run ''sysupgrade -F /tmp/<sysupgrade>.bin'', then wait
+
+=== ar71xx (19.07.5 and before) ===
+
+Note: It is recommended to use the Snapshot ath79 installation instead. 19.07.5 cannot be upgraded to later versions without some hassle.
+
+Note: You may also want to see [[https://github.com/btvmeshnet/hardware/blob/master/platforms/Meraki/MR16/flashing/Flash-MR16.md|the Tomesh guide]] for this installation; it is complete.
+
+=== Requirements ===
+|**Files:** [[https://downloads.openwrt.org/releases/19.07.5/targets/ar71xx/generic/|mr16-squashfs-rootfs.bin and mr16-squashfs-kernel.bin]]|
+|**Method:**[[docs:guide-user:installation:generic.flashing.tftp| TFTP Installation Setup]]|
+|**Serial interface (pinout details below)**|
+
+=== Step by Step Flashing Guide ===
+**Read the full guide before proceeding and make sure you understand the implications of the flash commands.  Any error is likely to brick your device.  At this time there is no way to recover from a bricked MR16 short of clipping to the SOIC and reprogramming.**
+
+  * Configure TFTP server and place the above files in the /tftp directory. 
+  * Make sure you have a serial connection to your MR16 using the below hook up. Guide was put together using one of [[http://www.ebay.com/itm/Mini-CP2102-USB-2-0-to-UART-TTL-6PIN-Connector-Serial-Useful-Converter-Module-/190685792376|these]].
+  * Start the TFTP server on your machine and connect the ethernet cable to the 10/100/1000 port on the MR16. 
+  * Power up and interrupt the boot sequence to take you to the boot loader. 
+  * Run the following command on the MR16 U-Boot terminal: 
+
+=== Flash Commands ===
+Commands are ran in uboot.
+
+<code>
+tftpboot 0x80010000 mr16-squashfs-kernel.bin; erase 0xbfda0000 +0x240000; cp.b 0x80010000 0xbfda0000 0x240000
+tftpboot 0x80010000 mr16-squashfs-rootfs.bin; erase 0xbf080000 +0xD20000; cp.b 0x80010000 0xbf080000 0xD20000
+setenv bootcmd bootm 0xbfda0000; saveenv;
+boot
+</code>
+
+===== ar71xx -- Setting hardware MAC Address =====
+
+Note that as of 2016-10-26, users of ar71xx OpenWrt on the MR12 and MR16 can now properly set their hardware MAC address to prevent MAC conflicts, or needing to set this with every reset. To verify if your installed firmware supports this, run **//cat /proc/mtd | grep mac//** and if you see a "mac" partition like the example below, you can then follow the below steps to set your MAC address.
+
+<code>
+root@lede:~# cat /proc/mtd | grep mac
+mtd5: 00010000 00010000 "mac"
+</code>
+
+If you see the "mac" partition like the above example you can continue, otherwise the following process will not work and MAY BE DAMAGING to your device.
+
+To set your MAC, do the following.
+
+  * Get your MAC from the bottom of the device. In this example, we use 00:18:0a:33:44:55
+  * Convert your mac to somthing we can use with hex & echo. SO with the above mac, we would change it to:
+  * <code>
+\x00\x18\x0a\x33\x44\x55
+</code>
+  * With this, we can now erase our mac partition and set the MAC address using the following commands:
+  *<code>
+mtd erase mac
+echo -n -e '\x00\x18\x0a\x33\x44\x55' > /dev/mtd5
+sync && reboot
+</code>
+  * Once done your board will reboot, and should have the correct MAC set on the eth and wireless interfaces.
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                                                              |
+^ Vendor           | Atheros                                                           |
+^ Bootloader       | U-boot                                                            |
+^ System-On-Chip   | Atheros AR7161-BC1A                                               |
+^ CPU Speed        | 680MHz                                                            |
+^ Flash-Chip       | Macronix                                                          |
+^ Flash size       | 16MiB                                                             |
+^ RAM              | EtronTech 64 MiB DDR                                              |
+^ Wireless         | AR9220 11an 2T2R, AR9223 11bgn 2T2R                               |
+^ Switch           | None                                                              |
+^ Ethernet port    | 1x Gigabit AR8021-BL1E, 802.3af POE capable                       |
+^ USB              | No                                                                |
+^ Serial           | [[#serial|Yes]]                                                   |
+^ JTAG             | ???                                                               |
+
+==== Serial ====
+
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+Connect on JP1 (J1 has square solder off on reverse of board). Baudrate 115200N81
+
+| **J1:** Vcc   |
+| **J2:** RX    |
+| **J3:** TX    |
+| **J4:** GND   |
+
+==== Photos ====
+Photos copied from [[http://www.insearchoftech.com/2012/03/25/inside-wireless-hardware-part-1/]]
+
+{{https://i.imgur.com/Y2yq5r8.jpg?300|Hosted by imgur.com}}
+{{https://i.imgur.com/RAYAb7F.jpg?300|Hosted by imgur.com}}
+{{https://i.imgur.com/NlEzbRA.jpg?300|Hosted by imgur.com}}
+
+===== Flash Layout =====
+==== Stock ====
+<code>
+[ 1.132] 0x00000000-0x00080000 : "Uboot & env"
+[ 1.174] 0x00080000-0x000a0000 : "board config"
+[ 1.216] 0x000a0000-0x000c0000 : "panic"
+[ 1.258] 0x000c0000-0x002c0000 : "storage"
+[ 1.300] 0x00fe0000-0x01000000 : "caldata"
+[ 1.329] 0x002c0000-0x007e0000 : "part1"
+[ 1.371] 0x00940000-0x00e60000 : "part2"
+[ 1.413] 0x00000000-0x01000000 : "ALL"
+</code>
+
+==== OpenWrt (as of ath79) ====
+<code>
+0x000000000000-0x000000040000 : "u-boot"
+0x000000040000-0x000000080000 : "u-boot-env"
+0x000000080000-0x0000000a0000 : "config"
+0x000000fe0000-0x000001000000 : "art"
+0x0000000a0000-0x000000fe0000 : "firmware"
+</code>
+
+===== Bootlogs =====
+==== Stock Bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.4-g5416eb09-dirty (Mar  3 2011 - 16:28:15)
+
+AP96 (ar7100) U-boot 0.0.1 MERAKI
+DRAM:  b8050000: 0xc0140180
+64 MB
+Top of RAM usable for U-Boot at: 84000000
+Reserving 228k for U-Boot at: 83fc4000
+Reserving 192k for malloc() at: 83f94000
+Reserving 44 Bytes for Board Info at: 83f93fd4
+Reserving 36 Bytes for Global Data at: 83f93fb0
+Reserving 128k for boot params() at: 83f73fb0
+Stack Pointer at: 83f73f98
+Now running in RAM - U-Boot at: 83fc4000
+id read 0x100000ff
+flash size 16MB, sector count = 256
+Flash: 16 MB
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ag7100_enet_initialize...
+ATHRF1E: Port 0, Neg Success
+ATHRF1E: unit 0 phy addr 0 ATHRF1E: reg0 1000
+eth0: 00:03:7f:e0:00:62
+eth0 up
+No valid address in Flash. Using fixed address
+ATHRF1E: Port 1, Negotiation timeout
+ATHRF1E: unit 1 phy addr 1 ATHRF1E: reg0 ffff
+eth1: 00:03:7f:09:0b:ad
+eth1 up
+eth0, eth1
+RESET is un-pushed
+Hit any key to stop autoboot:  0
+part0: Copying image to memory ... done.
+part0: Checking sha1 (from 0x80060000 length 4358440) ... match
+part0: sha1 calculated: e85f13da4e5ec2eea37f859cf8cdfb25bcc46a6e
+## Starting application at 0x80060000 ...
+starting stage2
+decompressing embedded kernel image 0x81a021b0(0x425f56)
+got osize 0ff7a10
+....................done
+starting linux
+[     0.000] Linux version 2.6.16.16-meraki-ar7100 (bac@bug) (gcc version 4.5.3 (GCC) ) #2 Sun Oct 7 00:46:36 PDT 2012
+[     0.000] flash_size passed from bootloader = -1
+[     0.000] setting it to 16 anyway
+[     0.000] CPU revision is: 00019374
+[     0.000] Determined physical RAM map:
+[     0.000]  memory: 04000000 @ 00000000 (usable)
+[     0.000] Built 1 zonelists
+[     0.000] Kernel command line: "console=ttyS0,115200 root=01:00 rd_start=0x80600000 rd_size=8388608 init=/sbin/init"
+[     0.000] Primary instruction cache 64kB, physically tagged, 4-way, linesize 32 bytes.
+[     0.000] Primary data cache 32kB, 4-way, linesize 32 bytes.
+[     0.000] Synthesized TLB refill handler (20 instructions).
+[     0.000] Synthesized TLB load handler fastpath (32 instructions).
+[     0.000] Synthesized TLB store handler fastpath (32 instructions).
+[     0.000] Synthesized TLB modify handler fastpath (31 instructions).
+[     0.000] Cache parity protection disabled
+[     0.000] PID hash table entries: 512 (order: 9, 8192 bytes)
+[     0.000] Using 340.000 MHz high precision timer.
+[     0.001] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[     0.002] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[     0.006] Memory: 47640k/65536k available (1443k kernel code, 17840k reserved, 352k data, 14552k init, 0k highmem)
+[     0.026] Mount-cache hash table entries: 512
+[     0.027] Checking for 'wait' instruction...  available.
+[     0.029] unpacking initramfs....done in 0.114000
+[     0.145] NET: Registered protocol family 16
+[     0.303] Algorithmics/MIPS FPU Emulator v1.5
+[     0.413] ar7100_wdt_init: last reboot watchdog: 0
+[     0.565] JFFS2 version 2.2. (C) 2001-2003 Red Hat, Inc.
+[     0.566] Initializing Cryptographic API
+[     0.567] io scheduler noop registered
+[     0.568] io scheduler deadline registered (default)
+[     0.596] Serial: 8250/16550 driver $Revision: 1.90 $ 1 ports, IRQ sharing disabled
+[     0.605] serial8250: ttyS0 at MMIO 0x0 (irq = 19) is a 16550A
+[     0.623] serial8250 serial8250.0: unable to register port at index 0 (IO0 MEM0 IRQ19): -28
+[     0.632] AG7100: len per seg 512, segs per packet 4
+[     0.633] AG7100: Max tx/rx desc count 400/252
+[     0.634] AG7100: fifo cfg 3 018001ff
+[     0.635] AG7100CHH: Mac address for unit 0
+[     0.636] AG7100CHH: a5:5a:00:00:00:03
+[     0.854] tun: Universal TUN/TAP device driver, 1.6
+[     0.855] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[     0.865] Creating 8 MTD partitions on "ar7100-nor0":
+[     0.866] 0x00000000-0x00080000 : "Uboot & env"
+[     0.893] 0x00080000-0x000a0000 : "board config"
+[     0.920] 0x000a0000-0x000c0000 : "panic"
+[     0.947] 0x000c0000-0x002c0000 : "storage"
+[     0.974] 0x00fe0000-0x01000000 : "caldata"
+[     1.001] 0x002c0000-0x007e0000 : "part1"
+[     1.028] 0x00940000-0x00e60000 : "part2"
+[     1.039] 0x00000000-0x01000000 : "ALL"
+[     1.058] i2c /dev entries driver
+[     1.076] i2c-dev: adapter [AR7100 GPIO I2C] registered as minor 0
+[     1.085] NET: Registered protocol family 2
+[     1.125] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[     1.126] TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+[     1.127] TCP bind hash table entries: 4096 (order: 3, 32768 bytes)
+[     1.128] TCP: Hash tables configured (established 4096 bind 4096)
+[     1.129] TCP reno registered
+[     1.130] TCP bic registered
+[     1.131] NET: Registered protocol family 1
+[     1.132] NET: Registered protocol family 17
+[     1.135] Freeing unused kernel memory: 14552k freed
+init started:  BusyBox v1.1.0 (2012.09.19-08:49+0000) multi-call binary
+
+Please press Enter to activate this console. : sysctl: error: 'kernel.softlockup_panic' is an unknown key
+: sysctl: error: 'kernel.hung_task_panic' is an unknown key
+: sysctl: error: 'vm.panic_on_oom' is an unknown key
+[     2.243] module load for dummy load 0.039000 init 0.039000 total 0.078000
+[     2.318] AG7100: cfg1 0x7 cfg2 0x7014
+[     2.329] ATHRF1: Port 0, Neg Success
+[     2.330] ATHRF1: unit 0 phy addr 0 ATHRF1: reg0 1000
+[     2.332] AG7100: unit 0: phy not up carrier 1
+[     2.961] ath_hal: module license 'Proprietary' taints kernel.
+[     3.006] ath_hal: 0.9.17.1 (AR5416, DEBUG, REGOPS_FUNC, PRIVATE_DIAG, WRITE_EEPROM, 11D, AH_SUPPORT_EEPROM_AR9287)
+[     3.013] module load for ath_hal load 0.050000 init 0.007000 total 0.057000
+[     3.166] ath_dfs: Version 2.0.0
+[     3.166] Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+[     3.167] module load for ath_dfs load 0.043000 init 0.001000 total 0.044000
+[     3.269] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+[     3.270] module load for ath_rate_atheros load 0.043000 init 0.001000 total 0.044000
+[     3.401] wlan: 0.8.4.2 (Atheros/multi-bss)
+[     3.402] module load for wlan load 0.072000 init 0.001000 total 0.073000
+[     3.505] ath_spectral: Version 2.0.0
+[     3.505] Copyright (c) 2005-2009 Atheros Communications, Inc. All Rights Reserved
+[     3.506] SPECTRAL module built on Oct  7 2012 00:45:28
+[     3.507] module load for ath_spectral load 0.044000 init 0.002000 total 0.046000
+[     3.622] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+[     3.623] module load for ath_dev load 0.055000 init 0.001000 total 0.056000
+[     3.735] module load for proclikefs load 0.041000 init 0.000000 total 0.041000
+Single synchronous check for reset
+[     3.892] ath_pci: 0.9.4.5 (Atheros/multi-bss)
+[     3.929] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[     3.938] Overriding DFS domain with 1
+[     3.939] DFS min filter rssiThresh = 18
+[     3.940] DFS max pulse dur = 131 ticks
+[     3.941] ath_descdma_setup: tx DMA map: a3fc0000 (75776) -> 3fc0000 (75776)
+[     3.942] ath_descdma_setup: beacon DMA map: a03f6000 (2960) -> 3f6000 (2960)
+[     3.943] ath_descdma_setup: rx DMA map: a3300000 (37888) -> 3300000 (37888)
+[     3.969] wifi0: Atheros 9280: mem=0x10000000, irq=48 hw_base=0xb0000000 ver=0x80 rev=0x2
+[     3.970] PCI: Enabling device 0000:00:01.0 (0000 -> 0002)
+[     3.980] Overriding DFS domain with 1
+[     3.981] DFS min filter rssiThresh = 18
+[     3.982] DFS max pulse dur = 131 ticks
+[     3.983] ath_descdma_setup: tx DMA map: a0de0000 (75776) -> de0000 (75776)
+[     3.984] ath_descdma_setup: beacon DMA map: a0dd4000 (2960) -> dd4000 (2960)
+[     3.985] ath_descdma_setup: rx DMA map: a0e20000 (37888) -> e20000 (37888)
+[     4.026] wifi1: Atheros 9280: mem=0x10010000, irq=49 hw_base=0xb0010000 ver=0x80 rev=0x2
+[     4.028] module load for ath_pci load 0.052000 init 0.136000 total 0.188000
+[     4.273] module load for merakiclick load 0.155000 init 0.000000 total 0.155000
+[     4.290] click: starting router thread pid 434 (8326b780)
+[     4.434] module load for pca9534 load 0.039000 init 0.050000 total 0.089000
+[     4.542] wlan: mac acl policy registered
+[     4.543] module load for wlan_acl load 0.040000 init 0.001000 total 0.041000
+[     4.652] module load for wlan_ccmp load 0.041000 init 0.000000 total 0.041000
+[     4.762] module load for wlan_scan_ap load 0.042000 init 0.000000 total 0.042000
+[     4.872] module load for wlan_scan_sta load 0.042000 init 0.000000 total 0.042000
+[     4.981] module load for wlan_tkip load 0.041000 init 0.000000 total 0.041000
+[     5.089] module load for wlan_wep load 0.040000 init 0.000000 total 0.040000
+[     5.196] module load for wlan_xauth load 0.039000 init 0.000000 total 0.039000
+[     5.333] AG7100: unit 0 phy is up...RGMii 1000Mbps full duplex
+[     5.335] AG7100: pll reg 0x18050010: 0x110000
+[     5.336] AG7100: done cfg2 0x7215 ifctl 0x0 miictrl 0x21
+
+init-boot: boot 57 build 19-94893 board ar7100 mac 00:18:0A:83:4C:E0
+: modules: Module: dummy  .text=0xc0053000 .data=0xc00534f0 .bss=0xc0053640
+: modules: Module: ath_hal  .text=0xc00b2000 .data=0xc00f73a0 .bss=0xc00fae20
+: modules: Module: ath_dfs  .text=0xc0066000 .data=0xc006ec40 .bss=0xc006edc0
+: modules: Module: ath_rate_atheros  .text=0xc0060000 .data=0xc0063990 .bss=0xc0063d00
+: modules: Module: wlan  .text=0xc0162000 .data=0xc01a2050 .bss=0xc01a39c0
+: modules: Module: ath_spectral  .text=0xc008f000 .data=0xc0097f00 .bss=0xc0098080
+: modules: Module: ath_dev  .text=0xc01a5000 .data=0xc01cdf40 .bss=0xc01ce320
+: modules: Module: proclikefs  .text=0xc005c000 .data=0xc005d0e0 .bss=0xc005d220
+: modules: Module: ath_pci  .text=0xc0107000 .data=0xc01139c0 .bss=0xc0113f80
+: modules: Module: merakiclick  .text= .data= .bss=
+: modules: Module: pca9534  .text=0xc009e000 .data=0xc009e770 .bss=0xc009ebc0
+: modules: Module: wlan_acl  .text=0xc00a0000 .data=0xc00a0e30 .bss=0xc00a0f80
+: modules: Module: wlan_ccmp  .text=0xc0050000 .data=0xc0051c00 .bss=0xc0051d40
+: modules: Module: wlan_scan_ap  .text=0xc00ae000 .data=0xc00afe10 .bss=0xc00aff60
+: modules: Module: wlan_scan_sta  .text=0xc00a8000 .data=0xc00aa7b0 .bss=0xc00aa900
+: modules: Module: wlan_tkip  .text=0xc011e000 .data=0xc0120cd0 .bss=0xc0120e20
+: modules: Module: wlan_wep  .text=0xc0124000 .data=0xc01254f0 .bss=0xc0125640
+: modules: Module: wlan_xauth  .text=0xc0117000 .data=0xc0117230 .bss=0xc0117380
+
+
+
+BusyBox v1.1.0 (2012.09.19-08:49+0000) Built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+Welcome to Meraki.
+
+Usage of this device is governed by Meraki's End User License
+Agreement, available at http://meraki.com/legal.
+
+m00180A834CE0:/# [    26.930] wifi1 : Non-DFS channel, cancelling previous DFS wait timer</nowiki>
+</WRAP>\\
+
+==== OpenWrt Bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.4-g5416eb09-dirty (Mar  3 2011 - 16:28:15)
+
+AP96 (ar7100) U-boot 0.0.1 MERAKI
+DRAM:  b8050000: 0xc0140180
+64 MB
+Top of RAM usable for U-Boot at: 84000000
+Reserving 228k for U-Boot at: 83fc4000
+Reserving 192k for malloc() at: 83f94000
+Reserving 44 Bytes for Board Info at: 83f93fd4
+Reserving 36 Bytes for Global Data at: 83f93fb0
+Reserving 128k for boot params() at: 83f73fb0
+Stack Pointer at: 83f73f98
+Now running in RAM - U-Boot at: 83fc4000
+id read 0x100000ff
+flash size 16MB, sector count = 256
+Flash: 16 MB
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ag7100_enet_initialize...
+ATHRF1E: Port 0, Neg Success
+ATHRF1E: unit 0 phy addr 0 ATHRF1E: reg0 1000
+eth0: 00:03:7f:e0:00:62
+eth0 up
+No valid address in Flash. Using fixed address
+ATHRF1E: Port 1, Negotiation timeout
+ATHRF1E: unit 1 phy addr 1 ATHRF1E: reg0 ffff
+eth1: 00:03:7f:09:0b:ad
+eth1 up
+eth0, eth1
+RESET is un-pushed
+Hit any key to stop autoboot:  0
+ar7100> tftpboot 0x81000000 openwrt-ar71xx-generic-mr16-initramfs-uImage.bin; bootm
+Trying eth0
+pll reg 0x18050010: 0x110000  Using eth0 device
+TFTP from server 192.168.1.101; our IP address is 192.168.1.2
+Filename 'openwrt-ar71xx-generic-mr16-initramfs-uImage.bin'.
+Load address: 0x81000000
+Loading: checksum bad
+#################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #############################################################
+done
+Bytes transferred = 3302861 (3265cd hex)
+## Booting image at 81000000 ...
+   Image Name:   MIPS OpenWrt Linux-3.18.9
+   Created:      2015-03-21  19:47:11 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    3302797 Bytes =  3.1 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 80060000) ...
+## Giving linux memsize in bytes, 67108864
+
+Starting kernel ...
+
+[    0.000000] Linux version 3.18.9 (riptide_wave@BuildBox1) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r44912) ) #2
+Sat Mar 21 14:46:52 CDT 2015
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019374 (MIPS 24Kc)
+[    0.000000] SoC: Atheros AR7161 rev 2
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x00000000-0x03ffffff]
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line:  board=MR16 console=ttyS0,115200 mtdparts=spi0.0:256k(u-boot)ro,256k(u-boot-env)ro,13440k
+(rootfs),2304k(kernel),128k(art)ro,15744k@0x80000(firmware) rootfstype=squashfs,jffs2 noinitrd
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 58968K/65536K available (2459K kernel code, 114K rwdata, 512K rodata, 2280K init, 183K bss, 6568K rese
+rved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:51
+[    0.000000] Clocks: CPU:680.000MHz, DDR:340.000MHz, AHB:170.000MHz, Ref:40.000MHz
+[    0.000000] Calibrating delay loop... 452.19 BogoMIPS (lpj=2260992)
+[    0.060000] pid_max: default: 32768 minimum: 301
+[    0.060000] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.070000] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.070000] NET: Registered protocol family 16
+[    0.080000] MIPS: machine is Meraki MR16
+[    0.600000] registering PCI controller with io_map_base unset
+[    0.610000] PCI host bridge to bus 0000:00
+[    0.610000] pci_bus 0000:00: root bus resource [mem 0x10000000-0x16ffffff]
+[    0.620000] pci_bus 0000:00: root bus resource [io  0x0000]
+[    0.620000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.630000] pci 0000:00:11.0: fixup device configuration
+[    0.630000] pci 0000:00:12.0: fixup device configuration
+[    0.640000] pci 0000:00:11.0: BAR 0: assigned [mem 0x10000000-0x1000ffff]
+[    0.640000] pci 0000:00:12.0: BAR 0: assigned [mem 0x10010000-0x1001ffff]
+[    0.650000] pci 0000:00:11.0: using irq 40 for pin 1
+[    0.650000] pci 0000:00:12.0: using irq 41 for pin 1
+[    0.660000] Switched to clocksource MIPS
+[    0.660000] NET: Registered protocol family 2
+[    0.670000] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.670000] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.680000] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.680000] TCP: reno registered
+[    0.690000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.690000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.700000] NET: Registered protocol family 1
+[    3.070000] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    3.080000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    3.090000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    3.100000] msgmni has been set to 115
+[    3.110000] io scheduler noop registered
+[    3.110000] io scheduler deadline registered (default)
+[    3.120000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    3.150000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 10625000) is a 16550A
+[    3.160000] console [ttyS0] enabled
+[    3.160000] console [ttyS0] enabled
+[    3.160000] bootconsole [early0] disabled
+[    3.160000] bootconsole [early0] disabled
+[    3.170000] m25p80 spi0.0: found mx25l12805d, expected m25p80
+[    3.180000] m25p80 spi0.0: mx25l12805d (16384 Kbytes)
+[    3.180000] 6 cmdlinepart partitions found on MTD device spi0.0
+[    3.190000] Creating 6 MTD partitions on "spi0.0":
+[    3.190000] 0x000000000000-0x000000040000 : "u-boot"
+[    3.200000] 0x000000040000-0x000000080000 : "u-boot-env"
+[    3.210000] 0x000000080000-0x000000da0000 : "rootfs"
+[    3.210000] mtd: device 2 (rootfs) set to be root filesystem
+[    3.220000] mtdsplit: no squashfs found in "rootfs"
+[    3.220000] mtdsplit: no squashfs found in "spi0.0"
+[    3.230000] 0x000000da0000-0x000000fe0000 : "kernel"
+[    3.230000] 0x000000fe0000-0x000001000000 : "art"
+[    3.240000] 0x000000080000-0x000000fe0000 : "firmware"
+[    3.250000] libphy: ag71xx_mdio: probed
+[    3.580000] ag71xx ag71xx.0: connected to PHY at ag71xx-mdio.0:00 [uid=004dd04e, driver=Generic PHY]
+[    3.590000] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:RGMII
+[    3.590000] TCP: cubic registered
+[    3.600000] NET: Registered protocol family 17
+[    3.600000] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter
+ if you need this.
+[    3.610000] 8021q: 802.1Q VLAN Support v1.8
+[    3.630000] Freeing unused kernel memory: 2280K (80366000 - 805a0000)
+[    3.640000] init: Console is alive
+[    3.650000] init: - watchdog -
+[    3.670000] usbcore: registered new interface driver usbfs
+[    3.670000] usbcore: registered new interface driver hub
+[    3.680000] usbcore: registered new device driver usb
+[    3.690000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    3.700000] ehci-platform: EHCI generic platform driver
+[    3.700000] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    3.710000] ohci-platform: OHCI generic platform driver
+[    4.650000] init: - preinit -
+[    4.790000] random: procd urandom read with 7 bits of entropy available
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    6.580000] eth0: link up (1000Mbps/Full duplex)
+[    7.890000] eth0: link down
+[    7.900000] procd: - early -
+[    7.900000] procd: - watchdog -
+[    8.450000] procd: - ubus -
+[    9.460000] procd: - init -
+Please press Enter to activate this console.
+[    9.980000] NET: Registered protocol family 10
+[    9.990000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   10.010000] Loading modules backported from Linux version master-2015-03-09-0-g141f155
+[   10.020000] Backport generated by backports.git backports-20150129-0-gdd4a670
+[   10.030000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   10.040000] nf_conntrack version 0.5.0 (957 buckets, 3828 max)
+[   10.070000] xt_time: kernel timezone is -0000
+[   10.090000] cfg80211: Calling CRDA to update world regulatory domain
+[   10.110000] cfg80211: World regulatory domain updated:
+[   10.110000] cfg80211:  DFS Master region: unset
+[   10.110000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   10.120000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.130000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.140000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.150000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.160000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[   10.170000] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   10.170000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.180000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   10.230000] PPP generic driver version 2.4.2
+[   10.240000] NET: Registered protocol family 24
+[   10.280000] PCI: Enabling device 0000:00:11.0 (0000 -> 0002)
+[   10.310000] ieee80211 phy0: Atheros AR9280 Rev:2 mem=0xb0000000, irq=40
+[   10.320000] cfg80211: Calling CRDA for country: US
+[   10.320000] cfg80211: Regulatory domain changed to country: US
+[   10.330000] cfg80211:  DFS Master region: FCC
+[   10.330000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   10.340000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 3000 mBm), (N/A)
+[   10.350000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 1700 mBm), (N/A)
+[   10.360000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2300 mBm), (0 s)
+[   10.370000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 3000 mBm), (N/A)
+[   10.380000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+[   10.390000] PCI: Enabling device 0000:00:12.0 (0000 -> 0002)
+[   10.420000] ieee80211 phy1: Atheros AR9280 Rev:2 mem=0xb0010000, irq=41
+[   16.350000] device eth0 entered promiscuous mode
+[   16.370000] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   16.580000] eth0: link up (1000Mbps/Full duplex)
+[   16.580000] br-lan: port 1(eth0) entered forwarding state
+[   16.590000] br-lan: port 1(eth0) entered forwarding state
+[   16.610000] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   18.580000] eth0: link down
+[   18.580000] br-lan: port 1(eth0) entered disabled state
+[   20.580000] eth0: link up (1000Mbps/Full duplex)
+[   20.580000] br-lan: port 1(eth0) entered forwarding state
+[   20.590000] br-lan: port 1(eth0) entered forwarding state
+[   22.590000] br-lan: port 1(eth0) entered forwarding state
+[   69.170000] random: nonblocking pool is initialized
+
+
+BusyBox v1.22.1 (2015-03-21 14:41:15 CDT) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ CHAOS CALMER (Bleeding Edge, r44912)
+ -----------------------------------------------------
+  * 1 1/2 oz Gin            Shake with a glassful
+  * 1/4 oz Triple Sec       of broken ice and pour
+  * 3/4 oz Lime Juice       unstrained into a goblet.
+  * 1 1/2 oz Orange Juice
+  * 1 tsp. Grenadine Syrup
+ -----------------------------------------------------
+root@OpenWrt:/#</nowiki>
+</WRAP>\\
+==== MAC Address ====
+If you have 2 or more MR16's in your network, you'll need to set the Ethernet MAC address as well as the BSSID's for both radios. The MAC address on a sticker in the AP near the ethernet connector. It is in the format of 
+
+MAC: 00:18:0A:xx:xx:xx (where 00:18:0A is the OUI owned by Meraki/Cisco)
+
+The BSSID's are derived from it directly:
+  * 2.4GHz 00:18:0A:xx:xx:xx (same as MAC)
+  * 5.0GHz 02:18:1A:xx:xx:xx (Derived from MAC, local administered (02:...)
+
+This is the exact same as Stock Meraki MR16 uses.
+This cannot (in Chaos Calmer) be assigned with LuCi, and needs to be set manually.
+
+The files below are representative for my network (with confidential info removed), but the only things you need to set are the "option macaddr" parameters.
+
+=== File: /etc/config/network ===
+WARNING: Using LuCI WILL delete the MAC Address!
+
+<code>
+
+config interface 'loopback'
+	option ifname 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config globals 'globals'
+	option ula_prefix 'xxxx:xxxx:xxxx::/48'
+
+config interface 'lan'
+	option ifname 'eth0'
+	option force_link '1'
+	option type 'bridge'
+	option proto 'dhcp'
+	option vendorid 'meraki'
+	option delegate '0'
+	option macaddr '00:18:0A:xx:xx:xx'
+
+</code>
+Note I just used DHCP. My router (a pfSense device, but of cause can also be a OpenWrt device) is set up to supply a static IP address for the MAC address of my Access Point.
+
+=== File: /etc/config/wireless ===
+The MAC address in this file looks like it does NOT get changed by LuCI.
+
+<code>
+
+config wifi-device 'radio0'
+	option type 'mac80211'
+	option hwmode '11g'
+	option path 'pci0000:00/0000:00:11.0'
+	option htmode 'HT20'
+	option txpower '21'
+	option country 'US'
+	option frag '500'
+	option rts '2304'
+	option channel '10'
+
+config wifi-iface
+	option device 'radio0'
+	option network 'lan'
+	option mode 'ap'
+	option encryption 'psk2+ccmp'
+	option key 'YOUR_WIFI_PASSWORD'
+	option ssid 'YOUR_SSID'
+	option macaddr '00:18:0A:xx:xx:xx'
+
+config wifi-device 'radio1'
+	option type 'mac80211'
+	option hwmode '11a'
+	option path 'pci0000:00/0000:00:12.0'
+	option txpower '13'
+	option country 'US'
+	option htmode 'HT40'
+	option channel '40'
+
+config wifi-iface
+	option device 'radio1'
+	option network 'lan'
+	option mode 'ap'
+	option encryption 'psk2+ccmp'
+	option key 'YOUR_OTHER_PASSWORD'
+	option ssid 'YOUR_SSID.5GHz'
+	option macaddr '02:18:1A:xx:xx:xx'
+
+</code>
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ath79 ar7161 16Flash 64RAM 1port gigabitethernet 1WNIC mips}}

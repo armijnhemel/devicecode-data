@@ -1,0 +1,376 @@
+====== D-Link DSL-524T ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+D-Link DSL-524T ADSL2/2+ Router
+
+===== Supported Versions =====
+^ Version/Model   ^ S/N   ^ OpenWrt Version Supported              ^ Model Specific Notes   ^
+| A1 (EU)         | ESL524TEU.A1G | 8.09+ Tested to work with 14.07, does **NOT** work with 15.05 | ADM6996M switch        |
+| A1 (EU)         | -     | 8.09+  | IP175A switch          |
+The H/W version is written on a sticker on the bottom of the box.
+
+There is an Annex B (ADSL over ISDN) version of this router, the [[dsl-584t|DSL-584T]]. It works with the same firmware and is being currently tested.
+
+===== Hardware Highlights =====
+^ CPU                         ^ Ram    ^ Flash   ^ Network            ^ USB   ^ Serial   ^ JTag   ^
+| TI AR7 (TNETD7300)@150MHz   | 16MB   | 4MB     | 4 x 1 + ADSL2/2+   | No    | Yes      | Yes    |
+
+The DSL-524T is an evolution of the previous ADSL1-only [[dsl-504t|DSL-504T]] (edit: at least some 504T were adsl2 capable, modern firmware is needed, like the one here: ftp://ftp.dlink.ru/pub/ADSL/DSL-504T/Firmware/ADSL2_plus/AnnexM/ I had one at home syncing at 13Mb/s). The same board is used for the wireless-enabled [[dsl-624t|DSL-G624T]] (the 524T board has empty solders point for the VLYNQ ACX wireless card).
+
+**NOTE:** Tests of a DSL-524T with 10.03 version of openwrt on a ADSL 2+ line showed:
+        US Connection Rate:     932     DS Connection Rate:     7596
+On the same line a DSL-504T with firmware version V3.02B01T01.RU.20071221 showed:
+        US Connection Rate:     932     DS Connection Rate:     12976
+
+**NOTE:** AR7 modems have a reputation of running **HOT** and the 524T is no exception, so if you're planning to run it for any lenght of time, attaching an heatsink to the CPU might be a good idea. Heat production varies between samples, but the two 524T I've used had no problems in running 24/7 for months.
+
+**NOTE:** After some months of operation, the ethernet switch included in some 5xxT starts to become unreliable (you'll notice a lot of retransmissions and a much slower connection). One workaround is to force the switch to operate in 10Mb/s mode (unfortunately this requires a kernel patch).
+This is the same as the problem described here: https://forum.openwrt.org/viewtopic.php?id=8117
+
+This is actually caused by the cheap electrolytic capacitors that smooth the power supply to the switch IC, which degrade over time (and with heat). Replacing the capacitors fixes the problem. Look for a capacitor of about 100uF, one near each short side of the switch IC (IP175), and replace with the same rating.
+
+
+===== Installation =====
+→[[toh/d-link/dsl-5xxt-6xxt-adam2|D-Link DSL-5xxT and DSL-G6xxT - ADAM2 Installation Guide]]
+
+==== Partitioning ====
+->[[docs:techref:flash.layout]]. We have to change some offsets to be able to start OpenWrt on this device.
+
+^  **D-Link DSL-524T OEM**  ^^^^^
+^ partition   ^ start        ^ end          ^ size       ^ Name              ^
+| mtd2        | 0x90000000   | 0x90010000   | 64 KiB     | Bootloader        |
+| mtd1        | 0x90010090   | 0x90091000   | ~516 KiB   | Kernel            |
+| mtd0        | 0x90091000   | 0x903f0000   | 3452 KiB   | Root filesystem   |
+| mtd3        | 0x903f0000   | 0x90400000   | 64 KiB     | Configuration     |
+| mtd4        | 0x90010000   | 0x903f0000   | 3968 KiB   | --                |
+
+**''NOTE:''** mtd4 covers both mtd1 and mtd0
+
+The //mtd2// partition contains the [[docs:techref:bootloader]]. **Never** touch it.
+
+The //mtd3// partition contains both the bootloader configuration and the original firmware settings. OpenWrt will ignore anything written in here.  **Do not** touch it.
+
+To use OpenWrt on this unit we need to modify the partition layout as follows (changes are in **bold**):
+
+^  **D-Link DSL-524T and OpenWrt**  ^^^^^
+^ partition   ^ Name          ^ start            ^ end              ^ Description                             ^
+| mtd2        | loader        | 0x90000000       | 0x90010000       | Bootloader (ADAM2)                      |
+| mtd1        | linux         | **0x90010000**   | **0x90086b80**   | Linux kernel                            |
+| mtd0        | rootfs        | **0x90086b80**   | **0x903f0000**   | Read-only squashfs + jffs2 filesystem   |
+| mtd3        | config        | 0x903f0000       | 0x90400000       | Original firmware configuration         |
+| mtd4        | rootfs_data   | 0x90010000       | 0x903f0000       |                                         |
+
+**Take note:**
+In order to be able to flash Backfire (10.03.1), //this// partitioning had to be used instead:
+
+^  **D-Link DSL-524T and OpenWrt**  ^^^^^^
+^ partition   ^ Name          ^ start            ^ end              ^ size           ^ Description                             ^
+| mtd2        | loader        | 0x90000000       | 0x90010000       | 64 KiB         | Bootloader (ADAM2)                      |
+| mtd1        | linux         | **0x90010000**   | **0x903f0000**   | **3968** KiB   | Linux kernel                            |
+| mtd0        | rootfs        | **0x900a1000**   | **0x903f0000**   | **3388** KiB   | Read-only squashfs + jffs2 filesystem   |
+| mtd3        | config        | 0x903f0000       | 0x90400000       | 64 KiB         | Original firmware configuration         |
+| mtd4        | rootfs_data   | 0x90010000       | 0x903f0000       | 3968 KiB       |                                         |
+
+
+To be more precise, the kernel, once booted, will map another "virtual" partiton as ///dev/mtdblock4// that will point to the newly created jffs2 partition located inside mtd3. Just ignore it for this discussion.
+
+**Note**: technically, the end offset of //mtd1// and the start offset of //mtd0// should be calculated based on the size of your kernel image. Don't worry too much about it, the values found here have been found to work reliably.
+**Note 2**: In fact, the divide between mtd1 and mtd0 doesn't matter at all when using Openwrt - the firmware will auto-detect the beginning of the rootfs. Other tutorials recommend setting mtd1 to 0x90010000-0x903f0000.
+
+==== OEM "easy" installation ====
+The 524T uses an [[docs:techref:bootloader:adam2|ADAM2]] [[docs:techref:bootloader]]. ADAM2 runs an FTP (FTP, not **T**FTP!) server.
+Follow [[docs:guide-user:installation:generic.flashing]] and [[docs:guide-user:installation:generic.flashing.ftp]] or read on:
+
+We'll use the //openwrt-ar7-squashfs.bin// image from the "//ar7//" OpenWrt port.
+
+**Note**: If you use 8.09, note that the ADSL interface (//wan//) won't be started automatically on boot. A simple "ifup wan" will suffice). This bug is fixed in 10.03. (Bug [[https://dev.openwrt.org/ticket/2781|#2781]])
+
+  *First of all, we need to know the IP address the bootloader is listening on at startup, which can (and usually is) different from the one used by the original firmware or by OpenWrt. The easiest way to find is to login via telnet to the router running it's original firmware and cat ///proc/ticfg/env// looking for the //my_ipaddress// variable (by default it should be set to **5.8.8.8**).
+  *Then, configure your computer using a static IP address on the same subnet as the bootloader (5.8.8.**1** should be fine).
+  *Reboot the router and use a **command-line** FTP client to connect to //ADAM2// using the //my_ipaddress// found before. If it doesn't work, reboot the router and try again, the bootloader will listen for a few seconds before loading the system.
+  *Login into the server using username **ADAM2** and password **ADAM2**. (If you get //"Not logged in, user or password incorrect."// message, type both username and password with lowercase.)
+  *Just to be sure, check that the default partition values match the ones described above (write down them somewhere if you'll ever need to flash the original firmware back):
+
+  quote "GETENV mtd0"
+  quote "GETENV mtd1"
+  quote "GETENV mtd2"
+  quote "GETENV mtd3"
+  quote "GETENV mtd4"
+
+  *Set the new partition values
+
+  quote "SETENV mtd0,0x90086B80,0x903f0000"
+  quote "SETENV mtd1,0x90010000,0x90086B80"
+
+  *And flash it
+
+  binary
+  quote "MEDIA FLSH"
+  put "openwrt-ar7-squashfs.bin" "c mtd4"
+  quote "REBOOT"
+
+  *After the reboot, OpenWrt should be listening on its default IP address **192.168.1.1**
+
+
+**Note**: It might seem stuck just after the "put" command before the transfer starts, just keep waiting for a few minutes. Also, there are strange interactions between ADAM2 and recent Linux kernels (there might be a *lot* of retransmissions which will slow down the process considerably). If flashing from Linux, try this:
+  - Running FTP as root should avoid retransmissions (it allows the FTP client to use different socket options and timeouts).
+  - However, the previous advice works only sometimes. According to [[https://forum.openwrt.org/viewtopic.php?id=18523|this]] topic, ftp client in Linux uses an enhanced recovery algorithm for TCP retransmission timeouts, which activates the delay increases to 2min (=> 256 effective bytes every 2 minutes). This command switches the algorithm off (run as root):
+
+  echo 0 > /proc/sys/net/ipv4/tcp_frto
+
+According to [[https://forum.openwrt.org/viewtopic.php?id=19938|this]] topic, the solution under Windows (works under XP and 7) is quite simple, too - run regedit, find this path:
+
+  HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+
+and add/edit a REG_DWORD value named TcpMaxDataRetransmissions with a value of 40 (hexadecimal). The result - fully qualified name should look like this:
+
+  HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\TcpMaxDataRetransmissions
+
+
+
+===== Sysupgrade =====
+->[[docs:guide-user:installation:generic.sysupgrade]] does NOT support this device yet. So the way to upgrade the firmware is using the [[docs:techref:mtd]] tool:
+<code>mtd write /tmp/openwrt-ar7-squashfs.bin linux && reboot</code>
+
+If you're using the LuCI web interface, its default system upgrade page should work.
+
+===== Basic configuration =====
+->[[docs:guide-quick-start:checks_and_troubleshooting]]
+
+**''NOTE:''** The ADSL modem requires a //pppoa// or //pppoe// section AND please remember to include the appropriate ATM driver in your image (if you build yourself).
+
+===== Hardware =====
+==== Info ====
+^ Architecture    | MIPS (little endian)             |
+^ Vendor          | D-Link                           |
+^ Bootloader      | ADAM2                            |
+^ System-On-Chip  | TI AR7 TNETD7300AZDW (6BZHT99)   |
+^ CPU Speed   | 150 MHz                          |
+^ Flash Size  | 4 MiB                            |
+^ Flash-Chip  | [[http://www.spansion.com/products/S29AL032D.html|Spansion S29AL032D90TFI04]]   |
+^ RAM Size    | 16 MiB                                                                          |
+^ RAM-Chip    | HYNIX HY57V281620ETP-H, 128Mb syncronous DRAM - 2M x 4Bank x16 I/O 16 MiB       |
+^ Wireless    | (none)                              |
+^ Ethernet    | ADM6996M                            |
+^ ADSL        | TI AR7, ADSL2/2+ (up to 24Mbit/s)   |
+^ USB         | No                                  |
+^ Serial      | [[#Serial|Yes]], 3.3V (the kernel finds 2 serial ports)   |
+^ JTAG          | [[#JTAG|Yes]]   |
+^ Power supply  | 12V, 1.2A       |
+
+==== Photos ====
+{{:media:dlink:dsl-524t_a1.png?400|}}
+
+==== Opening the case ====
+**Note:** This (might) void your warranty!
+
+The 524T is pretty easy to open, there are just two screws under the case. No warranty stickers in the way!
+
+Once opened, two more screws (and the backpanel) hold the board to the case. There isn't anything interesting on the bottom of the PCB, though.
+
+Note the empty space for the ACX-111 wireless card used in its bigger brother G624T/G684T.
+
+{{:media:dlink:dsl-524t_open_small.jpg?500|}}
+
+==== Serial ====
+JP6 (5 pins) represents one serial port (3.3V), the only JP with a header soldered. When looking on the LEDs (front) and having the power and ethernet ports on the back JP6 is on the right and has the following pin-out from left to right:
+
+  *TX
+  *GND
+  *Vcc (3.3V)
+  *GND
+  *RX 
+
+Refer to the DSL-624T's [[dsl-624t#serial]] section for the correct way to interface it with a DTE over an RS-232 serial port.
+
+The bootloader is using 38400 baud, 8 bits, no parity, 1 stop-bit (38400 8n1):
+<code>
+ADAM2 Revision 0.22.02_b04_Mar 10 2005
+(C) Copyright 1996-2003 Texas Instruments Inc. All Rights Reserved.
+(C) Copyright 2003 Telogy Networks, Inc.                                     
+Usage: setmfreq [-d] [-s sys_freq, in MHz] [cpu_freq, in MHz]                
+Memory optimization Complete!                                                
+                                                                             
+Adam2_AR7DB >                                                                
+Press any key to abort OS load, or wait 7 seconds for OS to boot...          
+</code>
+
+
+==== JTAG ====
+The 524T appears to have a JTAG header (untested). See JTAG tools and [[docs:techref:hardware:port.jtag]] for more details.
+
+===== Specific Configuration =====
+==== Interfaces ====
+The default network configuration is:
+^ Interface Name ^ Description ^ Default configuration ^
+| br-lan | LAN | 192.168.1.1/24 | 
+| eth0 | LAN ports (1 to 4) | None | 
+| ppp0 | WAN port (ADSL) | - | 
+
+==== Switch Ports (for VLANs) ====
+Unfortunately the driver for the ADM switch doesn't seem to support VLANs.
+
+==== Backfire (10.03.1) kernel ring-buffer messages ====
+
+<code>
+alessandro@localhost:~$ telnet 192.168.1.1
+Trying 192.168.1.1...
+Connected to 192.168.1.1.
+Escape character is '^]'.
+ === IMPORTANT ============================
+  Use 'passwd' to set your login password
+  this will disable telnet and enable SSH
+ ------------------------------------------
+
+
+BusyBox v1.15.3 (2011-11-24 00:44:13 CET) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ Backfire (10.03.1, r29592) ------------------------
+  * 1/3 shot Kahlua    In a shot glass, layer Kahlua 
+  * 1/3 shot Bailey's  on the bottom, then Bailey's, 
+  * 1/3 shot Vodka     then Vodka.
+ ---------------------------------------------------
+root@OpenWrt:/# dmesg
+Linux version 2.6.32.27 (jow@nd-build-02.linux-appliance.net) (gcc version 4.3.3 (GCC) ) #5 Wed Dec 21 01:54:33 CET 2011
+bootconsole [early0] enabled
+CPU revision is: 00018448 (MIPS 4KEc)
+TI AR7 (TNETD7300), ID: 0x0005, Revision: 0x27
+Determined physical RAM map:
+ memory: 01000000 @ 14000000 (usable)
+Initrd not found or empty - disabling initrd
+Zone PFN ranges:
+  Normal   0x00014000 -> 0x00015000
+Movable zone start PFN for each node
+early_node_map[1] active PFN ranges
+    0: 0x00014000 -> 0x00015000
+On node 0 totalpages: 4096
+free_area_init_node: node 0, pgdat 9438bc40, node_mem_map 943c8000
+  Normal zone: 32 pages used for memmap
+  Normal zone: 0 pages reserved
+  Normal zone: 4064 pages, LIFO batch:0
+Built 1 zonelists in Zone order, mobility grouping off.  Total pages: 4064
+Kernel command line: rootfstype=squashfs,jffs2 console=ttyS0,38400n8
+PID hash table entries: 64 (order: -4, 256 bytes)
+Dentry cache hash table entries: 2048 (order: 1, 8192 bytes)
+Inode-cache hash table entries: 1024 (order: 0, 4096 bytes)
+Primary instruction cache 16kB, VIPT, 4-way, linesize 16 bytes.
+Primary data cache 16kB, 4-way, VIPT, no aliases, linesize 16 bytes
+Memory: 12352k/16384k available (2255k kernel code, 4032k reserved, 353k data, 136k init, 0k highmem)
+Hierarchical RCU implementation.
+NR_IRQS:256
+Clocks: prediv: 1, postdiv: 1, mul: 10
+Calibrating delay loop... 149.50 BogoMIPS (lpj=747520)
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+bio: create slab <bio-0> at 0
+Switching to clocksource MIPS
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 512 (order: 0, 4096 bytes)
+TCP bind hash table entries: 512 (order: -1, 2048 bytes)
+TCP: Hash tables configured (established 512 bind 512)
+TCP reno registered
+NET: Registered protocol family 1
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+Registering mini_fo version $Id$
+JFFS2 version 2.2. (NAND) (SUMMARY)  © 2001-2006 Red Hat, Inc.
+msgmni has been set to 24
+io scheduler noop registered
+io scheduler deadline registered (default)
+Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x8610e00 (irq = 15) is a TI-AR7
+console [ttyS0] enabled, bootconsole disabled
+serial8250: ttyS1 at MMIO 0x8610f00 (irq = 16) is a TI-AR7
+physmap platform flash device: 00800000 at 10000000
+physmap-flash.0: Found 1 x16 devices at 0x0 in 16-bit bank
+physmap-flash.0: Found an alias at 0x400000 for the chip at 0x0
+ CFI mfr 0x00000001
+ CFI id  0x000022f9
+ Amd/Fujitsu Extended Query Table at 0x0040
+  Amd/Fujitsu Extended Query version 1.1.
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+cmdlinepart partition parsing not available
+RedBoot partition parsing not available
+4 ar7part partitions found on MTD device physmap-flash.0
+Creating 4 MTD partitions on "physmap-flash.0":
+0x000000000000-0x000000010000 : "loader"
+0x0000003f0000-0x000000400000 : "config"
+0x000000010000-0x0000003f0000 : "linux"
+0x0000000f0000-0x0000003f0000 : "rootfs"
+mtd: partition "rootfs" set to be root filesystem
+mtd: partition "rootfs_data" created automatically, ofs=2B0000, len=140000 
+0x0000002b0000-0x0000003f0000 : "rootfs_data"
+Fixed MDIO Bus: probed
+cpmac-mii: probed
+cpmac: device eth0 (regs: 08612800, irq: 41, phy: 0:01, mac: 00:15:e9:84:00:00)
+cpmac: device eth1 (regs: 08610000, irq: 27, phy: 0:00, mac: 00:15:e9:84:00:00)
+Registered led device: status
+vlynq0: regs 0x08611800, irq 29, mem 0x04000000
+vlynq1: regs 0x08611c00, irq 33, mem 0x0c000000
+TCP westwood registered
+NET: Registered protocol family 17
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+Freeing unused kernel memory: 136k freed
+Please be patient, while OpenWrt loads ...
+mini_fo: using base directory: /
+mini_fo: using storage directory: /tmp/root
+device eth0 entered promiscuous mode
+PHY: 0:01 - Link is Up - 100/Full
+br-lan: port 1(eth0) entering forwarding state
+PHY: 0:00 - Link is Up - 100/Full
+device eth1 entered promiscuous mode
+br-lan: port 2(eth1) entering forwarding state
+NET: Registered protocol family 8
+NET: Registered protocol family 20
+PPP generic driver version 2.4.2
+ip_tables: (C) 2000-2006 Netfilter Core Team
+NET: Registered protocol family 24
+nf_conntrack version 0.5.0 (195 buckets, 780 max)
+CONFIG_NF_CT_ACCT is deprecated and will be removed soon. Please use
+nf_conntrack.acct=1 kernel parameter, acct=1 nf_conntrack module option or
+sysctl net.netfilter.nf_conntrack_acct=1 to enable it.
+acx: this driver is still EXPERIMENTAL
+acx: reading README file and/or Craig's HOWTO is recommended, visit http://acx100.sf.net in case of further questions/discussion
+acx: compiled to use 32bit I/O access. I/O timing issues might occur, such as non-working firmware upload. Report them
+acx: running on a little-endian CPU
+acx: PCI/VLYNQ module v0.3.37 initialized, waiting for cards to probe...
+Not using the 00000009 VLYNQ device's driver for VLYNQ device: 00000000
+Not using the 00000029 VLYNQ device's driver for VLYNQ device: 00000000
+Not using the 00000009 VLYNQ device's driver for VLYNQ device: 00000000
+Not using the 00000029 VLYNQ device's driver for VLYNQ device: 00000000
+registered device TI Avalanche SAR
+Sangam detected
+requesting firmware image "ar0700xx.bin"
+ avsar: firmware: requesting ar0700xx.bin
+avsar firmware released
+tn7dsl_set_modulation : Setting mode to 0xffff
+Creating new root folder avalanche in the proc for the driver stats 
+Texas Instruments ATM driver: version:[7.03.01.00]
+jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+jffs2_build_filesystem(): unlocking the mtd device... done.
+jffs2_build_filesystem(): erasing all blocks after the end marker... done.
+mini_fo: using base directory: /
+mini_fo: using storage directory: /overlay
+eth0: rx dma ring overrun
+eth0: rx dma ring overrun
+root@OpenWrt:/#
+</code>
+
+===== Failsafe mode =====
+->[[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Buttons =====
+->[[docs:guide-user:hardware:hardware.button]]
+
+===== Tags =====
+{{tag>lantiq ar7 adsl2+ 4flash 16ram}}

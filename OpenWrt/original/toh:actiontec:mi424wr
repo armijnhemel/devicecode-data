@@ -1,0 +1,582 @@
+====== Actiontec MI424WR ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+The Actiontec MI424WR comes in many hardware versions. This page covers the versions based on the [[http://download.intel.com/design/network/ProdBrf/27905105.pdf|Intel X-Scale 533MHz IXP425]].
+It has a coax interface and IEEE 802.11g support.
+
+There are also available:
+
+  * [[https://www.actiontec.com/products/product.php?pid=188#.UV8Td8qyI_k | Rev E]] (SoC Cavium 5020@300MHz)
+  * [[https://www.actiontec.com/products/product.php?pid=213#.UV8TeMqyI_k | Rev F]] (SoC Cavium 5020@300MHz)
+  * [[https://www.actiontec.com/214.html | Rev G]] (SoC Cavium 5020@500MHz)
+  * [[toh:actiontec:mi424wr_rev._i|Rev I]] (SoC Marvell@1.2GHz)
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^Actiontec$", "model": "^MI424WR$", "target": "^ixp4xx$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^Actiontec$", "model": "^MI424WR$", "target": "^ixp4xx$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Actiontec$", "model": "^MI424WR$", "target": "^ixp4xx$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Flash Layout after installation ====
+^ partition   ^ start        ^ end          ^ description           ^
+| mtd0        | 0x00000000   | 0x00040000   | RedBoot bootloader    |
+| mtd1        | 0x00040000   | 0x00160000   | linux                 |
+| mtd2        | 0x00160000   | 0x007e0000   | rootfs                |
+| mtd3        | 0x00560000   | 0x007e0000   | rootfs_data           |
+| mtd4        | 0x007e0000   | 0x007ff000   | FIS directory         |
+| mtd5        | 0x007ff000   | 0x00800000   | RedBoot config        |
+
+
+==== Stock Software ====
+
+The unit comes standard with a customized version of Jungo's OpenRG firmware. This is a Linux-based distribution with some proprietary packages such as drivers for the MoCA and Wifi devices.
+
+Installation of RedBoot can be accomplished with the [[https://dev.openwrt.org/browser/trunk/scripts/flashing/jungo-image.py?format=txt|jungo-image.py]] script. The script uses the telnet interface into the router to accomplish it's task. Depending on the version of the firmware, it may have to be manually enabled in the advanced tab under local administration. The script can be used to first make a backup of the current flash image; this procedure takes about 4 minutes. Use ''-h'' to get help on all the options. If there's some failure during the write portion, the only recourse may be to install a JTAG header and restore the firmware via JTAG; so, use at your own risk!
+
+==== OEM Installation using TFTP (Requires replacing bootloader with RedBoot) ====
+  - → [[docs:guide-user:installation:generic.flashing.tftp|Set up TFTP Server]]
+  - Reset the router to factory default by holding down the reset button for 10 seconds while the router is on
+  - Disconnect your computer from Internet and connect to the router and configure your computer to static IP on 192.168.1.3 with 255.255.255.0 as subnet.
+  - Log in to the UI at 192.168.1.1 - User is admin, Password is Serial Number tag on bottom of unit
+  - Enable the TELNET interface by going to Advanced -> Local Administration -> Primary port[23]) 
+  - Backup existing image: ''python jungo-image.py -p <password> 192.168.1.1''
+  - Download custom version of [[http://sourceware.org/redboot|RedBoot]]  from ''[[http://risacher.org/rb-mi424wr-ROM.bin | rb-mi424wr-ROM.bin]]'' or [[https://drive.google.com/file/d/1eRwOjRCpBYLtSwkfZpg6pX2TspPBQWzc/view?usp=sharing | rb-mi424wr-ROM.bin]]  (MD5: 4a0ebcf36420bad58bc325334113ea8b)
+  - Write new image: ''python jungo-image.py -p <password> 192.168.1.1 rb-mi424wr-ROM.bin''
+  - Reboot the router. 
+  - The RedBoot prompt is accessible via telnet 192.168.1.1 9000 on the LAN port (WAN port on rev D). The port is configured to obtain an address via DHCP; if this fails it defaults to 192.168.1.1. RedBoot does initialize the LAN switch so no special action on Linux is required.
+  - Initialize flash: ''fis init''
+  - Get MAC address for WAN port from the end of the filename given to the backup of the stock image. (i.e. MI424-WR-001801010203.bin WAN port MAC is 00:18:01:01:02:03)
+  - Configure WAN MAC address: ''fconfig npe_eth0_esa 0x00:0x01:0x02:0x03:0x04:0x05''.
+  - Configure LAN MAC address: ''fconfig npe_eth1_esa 0x00:0x01:0x02:0x03:0x04:0x02''. (Note address should be 3 less than WAN address).
+  - Load the kernel image via TFTP: ''load -r -b %{FREEMEMLO} -h 192.168.1.3 openwrt-15.05-ixp4xx-generic-zImage''
+  - Write image to flash: ''fis create linux''
+  - Load root filesystem image via TFTP:  ''load -r -b %{FREEMEMLO} -h 192.168.1.3 openwrt-15.05-ixp4xx-generic-squashfs.img'' 
+  - Write image to flash: ''fis create rootfs''
+  - Open RedBoot's configuration: ''fconfig -d''
+  - When prompted with Run script at boot, change the value to true
+  - Enter the following in the first line of the script enter: ''fis load linux''
+  - Enter the second line: ''exec''. Note: for rev D, use ''exec -v 4''.
+  - Hit enter to finish the script with an empty line.
+  - You last entry is the timeout for loading the script. it shouldn't take longer than 1 or 2 seconds.
+  - Keep hitting enter until you get this prompt: ''Update RedBoot non-volatile configuration - continue (y/n)?''
+  - Type ''y'' and enter.
+  - Power cycle the router and openwrt should boot. As long as everything installed properly, you can access Luci in about 50 seconds from switching on the power. 
+
+==== Restore original image ====
+
+The original image can be restored using the following procedure:
+
+  - Get a copy of ''[[http://digitalcorpus.com/openWRT/rb-mi424wr-RAM.img | rb-mi424wr-RAM.img]]'' (MD5: d4028cbb26ad6ad6a3905f0a161f8299).
+  - load -h <ipaddress> rb-mi424wr-RAM.img
+  - ''go''
+  - Close telnet session and start another one; may require setting IP address on host. Verify that RAM version is running with version command.
+  - ''load -h <ipaddress> -r -b %{FREEMEMLO} mi424wr-xxxxxxxxxx.bin''
+  - ''fis unlock RedBoot''
+  - ''fis write -b %{FREEMEMLO} -l 0x800000 -f 0x50000000''
+  - Close telnet session and power cycle. 
+
+A similar sequence is used to upgrade RedBoot. Load the RAM image, then load mi424wr-ROM.bin;
+after unlocking, do a ''fis write'' with a length of ''0x40000''.
+
+==== Building RedBoot ====
+
+RedBoot can be built from the Intel RedBoot sources found in the
+[[http://www.intel.com/design/network/products/npfamily/download_ixp400.htm|Intel IXP400 Software]] site. You'll need the RedBoot source code as well as the RedBoot NPE microcode. This [[http://digitalcorpus.com/openWRT/mi424wr.epk|mi424wr.epk]] (MD5: 5415782b69c41c6562289dbb35235615) adds support for the MI424-WR. The procedure for building RedBoot is as follows:
+
+  - ''export ECOS_REPOSTIORY=/path/to/ecos/packages''
+  - ''cd ${ECOS_REPOSITORY}; ./ecosadmin.tcl add mi424wr.epk''
+  - ''cd <build_dir>; ecosconfig new mi424wr_npe redboot''
+  - ''ecosconfig add memalloc io fileio error linux_compat kernel crc zlib''
+  - ''ecosconfig import ${ECOS_REPOSITORY}/hal/arm/xscale/mi424wr/current/misc/redboot_ROM.ecm''
+  - ''ecosconfig tree''
+  - ''make'' 
+
+The resulting ''redboot.bin'' image can be found in the ''install/bin'' directory.
+==== Linux ====
+Board id 1778 has been registered for this device. The attached MI424-WR images have been built from the OpenWrt trunk with various patches and tweaks. Basic support for the MI424-WR is found in ''target/linux/ixp4xx/patches-2.6.xx/185-mi424wr_support.patch''. Building from source requires using ''make kernel_menuconfig'' and selecting the MI424-WR board type (it's not set by default). After building, the resulting image openwrt-ixp4xx-zImage can be downloaded to the board as described above.
+
+Support for the wifi rt2500pci card on revision A units is still experimental. It works in client mode but there are problems in AP mode.
+It is best to replace with an Atheros card.
+
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the mtd command line tool. It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+==== Terminal Upgrade Process ====
+
+  * Login as root via SSH on 192.168.1.1
+  * Use the following commands to upgrade.
+
+<code>
+cd /tmp/
+wget http://downloads.openwrt.org/chaos_calmer/15.05/ixp4xx/generic/openwrt-15.05-ixp4xx-generic-zImage
+wget http://downloads.openwrt.org/chaos_calmer/15.05/ixp4xx/generic/openwrt-15.05-ixp4xx-generic-squashfs.img
+mtd write /tmp/openwrt-15.05-ixp4xx-generic-zImage linux
+mtd write /tmp/openwrt-15.05-ixp4xx-generic-squashfs.img rootfs && reboot
+</code>
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+Note this version of RedBoot has the option of bypassing the boot script if the reset button is pressed during the power-on sequence. This always allows access to RedBoot via telnet on the WAN port. When RedBoot is ready to accept commands, it sets the Internet LED red.
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+
+===== Specific Configuration =====
+
+==== Network interfaces ====
+The default network configuration is:
+<WRAP BOX>
+
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | LAN & WiFi                   | 192.168.1.1/24           |
+| eth0             | LAN ports (1 to 4)           | None                     |
+| wl0              | EXAMPLE WiFi                 | Disabled                 |
+
+</WRAP>
+
+You can configure eth1 as the WAN port.
+
+There are also two [[http://www.entropic.com/products/homenetworking.htm | Entropic]] [[http://www.mocalliance.org/ | MoCA]] controllers for the coax interface. Because of the proprietary nature of these devices, they are not supported.
+
+===== Hardware =====
+==== Info ====
+
+=== MI424WR rev A ===
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedcurrentrel", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Actiontec$", "model": "^MI424WR$", "version": "^A$"}
+} -->
+
+=== MI424WR rev D ===
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedcurrentrel", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Actiontec$", "model": "^MI424WR$", "version": "^D$"}
+} -->
+
+==== GPIO ====
+
+^ Pin ^ I/O ^ Description         ^
+|  0  |  O  | HW Reset            |
+|  2  |  O  | SPI CLK             |
+|  3  |  I  | SPI RxD             |
+|  4  |  O  | SPI TxD             |
+|  6  |  I  | PCI INTA (MoCA WAN) |
+|  7  |  I  | PCI INTB (Mini-PCI) |
+|  8  |  I  | PCI INTC (MoCA LAN) |
+|  9  |  O  | SPI CS              |
+| 10  |  I  | Button              |
+| 11  |  O  | MoCA WAN LED        |
+| 14  |  O  | PCI CLK Pin         |
+
+==== Latches ====
+There's a latch accessible via CS1 that is 16-bits wide.
+
+^Bit^ Function             ^
+| 0 | Power alarm (red)    |
+| 1 | Power                |
+| 2 | Wireless             |
+| 3 | Internet alarm (red) |
+| 4 | Internet active      |
+| 5 | MoCA LAN             |
+| 6 | MoCA WAN alarm (red) |
+| 7 | PCI reset            |
+| 8 | VOIP Phone 1 LED (green) (Unused) |
+| 9 | VOIP Phone 2 LED (green) (Unused) |
+| 10 | VOIP ready LED (green) (Unused) |
+| 11 | PSTN Relay 1 Control (Unused) |
+| 12 | PSTN Relay 2 Control (Unused) |
+| 13 | (Unused) |
+| 14 | (Unused) |
+| 15 | (Unused) |
+
+
+==== Serial ====
+
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+3.3V serial is available on J20 Pin 1 is the square pad on the PCB with the following pin out:
+
+^ PIN   ^ USE   ^
+| 1     | GND   |
+| 2     | TX    |
+| 3     | RX    |
+| 4     | NC    |
+| 5     | 3.3V  |
+| 6     | NC    |
+
+^ Serial connection parameters for Actiontec MI424WR | 115200, 8N1 |
+
+===== Hardware mods =====
+
+Advanced users have doubled the RAM and ROM as well as add peripherals like USB host port.
+Check the forums for details.
+
+===== Bootlogs =====
+
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>Uncompressing Linux.........................
+..................... done, booting the kernel.
+Searching for flash-layout...
+Found flash-layout at 7fc00
+
+Press ESC to enter BOOT MENU mode.
+RGLoader 3.15.11.1.14
+Booting an active image in 3 seconds
+Uncompressing Linux...................................................................................................................................................................................... done, booting the kernel.
+Linux version 2.4.21openrg-rmk1 #2 Wed Nov 14 16:37:02 EST 2007
+CPU: XScale-IXP4xx/IXC11xx revision 1
+Machine: MI424-WR
+On node 0 totalpages: 8192
+zone(0): 8192 pages.
+zone(1): 0 pages.
+zone(2): 0 pages.
+Kernel command line: console=ttyS0,115200 root=/dev/ram0 rw nohalt 
+Using IXP425 Timer 0 as timer source
+Calibrating delay loop... 532.48 BogoMIPS
+Memory: 32MB = 32MB total
+Memory: 26476KB available (901K code, 4777K data, 224K init)
+XScale Cache/TLB Locking Copyright(c) 2001 MontaVista Software, Inc.
+Dentry cache hash table entries: 4096 (order: 3, 32768 bytes)
+Inode cache hash table entries: 2048 (order: 2, 16384 bytes)
+Mount cache hash table entries: 512 (order: 0, 4096 bytes)
+Buffer-cache hash table entries: 1024 (order: 0, 4096 bytes)
+Page-cache hash table entries: 8192 (order: 3, 32768 bytes)
+POSIX conformance testing by UNIFIX
+PCI: bus0: Fast back to back transfers disabled
+PCI: 13.1: PCI device 17e6:0010 got irq 25
+PCI: 13.2: PCI device 17e6:0011 got irq 23
+PCI: 14.1: PCI device 1814:0201 got irq 24
+PCI: 15.1: PCI device 17e6:0010 got irq 23
+PCI: 15.2: PCI device 17e6:0011 got irq 24
+Linux NET4.0 for Linux 2.4
+Based upon Swansea University Computer Society NET3.039
+Initializing RT netlink socket
+Starting kswapd
+
+Random: 0xa41f046
+pty: 256 Unix98 ptys configured
+Serial driver version 5.05c (2001-07-08) with MANY_PORTS SHARE_IRQ SERIAL_PCI enabled
+ttyS00 at 0xff000003 (irq = 15) is a XScale UART
+ttyS01 at 0xff001003 (irq = 13) is a XScale UART
+NET4: Linux TCP/IP 1.0 for NET4.0
+IP Protocols: ICMP, UDP, TCP, IGMP
+IP: routing cache hash table of 512 buckets, 4Kbytes
+TCP: Hash tables configured (established 2048 bind 4096)
+NET4: Unix domain sockets 1.0/SMP for Linux NET4.0.
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted root (tmpfs filesystem).
+Mount of initial cramfs successful
+Freeing init cramfs memory: 64K
+Freeing init memory: 224K
+Mounting cramfs image at 'cramfs'
+insmod: add-symbol-file PATH/kos_lib.o 0xc2802060 -s .data 0xc280d250 -s .bss 0xc280dfe4
+ading license key: Actiontec License
+insmod: add-symbol-file PATH/ixp425_flash_mod.o 0xc2812060 -s .dcfi_cmdset_0001: Erase suspend on write enabled
+ata 0xc2812420 -s .bss 0xc2812460
+ing buffer write method
+Using predefined MTD partitions.
+Creating 1 MTD partitions on "IXP425 Flash Bank 0":
+0x00000000-0x00800000 : "openrg"
+insmod: add-symbol-file PATH/kleds_mod.o 0xc3015060 -s .data 0xc301560c -s .bss 0xc3015668
+Searching for flash-layout...
+Found flash-layout at 7fc00
+
+Press ESC to enter BOOT MENU mode.
+insmod: add-symbol-file PATH/act_kconf_mod.o 0xc303a060 -s .data 0xc303a0c0 -s .bss 0xc303a120
+insmod: add-symbol-file PATH/log_chardev.o 0xc303c060 -s .data 0xc303c5b8 -s .bss 0xc303c624
+insmod: add-symbol-file PATH/csr.o 0xc303e060 -s .data 0xc30504cc -s .bss 0xc30560cc
+Module init.
+insmod: add-symbol-file PATH/ixp425_csr_init_mod.o 0xc305f060 -s .data 0xc305f3e8 -s .bss 0xc305Intel CSR QMGR & NPE(s) init done.
+f404
+insmod: add-symbol-file PATH/ixp425_eth_mod.o 0xc3061060 -s .datInitializing ixp425_eth driver 0.0.8
+a 0xc3062f70 -s .bss 0xc3063014
+Found PHY 0 at 17
+PHY 0 MAC address is: 04:04:04:04:04:04
+PHY 1 MAC address is: 06:06:06:06:06:06
+insmod: add-symbol-file PATH/igmp_proxy_mod.o 0xc3065060 -s .data 0xc3066490 -s .bss 0xc306650c
+insmod: add-symbol-file PATH/rg_bridge.o 0xc3068060 -s .data 0xc306ca60 -s .bss 0xc306ca8c
+insmod: add-symbol-file PATH/tcp_mss.o 0xc3070060 -s .data 0xc3070400 -s .bss 0xc3070428
+insmod: add-symbol-file PATH/frag_cache_mod.o 0xc3072060 -s .data 0xc3073628 -s .bss 0xc3073628
+insmod: add-symbol-file PATH/jfw.o 0xc3075060 -s .data 0xc3093040 -s .bss 0xc3095094
+insmod: add-symbol-file PATH/rg_dhcp_pktfil.o 0xc30c8060 -s .data 0xc30c8950 -s .bss 0xc30c8a40
+insmod: add-symbol-file PATH/rg_ipv4.o 0xc30ca060 -s .data 0xc30IPV4 device driver registered
+ca220 -s .bss 0xc30ca25e
+insmod: add-symbol-file PATH/krgldr_module.o 0xc30cc060 -s .data 0xc30cc308 -s .bss 0xc30cc360
+insmod: add-symbol-file PATH/rt2560.o 0xc30ce060 -s .data 0xc30fed20 -s .bss 0xc31023f4
+insmod: add-symbol-file PATH/wlan.o 0xc3109060 -s .data 0xc3128780 -s .bss 0xc3128a48
+wlan: 0.8.4.2 (Atheros/multi-bss)
+insmod: add-symbol-file PATH/wlan_wep.o 0xc312b060 -s .data 0xc312bf80 -s .bss 0xc312bfae
+insmod: add-symbol-file PATH/wlan_xauth.o 0xc312e060 -s .data 0xc312e198 -s .bss 0xc312e1c8
+insmod: add-symbol-file PATH/wlan_scan_ap.o 0xc3130060 -s .data 0xc3130cb8 -s .bss 0xc3130cea
+insmod: add-symbol-file PATH/ath_hal.o 0xc3132060 -s .data 0xc315b450 -s .bss 0xc3160a60
+ath_hal: 0.9.17.1 (AR5210, AR5211, AR5212, RF5111, RF5112, RF2413, RF5413, REGOPS_FUNC)
+insmod: add-symbol-file PATH/ath_rate_atheros.o 0xc3164060 -s .dath_rate_atheros: Version 2.0.1
+ata 0xc3165e10 -s .bss 0xc316a144
+Copyright (c) 2001-2004 Atheros Communications, Inc, All Rights Reserved
+insmod: add-symbol-file PATH/ath_pci.o 0xc316c060 -s .data 0xc317cbb8 -s .bss 0xc317d180
+ath_pci: 0.9.4.5 (Atheros/multi-bss)
+ath_pci: 0.9.4.5 (Atheros/multi-bss)
+insmod: add-symbol-file PATH/wlan_tkip.o 0xc317f060 -s .data 0xc31814f0 -s .bss 0xc318151f
+insmod: add-symbol-file PATH/wlan_acl.o 0xc3183060 -s .data 0xc3wlan: mac acl policy registered
+183850 -s .bss 0xc318387e
+insmod: add-symbol-file PATH/crypto_mod.o 0xc3185060 -s .data 0xc3186a14 -s .bss 0xc3186a90
+insmod: add-symbol-file PATH/aes_mod.o 0xc3188060 -s .data 0xc318adb8 -s .bss 0xc318ae44
+insmod: add-symbol-file PATH/wlan_ccmp.o 0xc3191060 -s .data 0xc31923e0 -s .bss 0xc319240f
+insmod: add-symbol-file PATH/ppp.o 0xc3194060 -s .data 0xc319b02c -s .bss 0xc319b170
+insmod: add-symbol-file PATH/btn.o 0xc319d060 -s .data 0xc319d568 -s .bss 0xc319d614
+insmod: add-symbol-file PATH/qos_ingress.o 0xc319f060 -s .data 0xc319f138 -s .bss 0xc319f168
+insmod: add-symbol-file PATH/ks8995m_mod.o 0xc31a1060 -s .data 0xc31a2860 -s .bss 0xc31a28c4
+Kendin HW Switch: VLAN Group 15 used for default VLAN 0
+Kendin HW Switch: PVID of all ports set to 0
+Kendin HW Switch: Configured as VLAN Switch
+Kendin ID: ff:ff
+Kendin port 1 status: ff
+Kendin port 2 status: ff
+Kendin port 3 status: ff
+Kendin port 4 status: ff
+Kendin port 5 status: ff
+insmod: add-symbol-file PATH/clnkdrv.o 0xc31a4060 -s .data 0xc31d0c78 -s .bss 0xc31d12b0
+Linux Clink Ethernet driver version 2.33.0.0 (Mar.3, 2006)</nowiki>
+</WRAP>
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>Trying NPE-C...success. Using NPE-C with PHY 4.
+Ethernet eth1: MAC address 00:18:01:b0:8c:73
+IP: 192.168.1.1/255.255.255.0, Gateway: 0.0.0.0
+Default server: 192.168.1.15
+
+RedBoot(tm) bootstrap and debug environment [ROM]
+Non-certified release, version Jose-2955 - built 18:19:13, Oct 16 2014
+
+Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
+Free Software Foundation, Inc.
+RedBoot is free software, covered by the eCos license, derived from the
+GNU General Public License. You are welcome to change it and/or distribute
+copies of it under certain conditions. Under the license terms, RedBoot's
+source code and full license terms must have been made available to you.
+Redboot comes with ABSOLUTELY NO WARRANTY.
+
+Platform: Actiontec MI424WR (IXP4XX) BE
+RAM: 0x00000000-0x02000000 [0x00021800-0x01fc1000 available]
+FLASH: 0x50000000-0x507fffff, 64 x 0x20000 blocks
+RedBoot> fis load linux
+RedBoot> exec -v 4
+Using base address 0x00021800 and length 0x00109be8
+Uncompressing Linux... done, booting the kernel.
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 3.18.20 (buildbot@builder1) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r46450) ) #1 Fri Sep 4 16:52:19 CEST 2015
+[    0.000000] CPU: XScale-IXP42x Family [690541c2] revision 2 (ARMv5TE), cr=000039ff
+[    0.000000] CPU: VIVT data cache, VIVT instruction cache
+[    0.000000] Machine: Actiontec MI424WR
+[    0.000000] Memory policy: Data cache writeback
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 8128
+[    0.000000] Kernel command line: root=/dev/mtdblock2 rootfstype=squashfs,jffs2 noinitrd console=ttyS0,115200
+[    0.000000] PID hash table entries: 128 (order: -3, 512 bytes)
+[    0.000000] Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.000000] Memory: 29236K/32768K available (2398K kernel code, 133K rwdata, 332K rodata, 124K init, 183K bss, 3532K reserved)
+[    0.000000] Virtual kernel memory layout:
+[    0.000000]     vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+[    0.000000]     fixmap  : 0xffc00000 - 0xffe00000   (2048 kB)
+[    0.000000]     vmalloc : 0xc2800000 - 0xff000000   ( 968 MB)
+[    0.000000]     lowmem  : 0xc0000000 - 0xc2000000   (  32 MB)
+[    0.000000]     modules : 0xbf000000 - 0xc0000000   (  16 MB)
+[    0.000000]       .text : 0xc0008000 - 0xc02b2d74   (2732 kB)
+[    0.000000]       .init : 0xc02b3000 - 0xc02d2000   ( 124 kB)
+[    0.000000]       .data : 0xc02d2000 - 0xc02f3478   ( 134 kB)
+[    0.000000]        .bss : 0xc02f3478 - 0xc03213e0   ( 184 kB)
+[    0.000000] NR_IRQS:64
+[    0.000023] sched_clock: 32 bits at 66MHz, resolution 15ns, wraps every 64425153520ns
+[    0.000442] Calibrating delay loop... 531.66 BogoMIPS (lpj=2658304)
+[    0.050160] pid_max: default: 32768 minimum: 301
+[    0.050500] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.050531] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.051736] CPU: Testing write buffer coherency: ok
+[    0.052533] Setting up static identity map for 0x10318 - 0x10368
+[    0.056761] NET: Registered protocol family 16
+[    0.058373] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.059856] IXP4xx: Using 16MiB expansion bus window size
+[    0.061278] PCI: IXP4xx is host
+[    0.061311] PCI: IXP4xx Using direct access for memory space
+[    0.061614] PCI host bridge to bus 0000:00
+[    0.061659] pci_bus 0000:00: root bus resource [io  0x0000-0xffff]
+[    0.061687] pci_bus 0000:00: root bus resource [mem 0x48000000-0x4bffffff]
+[    0.061712] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.063633] PCI: bus0: Fast back to back transfers enabled
+[    0.063774] pci 0000:00:0d.0: BAR 1: assigned [mem 0x48000000-0x48ffffff pref]
+[    0.063813] pci 0000:00:0f.0: BAR 1: assigned [mem 0x49000000-0x49ffffff pref]
+[    0.063845] pci 0000:00:0d.0: BAR 0: assigned [mem 0x4a000000-0x4a03ffff]
+[    0.063876] pci 0000:00:0f.0: BAR 0: assigned [mem 0x4a040000-0x4a07ffff]
+[    0.063907] pci 0000:00:0e.0: BAR 0: assigned [mem 0x4a080000-0x4a08ffff]
+[    0.074447] Switched to clocksource OSTS
+[    0.076624] NET: Registered protocol family 2
+[    0.078492] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.078553] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.078592] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.078817] TCP: reno registered
+[    0.078840] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.078879] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.079358] NET: Registered protocol family 1
+[    0.079961] IXP4xx Queue Manager initialized.
+[    0.081959] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.084776] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.084816] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.085460] msgmni has been set to 57
+[    0.086430] io scheduler noop registered
+[    0.086463] io scheduler deadline registered (default)
+[    0.159393] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.166281] console [ttyS0] disabled
+[    0.166397] serial8250.0: ttyS0 at MMIO 0xc8000000 (irq = 15, base_baud = 921600) is a XScale
+[    0.550299] console [ttyS0] enabled
+[    0.554995] serial8250.0: ttyS1 at MMIO 0xc8001000 (irq = 13, base_baud = 921600) is a XScale
+[    0.566100] IXP4XX-Flash.0: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x000089 Chip ID 0x000017
+[    0.576427] Intel/Sharp Extended Query Table at 0x0031
+[    0.581610] Intel/Sharp Extended Query Table at 0x0031
+[    0.586818] Using buffer write method
+[    0.590478] cfi_cmdset_0001: Erase suspend on write enabled
+[    0.596344] Searching for RedBoot partition table in IXP4XX-Flash.0 at offset 0x7e0000
+[    0.719728] 5 RedBoot partitions found on MTD device IXP4XX-Flash.0
+[    0.726112] Creating 5 MTD partitions on "IXP4XX-Flash.0":
+[    0.731632] 0x000000000000-0x000000040000 : "RedBoot"
+[    0.738562] 0x000000040000-0x000000160000 : "linux"
+[    0.745370] 0x000000160000-0x0000007e0000 : "rootfs"
+[    0.752178] mtd: device 2 (rootfs) set to be root filesystem
+[    0.758037] 1 squashfs-split partitions found on MTD device rootfs
+[    0.764232] 0x000000560000-0x0000007e0000 : "rootfs_data"
+[    0.771495] 0x0000007e0000-0x0000007ff000 : "FIS directory"
+[    0.779062] 0x0000007ff000-0x000000800000 : "RedBoot config"
+[    0.993232] libphy: IXP4xx MII Bus: probed
+[    0.999169] eth0: MII PHY 32 on NPE-B
+[    1.004875] eth1: MII PHY 5 on NPE-C
+[    1.009195] i2c /dev entries driver
+[    1.013391] ixp4xx_wdt: timer heartbeat 60 sec
+[    1.020313] TCP: cubic registered
+[    1.023658] NET: Registered protocol family 17
+[    1.028406] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    1.041139] Bridge firewalling registered
+[    1.045195] 8021q: 802.1Q VLAN Support v1.8
+[    1.049564] XScale DSP coprocessor detected.
+[    1.064979] drivers/rtc/hctosys.c: unable to open rtc device (rtc0)
+[    1.080908] VFS: Mounted root (squashfs filesystem) readonly on device 31:2.
+[    1.088773] Freeing unused kernel memory: 124K (c02b3000 - c02d2000)
+[    2.594086] init: Console is alive
+[    2.598145] init: - watchdog -
+[    4.612065] init: - preinit -
+[    5.639074] random: mktemp urandom read with 8 bits of entropy available
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   15.111873] jffs2: notice: (780) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[   15.129953] mount_root: switching to jffs2 overlay
+[   15.158940] procd: - early -
+[   15.162158] procd: - watchdog -
+[   17.167408] procd: - ubus -
+[   18.187019] procd: - init -
+Please press Enter to activate this console.
+[   21.909590] NET: Registered protocol family 10
+[   21.940081] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   21.981803] cryptodev: driver 1.7 loaded.
+[   21.997391] ixp_crypto: No HW crypto available
+[   22.008213] Loading modules backported from Linux version master-2015-03-09-0-g141f155
+[   22.016250] Backport generated by backports.git backports-20150129-0-gdd4a670
+[   22.039041] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   22.052359] ixp_crypto: No HW crypto available
+[   22.079637] nf_conntrack version 0.5.0 (458 buckets, 1832 max)
+[   22.203578] xt_time: kernel timezone is -0000
+[   22.250258] cfg80211: Calling CRDA to update world regulatory domain
+[   22.265283] cfg80211: World regulatory domain updated:
+[   22.270446] cfg80211:  DFS Master region: unset
+[   22.274881] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   22.284640] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   22.292647] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   22.300665] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   22.308682] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   22.316705] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[   22.326195] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   22.334286] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   22.342304] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   22.372114] ixp_crypto: No HW crypto available
+[   22.499008] PPP generic driver version 2.4.2
+[   22.506639] NET: Registered protocol family 24
+[   22.536067] ath5k 0000:00:0e.0: enabling device (0340 -> 0342)
+[   22.542322] ath5k 0000:00:0e.0: registered as 'phy0'
+[   23.932454] ath5k: phy0: Atheros AR2413 chip found (MAC: 0x78, PHY: 0x45)
+[   23.941012] cfg80211: Calling CRDA for country: US
+[   23.957480] ixp_crypto: No HW crypto available
+[   23.962951] cfg80211: Regulatory domain changed to country: US
+[   23.968910] cfg80211:  DFS Master region: FCC
+[   23.973094] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   23.982857] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 3000 mBm), (N/A)
+[   23.990880] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 1700 mBm), (N/A)
+[   24.000374] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2300 mBm), (0 s)
+[   24.009865] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 3000 mBm), (N/A)
+[   24.017884] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+[   24.034207] ixp_crypto: No HW crypto available
+[   43.294758] NPE-B: firmware's license can be found in /usr/share/doc/LICENSE.IPL
+[   43.302179] NPE-B: firmware functionality 0x2, revision 0x2:1
+[   43.309710] eth0: link up, speed 0 Mb/s, full duplex
+[   43.345792] device eth0 entered promiscuous mode
+[   43.361086] br-lan: port 1(eth0) entered forwarding state
+[   43.366667] br-lan: port 1(eth0) entered forwarding state
+[   43.468597] NPE-C: firmware's license can be found in /usr/share/doc/LICENSE.IPL
+[   43.476119] NPE-C: firmware functionality 0x5, revision 0x2:1
+[   44.944818] eth1: link up, speed 100 Mb/s, full duplex
+[   45.364545] br-lan: port 1(eth0) entered forwarding state
+[   51.974608] random: nonblocking pool is initialized</nowiki>
+</WRAP>
+
+===== Notes =====
+<WRAP BOX>
+//Space for additional notes, links to forum threads or other resources, ...//
+
+  * ...
+</WRAP>
+
+===== Tags =====
+{{tag>ixp4xx 8Flash 32RAM 802.11bg RedBoot wlan 1WNIC MiniPCI DetachableAntenna 1Ant JTAG Serial ARMv5}}

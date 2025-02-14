@@ -1,0 +1,3629 @@
+====== TP-Link TD-W8970 v1 ======
+
+{{ media:tplink:td-w8970:td-w8970-v1.png?200|TD-W8970 v1.0}}
+
+The TD-W8970 v1 is a 450Mbps Wireless N Gigabit ADSL2+ / VDSL2 Modem Router, but is marketed as a 300Mbps and only ADSL2+ capable product.
+The Router is based on a ''[[docs:techref:hardware:soc:soc.lantiq|Lantiq]]'' SoC.
+
+The [[toh:tp-link:td-w8970_v3.0|TD-W8970 v3]] is a Broadcom router which is not supported by OpenWrt.
+
+The TD-W8970 v1 is very similar to the [[td-w8980_v1|TD-W8980]] and [[td-w9980|TD-W9980]]. 
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^TD-W8970$", "version": "v1"}
+} -->
+
+  * ADSL/VDSL works
+  * switch is passing traffic (tagged + untagged), but passing it to all ports https://dev.openwrt.org/ticket/15511
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^TD-W8970$", "version": "v1"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^TD-W8970$", "version": "v1"}
+} -->
+
+==== Flash layout ====
+
+(for **OEM** firmware version 1.2)
+
+^ partition  ^ address space          ^ name         ^ filesystem      ^ function                 ^
+| mtd0       | 0x00000000-0x00020000  | **boot**     | n/a             | U-Boot v2.0.40           |
+| mtd1       | 0x00020000-0x00160000  | **kernel**   | RAM executable  | kernel 2.6.32            |
+| mtd2       | 0x00160000-0x007c0000  | **rootfs**   | squashfs        | root                     |
+| mtd3       | 0x007c0000-0x007d0000  | **config**   | XML string      | User Configuration       |
+| mtd4       | 0x007d0000-0x007e0000  | **romfile**  | n/a             | MAC address and WPS key  |
+| mtd5       | 0x007e0000-0x007f0000  | **rom**      | n/a             | U-Boot DDR Settings      |
+| mtd6       | 0x007f0000-0x00800000  | **radio**    | n/a             | Radio Calibration Data   |
+
+
+There are two viable ways to install OpenWrt; the "classic" method using [[#Serial|serial]] access, or the "[[#Installation without opening the case (Web Interface Hack)|web interface hack]]" which allows to flash the firmware without opening the case!
+
+
+==== Installation using serial ====
+
+Once a serial console has been established (see [[#Serial|Serial]] for further details):
+
+  - Download the openwrt-lantiq-xrx200-TDW8970-uImage-sysupgrade.image (in OpenWRT 19.07.2, this is named openwrt-19.07.2-lantiq-xrx200-tplink_tdw8970-squashfs-sysupgrade.bin)
+  - Switch on the device and press 't' on the serial console until you get a prompt, then run commands similar to these:
+  - Set the device's IP if you don't want the default 192.168.1.1: (so you don't have to move your TFTP server onto a different subnet)<code>setenv ipaddr 192.168.1.1</code>
+  - Set the address of your TFTP server:<code>setenv serverip 192.168.1.2</code>
+  - Set the board type (not sure if this is necessary):<code>setenv bootargs 'board=WD8970'</code>
+  - Download the image into RAM (*not* flash):<code>tftpboot 0x81000000 openwrt-lantiq-xrx200-TDW8970-sysupgrade.image</code>
+  - Erase the rootfs flash area:<code>sf erase 0x20000 0x7a0000</code>
+  - Write image to flash:<code>sf write 0x81000000 0x20000 0x$(filesize)</code>
+  - Reboot into OpenWrt:<code>reset</code>
+
+
+==== Installation without opening the case (Web Interface Hack) ====
+
+Starting with FW build 12.10.2013, the TP-Link webinterface accepts only RSA signed firmware images with the [[https://github.com/xdarklight/mktplinkfw3/blob/master/README.md|v3 header]].
+Therefore flashing firmware via webinterface is not so easy anymore. 
+
+=== SSID Config Injection ===
+
+Newer versions of TP-Link firmwares do besides encryption furthermore compression of config files. Without knowledge of the compression algorithm it's not that easy to inject shell commands (like in the StatPost approach). But there is a much easier approach. It seems the whole config gets executed / evaluated through ash somehow. Therefor you can inject commands anywhere in this config file or it attributes. To get shell access we use the SSID of wifi:
+  - Login to the router web ui at 192.168.1.1. T
+  - Set Wifi (2.4 or 5GHz) SSID to `telnetd -p 1023 -l login`
+  - //telnet 192.168.1.1 1023// (User: **admin** Password: **1234**)
+
+This procedure seems __**not**__ to work with TD-W8970B V1, at least not with following firmware builds: 141008,150526 and 160808. Instead you have to manipulate the router settings as described in the following section:
+
+=== StatPost ===
+
+
+Steps to access the linux shell using telnet, without opening the router physically:
+  - Login to the router web ui at 192.168.1.1.\\
+  - Take backup of the router configuration conf.bin (Keep one copy safely in case you screw up things!)
+  - Change the config file:
+    - either by Java tool:
+      - Download tplink configuration encrypter/decrypter Java tool from the following link. [[http://ejs1920.users.sourceforge.net/StatPOSTer-20160306.jar]]  (Thanks ejs1920 for making this tool)
+      - Launch the program StatPOSTer-20160306.jar (java -jar StatPOSTer-20160306.jar)
+        - **Note:** In Java version > 10 some needed classes were removed. You have to install "lib-jaxb-api-java" and "lib-jaxb-java" package and start the tool in a special way (Thanks Christoph Müller to find out):<code>$ java -cp /usr/share/java/javax.activation.jar:/usr/share/java/jaxb-api.jar:/usr/share/java/jaxb-impl.jar:/usr/share/java/jaxb-core.jar:StatPOSTer-20160306.jar StatPOSTer</code>    
+      - Select the router as TD-w8970v1 and click on decrypt button in the program and select the conf.bin file you saved via the router web ui.
+      - Save the decrypted conf.xml
+      - Open the the decrypted conf.xml with a texteditor (e.g. gedit,notepad)
+      - Add the xml tag ''%%<Description val="TD-W8970 v1`telnetd -p 1023 -l login`" />%%'' after the xml node SerialNumber and save it.
+      - Click the encrypt button, select the modified conf.xml, save as conf_modified.bin
+    - or by Python tool:
+      - Download tplink configuration encrypter/decrypter Python tool from the following link. [[https://github.com/sta-c0000/tpconf_bin_xml]]  (Thanks sta-c0000 for making this tool)
+      - Decrypt config file: <code>$ python3 tpconf_bin_xml.py conf.bin conf.xml</code>
+      - Open the the decrypted conf.xml with a texteditor (e.g. gedit,notepad)
+      - Add the xml tag ''%%<Description val="TD-W8970 v1`telnetd -p 1023 -l login`" />%%'' after the xml node SerialNumber and save it.
+      - Encrypt modified config file: <code>$ python3 tpconf_bin_xml.py conf.xml conf_modified.bin</code>
+  - Login to the router web ui at 192.168.1.1 and upload the new conf_modified.bin. Let the router reboot.
+  - Router will reboot and have ''%%TD-W8970 v1`telnetd -p 1023 -l login`%%'' at the top, this is expected (but not always the case).
+  - Telnet to 192.168.1.1 at port 1023 otherwise you will only reach the standard CLI daemon. For example: //telnet 192.168.1.1 1023// on linux.
+  - Enter the username/login: **admin** and password: **1234** . The login credentials are defined in the orginal firmware image. But without a listening ssh/telnet daemon you cannot use them.
+  - Now you have access to the linux root shell on the device and have to flash the firmware via CLI. [[https://forum.archive.openwrt.org/viewtopic.php?id=42380&p=13#p340785]] **Note:** You have to use OpenWRT 15.05 release for the procedure, 19.07 did not work (for me).
+
+How does it work: probably by injecting the command //telnetd -p 1023 -l login//
+
+Reported TP-Link FW Builds this approach has been used successfully:
+
+TD-W8970 V1: 140613\\
+TD-W8970B V1: 141008,160808
+
+Maybe other FW revisions also.
+
+Also [[https://forum.openwrt.org/t/openwrt-installation-on-tp-link-td-w8970-v1/78282/4?u=tmomas|confirmed working]]:
+  * Try to use the method described on the [[toh:tp-link:td-w9980#install_openwrt_via_web_interface_hack_without_opening_the_case|TP-Link TD-W9980]] page to update the firmware without opening the device at section "Web Interface Hack (Install OpenWrt without opening the case)". [Rumours are that with the recent OpenWrt that you need to take care that the image you write to mtd2 needs to be extended with 0xff characters to the end of the partition]
+
+=== Openwrt Performance ===
+This [[https://www.youtube.com/watch?v=Op30YcOWpoU&t=3s | video]] might give you a glimpse about td8970 openwrt performance.
+Its about 25MBps=400mbps on gigabit lan and 5MBps=40mbps on wireless
+===== Restore TP-LINK FW =====
+
+==== Restore using Serial ====
+
+For testing purpose only ;-) wrote this from my notes it should work.
+
+Once a serial console has been established (see [[#Serial|Serial]] for further details):
+
+  - Obtain your Image, you need to care about you model type TD-W8970 or TD-W8970B both images work but the modem part is different. You might need to strip the header off with ''dd if=orig.bin of=tplink.bin skip=257 bs=512'' for newer FW like ''TD-W8970B_V1_130918.bin'' or flash an older one directly like ''TD-W8970v1_0.6.0_2.1_up(130415).bin''
+  - Switch on the device and press 't' on the serial console until you get a prompt, then run commands similar to these:
+    - Set the device's IP if you don't want the default 192.168.1.1: (so you don't have to move your TFTP server onto a different subnet)<code>setenv ipaddr 192.168.1.1</code>
+    - Set the address of your TFTP server:<code>setenv serverip 192.168.1.2</code>
+    - Set the board type (not sure if this is necessary might be also WD8970B):<code>setenv bootargs 'board=WD8970'</code>
+    - Download the image into RAM (*not* flash):<code>tftpboot 0x81000000 TD-W8970v1_0.6.0_2.1_up(130415).bin</code>
+    - Erase the rootfs flash area:<code>sf erase 0x20000 0x7a0000</code>
+    - Write image to flash:<code>sf write 0x81000000 0x20000 0x7a0000</code>
+    - Reboot:<code>reset</code>
+  - the rootfs area is 0x7c0000, erase command is to 0x7a000 and write is also 0x7a000 you can see the image size in after the tftpboot command
+  - be careful when erasing/writing the flash the radio is required for WLAN and should not be overwritten or erased. A backup is nice to have if something went wrong, it stores also the MAC address for your WLAN (ART Partition).
+
+==== Restore without opening the case ====
+
+WIP
+
+
+===== Upgrading OpenWrt =====
+-> [[docs:guide-user:installation:generic.sysupgrade]]
+
+==== LuCI Web Upgrade Process ====
+
+  * Browse to ''%%http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/%%'' LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+==== Terminal Upgrade Process ====
+
+If you don't have a GUI (LuCI) available, you can alternatively upgrade via the command line.
+There are two command line methods for upgrading:
+
+  * ''sysupgrade''
+  * ''mtd''
+
+Note: It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== sysupgrade ===
+
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+sysupgrade /tmp/xxx.abc
+</code>
+
+=== mtd ===
+
+If ''sysupgrade'' does not support this router, use ''mtd''.
+
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+mtd write /tmp/xxx.abc firmware && reboot
+</code>
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+Quoting [[https://forum.openwrt.org/viewtopic.php?pid=279395#p279395|**joseba_g**]]:
+>(...)
+>As programmer I use buspirate, however its easy to use other things, like a raspberry, or even computer motherboard.  only need point flashrom to the programmer.
+>
+>First make a flash copy
+>
+><code>tp# flashrom -p buspirate_spi:dev=/dev/ttyUSB0,pullups=on,spispeed=1M -r tplink.bin</code>
+>I have old backup with atheros caldata (art) but you can extract from extracted tplink.bin 
+>
+><code> dd if=tplink.bin of=caldata.bin bs=1 skip=8323072</code>
+>the numbers are total flash 8 MiB converted to decimal bit 8388608 
+>Art partition last 64 kib in dec 65536
+>dd takes a file, ignores first 8323072 bit and writes the rest 65536 to caldata.bin . I am really bad changing those numbers, I use a calculator and change from hex to dec. 
+>
+>With clear copy of a working flash you can use any hexeditor and change de last 64 kib with your caldata, or flash directly and write from OpenWrt command line, I use old working copy, so I flash it (as root)
+><code> # flashrom -p buspirate_spi:dev=/dev/ttyUSB0,pullups=on,spispeed=1M -w tplinkgood.bin</code> 
+>Several comments, flashrom tries to write at maximum speed, (8M for my flash) and fails, I'm unsure why, maybe something in circuit can't work at this speed, or the use of large wires broke com, I don't know. 
+>
+>Slowering spispeed parameter works for me. I only connect 6 pins (the soic have 8)  take a look to this [[https://www.fishnetsecurity.com/6labs/blog/demystifying-hardware-security-%E2%80%93-part-iii/|spi programing post]]  when I'm writing flash one of the led is on. however, everything goes OK. maybe in other devices de-soldering is a must, but give a try to a clip programming, is easy and fast.
+
+==== Corrupted Uboot ====
+
+Use RaspberryPI SPI programming header with POMONA clip-in programmer following [[http://http://www.skfree.sk/2015/08/26/tp-link-td-w8970-debricking/|Debricking Guide]]. BusPirate is currently not working, Pickit2 has not been tried, Olimex is not-working.
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+Currently LED's are non-showing factory reset mode/failsafe nide, so when router is not accessible due bad config, you can enter factory reset mode/failsafe via following workaround:
+  * 1. power router off
+  * 2. power router on
+  * 3. during next 45 seconds you need to press WPS button at the backside of router once per second to perform "factory reset". Dont hold the button, just press it every 1 second, important time is around 30-45second after inicial power on. Its recommended to press once per second. After 45 presses stop, and wait the router to enter factory reset mode, LAN1 will be 192.168.1.1 with static IP.
+
+===== Specific Configuration =====
+
+==== VDSL.BIN ====
+
+:!: Not needed in trunk
+
+Chaos Calmer and earlier need firmware for the DSL system installed in /lib/firmware.  As of 2017, the default install URL no longer works, so you need to find the file some other way.  To further complicate matters, this firmware only seems to work for Barrier Breaker and not with Chaos Calmer on some devices.  Thus the recommended course of action is to skip Chaos Calmer and go straight to Designated Driver (trunk as of March 2017), or use the LEDE firmware instead.  The rest of this section applies to Chaos Calmer and earlier.  [Tip: save your settings when upgrading to trunk so the router comes back up properly configured.  SSH in and run "opkg update && opkg install luci" to get the web interface back.]
+
+A whole Point for this? yes there is much trouble with this. But the Devs made it very simple, you only need to know. There is a command for obtaining the vdsl.bin and put it to an separate partition that is mounted in the right place, so it does not eat up your free space. But the Telekom removed the Image they chose to obtain the bin because of stability issues with their HW. The replacement for this is V1.21 and is available on their server. You can either get a newer "vdsl_fw_install" (this is the command) or modify it to work again.
+edit the comand with vi:<code>vi /sbin/vdsl_fw_install.sh</code>
+edit line URL to:<code>URL="http://hilfe.telekom.de/dlp/eki/downloads/Speedport/Speedport%20W%20921V/Firmware_Speedport_W921V_1.21.000.bin"</code>
+edit line MD5 to:<code>MD5_FW="0a099d08dbf091c74d685b532cbb1390"</code>
+
+This file isn't hosted anymore on the Deutsche Telekoms servers due to newer versions. As of November 2017 the most current firmware is:
+<code>URL="https://www.telekom.de/hilfe/downloads/firmware-speedport-w921v-1.44.000.bin"
+MD5_FW="cefbeb7073e02e0fa4ddb6b31ecb3d1e"</code>
+
+I was still able to cut the annex-b firmware by using the "w921v_fw_cutter" tool.
+
+
+and run it:<code>vdsl_fw_install.sh</code>
+It is fixed in trunk already, you can also obtain other working bins, to play around, they should only meet your Annex Type.
+
+You might need to obtain the files via internet, so you need to setup the device as a client first. To do so temporary you need to set the nameserver and maybe th IP.
+to set the IP:<code>udhcp -i br-lan</code>
+to set the NS:<code>echo "nameserver 192.168.1.254" > /tmp/resolv.conf</code> mine is 192.168.1.254
+
+It seems the TCOM server only offers https but wget does not [[docs:guide-user:advanced:wget-ssl-certs]] you can either specify another Webserver after the command or download it to /tmp on the device and run it.
+
+=== UPDATE for CC and Changes ===
+
+:!: As of March 2017 this site is down.  Find the firmware file and place in /tmp, then run vdsl_fw_install.sh.
+
+Telekom changed to SSL so we need wget with ssl (wget from ox is not working) and "--no-check-certificate"
+the following commands are the fastest way to get the firmware when you have a dhcp-server and internet.
+
+<code>udhcpc -i br-lan
+echo "nameserver 192.168.1.254" > /tmp/resolv.conf
+opkg update
+opkg install wget
+sed -i 's/wget/wget --no-check-certificate/g' /sbin/vdsl_fw_install.sh
+vdsl_fw_install.sh
+opkg remove wget libpcre libopenssl zlib</code>
+
+librt is an essential package that needs to be forced removed, firmware is stored in mtd4 now
+
+=== Update for LEDE trunk ===
+
+As the time of writing [[https://git.lede-project.org/?p=source.git;a=commit;h=c18bf14dab89d31f92350e7f1b63b7b8cce6d909|c18bf14]] the 2 packages needed for annex a and b are available at compile time in section ''Firmware''. 
+
+Once the image is flashed they are present in ''/lib/firmware''  directory as ''lantiq-vrx200-a.bin'' and ''lantiq-vrx200-b.bin'' which you can later choose instead of searching for a working ''vdsl.bin'', see [[docs:guide-user:network:ucicheatsheet|UCI networking options cheatsheet]] section DSL/VDSL
+
+==== DSL Settings ====
+
+depending on you Country/ISP you need to modify your DSL config settings, ATM or PTM and Annex A or B the following is the default:
+<code>config vdsl 'dsl'
+option annex 'a'
+option firmware '/lib/firmware/vdsl.bin'
+option tone 'av'
+option xfer_mode 'atm'</code>
+to set it for Annex B issue the next 2 commands and with PTM the next 3 (you need to install the Kernel Module with the fourth)
+<code>uci set network.dsl.annex=b
+uci set network.dsl.tone=bv
+uci set network.dsl.xfer_mode=ptm
+opkg install kmod-ltq-ptm-vr9</code>
+
+
+==== Switch Ports (for VLANs) ====
+
+Similar to TD-W9980.
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 6 is the internal connection to the router itself.
+
+vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+
+^ Port             ^ Switch port   ^
+| LAN 1            | 5 |
+| LAN 2            | 0 |
+| LAN 3            | 2 |
+| LAN 4 /WAN       | 4 |
+| [[https://en.wikipedia.org/wiki/Gigabit%20Media%20Independent%20Interface|GMII]] | 6 (marked as CPU) |
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+FIXME Here, we merely name the buttons, so we can use them in the above Howto.
+
+==== LEDs ====
+
+=== Chaos Calmer ===
+
+OpenWrt Chaos Calmer 15.05.1 does not support the status LED on this router, so boot status and failsafe will not be indicated visually. Support is being added in 15.05.2.
+
+If you want to have a LED switch on after boot is completed, you can append this to your /etc/config/system file:
+<code>
+config led 'led_system'
+	option name 'System'
+	option sysfs 'wps'
+	option default '1'
+</code>
+
+=== Trunk ===
+
+In trunk, the WPS LED is used as status LED on this router, as in other TP-LINK routers which do not have a dedicated status LED.
+
+However, the behaviour of the status LED has changed since r48041, only for this router: it will switch off after boot is completed, instead of staying on.
+
+If you want to have the LED stay on after boot is completed, you can append this to your /etc/config/system file:
+<code>
+config led 'led_system'
+	option name 'System'
+	option sysfs 'tdw89x0:green:wps'
+	option default '1'
+</code>
+
+
+===== Hardware =====
+==== Info ====
+| **[[wp>Instruction set]]:**   | [[wp>MIPS architecture|MIPS]]   |
+| **Vendor:**                   | [[wp>Lantiq]]                   |
+| **[[docs:techref:bootloader]]:**           | [[docs:techref:bootloader:uboot|U-Boot]] 2010.06-LANTIQ-v-2.0.40-svn2583\\ (press **t** to enter U-Boot console on OEM firmware) |
+| **[[docs:techref:hardware:soc|System-On-Chip]]:**  | [[http://www.lantiq.com/uploads/media//Lantiq_XWAY-VRX268_Product-Brief_03.pdf|XWAY VRX268]] ([[docs:techref:hardware:soc:soc.lantiq|VR9 Family)]] |
+| **[[docs:techref:hardware:cpu|CPU]]/Speed:**       | MIPS34Kc @ 500 MHz |
+| **Flash Chip:**     | [[http://html.alldatasheet.com/html-pdf/313095/EON/EN56Q64-104HIP/61/1/EN56Q64-104HIP.html|cFeon Q64-104HIP]] other [[https://www.winbond.com/NR/rdonlyres/05A6F2FD-83D2-4748-8394-65909AC2A8E3/0/W25Q64FV.pdf| Winbond 25Q64FVSIG]]|
+| **Flash Specs:**    | 8 MiB SPI |
+| **RAM Chip:**       | [[http://www.skhynix.com/inc/pdfDownload.jsp?path=/datasheet/pdf/dram/consumer_H5PS518(6)2GFRseries(Rev1.5).pdf|Hynix H5PS5162GFR-Y5C]] other [[http://www.winbond.com/NR/rdonlyres/54848106-3243-4720-A223-18CFB79A9F37/0/W9751G6KB.pdf| Winbond W9751G6KB]] or {{:media:datasheets:ram:datasheet_38_2013-09-17_13-13-07.2_zentel-20130911.pdf|Zentel A3R12E40CBF}}|
+| **RAM Specs:**      | 64 MiB DDR2 @ 250 MHz (3-5-5-5)   |
+| **Wireless:**       | AR9381 2.4 GHz (3x3) 802.11bgn    |
+| **Ethernet:**       | 4x 10/100/1000 BASE-TX Ethernet Interface\\ (2x XWAY VR9 GPHY 11G & 2x XWAY PEF7071 via RGMII) |
+| **Switch:**         | [[#Switch|Internal configurable]] (Infineon)   |
+| **xDSL:**           | [[http://www.lantiq.com/uploads/media//Lantiq_XWAY-VRX268_Product-Brief_03.pdf|Lantiq XWAY VRX208]]\\ ADSL1/2/2+ (G.992.1/3/5) Annexes A, B, I, J, M, L,\\ VDSL1 (G.993.1, T1.424, TS 101 270),\\  VDSL2 (G.993.2),\\ ITU-T G 998.2 Bonding,\\ EFM (IEEE 802.3ah)|
+| **USB:**            | 2 x USB 2.0                                    |
+| **GPIO Buttons:**   | WPS button, WiFi toggle switch, Reset button   |
+| **GPIO LEDs:**      | ADSL, Internet, WPS, USB Port 1, USB Port 2    |
+| **Power:**          | External 12V 1.5A                              |
+| **Serial:**         | [[#Serial|Yes]]                                |
+| **JTAG:**           | Yes                                            |
+
+==== Power Consumption ====
+| Item | Consumption @ 12.0V (Lab PSU)  |
+| Bootup | 0.21 A |
+| Idle | 0.43 A |
+| Idle + Wifi | 0.44 A |
+| 100% CPU-load + Wifi | 0.50 A |
+| Idle + Wifi + DSL | ? A |
+
+
+==== Photos ====
+
+//Front://\\
+FIXME **Insert photo of front of the casing**
+
+//Back://\\
+FIXME **Insert photo of back of the casing**
+
+//Backside label://\\
+{{:media:tplink:td-w8970:td-w8970-backside-label.png?direct&600|}}
+
+  * **Device**: [[http://wikidevi.com/wiki/TP-LINK_TD-W8970_v1]]
+
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+  * Remove four screw
+  * Carefully unhook the plastic clips that fasten the upper and bottom cover
+
+{{http://i.imgur.com/oRLOhCT.jpg?200}}
+
+//Main PCB://\\
+{{media:tplink:td-w8970:td-w8970_internal.jpg?400|}} {{media:tplink:td-w8970:td-w8970_hardware_labeled.png?400|}}
+
+ ==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+{{media:tplink:td-w8970:td-w8970_serial-jtag.jpg|**PCB with markings for serial port**}}
+
+^ Serial connection parameters\\ for TP-Link TD-W8970 v1.x | 115200, 8N1 |
+
+| Connector | J7 |
+| Pins (from top to bottom) | VCC (3.3V), GND, Rx, Tx |
+(__Hint:__ If you are soldering headers to the board, the GND point can be quite tricky because it is not drilled all the way through. There is, however, a via marked "GND3" closeby you can alternatively use.)
+
+Press **''t''** on the console to interrupt U-Boot autobooting.\\
+Logon through serial by pressing ''Enter'' and using: **admin/1234**.
+
+=== UART Boot===
+
+^ Branch                                                                 ^ Type                                              ^ Download link                                                                                ^
+|  //[[https://github.com/mkresin/u-boot/tree/tdw8970|external tree]]//  |  UART u-boot (allows booting via serial console)  | [[https://github.com/mkresin/u-boot/releases|u-boot.asc]]   |
+
+{{media:tplink:td-w8970:td-w8970-v1_boot_sel.jpg?direct&0x200|}}
+{{media:tplink:td-w8970:td-w8970_serial-boot.jpg?direct&0x200|}}
+
+Temporarily connect the left side of R225 to GND, to get into UART mode.\\
+Be careful, if you connect too long you can stuck in this mode and your device is really hard bricked! \\
+You should see a message similar to this:
+
+<code>
+ROM VER: 1.1.4
+CFG 04
+EEPROM Data OK
+UART 
+</code>
+
+Upload the U-Boot Image via:
+
+<code>
+cat u-boot.asc > /dev/ttyUSB0
+</code>
+
+Now you can for example install OpenWrt 15 if you have working tftp server at address //192.168.1.2// : \\
+(Newer versions won´t work, at least not 18 and 19, but you can upgrade in a next step)
+<code>
+VR9 # tftp 0x80800000 openwrt-15.05.1-lantiq-xrx200-TDW8970-sysupgrade.image
+VR9 # sf erase 0x20000 0x7a0000
+VR9 # sf write 0x80800000 0x20000 0x400004</code>
+
+Or reflash even the bootloader with the newest stock firmware:
+
+<code>
+VR9 # tftp 0x80800000 TD-W8970Bv1_0.6.0_2.8_up_boot(140930)_2014-09-30_14.44.25.bin
+VR9 # sf erase 0x00000 0x7a0000
+VR9 # sf write 0x80800000 0x00000 0x7c0000</code>
+
+But before you have to strip off the 512 Byte header of the Orginal Firmware using a Hex Editor or dd.
+
+
+
+
+
+
+
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+FIXME **Insert photo of PCB with markings for JTAG port**
+
+===== Hardware mods =====
+
+==== 16MB Flash mod ====
+:!: Tested only on Lantiq (Rev 1), this MOD could damage your device.
+
+This procedure allows you to replace the SPI flash with a bigger one, this mod requires the a different version of u-boot, you also must have a backup of the calibration partition. It also requires good skills in soldering and desoldering SMD components.
+
+You will need:
+  * A full flash backup.
+  * An soic clamp or a socket to program the new flash.
+  * A Winbond W25Q128FV.
+  * Soldering iron, solder and solder wick.
+
+Steps to replace the rom:
+  - Remove the flash chip, use the clamp or the socket to extract data if not done previously
+  - Clean the pads
+  - Use the clamp or the socket to write the modified u-boot on address 0x0, caldata partition on address 0xFD0000. You can also boot from serial the modified uboot and flash from there.
+  - Solder the new flash, be sure on pin orientation. Clean the pads. and check for continuity.
+  - Power on the router, you should be able to see the full flash.
+  - At this point you can install a standard OpenWrt image, but note that the calibration partition has been moved so you need a modified version of OpenWrt or LEDE to be able to use the full flash size and to make the wireless card works propely.
+
+{{media:tplink:td-w8970:td-w8970-16m_empty.jpg?243x162}}
+{{media:tplink:td-w8970:td-w8970-16m_winbond.jpg?243x162}}
+
+== New Flash layout ==
+^ partition ^ address space ^ name ^ filesystem ^ function ^
+| mtd0 | 0x00000000-0x00020000 | **boot** | n/a | U-Boot |
+| mtd1 | 0x00020000-0x00160000 | **kernel** | RAM executable | Kernel |
+| mtd2 | 0x00160000-0x00FCE000 | **rootfs** | squashfs | root |
+| mtd3 | 0x00FCE000-0x00FD0000 | **uboot-env** | n/a | U-Boot Env (Right now it is unused)|
+| mtd4 | 0x00FD0000-0x01000000 | **boardconfig** | n/a | radio settings |
+
+:!: If you want to keep using the firmware for the 8MB flash, you must write the **boardconfig** partition to address 0x007F0000, note that the modified U-Boot is still needed.
+
+:!: Flash addresses 0x00FE0000 - 0x00FEFFFF are used by U-Boot to store **ddr_settings**, on original U-Boot the address range were 0x007E0000 - 0x007EFFFF.
+
+== Bootlog ==
+Customized U-Boot and Lede:
+<WRAP bootlog>
+<nowiki>
+ROM VER: 1.1.4
+CFG 05
+
+DDR autotuning Rev 0.3d
+DDR size from 0xa0000000 - 0xa3ffffff
+DDR check ok... start booting...
+
+
+
+U-Boot 2010.06-LANTIQ-v-2.0.40-00026-g22bd014-dirty (Jan 13 2017 - 17:24:09)
+
+CLOCK CPU 500M RAM 250M
+DRAM:  64 MiB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   Internal phy(GE) firmware version: 0x841d
+vr9 Switch16384 KiB W25Q128 at 0:3 is now current device
+
+
+Type "run flash_nfs" to mount root filesystem over NFS
+
+Hit any key to stop autoboot:  0 
+16384 KiB W25Q128 at 0:3 is now current device
+16384 KiB W25Q128 at 0:3 is now current device
+    Uncompressing ... 
+Starting kernel ...
+[    0.000000] Linux version 4.4.40 (nicolo@nicolo-VirtualBox) (gcc version 5.4.0 (LEDE GCC 5.4.0 r2952-4de56ee) ) #0 Fri Jan 13 16:46:12 2017
+[    0.000000] SoC: xRX200 rev 1.2
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019556 (MIPS 34Kc)
+[    0.000000] MIPS: machine is TDW8970 - TP-LINK TD-W8970
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyLTQ0,115200
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=000405b0
+[    0.000000] Readback ErrCtl register=000405b0
+[    0.000000] Memory: 58240K/65536K available (3819K kernel code, 161K rwdata, 1160K rodata, 1244K init, 212K bss, 7296K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:256
+[    0.000000] Setting up vectored interrupts
+[    0.000000] CPU Clock: 500MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041786 ns
+[    0.000010] sched_clock: 32 bits at 250MHz, resolution 4ns, wraps every 8589934590ns
+[    0.007856] Calibrating delay loop... 332.54 BogoMIPS (lpj=665088)
+[    0.042314] pid_max: default: 32768 minimum: 301
+[    0.047153] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.053721] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.066955] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.076760] pinctrl core: initialized pinctrl subsystem
+[    0.082629] NET: Registered protocol family 16
+[    0.091921] pinctrl-xway 1e100b10.pinmux: Init done
+[    0.097480] dma-xway 1e104100.dma: Init done - hw rev: 7, ports: 7, channels: 28
+[    0.207727] dcdc-xrx200 1f106a00.dcdc: Core Voltage : 1016 mV
+[    0.333861] PCI host bridge /fpi@10000000/pcie@d900000 ranges:
+[    0.354962] usbcore: registered new interface driver usbfs
+[    0.360460] usbcore: registered new interface driver hub
+[    0.365815] usbcore: registered new device driver usb
+[    0.371335] PCI host bridge to bus 0000:00
+[    0.375334] pci_bus 0000:00: root bus resource [mem 0x1c000000-0x1cffffff]
+[    0.382242] pci_bus 0000:00: root bus resource [io  0x1d800000-0x1d8fffff]
+[    0.389185] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.396040] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.404107] ifx_pcie_rc_class_early_fixup: fixed pcie host bridge to pci-pci bridge
+[    0.423077] pci 0000:00:00.0: BAR 8: assigned [mem 0x1c000000-0x1c0fffff]
+[    0.429760] pci 0000:00:00.0: BAR 9: assigned [mem 0x1c100000-0x1c1fffff pref]
+[    0.437031] pci 0000:01:00.0: BAR 0: assigned [mem 0x1c000000-0x1c01ffff 64bit]
+[    0.444426] pci 0000:01:00.0: BAR 6: assigned [mem 0x1c100000-0x1c10ffff pref]
+[    0.451692] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    0.456725] pci 0000:00:00.0:   bridge window [mem 0x1c000000-0x1c0fffff]
+[    0.463582] pci 0000:00:00.0:   bridge window [mem 0x1c100000-0x1c1fffff pref]
+[    0.470890] ifx_pcie_bios_map_irq port 0 dev 0000:00:00.0 slot 0 pin 1 
+[    0.477544] ifx_pcie_bios_map_irq dev 0000:00:00.0 irq 144 assigned
+[    0.483896] ifx_pcie_bios_map_irq port 0 dev 0000:01:00.0 slot 0 pin 1 
+[    0.490563] ifx_pcie_bios_map_irq dev 0000:01:00.0 irq 144 assigned
+[    0.497936] clocksource: Switched to clocksource MIPS
+[    0.504580] NET: Registered protocol family 2
+[    0.509778] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.516673] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.523048] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.529564] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.535402] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.542079] NET: Registered protocol family 1
+[    0.553465] gptu: totally 6 16-bit timers/counters
+[    0.558332] gptu: misc_register on minor 63
+[    0.562404] gptu: succeeded to request irq 126
+[    0.566889] gptu: succeeded to request irq 127
+[    0.571402] gptu: succeeded to request irq 128
+[    0.575916] gptu: succeeded to request irq 129
+[    0.580430] gptu: succeeded to request irq 130
+[    0.584943] gptu: succeeded to request irq 131
+[    0.589822] phy-xrx200 gphy-xrx200: requesting lantiq/vr9_phy11g_a2x.bin
+[    0.597194] phy-xrx200 gphy-xrx200: booting GPHY0 firmware at 3980000
+[    0.603528] phy-xrx200 gphy-xrx200: booting GPHY1 firmware at 3980000
+[    0.710263] No VPEs reserved for AP/SP, not initialize VPE loader
+[    0.710263] Pass maxvpes=<n> argument as kernel argument
+[    0.721632] No TCs reserved for AP/SP, not initializing RTLX.
+[    0.721632] Pass maxtcs=<n> argument as kernel argument
+[    0.733611] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.739710] Crashlog allocated RAM at address 0x3f00000
+[    0.765107] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.770858] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.785042] io scheduler noop registered
+[    0.788869] io scheduler deadline registered (default)
+[    0.794736] 1e100c00.serial: ttyLTQ0 at MMIO 0x1e100c00 (irq = 112, base_baud = 0) is a lantiq,asc
+[    0.803633] console [ttyLTQ0] enabled
+[    0.803633] console [ttyLTQ0] enabled
+[    0.810955] bootconsole [early0] disabled
+[    0.810955] bootconsole [early0] disabled
+[    0.824383] m25p80 spi0.4: w25q128 (16384 Kbytes)
+[    0.827718] 4 ofpart partitions found on MTD device spi0.4
+[    0.833136] Creating 4 MTD partitions on "spi0.4":
+[    0.837944] 0x000000000000-0x000000020000 : "u-boot"
+[    0.844872] 0x000000020000-0x000000fce000 : "firmware"
+[    0.970694] random: nonblocking pool is initialized
+[    1.178538] 2 tplink-fw partitions found on MTD device firmware
+[    1.183052] 0x000000020000-0x0000001bb9c4 : "kernel"
+[    1.189750] 0x0000001bb9c4-0x000000fce000 : "rootfs"
+[    1.195537] mtd: device 3 (rootfs) set to be root filesystem
+[    1.200393] 1 squashfs-split partitions found on MTD device rootfs
+[    1.205991] 0x0000008b0000-0x000000fc0000 : "rootfs_data"
+[    1.213176] 0x000000fce000-0x000000fd0000 : "uboot-env"
+[    1.219243] 0x000000fd0000-0x000001000000 : "boardconfig"
+[    1.225352] spi-lantiq 1e100800.spi: Lantiq SPI controller (TXFS 8, RXFS 8, DMA 32)
+[    1.334775] libphy: lantiq,xrx200-mdio: probed
+[    1.410669] eth0: attached PHY [Lantiq XWAY PEF7071] (phy_addr=0:00, irq=-1)
+[    1.478644] eth0: attached PHY [Lantiq XWAY PEF7071] (phy_addr=0:05, irq=-1)
+[    1.546637] eth0: attached PHY [Lantiq XWAY VR9 GPHY 11G v1.4] (phy_addr=0:11, irq=-1)
+[    1.614627] eth0: attached PHY [Lantiq XWAY VR9 GPHY 11G v1.4] (phy_addr=0:13, irq=-1)
+[    1.722999] ltq-cputemp cputemp@0: Current CPU die temperature: 41.5 °C
+[    1.728579] wdt 1f8803f0.watchdog: Init done
+[    1.735541] NET: Registered protocol family 10
+[    1.744563] NET: Registered protocol family 17
+[    1.747720] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    1.760231] 8021q: 802.1Q VLAN Support v1.8
+[    1.774879] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    1.784709] Freeing unused kernel memory: 1244K (80509000 - 80640000)
+[    2.965544] init: Console is alive
+[    2.967839] init: - watchdog -
+[    4.671507] eth0: port 4 got link
+[    5.295478] exFAT: Version 1.2.9
+[    5.338028] SCSI subsystem initialized
+[    5.349238] dwc2 1e101000.ifxhcd: requested GPIO 495
+[    6.210150] dwc2 1e101000.ifxhcd: DWC OTG Controller
+[    6.213728] dwc2 1e101000.ifxhcd: new USB bus registered, assigned bus number 1
+[    6.221076] dwc2 1e101000.ifxhcd: irq 62, io mem 0x00000000
+[    6.226598] dwc2 1e101000.ifxhcd: Hardware does not support descriptor DMA mode -
+[    6.234028] dwc2 1e101000.ifxhcd: falling back to buffer DMA mode.
+[    6.241534] hub 1-0:1.0: USB hub found
+[    6.244458] hub 1-0:1.0: 1 port detected
+[    7.106134] dwc2 1e106000.ifxhcd: DWC OTG Controller
+[    7.109727] dwc2 1e106000.ifxhcd: new USB bus registered, assigned bus number 2
+[    7.117040] dwc2 1e106000.ifxhcd: irq 91, io mem 0x00000000
+[    7.122567] dwc2 1e106000.ifxhcd: Hardware does not support descriptor DMA mode -
+[    7.130010] dwc2 1e106000.ifxhcd: falling back to buffer DMA mode.
+[    7.137473] hub 2-0:1.0: USB hub found
+[    7.140486] hub 2-0:1.0: 1 port detected
+[    7.149237] usbcore: registered new interface driver usb-storage
+[    7.156951] init: - preinit -
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   11.227079] mount_root: loading kmods from internal overlay
+[   12.279330] jffs2: notice: (413) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[   12.294238] block: attempting to load /tmp/jffs_cfg/upper/etc/config/fstab
+[   12.308511] block: extroot: not configured
+[   12.365829] jffs2: notice: (410) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[   12.382213] mount_root: loading kmods from internal overlay
+[   12.907141] block: attempting to load /tmp/jffs_cfg/upper/etc/config/fstab
+[   12.918439] block: extroot: not configured
+[   12.922679] mount_root: switching to jffs2 overlay
+[   13.214386] urandom-seed: Seeding with /etc/urandom.seed
+[   13.346180] procd: - early -
+[   13.347790] procd: - watchdog -
+[   13.794064] eth0: port 4 lost link
+[   14.105905] procd: - ubus -
+[   14.500141] procd: - init -
+Please press Enter to activate this console.
+[   15.157376] IFXOS, Version 1.5.19 (c) Copyright 2009, Lantiq Deutschland GmbH
+[   15.173169] NET: Registered protocol family 8
+[   15.176141] NET: Registered protocol family 20
+[   15.190824] ntfs: driver 2.1.32 [Flags: R/O MODULE].
+[   15.223126] PPP generic driver version 2.4.2
+[   15.247702] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   15.271659] Netfilter messages via NETLINK v0.30.
+[   15.289063] ip_set: protocol 6
+[   15.402405] Lantiq (VRX) DSL CPE MEI driver, version 1.5.17.6, (c) 2007-2015 Lantiq Beteiligungs-GmbH & Co. KG
+
+Lantiq CPE API Driver version: DSL CPE API V4.17.18.6
+[   15.466800] 
+[   15.466800] Predefined debug level: 3
+[   15.486582] u32 classifier
+[   15.487836]     input device check on
+[   15.491534]     Actions configured
+[   15.498130] Mirror/redirect action on
+[   15.553055] Loading modules backported from Linux version wt-2016-10-03-1-g6fcb1a6
+[   15.559248] Backport generated by backports.git backports-20160324-9-g0e38f5c
+[   15.586095] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   15.614503] Infineon Technologies DEU driver version 2.0.0 
+[   15.642588] IFX DEU DES initialized (multiblock).
+[   15.646967] IFX DEU AES initialized (multiblock).
+[   15.651040] IFX DEU ARC4 initialized (multiblock).
+[   15.655652] IFX DEU SHA1 initialized.
+[   15.659246] IFX DEU MD5 initialized.
+[   15.662880] IFX DEU SHA1_HMAC initialized.
+[   15.666908] IFX DEU MD5_HMAC initialized.
+[   15.683098] nf_conntrack version 0.5.0 (929 buckets, 3716 max)
+[   15.715825] NET: Registered protocol family 24
+[   15.731408] usbcore: registered new interface driver usbserial
+[   15.736022] usbcore: registered new interface driver usbserial_generic
+[   15.742543] usbserial: USB Serial support registered for generic
+[   15.797786] xt_time: kernel timezone is -0000
+[   15.803656] usbcore: registered new interface driver cdc_ether
+[   15.841077] usbcore: registered new interface driver ftdi_sio
+[   15.845630] usbserial: USB Serial support registered for FTDI USB Serial Device
+[   15.914213] usbcore: registered new interface driver rndis_host
+[   15.969406] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[   15.973762] PCI: Enabling device 0000:01:00.0 (0000 -> 0002)
+[   15.989482] ath: phy0: disabling 5GHz band
+[   16.009156] ieee80211 phy0: Atheros AR9300 Rev:3 mem=0xbc000000, irq=144
+[   23.316546] PTM 1.0.27    PTM (E1) firmware version 0.30
+[   23.320482] ifxmips_ptm: PTM init succeed
+[   29.828934] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   29.860143] device eth0.1 entered promiscuous mode
+[   29.863569] device eth0 entered promiscuous mode
+[   29.879400] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   30.001503] IPv6: ADDRCONF(NETDEV_UP): ptm0: link is not ready
+[   30.114214] eth0: port 4 got link
+[   30.116284] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   30.146180] br-lan: port 1(eth0.1) entered forwarding state
+[   30.150451] br-lan: port 1(eth0.1) entered forwarding state
+[   30.218093] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   32.153972] br-lan: port 1(eth0.1) entered forwarding state
+</nowiki>
+</WRAP>\\
+
+== Work-in-progress ==
+**Uboot**
+  * [[https://github.com/GreenTeaDev/u-boot/commit/146effa8853533c93a1149eb1ddb357ebb93b973| MTD SPI: Added support for winbond w25q128fv ]]
+  * [[https://github.com/GreenTeaDev/u-boot/commit/311a4d516e16eb1dd8cff0c2163769080e1354de| Lantiq: Add support for a 16M SPI flash  ]]
+**LEDE**
+  * [[https://github.com/GreenTeaDev/Lede/commit/4de56ee756d88580af24c7c48e77830436238066| Lantq: Add support for TP-Link W8970 16M Flash MOD ]]
+** OpenWrt **
+  * [[https://janfla.slask.pl/2021/01/tp-link-td-w8970v1-16m-mod/| TD-W8970 16M mod ]]
+
+===== Switch =====
+The XWAY VRX286 SoC features an internal configurable Infineon Gigabit Ethernet switch that connects all the physical Ethernet ports together. 
+
+As of yet ([[https://dev.openwrt.org/browser/trunk?rev=38701|trunk: 38701]]) no support for this switch exists on OpenWrt.
+
+However a GPL source code exists for the switch under the name "''ifx_ethsw''" for the kernel module and "''switch_utility''" for the user-space configuration tool. The code can be found from links below:
+  * [[http://gpl.back2roots.org/source/fritzbox/7390_5.50/GPL-release_kernel/linux/arch/mips/include/asm/mach-infineon/switch_api/]]
+  * [[http://gpl.back2roots.org/source/fritzbox/7390_5.50/GPL-release_kernel/linux/drivers/net/ifxmips_switch_api/]]
+
+On the OEM firmware the driver initialization looks like this:
+    IFX SWITCH API, Version 1.1.7.2
+    SWAPI: Registered character device [switch_api] with major no [81]
+    Switch API: PCE MicroCode loaded !!
+    Init IFX_ETHSW_Switch_API_procModule successfully.
+
+And the configuration tool can be found at: ''/usr/sbin/switch_utility''
+
+==== switch_utility ====
+<WRAP bootlog>
+<nowiki>~ # switch_utility
+
+Switch Utility Version : v1.1.7.1
+Available commands:
+        CfgGet
+        CfgSet
+        PortCfgGet
+        PortCfgSet
+        PortLinkCfgGet
+        PortLinkCfgSet
+        PortRedirectGet
+        PortRedirectSet
+        MAC_TableEntryRead
+        MAC_TableEntryAdd
+        MAC_TableEntryRemove
+        MAC_TableClear
+        VLAN_IdCreate
+        VLAN_IdDelete
+        VLAN_IdGet
+        VLAN_PortMemberAdd
+        VLAN_PortMapTableRead
+        VLAN_PortMemberRemove
+        VLAN_PortCfgGet
+        VLAN_PortCfgSet
+        VLAN_ReservedAdd
+        VLAN_ReservedRemove
+        MulticastRouterPortAdd
+        MulticastRouterPortRemove
+        MulticastRouterPortRead
+        MulticastTableEntryAdd
+        MulticastTableEntryRemove
+        MulticastTableEntryRead
+        MulticastSnoopCfgGet
+        MulticastSnoopCfgSet
+        RMON_Clear
+        RMON_Get
+        MDIO_DataRead
+        MDIO_DataWrite
+        MDIO_CfgGet
+        MDIO_CfgSet
+        PortRGMII_ClkCfgGet
+        PortRGMII_ClkCfgSet
+        RegisterGet
+        RegisterSet
+        CPU_PortExtendCfgGet
+        CPU_PortExtendCfgSet
+        CPU_PortCfgGet
+        CPU_PortCfgSet
+        MonitorPortGet
+        MonitorPortSet
+        PHY_AddrGet
+        QOS_PortCfgGet
+        QOS_PortCfgSet
+        QOS_DscpClassGet
+        QOS_DscpClassSet
+        QOS_PcpClassGet
+        QOS_PcpClassSet
+        Reset
+        HW_Init
+        PCE_RuleRead
+        PCE_RuleWrite
+        PCE_RuleDelete
+        QOS_QueuePortGet
+        QOS_QueuePortSet
+        QOS_MeterCfgGet
+        QOS_MeterCfgSet
+        QOS_MeterPortGet
+        QOS_MeterPortAssign
+        QOS_MeterPortDeassign
+        QOS_WredCfgGet
+        QOS_WredCfgSet
+        QOS_WredQueueCfgGet
+        QOS_WredQueueCfgSet
+        QOS_SchedulerCfgGet
+        QOS_SchedulerCfgSet
+        QOS_StormAdd
+        QOS_StormGet
+        QOS_ShaperCfgGet
+        QOS_ShaperCfgSet
+        QOS_ShaperQueueAssign
+        QOS_ShaperQueueDeassign
+        QOS_ClassPCPGet
+        QOS_ClassPCPSet
+        QOS_ClassDSCPGet
+        QOS_ClassDSCPSet
+        QOS_PortRemarkingCfgGet
+        QOS_PortRemarkingCfgSet
+        STP_PortCfgGet
+        STP_PortCfgSet
+        STP_BPDU_RULE_Get
+        STP_BPDU_RULE_Set
+        8021X_PortCfgGet
+        8021X_PortCfgSet
+        PHY_Query
+        VersionGet
+        RMON_ExtendGet
+        8021X_EAPOL_RuleGet
+        8021X_EAPOL_RuleSet
+        CapGet
+        Enable
+        Disable</nowiki>
+</WRAP>\\
+
+=== OEM Default settings ===
+These are the switch_utility settings on the OEM firmware right after booting up.
+<WRAP bootlog>
+<nowiki>~ # brctl show
+bridge name     bridge id               STP enabled     interfaces
+br0             8000.f81a67d8b108       no              eth0.2
+                                                        eth0.3
+                                                        eth0.4
+                                                        eth0.5
+                                                        ath0
+                                                        nas0_1
+
+~ # switch_utility CfgGet
+        MAC_Table Age Timer = 3
+        VLAN_Aware          = 1
+        Max Packet Len      = 1536
+        Max Packet Len      = 0
+        Pause MAC Mode      = 0
+        Pause MAC Src       = 00:d0:8f:00:01:00
+~ # switch_utility PortCfgGet 4
+        Port Id                 = 4
+        Port Enable             = 1
+        Unicast Unkown Drop     = 0
+        Multicast Unkown Drop   = 0
+        Reserved Packet Drop    = 0
+        Broadcast Packet Drop   = 0
+        Aging                   = 0
+        Learning Mac Port Lock  = 0
+        Learning Limit          = 255
+        Port Monitor            = 0
+        Flow Control            = 0
+~ # switch_utility PortLinkCfgGet 4
+        Port Id                   = 4
+        Force Port Duplex Mode.   = 0
+        Port Duplex Status.       = 0
+        Force Link Speed.         = 0
+        Port link speed status    = 1000
+        Force Link                = 0
+        Force link status         = 0
+        Selected interface mode   = 0
+        Select if MAC or PHY mode = 1
+        Interface clock Mode      = 0
+~ # switch_utility PortRedirectGet 4
+        Port Id                 = 4
+        Port Redirect Egress    = 0
+        Port Redirect Ingress   = 0
+~ # switch_utility MAC_TableEntryRead
+ERROR: (VID does not exists) drivers/net/ifxmips_switch_api/ifx_ethsw_flow_api.c:IFX_FLOW_VLAN_IdGet:1711
+--------------------------------------------------------------
+   MAC Address       | port |   age    | FID | Static
+--------------------------------------------------------------
+  f8:1a:67:d8:b1:08  |  6   |     0    | 0   | 1
+  f8:1a:67:d8:b1:08  |  6   |    15    | 2   | 0
+  00:00:00:00:00:20  |  6   |     0    | 1   | 1
+--------------------------------------------------------------
+~ # switch_utility VLAN_IdGet 0
+        VId = 0
+        FId = 0
+~ # switch_utility VLAN_IdGet 1
+ERROR: (VID does not exists) drivers/net/ifxmips_switch_api/ifx_ethsw_flow_api.c:IFX_FLOW_VLAN_IdGet:1711
+IOCTL failed for ioctl command 0xC0084517, returned -1
+~ # switch_utility VLAN_IdGet 2
+        VId = 2
+        FId = 2
+~ # switch_utility VLAN_IdGet 3
+        VId = 3
+        FId = 2
+~ # switch_utility VLAN_IdGet 4
+        VId = 4
+        FId = 2
+~ # switch_utility VLAN_IdGet 5
+        VId = 5
+        FId = 2
+~ # switch_utility VLAN_IdGet 6
+ERROR: (VID does not exists) drivers/net/ifxmips_switch_api/ifx_ethsw_flow_api.c:IFX_FLOW_VLAN_IdGet:1711
+IOCTL failed for ioctl command 0xC0084517, returned -1
+switch_utility VLAN_PortMapTableRead
+--------------------------------------------------------------
+ VLAN ID            | Port               | Tag Member
+--------------------------------------------------------------
+                  50 |                  245 | FALSE
+                  40 |                   64 | FALSE
+                  30 |                  245 | FALSE
+                   5 |                   96 | FALSE
+                   4 |                   65 | FALSE
+                   3 |                   68 | FALSE
+                   2 |                   80 | FALSE
+                2053 |                  117 | TRUE
+                2052 |                  117 | TRUE
+                2051 |                  117 | TRUE
+                2050 |                  117 | TRUE
+--------------------------------------------------------------
+~ # switch_utility VLAN_PortCfgGet 0
+        VLAN PortId           = 0
+        VLAN PortVId          = 2052
+        VLAN Unknown Drop     = 1
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 3
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 1
+~ # switch_utility VLAN_PortCfgGet 1
+        VLAN PortId           = 1
+        VLAN PortVId          = 0
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 0
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility VLAN_PortCfgGet 2
+        VLAN PortId           = 2
+        VLAN PortVId          = 2051
+        VLAN Unknown Drop     = 1
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 3
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 1
+~ # switch_utility VLAN_PortCfgGet 3
+        VLAN PortId           = 3
+        VLAN PortVId          = 0
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 0
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility VLAN_PortCfgGet 4
+        VLAN PortId           = 4
+        VLAN PortVId          = 2050
+        VLAN Unknown Drop     = 1
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 3
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 1
+~ # switch_utility VLAN_PortCfgGet 5
+        VLAN PortId           = 5
+        VLAN PortVId          = 2053
+        VLAN Unknown Drop     = 1
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 3
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 1
+~ # switch_utility VLAN_PortCfgGet 6
+        VLAN PortId           = 6
+        VLAN PortVId          = 50
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 3
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility MulticastSnoopCfgGet
+        MULTICAST SNOOP IGMP_Mode           = 0
+        MULTICAST SNOOP IGMPv3 support      = 0
+        MULTICAST SNOOP CrossVLAN           = 0
+        MULTICAST SNOOP ForwardPort         = 0
+        MULTICAST SNOOP ForwardPortId       = 0
+        MULTICAST SNOOP ClassOfService      = 0
+        MULTICAST SNOOP Robust              = 3
+        MULTICAST SNOOP QueryInterval (HEX) = 0x64
+        MULTICAST Suppression | Aggregation = 2
+        MULTICAST SNOOP FastLeave           = 0
+        MULTICAST SNOOP LearningRouter      = 0
+~ # switch_utility RMON_Get 4
+        Port Id                                       = 4
+        Receive Packet Count                          = 2695
+        Receive Unicast Packet Count                  = 2634
+        Receive Broadcast Packet Count                = 31
+        Receive Multicast Packet Count                = 30
+        Receive FCS Error Packet Count                = 0
+        Receive Undersize Good Packet Count           = 0
+        Receive Overswitch_utility MDIO_CfgGet
+~ # switch_utility MDIO_CfgGet
+        MDIO Access Enable = 1
+        Clock Speed= 5
+~ # switch_utility MDIO_DataRead 0
+Invalid number of parameters: is 1, should be 2
+Usage:  switch_utility MDIO_DataRead <PHY addr> <Register inside PHY>
+
+        phy addr:           0..14
+        register:           0..24
+
+~ # switch_utility PortRGMII_ClkCfgGet 4
+nDelayRx = 0
+nDelayTx = 0
+        Port Id         = 4
+        Delay RX        = 0
+        Delay TX        = 0
+~ # switch_utility RegisterGet
+Invalid number of parameters: is 0, should be 1
+Usage:  switch_utility RegisterGet <nRegAddr>
+
+        nRegAddr:
+
+~ # switch_utility CPU_PortExtendCfgGet
+        Add Ethernet layer-2 header = 0
+        Remove Ethernet layer-2 header = 0
+        Header data
+          Source MAC     : 00:00:00:00:00:00
+          Destination MAC: 00:00:00:00:00:00
+          Packet EtherType Field = 0
+          VLAN Tag Priority Field = 0
+          VLAN Tag CFI = 0
+          VLAN Tag VLAN ID = 0
+        PAUSE frames coming = 0
+        Remove the CRC = 1
+        Port map of WAN Ethernet switch ports = 0
+~ # switch_utility CPU_PortCfgGet 4
+        Port Id                                 = 4
+        Enable FCS check                        = 0
+        Enable FCS Enable FCS generation        = 1
+        Special tag enable in egress direction  = 0
+        Special tag enable in ingress direction = 0
+        CPU port validity                       = 0
+~ # switch_utility MonitorPortGet 4
+        Port Id                                 = 4
+        This port is used as monitor port.      = 1
+~ # switch_utility PHY_AddrGet 0
+        Device address on the MDIO interface = 0
+~ # switch_utility PHY_AddrGet 1
+        Device address on the MDIO interface = 1
+~ # switch_utility PHY_AddrGet 2
+        Device address on the MDIO interface = 17
+~ # switch_utility PHY_AddrGet 3
+        Device address on the MDIO interface = 18
+~ # switch_utility PHY_AddrGet 4
+        Device address on the MDIO interface = 19
+~ # switch_utility PHY_AddrGet 5
+        Device address on the MDIO interface = 5
+~ # switch_utility PHY_AddrGet 6
+        Device address on the MDIO interface = 0
+~ # switch_utility QOS_PortCfgGet 4
+        Port Id                  = 4
+        Traffic Class assignment = 0
+        Traffic Class            = 0
+~ # switch_utility QOS_DscpClassGet
+        nTrafficClass[0] = 0
+        nTrafficClass[1] = 0
+        nTrafficClass[2] = 0
+        nTrafficClass[3] = 0
+        nTrafficClass[4] = 0
+        nTrafficClass[5] = 0
+        nTrafficClass[6] = 0
+        nTrafficClass[7] = 0
+        nTrafficClass[8] = 0
+        nTrafficClass[9] = 0
+        nTrafficClass[10] = 0
+        nTrafficClass[11] = 0
+        nTrafficClass[12] = 0
+        nTrafficClass[13] = 0
+        nTrafficClass[14] = 0
+        nTrafficClass[15] = 0
+        nTrafficClass[16] = 0
+        nTrafficClass[17] = 0
+        nTrafficClass[18] = 0
+        nTrafficClass[19] = 0
+        nTrafficClass[20] = 0
+        nTrafficClass[21] = 0
+        nTrafficClass[22] = 0
+        nTrafficClass[23] = 0
+        nTrafficClass[24] = 0
+        nTrafficClass[25] = 0
+        nTrafficClass[26] = 0
+        nTrafficClass[27] = 0
+        nTrafficClass[28] = 0
+        nTrafficClass[29] = 0
+        nTrafficClass[30] = 0
+        nTrafficClass[31] = 0
+        nTrafficClass[32] = 0
+        nTrafficClass[33] = 0
+        nTrafficClass[34] = 0
+        nTrafficClass[35] = 0
+        nTrafficClass[36] = 0
+        nTrafficClass[37] = 0
+        nTrafficClass[38] = 0
+        nTrafficClass[39] = 0
+        nTrafficClass[40] = 0
+        nTrafficClass[41] = 0
+        nTrafficClass[42] = 0
+        nTrafficClass[43] = 0
+        nTrafficClass[44] = 0
+        nTrafficClass[45] = 0
+        nTrafficClass[46] = 0
+        nTrafficClass[47] = 0
+        nTrafficClass[48] = 0
+        nTrafficClass[49] = 0
+        nTrafficClass[50] = 0
+        nTrafficClass[51] = 0
+        nTrafficClass[52] = 0
+        nTrafficClass[53] = 0
+        nTrafficClass[54] = 0
+        nTrafficClass[55] = 0
+        nTrafficClass[56] = 0
+        nTrafficClass[57] = 0
+        nTrafficClass[58] = 0
+        nTrafficClass[59] = 0
+        nTrafficClass[60] = 0
+        nTrafficClass[61] = 0
+        nTrafficClass[62] = 0
+        nTrafficClass[63] = 0
+~ # switch_utility QOS_PcpClassGet
+        nTrafficClass[0] = 0
+        nTrafficClass[1] = 0
+        nTrafficClass[2] = 0
+        nTrafficClass[3] = 0
+        nTrafficClass[4] = 0
+        nTrafficClass[5] = 0
+        nTrafficClass[6] = 0
+        nTrafficClass[7] = 0
+~ # switch_utility PCE_RuleRead 4
+        == Pattern Table:
+        nIndex                               = 4
+        Index is used(Enabled)/ (Disabled)   = 0
+        Port ID used                         = 0
+        Port ID                              = 0
+        DSCP value used                      = 0
+        DSCP value                           = 0
+        PCP value used                       = 0
+        PCP value                            = 0
+        Packet length used                   = 0
+        Packet length                        = 0
+        Packet length Range                  = 0
+        Destination MAC address used         = 0
+        Destination MAC address              = 00:00:00:00:00:00
+        Destination MAC address mask         = 0x0
+        Source MAC address used              = 0
+        Source MAC address                   = 00:00:00:00:00:00
+        Source MAC address mask              = 0x0
+        MSB Application field used           = 0
+        MSB Application field                = 0
+        MSB Application mask/range selection = 0
+        MSB Application mask/range           = 0
+        LSB Application used                 = 0
+        LSB Application field                = 0
+        LSB Application mask/range selection = 0
+        LSB Application mask/range           = 0
+        DIP Selection.                       = 0
+        DIP                                  = 000.000.000.000
+        DIP Nibble Mask                      = 0x0
+        SIP Selection.                       = 0
+        SIP                                  = 000.000.000.000
+        SIP Nibble Mask                      = 0x0
+        Ethertype used                       = 0
+        Ethertype                            = 0
+        Ethertype Mask                       = 0x0
+        IP protocol used                     = 0
+        IP protocol                          = 0
+        IP protocol Mask                     = 0x0
+        PPPoE used                           = 0
+        PPPoE                                = 0
+        VLAN used                            = 0
+        VLAN                                 = 0
+        == Action Table:
+        Action Traffic class Group.          = 0
+        Alternative Traffic class            = 0
+        Action IGMP Snooping Group.          = 0
+        Action Learning Group.               = 0
+        Action Interrupt Group.              = 0
+        Action Cross State Group.            = 0
+        Action Critical Frames Group.        = 0
+        Action Timestamp Group.              = 0
+        Action Forwarding Group.             = 0
+        Target portmap for forwarded packets = 0
+        Action Remarking Group.              = 0
+        PCP remarking enable                 = 0
+        DSCP remarking enable                = 0
+        Class remarking enable               = 0
+        Action Meter Group.                  = 0
+        Meter ID                             = 0
+        Action RMON Group.                   = 0
+        Counter ID                           = 0
+        Action VLAN Group.                   = 0
+        Alternative VLAN Id.                 = 0
+        Action Cross VLAN Group.             = 0
+~ # switch_utility QOS_QueuePortGet
+Invalid number of parameters: is 0, should be 2
+Usage:  switch_utility QOS_QueuePortGet <nPortId> <nTrafficClassId>
+
+        nPortId:             Port ID
+        nTrafficClassId:     Traffic Class index
+
+~ # switch_utility QOS_MeterCfgGet 0
+        The meter shaper Enable or Disable = 0
+        Meter index = 0
+        Committed Burst Size = 0
+        Excess Burst Size = 0
+        Rate[kbit/s] = 0
+~ # switch_utility QOS_MeterPortGet
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+~ # switch_utility QOS_WredCfgGet
+        Drop Probability Profile   = 0
+        WRED Red Threshold Min     = 0x3ff
+        WRED Red Threshold Max     = 0x3ff
+        WRED Yellow Threshold Min  = 0x3ff
+        WRED Yellow Threshold Max  = 0x3ff
+        WRED Green Threshold Min   = 0x3ff
+        WRED Green Threshold Max   = 0x3ff
+~ # switch_utility QOS_WredQueueCfgGet 0
+        QoS queue index = 0x0
+        WRED Red Threshold Min = 0xff
+        WRED Red Threshold Max = 0xff
+        WRED Yellow Threshold Min = 0xff
+        WRED Yellow Threshold Max = 0xff
+        WRED Green Threshold Min = 0xff
+        WRED Green Threshold Max = 0xff
+~ # switch_utility QOS_SchedulerCfgGet 0
+        QoS queue index = 0
+        Scheduler Type  = 0x0
+        Ratio = 0x1800
+~ # switch_utility QOS_StormGet
+        Meter index = 0x0
+        broadcast traffic= 0x0
+        multicast traffic = 0x0
+        unknown unicast traffic= 0x0
+~ # switch_utility QOS_ShaperCfgGet 0
+        Rate shaper index = 0x0
+        Enable or Disable the rate shaperx = 0x0
+        Committed Burst Size = 0
+        Rate [kbit/s]= 0
+~ # switch_utility QOS_ClassPCPGet
+        nPCP[0] = 0
+        nPCP[1] = 0
+        nPCP[2] = 0
+        nPCP[3] = 0
+        nPCP[4] = 0
+        nPCP[5] = 0
+        nPCP[6] = 0
+        nPCP[7] = 0
+        nPCP[8] = 0
+        nPCP[9] = 0
+        nPCP[10] = 0
+        nPCP[11] = 0
+        nPCP[12] = 0
+        nPCP[13] = 0
+        nPCP[14] = 0
+        nPCP[15] = 0
+~ # switch_utility QOS_ClassDSCPGet
+        nDSCP[0] = 0
+        nDSCP[1] = 0
+        nDSCP[2] = 0
+        nDSCP[3] = 0
+        nDSCP[4] = 0
+        nDSCP[5] = 0
+        nDSCP[6] = 0
+        nDSCP[7] = 0
+        nDSCP[8] = 0
+        nDSCP[9] = 0
+        nDSCP[10] = 0
+        nDSCP[11] = 0
+        nDSCP[12] = 0
+        nDSCP[13] = 0
+        nDSCP[14] = 0
+        nDSCP[15] = 0
+~ # switch_utility QOS_PortRemarkingCfgGet 4
+        nPortId = 0x4
+        eDSCP_IngressRemarkingEnable = 0x0
+        bDSCP_EgressRemarkingEnable  = 0x0
+        bPCP_IngressRemarkingEnable  = 0x0
+        bPCP_EgressRemarkingEnable   = 0x1
+~ # switch_utility STP_PortCfgGet 4
+        Port Id                      = 4
+        Spanning Tree Protocol state = 0
+~ # switch_utility STP_BPDU_RULE_Get
+        Filter spanning tree packets      = 0
+        Target port for forwarded packets = 0
+~ # switch_utility 8021X_PortCfgGet 4
+        Port number                  = 4
+        802.1x state of the port     = 0
+~ # switch_utility PHY_Query 0
+        A connected PHY on this port = YES
+~ # switch_utility PHY_Query 1
+        A connected PHY on this port = No
+~ # switch_utility PHY_Query 2
+        A connected PHY on this port = YES
+~ # switch_utility PHY_Query 3
+        A connected PHY on this port = No
+~ # switch_utility PHY_Query 4
+        A connected PHY on this port = YES
+~ # switch_utility PHY_Query 5
+        A connected PHY on this port = YES
+~ # switch_utility PHY_Query 6
+        A connected PHY on this port = YES
+~ # switch_utility VersionGet 0
+        IFX ETHSW SWITCH API for GSWITCH Platform = 1.1.7.2
+~ # switch_utility RMON_ExtendGet 0
+        RMON Counter [0] = 0
+        RMON Counter [1] = 0
+        RMON Counter [2] = 0
+        RMON Counter [3] = 0
+        RMON Counter [4] = 0
+        RMON Counter [5] = 0
+        RMON Counter [6] = 0
+        RMON Counter [7] = 0
+        RMON Counter [8] = 0
+        RMON Counter [9] = 0
+        RMON Counter [10] = 0
+        RMON Counter [11] = 0
+        RMON Counter [12] = 0
+        RMON Counter [13] = 0
+        RMON Counter [14] = 0
+        RMON Counter [15] = 0
+        RMON Counter [16] = 0
+        RMON Counter [17] = 0
+        RMON Counter [18] = 0
+        RMON Counter [19] = 0
+        RMON Counter [20] = 0
+        RMON Counter [21] = 0
+        RMON Counter [22] = 0
+        RMON Counter [23] = 0
+~ # switch_utility 8021X_EAPOL_RuleGet
+        8021.x forwarding port rule       = 0
+        Target port for forwarded packets = 0
+~ # switch_utility CapGet
+        Capability: Number of physical Ethernet ports = 7
+        Capability: Number of virtual Ethernet ports = 6
+        Capability: Size of internal packet memory [in Bytes] = 65536
+        Capability: Number of Segment size per device = 256
+        Capability: Number of priority queues per device = 32
+        Capability: Number of meter instances = 8
+        Capability: Number of rate shaper instances = 16
+        Capability: Number of VLAN groups that can be configured on the switch hardware = 64
+        Capability: Number of Forwarding database IDs [FIDs] = 64
+        Capability: Number of MAC table entries = 2048
+        Capability: Number of multicast level 3 hardware table entries = 64
+        Capability: Number of supported PPPoE sessions = 16</nowiki>
+</WRAP>\\
+
+=== Empty settings ===
+On the OEM firmware, the switch settings can be reset to manufacturer defaults by doing:
+    ~ # switch_utility Reset
+    ~ # switch_utility HW_Init
+These settings would //probably// reflect what the settings are like when OpenWrt is running:
+
+<WRAP bootlog>
+<nowiki>~ # switch_utility Reset
+~ # switch_utility HW_Init
+~ #
+~ # switch_utility CfgGet
+        MAC_Table Age Timer = 3
+        VLAN_Aware          = 0
+        Max Packet Len      = 9600
+        Max Packet Len      = 0
+        Pause MAC Mode      = 0
+        Pause MAC Src       = 00:d0:8f:00:01:00
+~ # switch_utility PortCfgGet 4
+        Port Id                 = 4
+        Port Enable             = 0
+        Unicast Unkown Drop     = 0
+        Multicast Unkown Drop   = 0
+        Reserved Packet Drop    = 0
+        Broadcast Packet Drop   = 0
+        Aging                   = 0
+        Learning Mac Port Lock  = 0
+        Learning Limit          = 255
+        Port Monitor            = 0
+        Flow Control            = 0
+~ # switch_utility PortLinkCfgGet 4
+        Port Id                   = 4
+        Force Port Duplex Mode.   = 0
+        Port Duplex Status.       = 0
+        Force Link Speed.         = 0
+        Port link speed status    = 1000
+        Force Link                = 0
+        Force link status         = 0
+        Selected interface mode   = 0
+        Select if MAC or PHY mode = 1
+        Interface clock Mode      = 0
+~ # switch_utility PortRedirectGet 4
+        Port Id                 = 4
+        Port Redirect Egress    = 0
+        Port Redirect Ingress   = 0
+~ # switch_utility MAC_TableEntryRead
+--------------------------------------------------------------
+   MAC Address       | port |   age    | FID | Static
+--------------------------------------------------------------
+--------------------------------------------------------------
+~ # switch_utility VLAN_IdGet 0
+        VId = 0
+        FId = 0
+~ # switch_utility VLAN_IdGet 1
+ERROR: (VID does not exists) drivers/net/ifxmips_switch_api/ifx_ethsw_flow_api.c:IFX_FLOW_VLAN_IdGet:1711
+IOCTL failed for ioctl command 0xC0084517, returned -1
+~ # switch_utility VLAN_IdGet 2
+ERROR: (VID does not exists) drivers/net/ifxmips_switch_api/ifx_ethsw_flow_api.c:IFX_FLOW_VLAN_IdGet:1711
+IOCTL failed for ioctl command 0xC0084517, returned -1
+~ # switch_utility VLAN_IdGet 3
+ERROR: (VID does not exists) drivers/net/ifxmips_switch_api/ifx_ethsw_flow_api.c:IFX_FLOW_VLAN_IdGet:1711
+sIOCTL failed for ioctl command 0xC0084517, returned -1
+~ # switch_utility VLAN_IdGet 4
+ERROR: (VID does not exists) drivers/net/ifxmips_switch_api/ifx_ethsw_flow_api.c:IFX_FLOW_VLAN_IdGet:1711
+IOCTL failed for ioctl command 0xC0084517, returned -1
+~ # switch_utility VLAN_IdGet 5
+ERROR: (VID does not exists) drivers/net/ifxmips_switch_api/ifx_ethsw_flow_api.c:IFX_FLOW_VLAN_IdGet:1711
+IOCTL failed for ioctl command 0xC0084517, returned -1
+~ # switch_utility VLAN_IdGet 6
+ERROR: (VID does not exists) drivers/net/ifxmips_switch_api/ifx_ethsw_flow_api.c:IFX_FLOW_VLAN_IdGet:1711
+IOCTL failed for ioctl command 0xC0084517, returned -1
+~ # switch_utility VLAN_PortMapTableRead
+--------------------------------------------------------------
+ VLAN ID            | Port               | Tag Member
+--------------------------------------------------------------
+--------------------------------------------------------------
+~ # switch_utility VLAN_PortCfgGet 0
+        VLAN PortId           = 0
+        VLAN PortVId          = 0
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 0
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility VLAN_PortCfgGet 1
+        VLAN PortId           = 1
+        VLAN PortVId          = 0
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 0
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility VLAN_PortCfgGet 2
+        VLAN PortId           = 2
+        VLAN PortVId          = 0
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 0
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility VLAN_PortCfgGet 3
+        VLAN PortId           = 3
+        VLAN PortVId          = 0
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 0
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility VLAN_PortCfgGet 4
+        VLAN PortId           = 4
+        VLAN PortVId          = 0
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 0
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility VLAN_PortCfgGet 5
+        VLAN PortId           = 5
+        VLAN PortVId          = 0
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 0
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility VLAN_PortCfgGet 6
+        VLAN PortId           = 6
+        VLAN PortVId          = 0
+        VLAN Unknown Drop     = 0
+        VLAN ReAssign         = 0
+        VLAN Violation Member = 0
+        VLAN Admit Mode       = 0
+        VLAN TVM              = 0
+~ # switch_utility MulticastSnoopCfgGet
+        MULTICAST SNOOP IGMP_Mode           = 0
+        MULTICAST SNOOP IGMPv3 support      = 0
+        MULTICAST SNOOP CrossVLAN           = 0
+        MULTICAST SNOOP ForwardPort         = 0
+        MULTICAST SNOOP ForwardPortId       = 0
+        MULTICAST SNOOP ClassOfService      = 0
+        MULTICAST SNOOP Robust              = 3
+        MULTICAST SNOOP QueryInterval (HEX) = 0x64
+        MULTICAST Suppression | Aggregation = 2
+        MULTICAST SNOOP FastLeave           = 0
+        MULTICAST SNOOP LearningRouter      = 0
+~ # switch_utility RMON_Get 4
+        Port Id                                       = 4
+        Receive Packet Count                          = 0
+        Receive Unicast Packet Count                  = 0
+        Receive Broadcast Packet Count                = 0
+        Receive Multicast Packet Count                = 0
+        Receive FCS Error Packet Count                = 0
+        Receive Undersize Good Packet Count           = 0
+        Receive Oversize Good Packet Count            = 0
+        Receive Undersize Error Packet Count          = 0
+        Receive Good Pause Packet Count               = 0
+        Receive Oversize Error Packet Count           = 0
+        Receive Align Error Packet Count              = 0
+        Filtered Packet Count                         = 0
+        Receive Size 64 Packet Count                  = 0
+        Receive Size 65-127 Packet Countt             = 0
+        Receive Size 128-255 Packet Count             = 0
+        Receive Size 256-511 Packet Count             = 0
+        Receive Size 512-1023 Packet Count            = 0
+        Receive Size 1024-1522(or more)Packet Count   = 0
+        Receive Dropped Packet Count                  = 0
+        Transmit Packet Count                         = 0
+        Transmit Unicast Packet Count                 = 0
+        Transmit Broadcast Packet Count               = 0
+        Transmit Multicast Packet Count               = 0
+        Transmit Single Collision Count               = 0
+        Transmit Multiple Collision Count             = 0
+        Transmit Late Collision Count                 = 0
+        Transmit Excessive Collision Count            = 0
+        Transmit Collision Count                      = 0
+        Transmit Pause Packet Count                   = 0
+        Transmit Size 64 Packet Count                 = 0
+        Transmit Size 65-127 Packet Count             = 0
+        Transmit Size 128-255 Packet Count            = 0
+        Transmit Size 256-511 Packet Count            = 0
+        Transmit Size 512-1023 Packet Count           = 0
+        Transmit Size 1024-1522(or more)Packet Count  = 0
+        Transmit Drop Packet Count                    = 0
+        Egress Queue Discard (ACM) Frame Count        = 0
+        Receive Good Bytes Count                      = 00000000
+        Receive Bad Byte Count                        = 00000000
+        Transmit Good Byte Count                      = 00000000
+~ # switch_utility MDIO_CfgGet
+        MDIO Access Enable = 1
+        Clock Speed= 9
+~ # switch_utility MDIO_DataRead 0
+Invalid number of parameters: is 1, should be 2
+Usage:  switch_utility MDIO_DataRead <PHY addr> <Register inside PHY>
+
+        phy addr:           0..14
+        register:           0..24
+
+~ # switch_utility PortRGMII_ClkCfgGet 4
+nDelayRx = 0
+nDelayTx = 0
+        Port Id         = 4
+        Delay RX        = 0
+        Delay TX        = 0
+~ # switch_utility RegisterGet
+Invalid number of parameters: is 0, should be 1
+Usage:  switch_utility RegisterGet <nRegAddr>
+
+        nRegAddr:
+
+~ # switch_utility CPU_PortExtendCfgGet
+        Add Ethernet layer-2 header = 0
+        Remove Ethernet layer-2 header = 0
+        Header data
+          Source MAC     : 00:00:00:00:00:00
+          Destination MAC: 00:00:00:00:00:00
+          Packet EtherType Field = 0
+          VLAN Tag Priority Field = 0
+          VLAN Tag CFI = 0
+          VLAN Tag VLAN ID = 0
+        PAUSE frames coming = 1
+        Remove the CRC = 0
+        Port map of WAN Ethernet switch ports = 0
+~ # switch_utility CPU_PortCfgGet 4
+        Port Id                                 = 4
+        Enable FCS check                        = 0
+        Enable FCS Enable FCS generation        = 1
+        Special tag enable in egress direction  = 0
+        Special tag enable in ingress direction = 0
+        CPU port validity                       = 0
+~ # switch_utility MonitorPortGet 4
+        Port Id                                 = 4
+        This port is used as monitor port.      = 0
+~ # switch_utility PHY_AddrGet 0
+        Device address on the MDIO interface = 0
+~ # switch_utility PHY_AddrGet 1
+        Device address on the MDIO interface = 1
+~ # switch_utility PHY_AddrGet 2
+        Device address on the MDIO interface = 17
+~ # switch_utility PHY_AddrGet 3
+        Device address on the MDIO interface = 18
+~ # switch_utility PHY_AddrGet 4
+        Device address on the MDIO interface = 19
+~ # switch_utility PHY_AddrGet 5
+        Device address on the MDIO interface = 5
+~ # switch_utility PHY_AddrGet 6
+        Device address on the MDIO interface = 0
+~ # switch_utility QOS_PortCfgGet 4
+        Port Id                  = 4
+        Traffic Class assignment = 0
+        Traffic Class            = 0
+~ # switch_utility QOS_DscpClassGet
+        nTrafficClass[0] = 0
+        nTrafficClass[1] = 0
+        nTrafficClass[2] = 0
+        nTrafficClass[3] = 0
+        nTrafficClass[4] = 0
+        nTrafficClass[5] = 0
+        nTrafficClass[6] = 0
+        nTrafficClass[7] = 0
+        nTrafficClass[8] = 0
+        nTrafficClass[9] = 0
+        nTrafficClass[10] = 0
+        nTrafficClass[11] = 0
+        nTrafficClass[12] = 0
+        nTrafficClass[13] = 0
+        nTrafficClass[14] = 0
+        nTrafficClass[15] = 0
+        nTrafficClass[16] = 0
+        nTrafficClass[17] = 0
+        nTrafficClass[18] = 0
+        nTrafficClass[19] = 0
+        nTrafficClass[20] = 0
+        nTrafficClass[21] = 0
+        nTrafficClass[22] = 0
+        nTrafficClass[23] = 0
+        nTrafficClass[24] = 0
+        nTrafficClass[25] = 0
+        nTrafficClass[26] = 0
+        nTrafficClass[27] = 0
+        nTrafficClass[28] = 0
+        nTrafficClass[29] = 0
+        nTrafficClass[30] = 0
+        nTrafficClass[31] = 0
+        nTrafficClass[32] = 0
+        nTrafficClass[33] = 0
+        nTrafficClass[34] = 0
+        nTrafficClass[35] = 0
+        nTrafficClass[36] = 0
+        nTrafficClass[37] = 0
+        nTrafficClass[38] = 0
+        nTrafficClass[39] = 0
+        nTrafficClass[40] = 0
+        nTrafficClass[41] = 0
+        nTrafficClass[42] = 0
+        nTrafficClass[43] = 0
+        nTrafficClass[44] = 0
+        nTrafficClass[45] = 0
+        nTrafficClass[46] = 0
+        nTrafficClass[47] = 0
+        nTrafficClass[48] = 0
+        nTrafficClass[49] = 0
+        nTrafficClass[50] = 0
+        nTrafficClass[51] = 0
+        nTrafficClass[52] = 0
+        nTrafficClass[53] = 0
+        nTrafficClass[54] = 0
+        nTrafficClass[55] = 0
+        nTrafficClass[56] = 0
+        nTrafficClass[57] = 0
+        nTrafficClass[58] = 0
+        nTrafficClass[59] = 0
+        nTrafficClass[60] = 0
+        nTrafficClass[61] = 0
+        nTrafficClass[62] = 0
+        nTrafficClass[63] = 0
+~ # switch_utility QOS_PcpClassGet
+        nTrafficClass[0] = 0
+        nTrafficClass[1] = 0
+        nTrafficClass[2] = 0
+        nTrafficClass[3] = 0
+        nTrafficClass[4] = 0
+        nTrafficClass[5] = 0
+        nTrafficClass[6] = 0
+        nTrafficClass[7] = 0
+~ # switch_utility PCE_RuleRead 4
+        == Pattern Table:
+        nIndex                               = 4
+        Index is used(Enabled)/ (Disabled)   = 0
+        Port ID used                         = 0
+        Port ID                              = 0
+        DSCP value used                      = 0
+        DSCP value                           = 0
+        PCP value used                       = 0
+        PCP value                            = 0
+        Packet length used                   = 0
+        Packet length                        = 0
+        Packet length Range                  = 0
+        Destination MAC address used         = 0
+        Destination MAC address              = 00:00:00:00:00:00
+        Destination MAC address mask         = 0x0
+        Source MAC address used              = 0
+        Source MAC address                   = 00:00:00:00:00:00
+        Source MAC address mask              = 0x0
+        MSB Application field used           = 0
+        MSB Application field                = 0
+        MSB Application mask/range selection = 0
+        MSB Application mask/range           = 0
+        LSB Application used                 = 0
+        LSB Application field                = 0
+        LSB Application mask/range selection = 0
+        LSB Application mask/range           = 0
+        DIP Selection.                       = 0
+        DIP                                  = 000.000.000.000
+        DIP Nibble Mask                      = 0x0
+        SIP Selection.                       = 0
+        SIP                                  = 000.000.000.000
+        SIP Nibble Mask                      = 0x0
+        Ethertype used                       = 0
+        Ethertype                            = 0
+        Ethertype Mask                       = 0x0
+        IP protocol used                     = 0
+        IP protocol                          = 0
+        IP protocol Mask                     = 0x0
+        PPPoE used                           = 0
+        PPPoE                                = 0
+        VLAN used                            = 0
+        VLAN                                 = 0
+        == Action Table:
+        Action Traffic class Group.          = 0
+        Alternative Traffic class            = 0
+        Action IGMP Snooping Group.          = 0
+        Action Learning Group.               = 0
+        Action Interrupt Group.              = 0
+        Action Cross State Group.            = 0
+        Action Critical Frames Group.        = 0
+        Action Timestamp Group.              = 0
+        Action Forwarding Group.             = 0
+        Target portmap for forwarded packets = 0
+        Action Remarking Group.              = 0
+        PCP remarking enable                 = 0
+        DSCP remarking enable                = 0
+        Class remarking enable               = 0
+        Action Meter Group.                  = 0
+        Meter ID                             = 0
+        Action RMON Group.                   = 0
+        Counter ID                           = 0
+        Action VLAN Group.                   = 0
+        Alternative VLAN Id.                 = 0
+        Action Cross VLAN Group.             = 0
+~ # switch_utility QOS_QueuePortGet
+Invalid number of parameters: is 0, should be 2
+Usage:  switch_utility QOS_QueuePortGet <nPortId> <nTrafficClassId>
+
+        nPortId:             Port ID
+        nTrafficClassId:     Traffic Class index
+
+~ # switch_utility QOS_MeterCfgGet 0
+        The meter shaper Enable or Disable = 0
+        Meter index = 0
+        Committed Burst Size = 0
+        Excess Burst Size = 0
+        Rate[kbit/s] = 0
+~ # switch_utility QOS_MeterPortGet
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+ | Meter Index =  0 | Direction =  0 | Ingress PortID =  0 | Egress PortID =  0
+~ # switch_utility QOS_WredCfgGet
+        Drop Probability Profile   = 0
+        WRED Red Threshold Min     = 0x3ff
+        WRED Red Threshold Max     = 0x3ff
+        WRED Yellow Threshold Min  = 0x3ff
+        WRED Yellow Threshold Max  = 0x3ff
+        WRED Green Threshold Min   = 0x3ff
+        WRED Green Threshold Max   = 0x3ff
+~ # switch_utility QOS_WredQueueCfgGet 0
+        QoS queue index = 0x0
+        WRED Red Threshold Min = 0x50
+        WRED Red Threshold Max = 0x50
+        WRED Yellow Threshold Min = 0x50
+        WRED Yellow Threshold Max = 0x50
+        WRED Green Threshold Min = 0x50
+        WRED Green Threshold Max = 0x50
+~ # switch_utility QOS_SchedulerCfgGet 0
+        QoS queue index = 0
+        Scheduler Type  = 0x0
+        Ratio = 0x1800
+~ # switch_utility QOS_StormGet
+        Meter index = 0x0
+        broadcast traffic= 0x0
+        multicast traffic = 0x0
+        unknown unicast traffic= 0x0
+~ # switch_utility QOS_ShaperCfgGet 0
+        Rate shaper index = 0x0
+        Enable or Disable the rate shaperx = 0x0
+        Committed Burst Size = 0
+        Rate [kbit/s]= 0
+~ # switch_utility QOS_ClassPCPGet
+        nPCP[0] = 0
+        nPCP[1] = 0
+        nPCP[2] = 0
+        nPCP[3] = 0
+        nPCP[4] = 0
+        nPCP[5] = 0
+        nPCP[6] = 0
+        nPCP[7] = 0
+        nPCP[8] = 0
+        nPCP[9] = 0
+        nPCP[10] = 0
+        nPCP[11] = 0
+        nPCP[12] = 0
+        nPCP[13] = 0
+        nPCP[14] = 0
+        nPCP[15] = 0
+~ # switch_utility QOS_ClassDSCPGet
+        nDSCP[0] = 0
+        nDSCP[1] = 0
+        nDSCP[2] = 0
+        nDSCP[3] = 0
+        nDSCP[4] = 0
+        nDSCP[5] = 0
+        nDSCP[6] = 0
+        nDSCP[7] = 0
+        nDSCP[8] = 0
+        nDSCP[9] = 0
+        nDSCP[10] = 0
+        nDSCP[11] = 0
+        nDSCP[12] = 0
+        nDSCP[13] = 0
+        nDSCP[14] = 0
+        nDSCP[15] = 0
+~ # switch_utility QOS_PortRemarkingCfgGet 4
+        nPortId = 0x4
+        eDSCP_IngressRemarkingEnable = 0x0
+        bDSCP_EgressRemarkingEnable  = 0x0
+        bPCP_IngressRemarkingEnable  = 0x0
+        bPCP_EgressRemarkingEnable   = 0x1
+~ # switch_utility STP_PortCfgGet 4
+        Port Id                      = 4
+        Spanning Tree Protocol state = 0
+~ # switch_utility STP_BPDU_RULE_Get
+        Filter spanning tree packets      = 0
+        Target port for forwarded packets = 0
+~ # switch_utility 8021X_PortCfgGet 4
+        Port number                  = 4
+        802.1x state of the port     = 0
+~ # switch_utility PHY_Query 0
+        A connected PHY on this port = YES
+~ # switch_utility PHY_Query 1
+        A connected PHY on this port = No
+~ # switch_utility PHY_Query 2
+        A connected PHY on this port = YES
+~ # switch_utility PHY_Query 3
+        A connected PHY on this port = No
+~ # switch_utility PHY_Query 4
+        A connected PHY on this port = YES
+~ # switch_utility PHY_Query 5
+        A connected PHY on this port = YES
+~ # switch_utility PHY_Query 6
+        A connected PHY on this port = YES
+~ # switch_utility VersionGet 0
+        IFX ETHSW SWITCH API for GSWITCH Platform = 1.1.7.2
+~ # switch_utility RMON_ExtendGet 0
+        RMON Counter [0] = 0
+        RMON Counter [1] = 0
+        RMON Counter [2] = 0
+        RMON Counter [3] = 0
+        RMON Counter [4] = 0
+        RMON Counter [5] = 0
+        RMON Counter [6] = 0
+        RMON Counter [7] = 0
+        RMON Counter [8] = 0
+        RMON Counter [9] = 0
+        RMON Counter [10] = 0
+        RMON Counter [11] = 0
+        RMON Counter [12] = 0
+        RMON Counter [13] = 0
+        RMON Counter [14] = 0
+        RMON Counter [15] = 0
+        RMON Counter [16] = 0
+        RMON Counter [17] = 0
+        RMON Counter [18] = 0
+        RMON Counter [19] = 0
+        RMON Counter [20] = 0
+        RMON Counter [21] = 0
+        RMON Counter [22] = 0
+        RMON Counter [23] = 0
+~ # switch_utility 8021X_EAPOL_RuleGet
+        8021.x forwarding port rule       = 0
+        Target port for forwarded packets = 6
+~ # switch_utility CapGet
+        Capability: Number of physical Ethernet ports = 7
+        Capability: Number of virtual Ethernet ports = 6
+        Capability: Size of internal packet memory [in Bytes] = 65536
+        Capability: Number of Segment size per device = 256
+        Capability: Number of priority queues per device = 32
+        Capability: Number of meter instances = 8
+        Capability: Number of rate shaper instances = 16
+        Capability: Number of VLAN groups that can be configured on the switch hardware = 64
+        Capability: Number of Forwarding database IDs [FIDs] = 64
+        Capability: Number of MAC table entries = 2048
+        Capability: Number of multicast level 3 hardware table entries = 64
+        Capability: Number of supported PPPoE sessions = 16</nowiki>
+</WRAP>\\
+
+==== OEM Switch scripts ====
+=== dsl_wan_setting.sh ===
+<WRAP bootlog>
+<nowiki>#!/bin/sh
+switch_utility CfgSet 3 1 1536 0 00:00:00:00:00:00 
+
+#==============================================MAC SPOOFING 
+
+#====================================================== 
+CPU_PORT="6" 
+DSL_VPORT="11" 
+DSL_XOAVPORT="10"
+
+COMMON_VID="50" 
+WAN_VID="40" 
+LAN_VID="30" 
+
+LAN_PORT_VID1="0x5"
+LAN_PORT_VID2="0x4"
+LAN_PORT_VID3="0x3"
+LAN_PORT_VID4="0x2"
+
+LAN_PORT_PVID1="0x805"
+LAN_PORT_PVID2="0x804"
+LAN_PORT_PVID3="0x803"
+LAN_PORT_PVID4="0x802"
+
+LAN_PORT1="5"
+LAN_PORT2="0"
+LAN_PORT3="2"
+LAN_PORT4="4"
+LAN_PORT7="7"
+LAN_PORT8="8"
+LAN_PORT9="9"
+
+ETH_LAN_FID="2"
+
+#========= Default MAC port lock is Disable on all port======== 
+
+#================Create Vlan ID for Common, WAN, LAN group================================
+switch_utility VLAN_IdCreate $COMMON_VID 0 
+switch_utility VLAN_IdCreate $WAN_VID 1
+switch_utility VLAN_IdCreate $LAN_VID 0 
+
+for port_vid in $LAN_PORT_VID1 $LAN_PORT_VID2 $LAN_PORT_VID3 $LAN_PORT_VID4;do 
+		switch_utility VLAN_IdCreate $port_vid $ETH_LAN_FID
+		switch_utility VLAN_PortMemberAdd $port_vid $CPU_PORT 0
+done
+
+switch_utility VLAN_PortMemberAdd $LAN_PORT_VID1 $LAN_PORT1 0
+switch_utility VLAN_PortMemberAdd $LAN_PORT_VID2 $LAN_PORT2 0
+switch_utility VLAN_PortMemberAdd $LAN_PORT_VID3 $LAN_PORT3 0
+switch_utility VLAN_PortMemberAdd $LAN_PORT_VID4 $LAN_PORT4 0
+
+for port_vid in $LAN_PORT_PVID1 $LAN_PORT_PVID2 $LAN_PORT_PVID3 $LAN_PORT_PVID4;do 
+		switch_utility VLAN_IdCreate $port_vid $ETH_LAN_FID
+		switch_utility VLAN_PortMemberAdd $port_vid $LAN_PORT1 0
+		switch_utility VLAN_PortMemberAdd $port_vid $LAN_PORT2 0
+		switch_utility VLAN_PortMemberAdd $port_vid $LAN_PORT3 0
+		switch_utility VLAN_PortMemberAdd $port_vid $LAN_PORT4 0
+		switch_utility VLAN_PortMemberAdd $port_vid $CPU_PORT 1
+done
+      
+#===============Turn on TVM on ALL VPORT===================================
+for argument in $LAN_PORT1 $LAN_PORT2 $LAN_PORT3 $LAN_PORT4 $LAN_PORT7 $LAN_PORT8 $LAN_PORT9 ;do 
+		switch_utility VLAN_PortCfgSet $argument $LAN_VID 0 0 3 0 1 
+done 
+
+switch_utility VLAN_PortCfgSet $DSL_VPORT $WAN_VID 0 0 3 0 1 
+switch_utility VLAN_PortCfgSet $DSL_XOAVPORT $WAN_VID 0 0 3 0 1 
+switch_utility VLAN_PortCfgSet $CPU_PORT $COMMON_VID 0 0 3 0 1 
+   								       								    
+##===============All Ports need add to VlanID 50 group ==============================
+for argument in $LAN_PORT1 $LAN_PORT2 $LAN_PORT3 $LAN_PORT4 $LAN_PORT7 $LAN_PORT8 $LAN_PORT9 $CPU_PORT $DSL_VPORT $DSL_XOAVPORT;do 
+		switch_utility VLAN_PortMemberAdd $COMMON_VID $argument 0 
+done 
+   																		                   
+for argument in $CPU_PORT $DSL_VPORT $DSL_XOAVPORT;do 
+		switch_utility VLAN_PortMemberAdd $WAN_VID $argument 0 
+done 
+ 
+for argument in $CPU_PORT $LAN_PORT1 $LAN_PORT2 $LAN_PORT3 $LAN_PORT4 $LAN_PORT7 $LAN_PORT8 $LAN_PORT9;do 
+		switch_utility VLAN_PortMemberAdd $LAN_VID $argument 0 
+done
+
+#======================Add mac for pppoa===============================
+switch_utility MAC_TableEntryAdd 1 $CPU_PORT 0 1 00:00:00:00:00:00
+
+#======================Add mac for ipoa================================
+switch_utility MAC_TableEntryAdd 1 $CPU_PORT 0 1 00:00:00:00:00:20
+
+#======================enable flow control=============================
+switch_utility MDIO_DataWrite 0x0 0x4 0x5e1
+switch_utility MDIO_DataWrite 0x5 0x4 0x5e1
+switch_utility MDIO_DataWrite 0x11 0x4 0x5e1
+switch_utility MDIO_DataWrite 0x13 0x4 0x5e1
+
+switch_utility QOS_WredQueueCfgSet 0 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 1 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 2 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 3 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 4 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 5 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 6 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 7 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 8 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 9 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 10 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 11 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 12 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 13 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 14 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 15 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 16 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 17 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 18 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 19 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 20 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 21 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 22 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 23 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 24 0x50 0x50 0x50 0x50 0x50 0x50
+switch_utility QOS_WredQueueCfgSet 25 0x50 0x50 0x50 0x50 0x50 0x50
+switch_utility QOS_WredQueueCfgSet 26 0x50 0x50 0x50 0x50 0x50 0x50
+switch_utility QOS_WredQueueCfgSet 27 0x50 0x50 0x50 0x50 0x50 0x50
+switch_utility QOS_WredQueueCfgSet 28 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 29 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 30 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 31 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+
+switch_utility RegisterSet 0x4a 0x118
+
+#==============================for traffic=============================
+switch_utility RegisterSet 0x904 0x0B
+switch_utility RegisterSet 0x910 0x0B
+switch_utility RegisterSet 0x91c 0x0B
+switch_utility RegisterSet 0x928 0x0B
+switch_utility RegisterSet 0x934 0x0B
+switch_utility RegisterSet 0x940 0x0B</nowiki>
+</WRAP>\\
+
+=== eth_wan_setting.sh ===
+<WRAP bootlog>
+<nowiki>#!/bin/sh
+
+switch_utility RegisterSet 0xCCD 0x10
+
+switch_utility CfgSet 3 1 1536 0 00:00:00:00:00:00 
+
+CPU_PORT="6" 
+WAN_PORT="4"
+
+COMMON_VID="50" 
+WAN_VID="40" 
+LAN_VID="30" 
+
+LAN_PORT_VID1="0x5"
+LAN_PORT_VID2="0x4"
+LAN_PORT_VID3="0x3"
+
+LAN_PORT_PVID1="0x805"
+LAN_PORT_PVID2="0x804"
+LAN_PORT_PVID3="0x803"
+
+LAN_PORT1="5"
+LAN_PORT2="0"
+LAN_PORT3="2"
+LAN_PORT7="7"
+LAN_PORT8="8"
+LAN_PORT9="9"
+
+ETH_LAN_FID="2"
+
+#================Create Vlan ID for Common, WAN, LAN group================================
+switch_utility VLAN_IdCreate $COMMON_VID 0 
+switch_utility VLAN_IdCreate $WAN_VID 1
+switch_utility VLAN_IdCreate $LAN_VID 0 
+
+for port_vid in $LAN_PORT_VID1 $LAN_PORT_VID2 $LAN_PORT_VID3;do 
+		switch_utility VLAN_IdCreate $port_vid $ETH_LAN_FID
+		switch_utility VLAN_PortMemberAdd $port_vid $CPU_PORT 0
+done
+
+switch_utility VLAN_PortMemberAdd $LAN_PORT_VID1 $LAN_PORT1 0
+switch_utility VLAN_PortMemberAdd $LAN_PORT_VID2 $LAN_PORT2 0
+switch_utility VLAN_PortMemberAdd $LAN_PORT_VID3 $LAN_PORT3 0
+
+for port_vid in $LAN_PORT_PVID1 $LAN_PORT_PVID2 $LAN_PORT_PVID3;do 
+		switch_utility VLAN_IdCreate $port_vid $ETH_LAN_FID
+		switch_utility VLAN_PortMemberAdd $port_vid $LAN_PORT1 0
+		switch_utility VLAN_PortMemberAdd $port_vid $LAN_PORT2 0
+		switch_utility VLAN_PortMemberAdd $port_vid $LAN_PORT3 0
+		switch_utility VLAN_PortMemberAdd $port_vid $CPU_PORT 1
+done
+
+#===============Turn on TVM on ALL VPORT===================================
+for argument in $LAN_PORT1 $LAN_PORT2 $LAN_PORT3 $LAN_PORT7 $LAN_PORT8 $LAN_PORT9;do 
+		switch_utility VLAN_PortCfgSet $argument $LAN_VID 0 0 3 0 1 
+done 
+
+switch_utility VLAN_PortCfgSet $WAN_PORT $WAN_VID 0 0 3 0 1 
+switch_utility VLAN_PortCfgSet $CPU_PORT $COMMON_VID 0 0 3 0 1 
+
+##===============All Ports need add to VlanID 50 group ==============================
+for argument in $LAN_PORT1 $LAN_PORT2 $LAN_PORT3 $LAN_PORT7 $LAN_PORT8 $LAN_PORT9 $CPU_PORT $WAN_PORT;do 
+		switch_utility VLAN_PortMemberAdd $COMMON_VID $argument 0 
+done
+
+for argument in $CPU_PORT $WAN_PORT;do 
+		switch_utility VLAN_PortMemberAdd $WAN_VID $argument 0 
+done
+
+for argument in $CPU_PORT $LAN_PORT1 $LAN_PORT2 $LAN_PORT3 $LAN_PORT7 $LAN_PORT8 $LAN_PORT9;do 
+		switch_utility VLAN_PortMemberAdd $LAN_VID $argument 0 
+done
+
+#======================enable flow control=============================
+switch_utility MDIO_DataWrite 0x0 0x4 0x5e1
+switch_utility MDIO_DataWrite 0x5 0x4 0x5e1
+switch_utility MDIO_DataWrite 0x11 0x4 0x5e1
+switch_utility MDIO_DataWrite 0x13 0x4 0x5e1
+
+switch_utility QOS_WredQueueCfgSet 0 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 1 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 2 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 3 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 4 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 5 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 6 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 7 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 8 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 9 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 10 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 11 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 12 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 13 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 14 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 15 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 16 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 17 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 18 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 19 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 20 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 21 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 22 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 23 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 24 0x50 0x50 0x50 0x50 0x50 0x50
+switch_utility QOS_WredQueueCfgSet 25 0x50 0x50 0x50 0x50 0x50 0x50
+switch_utility QOS_WredQueueCfgSet 26 0x50 0x50 0x50 0x50 0x50 0x50
+switch_utility QOS_WredQueueCfgSet 27 0x50 0x50 0x50 0x50 0x50 0x50
+switch_utility QOS_WredQueueCfgSet 28 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 29 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 30 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+switch_utility QOS_WredQueueCfgSet 31 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff 0x3ff
+
+switch_utility RegisterSet 0x4a 0x118
+
+#==============================for traffic=============================
+switch_utility RegisterSet 0x904 0x0B
+switch_utility RegisterSet 0x910 0x0B
+switch_utility RegisterSet 0x91c 0x0B
+switch_utility RegisterSet 0x928 0x0B
+switch_utility RegisterSet 0x934 0x0B
+switch_utility RegisterSet 0x940 0x0B</nowiki>
+</WRAP>\\
+
+===== Debug Logs =====
+==== System Info: ==== 
+OpenWrt 18.06.5 r7897-9d401013fc
+<WRAP bootlog>
+
+<nowiki>root@OpenWrt:/# cat /proc/cpuinfo
+
+system type		: xRX200 rev 1.2
+machine			: TP-LINK TD-W8970
+processor		: 0
+cpu model		: MIPS 34Kc V5.6
+BogoMIPS		: 332.54
+wait instruction	: yes
+microsecond timers	: yes
+tlb_entries		: 16
+extra interrupt vector	: yes
+hardware watchpoint	: yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+isa			: mips1 mips2 mips32r1 mips32r2
+ASEs implemented	: mips16 dsp mt
+shadow register sets	: 1
+kscratch registers	: 0
+package			: 0
+core			: 0
+VPE			: 0
+VCED exceptions		: not available
+VCEI exceptions		: not available
+
+processor		: 1
+cpu model		: MIPS 34Kc V5.6
+BogoMIPS		: 333.82
+wait instruction	: yes
+microsecond timers	: yes
+tlb_entries		: 16
+extra interrupt vector	: yes
+hardware watchpoint	: yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+isa			: mips1 mips2 mips32r1 mips32r2
+ASEs implemented	: mips16 dsp mt
+shadow register sets	: 1
+kscratch registers	: 0
+package			: 0
+core			: 0
+VPE			: 0
+VCED exceptions		: not available
+VCEI exceptions		: not available
+
+root@OpenWrt:/# cat /proc/mtd
+
+dev:    size   erasesize  name
+mtd0: 00020000 00010000 "u-boot"
+mtd1: 007a0000 00010000 "firmware"
+mtd2: 001ad6ee 00010000 "kernel"
+mtd3: 005f2910 00010000 "rootfs"
+mtd4: 002d0000 00010000 "rootfs_data"
+mtd5: 00010000 00010000 "config"
+mtd6: 00030000 00010000 "boardconfig"
+
+root@OpenWrt:/#  cat /proc/partitions
+
+major minor  #blocks  name
+  31        0        128 mtdblock0
+  31        1       7808 mtdblock1
+  31        2       1717 mtdblock2
+  31        3       6090 mtdblock3
+  31        4       2880 mtdblock4
+  31        5         64 mtdblock5
+  31        6        192 mtdblock6
+
+root@OpenWrt:/# cat /proc/meminfo
+
+MemTotal:          59100 kB
+MemFree:           30068 kB
+MemAvailable:      24756 kB
+Buffers:            2984 kB
+Cached:             9768 kB
+SwapCached:            0 kB
+Active:             9412 kB
+Inactive:           4436 kB
+Active(anon):       1748 kB
+Inactive(anon):       88 kB
+Active(file):       7664 kB
+Inactive(file):     4348 kB
+Unevictable:           0 kB
+Mlocked:               0 kB
+SwapTotal:             0 kB
+SwapFree:              0 kB
+Dirty:                 0 kB
+Writeback:             0 kB
+AnonPages:          1128 kB
+Mapped:             1732 kB
+Shmem:               740 kB
+Slab:               8152 kB
+SReclaimable:       1936 kB
+SUnreclaim:         6216 kB
+KernelStack:         480 kB
+PageTables:          184 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:       29548 kB
+Committed_AS:       4040 kB
+VmallocTotal:    1048372 kB
+VmallocUsed:           0 kB
+VmallocChunk:          0 kB
+
+root@OpenWrt:/# cat /proc/version
+
+Linux version 4.9.198 (buildbot@91d4e1610b27) (gcc version 7.3.0 (OpenWrt GCC 7.3.0 r7897-9d401013fc) ) #0 SMP Tue Nov 5 14:12:18 2019
+
+root@OpenWrt:/# lsmod
+
+ath                    17616  3 ath9k,ath9k_common,ath9k_hw
+ath9k                  90928  1 
+ath9k_common           10880  1 ath9k
+ath9k_hw              332384  2 ath9k,ath9k_common
+atm                    34592  2 pppoatm,br2684
+br2684                  6640  0 
+cfg80211              203424  4 ath9k,ath9k_common,ath,mac80211
+compat                  4992  4 ath9k,ath9k_common,mac80211,cfg80211
+crc_ccitt                992  1 ppp_async
+drv_dsl_cpe_api       138256  0 
+drv_ifxos              11680  2 drv_dsl_cpe_api,drv_mei_cpe
+drv_mei_cpe           134848  1 drv_dsl_cpe_api
+dwc2                   71200  0 
+gpio_button_hotplug     6208  0 
+ip_tables              10544  4 iptable_nat,iptable_mangle,iptable_filter
+ip6_tables             10272 24 ip6table_mangle,ip6table_filter
+ip6t_REJECT              928  2 
+ip6table_filter          640  1 
+ip6table_mangle         1120  1 
+ipt_MASQUERADE           640  1 
+ipt_REJECT               896  2 
+iptable_filter           704  1 
+iptable_mangle           896  1 
+iptable_nat              736  1 
+ledtrig_usbport         2608  0 
+ltq_deu_vr9            28192  3 
+mac80211              403712  1 ath9k
+nf_conntrack           62000  9 nf_conntrack_ipv6,xt_state,xt_conntrack,xt_CT,nf_nat_masquerade_ipv4,nf_conntrack_ipv4,nf_nat_ipv4,nf_nat,nf_conntrack_rtcache
+nf_conntrack_ipv4       5408 10 
+nf_conntrack_ipv6       6016  5 
+nf_conntrack_rtcache    2752  0 
+nf_defrag_ipv4           832  1 nf_conntrack_ipv4
+nf_defrag_ipv6          4592  1 nf_conntrack_ipv6
+nf_log_common           2368  2 nf_log_ipv4,nf_log_ipv6
+nf_log_ipv4             3136  0 
+nf_log_ipv6             3296  0 
+nf_nat                  9552  4 xt_nat,nf_nat_redirect,nf_nat_masquerade_ipv4,nf_nat_ipv4
+nf_nat_ipv4             3728  1 iptable_nat
+nf_nat_masquerade_ipv4    1392  1 ipt_MASQUERADE
+nf_nat_redirect          928  1 xt_REDIRECT
+nf_reject_ipv4          2080  1 ipt_REJECT
+nf_reject_ipv6          2464  1 ip6t_REJECT
+ppp_async               7024  0 
+ppp_generic            22160  4 pppoe,pppox,ppp_async,pppoatm
+pppoatm                 3488  0 
+pppoe                   8896  0 
+pppox                   1200  1 pppoe
+slhc                    4096  1 ppp_generic
+x_tables               11696 23 ipt_REJECT,ipt_MASQUERADE,xt_time,xt_tcpudp,xt_state,xt_nat,xt_multiport,xt_mark,xt_mac,xt_limit,xt_conntrack,xt_comment,xt_TCPMSS,xt_REDIRECT,xt_LOG,xt_CT,iptable_mangle,iptable_filter,ip_tables,ip6t_REJECT,ip6table_mangle,ip6table_filter,ip6_tables
+xt_CT                   2944  0 
+xt_LOG                   736  0 
+xt_REDIRECT              640  0 
+xt_TCPMSS               2656  2 
+xt_comment               480125 
+xt_conntrack            2144 14 
+xt_limit                1104 20 
+xt_mac                   608  0 
+xt_mark                  640  0 
+xt_multiport            1184  0 
+xt_nat                  1120  0 
+xt_state                 672  0 
+xt_tcpudp               1696 10 
+xt_time                 1600  0
+
+root@OpenWrt:/# ls /bin/ /sbin/ /usr/bin/ /usr/sbin/ /proc/
+
+/bin/:
+ash              date             grep             mkdir            passwd           sh               uclient-fetch
+board_detect     dd               gunzip           mknod            pidof            sleep            umount
+busybox          df               gzip             mktemp           ping             sync             uname
+cat              dmesg            ipcalc.sh        mount            ping6            tar              vi
+chgrp            echo             kill             mv               ps               touch            wget
+chmod            egrep            ln               netmsg           pwd              traceroute       zcat
+chown            false            lock             netstat          rm               traceroute6
+config_generate  fgrep            login            nice             rmdir            true
+cp               fsync            ls               opkg             sed              ubus
+
+/proc/:
+1              14             246            377            8              fs             net
+10             1505           247            378            9              interrupts     partitions
+1057           1542           270            483            919            iomem          self
+1094           16             271            484            938            ioports        softirqs
+11             162            275            4869           bus            irq            stat
+1171           1670           280            4870           cmdline        key-users      swaps
+12             1702           285            4909           cpuinfo        keys           sys
+13             1703           290            4910           crypto         kmsg           sysrq-trigger
+131            1704           295            5              device-tree    loadavg        sysvipc
+132            175            3              587            devices        meminfo        thread-self
+134            1767           300            6              diskstats      misc           uptime
+135            186            305            611            driver         modules        version
+136            187            3566           7              eth0.1         mounts         vmstat
+138            2              366            79             filesystems    mtd
+
+/sbin/:
+askfirst           ifconfig           kmodloader         mount_root         route              udevtrigger
+devstatus          ifdown             led.sh             mtd                rpcd               udhcpc
+dsl_cpe_pipe.sh    ifstatus           logd               netifd             start-stop-daemon  upgraded
+dsl_notify.sh      ifup               logread            pivot_root         swconfig           urandom_seed
+firstboot          init               lsmod              poweroff           switch_root        validate_data
+fw3                insmod             luci-reload        procd              sysctl             vdsl_cpe_control
+halt               ip                 mkswap             reboot             sysupgrade         wifi
+hotplug-call       jffs2mark          modinfo            reload_config      ubusd
+hwclock            jffs2reset         modprobe           rmmod              uci
+
+/usr/bin/:
+[            clear        du           getrandom    killall      mkfifo       scp          tail         uptime
+[[           cmp          env          head         ldd          nc           seq          tee          usign
+awk          crontab      expr         hexdump      less         nslookup     sha256sum    test         wc
+basename     cut          find         id           logger       pgrep        signify      time         which
+bspatch      dbclient     flock        iwinfo       lua          printf       sort         top          xargs
+bunzip2      dirname      free         jshn         luci-bwc     readlink     ssh          tr           yes
+bzcat        dropbearkey  fwtool       jsonfilter   md5sum       reset        strings      uniq
+
+/usr/sbin/:
+br2684ctl          hostapd            iw                 pppd               ubinfo             wpa_supplicant
+br2684ctl_wrap     ip6tables          ntpd               ubiattach          ubinize            wpad
+brctl              ip6tables-restore  ntpd-hotplug       ubiblock           ubirename          xtables-multi
+chroot             ip6tables-save     odhcp6c            ubicrc32           ubirmvol
+crond              iptables           odhcpd             ubidetach          ubirsvol
+dnsmasq            iptables-restore   odhcpd-update      ubiformat          ubiupdatevol
+dropbear           iptables-save      opkg-key           ubimkvol           uhttpd
+
+root@OpenWrt:/# df
+
+Filesystem           1K-blocks      Used Available Use% Mounted on
+/dev/root                 3328      3328         0 100% /rom
+tmpfs                    29548       688     28860   2% /tmp
+tmpfs                    29548        52     29496   0% /tmp/root
+tmpfs                      512         0       512   0% /dev
+/dev/mtdblock4            2880       232      2648   8% /overlay
+overlayfs:/overlay        2880       232      2648   8% /
+
+</nowiki>
+</WRAP>\\
+
+==== U-Boot info & printenv: ====
+<WRAP bootlog>
+<nowiki>ROM VER: 1.1.4
+CFG 05
+
+DDR autotuning Rev 0.3d
+DDR size from 0xa0000000 - 0xa3ffffff
+DDR check ok... start booting...
+
+
+
+U-Boot 2010.06-LANTIQ-v-2.0.40-svn2583 (Oct 26 2012 - 12:15:55)
+
+CLOCK CPU 500M RAM 250M
+DRAM:  64 MiB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   Internal phy(GE) firmware version: 0x841d
+vr9 Switch8192 KiB EN25Q64 at 0:3 is now current device
+
+
+Type "run flash_nfs" to mount root filesystem over NFS
+
+Hit any key to stop autoboot:  0
+VR9 # help
+?       - alias for 'help'
+base    - print or set address offset
+bootm   - boot application image from memory
+bootp   - boot image via network using BOOTP/TFTP protocol
+cmp     - memory compare
+cp      - memory copy
+crc32   - checksum calculation
+echo    - echo args to console
+go      - start application at address 'addr'
+help    - print command description/usage
+loop    - infinite loop on address range
+md      - memory display
+mm      - memory modify (auto-incrementing address)
+mtest   - simple RAM read/write test
+mw      - memory write (fill)
+nm      - memory modify (constant address)
+printenv- print environment variables
+rarpboot- boot image via network using RARP/TFTP protocol
+reset   - Perform RESET of the CPU
+run     - run commands in an environment variable
+setenv  - set environment variables
+sf      - SPI flash sub-system
+tftpboot- boot image via network using TFTP protocol
+version - print monitor version
+VR9 # printenv
+bootcmd=run flash_flash
+bootdelay=1
+baudrate=115200
+preboot=echo;echo Type \"run flash_nfs\" to mount root filesystem over NFS;echo
+bootfile="uImage"
+mem=63M
+phym=64M
+ipaddr=192.168.1.1
+serverip=192.168.1.100
+ethaddr=00:E0:92:00:01:40
+netdev=eth0
+console=ttyS0
+baudrate=115200
+tftppath=
+loadaddr=0x80800000
+rootpath=/mnt/full_fs
+rootfsmtd=/dev/mtdblock2
+nfsargs= setenv bootargs root=/dev/nfs rw nfsroot=$(serverip):$(rootpath)
+ramargs=setenv bootargs root=/dev/ram rw
+addip=setenv bootargs $(bootargs) ip=$(ipaddr):$(serverip):$(gatewayip):$(netmask):$(hostname):$(netdev):on
+addmisc=setenv bootargs $(bootargs) console=$(console),$(baudrate) ethaddr=$(ethaddr) phym=$(phym) mem=$(mem) panic=1 mtdparts=$(mtdparts) init=/etc/preinit vpe1_load_addr=0x82000000 vpe1_mem=1M ethwan=$(ethwan)
+flash_nfs=run nfsargs addip addmisc;bootm $(kernel_addr)
+net_nfs=tftp $(loadaddr) $(tftppath)$(bootfile);run nfsargs addip addmisc;bootm
+net_flash=tftp $(loadaddr) $(tftppath)$(bootfile); run flashargs addip addmisc; bootm
+net_ram=tftp $(loadaddr) $(tftppath)$(bootfile); run ramargs addip addmisc; bootm
+u-boot=u-boot.lq
+rootfs=rootfs.img
+firmware=firmware.img
+fullimage=fullimage.img
+totalimage=totalimage.img
+load=tftp $(loadaddr) $(u-boot)
+update=protect off 1:0-2;era 1:0-2;cp.b $(loadaddr) B0000000 $(filesize)
+flashargs=setenv bootargs root=$(rootfsmtd) rw rootfstype=squashfs
+flash_flash=sf probe 3; bootm 0x80800000
+update_uboot=tftp $(loadaddr) $(tftppath)$(u-boot); nand write.partial $(loadaddr) 4000 $(filesize);reset
+update_kernel=tftpboot $(loadaddr) $(tftppath)$(bootfile);upgrade $(loadaddr) $(filesize)
+update_rootfs=tftpboot $(loadaddr) $(tftppath)$(rootfs);upgrade $(loadaddr) $(filesize)
+update_firmware=tftpboot $(loadaddr) $(tftppath)$(firmware);upgrade $(loadaddr) $(filesize)
+update_fullimage=tftpboot $(loadaddr) $(tftppath)$(fullimage);upgrade $(loadaddr) $(filesize)
+update_totalimage=tftpboot $(loadaddr) $(tftppath)$(totalimage);upgrade $(loadaddr) $(filesize)
+stdin=serial
+stdout=serial
+stderr=serial
+ethact=vr9 Switch
+
+Environment size: 2040/4092 bytes</nowiki>
+</WRAP>\\
+
+===== Bootlogs =====
+==== OEM bootlog: ====
+<WRAP bootlog>
+<nowiki>ROM VER: 1.1.4
+CFG 05
+
+DDR autotuning Rev 0.3d
+DDR size from 0xa0000000 - 0xa3ffffff
+DDR check ok... start booting...
+
+
+
+U-Boot 2010.06-LANTIQ-v-2.0.40-svn2583 (Oct 26 2012 - 12:15:55)
+
+CLOCK CPU 500M RAM 250M
+DRAM:  64 MiB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   Internal phy(GE) firmware version: 0x841d
+vr9 Switch8192 KiB EN25Q64 at 0:3 is now current device
+
+
+Type "run flash_nfs" to mount root filesystem over NFS
+
+Hit any key to stop autoboot:  0
+8192 KiB EN25Q64 at 0:3 is now current device
+8192 KiB EN25Q64 at 0:3 is now current device
+        Uncompressing ...
+Starting kernel ...
+
+Lantiq xDSL CPE VR9
+mips_hpt_frequency = 250000000, counter_resolution = 2
+Linux version 2.6.32.32 (wuzhiqin@localhost.localdomain) (gcc version 4.3.3 (GCC) ) #15 Mon Apr 8 16:02:07 CST 2013
+phym = 04000000, mem = 04000000, max_pfn = 00004000
+Reserving memory for CP1 @0xa4000000, size 0x00000000
+CPU revision is: 00019556 (MIPS 34Kc)
+Determined physical RAM map:
+User-defined physical RAM map:
+ memory: 04000000 @ 00000000 (usable)
+Initrd not found or empty - disabling initrd
+Zone PFN ranges:
+  Normal   0x00000000 -> 0x00004000
+Movable zone start PFN for each node
+early_node_map[1] active PFN ranges
+    0: 0x00000000 -> 0x00004000
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+Kernel command line: root=/dev/mtdblock2 rw rootfstype=squashfs ip=192.168.1.1:192.168.1.2::::eth0:on console=ttyS0,115200 ethaddr=AC:9A:96:XX:XX:XX phym=64M mem=64M panic=1 mtdparts=ifx_sflash:128k(boot),1280k(kernel),6528k(rootfs),64k(config),64k(romfile),64k(rom),64k(radio) init=/sbin/init ethwan=
+PID hash table entries: 256 (order: -2, 1024 bytes)
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+Writing ErrCtl register=00024f10
+Readback ErrCtl register=00024f10
+Memory: 60632k/65536k available (2855k kernel code, 4832k reserved, 820k data, 184k init, 0k highmem)
+Hierarchical RCU implementation.
+NR_IRQS:185
+Lantiq ICU driver, version 3.0.1, (c) 2001-2011 Lantiq Deutschland GmbH
+console [ttyS0] enabled
+Calibrating delay loop... 332.59 BogoMIPS (lpj=1662976)
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+Lantiq PCIe Root Complex driver, version 1.5.3, (c) 2001-2011 Lantiq Deutschland GmbH
+bio: create slab <bio-0> at 0
+ifx_pcie_rc_class_early_fixup: fixed pcie host bridge to pci-pci bridge
+pci 0000:00:00.0: PME# supported from D0 D3hot
+pci 0000:00:00.0: PME# disabled
+pci 0000:01:00.0: PME# supported from D0 D1 D3hot
+pci 0000:01:00.0: PME# disabled
+pci 0000:00:00.0: PCI bridge, secondary bus 0000:01
+pci 0000:00:00.0:   IO window: disabled
+pci 0000:00:00.0:   MEM window: 0x1c000000-0x1c0fffff
+pci 0000:00:00.0:   PREFETCH window: 0x1c100000-0x1c1fffff
+NET: Registered protocol family 8
+NET: Registered protocol family 20
+Switching to clocksource MIPS
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+NET: Registered protocol family 1
+gptu: totally 6 16-bit timers/counters
+gptu: misc_register on minor 63
+gptu: succeeded to request irq 118
+gptu: succeeded to request irq 119
+gptu: succeeded to request irq 120
+gptu: succeeded to request irq 121
+gptu: succeeded to request irq 122
+gptu: succeeded to request irq 123
+IFX DMA driver, version ifxmips_dma_core.c:v1.0.17
+,(c)2009 Infineon Technologies AG
+Lantiq CGU driver, version 1.1.27, (c) 2001-2011 Lantiq Deutschland GmbH
+vpe1_mem = 0
+Wired TLB entries for Linux read_c0_wired() = 0
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+Registering mini_fo version $Id$
+fuse init (API version 7.13)
+msgmni has been set to 118
+Line: 127, function: deu_init
+DMA Referenced PAGE_SIZE = 4096
+Infineon Technologies DEU driver version 2.0.0
+IFX DEU DES initialized (multiblock) (DMA).
+IFX DEU AES initialized (multiblock) (DMA).
+IFX DEU ARC4 initialized (multiblock) (DMA).
+IFX DEU SHA1 initialized (DMA).
+IFX DEU MD5 initialized (DMA).
+IFX DEU SHA1_HMAC initialized (DMA).
+IFX DEU MD5_HMAC initialized (DMA).
+io scheduler noop registered (default)
+ifx_pmu_init: Major 252
+Lantiq PMU driver, version 1.2.2, (c) 2001-2011 Lantiq Deutschland GmbH
+Lantiq GPIO driver, version 1.2.14, (c) 2001-2011 Lantiq Deutschland GmbH
+Infineon Technologies RCU driver version 1.0.8
+Lantiq LED Controller driver, version 1.0.6, (c) 2001-2011 Lantiq Deutschland GmbH
+MEI CPE Driver, Version 1.2.0
+
+(c) Copyright 2009, Infineon Technologies AG
+
+### MEI CPE - MEI CPE - MEI CPE - MEI CPE ###
+
+ttyS0 at MMIO 0xbe100c00 (irq = 105) is a IFX_ASC
+Register ASC (UART) to PMCU.
+Lantiq ASC (UART) driver, version 1.0.9, (c) 2001-2011 Lantiq Deutschland GmbH
+brd: module loaded
+loop: module loaded
+Lantiq SSC driver, version 2.2.6, (c) 2001-2011 Lantiq Deutschland GmbH
+Register flash device:flash0
+7 cmdlinepart partitions found on MTD device ifx_sflash
+Creating 7 MTD partitions on "ifx_sflash":
+0x000000000000-0x000000020000 : "boot"
+0x000000020000-0x000000160000 : "kernel"
+0x000000160000-0x0000007c0000 : "rootfs"
+mtd: partition "rootfs" set to be root filesystem
+0x0000007c0000-0x0000007d0000 : "config"
+0x0000007d0000-0x0000007e0000 : "romfile"
+0x0000007e0000-0x0x0000007f0000-0x0000800000 : "radio"
+Lantiq SPI flash driver, version 1.1.9, (c) 2001-2011 Lantiq Deutschland GmbH
+ifxmips_gpio: Pin ID 10 (port 0, pin 10) has been reserved by module SFLASH from kernel module!
+ifx_dataflash_init status error 255
+PPP generic driver version 2.4.2
+NET: Registered protocol family 24
+IFX SWITCH API, Version 1.1.7.2
+SWAPI: Registered character device [switch_api] with major no [81]
+Switch API: PCE MicroCode loaded !!
+Init IFX_ETHSW_Switch_API_procModule successfully.
+Switch Auto Polling value = 0
+GPHY FW load for A2x !!
+GPHY FIRMWARE LOAD SUCCESSFULLY AT ADDR : 400000
+IFX GPHY driver GE Mode, version ifxmips_vr9_gphy: V0.9 - Firmware: 841d
+Registered led device: broadband_led
+Registered led device: internet_led
+Registered led device: usb1_link_led
+Registered led device: usb2_link_led
+Lantiq LED driver, version 1.0.17, (c) 2001-2011 Lantiq Deutschland GmbH
+Mirror/redirect action on
+u32 classifier
+    Actions configured
+Netfilter messages via NETLINK v0.30.
+nf_conntrack version 0.5.0 (948 buckets, 5120 max)
+CONFIG_NF_CT_ACCT is deprecated and will be removed soon. Please use
+nf_conntrack.acct=1 kernel parameter, acct=1 nf_conntrack module option or
+sysctl net.netfilter.nf_conntrack_acct=1 to enable it.
+GRE over IPv4 tunneling driver
+ip_tables: (C) 2000-2006 Netfilter Core Team
+TCP cubic registered
+NET: Registered protocol family 10
+ip6_tables: (C) 2000-2006 Netfilter Core Team
+IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+Bridge firewalling registered
+Ebtables v2.0 registered
+NET: Registered protocol family 8
+atmpvc_init() failed with -17
+KOAM is loaded successfully.
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted root (squashfs filesystem) readonly on device 31:2.
+Freeing unused kernel memory: 184k freed
+starting pid 187, tty '': '/etc/init.d/rcS'
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+IFXUSB: ifxusb_hcd: version 3.2 B120208
+Chip Version :0002 BurstSize=4
+IFXUSB: USB core #0 soft-reset
+IFXUSB: USB core #0 soft-reset
+ifxusb_hcd ifxusb_hcd: IFX USB Controller
+ifxusb_hcd ifxusb_hcd: new USB bus registered, assigned bus number 1
+ifxusb_hcd ifxusb_hcd: irq 54, io mem 0xbe101000
+IFXUSB: Init: Power Port (0)
+hotplug, argusb usb1: configuration #1 chosen from 1 choice
+s:usb
+hotplug, args:usb
+.....pidhub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+ 228: wait the running hotplug to end itself.......
+IFXUSB: USB core #1 soft-reset
+IFXUSB: USB core #1 soft-reset
+ifxusb_hcd ifxusb_hcd: IFX USB Controller
+ifxusb_hcd ifxusb_hcd: new USB bus registered, assigned bus number 2
+ifxusb_hcd ifxusb_hcd: irq 83, io mem 0xbe106000
+IFXUSB: Init: Power Port (0)
+hotplug, argsusb usb2: configuration #1 chosen from 1 choice
+:hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 1 port detected
+usb
+hotplug, args:usb
+
+Please press Enter to activate this console. .....pid 228: wait the running hotplug to end itself.......
+[ dm_readFile ] 2042:  can not open xml file /var/tmp/pc/reduced_data_model.xml!, about to open file /etc/reduced_data_model.xml
+Loading A5 (MII0/1 + ATM) driver ...... MAC-0: a0-f3-c1-xx-xx-xx
+MAC-1: a0-f3-c1-xx-xx-xx
+Succeeded!
+PPE datapath driver info:
+  Version ID: 64.3.7.1.0.1.4
+  Family    : VR9
+  DR Type   : Normal Data Path | Indirect-Fast Path
+  Interface : MII0 | MII1 | ATM
+  Mode      : Routing
+  Release   : 0.1.4
+PPE firmware info:
+  Version ID: 7.2.4.6.2.0
+  Family    : VR9
+  FW Type   : Acceleration
+  Interface : MII0/1 + ATM
+  Mode      : Bridging + IPv4 Routing
+  Release   : 2.0
+IFXOS, Version 1.5.14 (c) Copyright 2009, Lantiq Deutschland GmbH
+
+
+Lantiq CPE API Driver version: DSL CPE API V4.11.4
+
+Predefined debug level: 3
+ifx_ppa_api: module license 'unspecified' taints kernel.
+Disabling lock debugging due to kernel taint
+PPA API --- init successfully
+.....pid 228: wait the running hotplug to end itself.......
+ifx_ppa_init - init succeeded
+ioctl: No such device
+ioctl: No such device
+ioctl: No such device
+ioctl: No such device
+sendto: No such file or directory
+send 2001 error 244, -1
+ath0      no private ioctls.
+
+ath1      no private ioctls.
+
+ioctl: No such device
+device eth0.2 entered promiscuous mode
+device eth0 entered promiscuous mode
+br0: port 1(eth0.2) entering forwarding state
+device eth0.3 entered promiscuous mode
+br0: port 2(eth0.3) entering forwarding state
+device eth0.4 entered promiscuous mode
+br0: port 3(eth0.4) entering forwarding state
+device eth0.5 entered promiscuous mode
+br0: port 4(eth0.5) entering forwarding state
+[ rsl_initLanIgmpSnoopObj ] 181:  We need vlan if we want igmp snooping
+*********cal_data*******
+020500023537707500000000*********end*******
+.....pid 228: wait the running hotplug to end itself.......
+ath_hal: 0.9.17.1 (AR5212, AR5416, AR9380, RF5111, RF5112, RF2413, RF5413, RF2316, RF2317, REGOPS_FUNC, WRITE_EEPROM, 11D)
+ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+ath_dfs: Version 2.0.0
+Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+ath_pci: 9.2.0_U10.1020 (Atheros/multi-bss)
+PCI: Enabling device 0000:01:00.0 (0000 -> 0002)
+__ath_attach: Set global_scn[0]
+ACBKMinfree = 48
+ACBEMinfree = 32
+ACVIMinfree = 16
+ACVOMinfree = 0
+CABMinfree = 48
+UAPSDMinfree = 0
+Restoring Cal data from Flash
+dfs_attach: use DFS enhancements
+DFS min filter rssiThresh = 18
+DFS max pulse dur = 151 ticks
+ath_get_caps[5105] rx chainmask mismatch actual 7 sc_chainmak 0
+ath_get_caps[5080] tx chainmask mismatch actual 7 sc_chainmak 0
+.....pid 228: wait the running hotplug to end itself.......
+Register wlan WPS function, dev=0x828b8000
+Register wlan button on function
+Register wlan button off function
+wifi0: Atheros ???: mem=0x1c000000, irq=136 hw_base=0xbc000000
+ath_netdev_set_macaddr: ffffffa0:fffffff3:ffffffc1:ffffffff:ffffff96:20
+wlan_vap_create : enter. devhandle=0x828b82c0, opmode=IEEE80211_M_HOSTAP, flags=0x1
+wlan_vap_create : exit. devhandle=0x828b82c0, opmode=IEEE80211_M_HOSTAP, flags=0x1.
+VAP device ath0 created
+ath0
+DFS min filter rssiThresh = 15
+DFS max pulse dur = 151 ticks
+ath_netdev_set_macaddr: ffffffa0:fffffff3:ffffffc1:ffffffff:ffffff96:20
+wlan_setAllCfgFile bridgeName br0
+Reading topology file /var/Wireless/topology.conf ...
+014.602: Reading radio configuration file /var/Wireless/80211g.ap_radio ...
+
+014.603: Reading bss configuration file /var/Wireless/ath0.ap_bss ...
+
+ ieee80211_ioctl_siwmode: imr.ifm_active=131712, new mode=3, valid=1
+014.911: upnp_wps_device_init called
+l2_packet_receive - recvfrom: Network is down
+ni aponly is null!
+.....pid 228: wait the running hotplug to end itself.......
+ni aponly is null!
+ Scan in progress.. Cancelling it
+l2_packet_receive - recvfrom: Network is down
+ath1      no private ioctls.
+
+sendto: No such file or directory
+send 2030 error 244, -1
+sendto: No such file or directory
+send 2004 error 244, -1
+Primary DNS server Is Down... Switching To Secondary DNS server
+ni aponly is null!
+ni aponly is null!
+.....pid 228: wait the running hotplug to end itself.......
+[ apiSetAdslTypeAndAnnexType ] 1369:  /firmware/dsl_cpe_pipe.sh g997xtusecs 05 00 04 00 04 01 04 00
+nReturn=0
+
+nReturn=0
+
+nReturn=0 nDirection=0
+
+nReturn=0 nDirection=1
+
+nReturn=4 nDirection=0
+
+nReturn=0 nDirection=1
+
+nReturn=0
+
+iptables: Bad rule (does a matching rule exist in that chain?)
+radvd starting
+[ oal_dsl_createMainAtmIf ] 2209:  br2684ctl -b -p 1 -c 0 -e 0 -q ubr,aal5:max_pcr=0,min_pcr=0 -a 0.8.35
+.....pid 228: wait the running hotplug to end itself.......
+........pid 226: pPlugDevId[0]=, plugDevClass[0]=, plugAction[0]=.........
+[ oal_dsl_createMainAtmIf ] 2253:  ifconfig nas0 hw ether 20:F3:C1:FF:96:21
+Interface "nas0" created sucessfully
+[ oal_dsl_addAtmIf ] 2038:  br2684ctl -b -p 1 -x 1 -c 0 -e 0 -q ubr,aal5:max_pcr=0,min_pcr=0 -a 0.8.35
+optarg : ubr,aal5:max_pcr=0,min_pcr=0Interface "nas0_1" created sucessfully
+device nas0_1 entered promiscuous mode
+br0: port 5(nas0_1) entering forwarding state
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+[ oal_dsl_addAtmIf ] 2038:  br2684ctl -b -p 1 -x 2 -c 0 -e 0 -q ubr,aal5:max_pcr=0,min_pcr=0 -a 0.8.35
+optarg : ubr,aal5:max_pcr=0,min_pcr=0Interface "nas0_2" created sucessfully
+pppoe_init() success
+PPPoE DevName Hook, the name is nas0_2
+PPPoE DevName Hook, the name is nas0_2
+[ getPidFromPidFile ] 112:  Cann't open file: /var/run/zebra.pid.
+[ getPidFromPidFile ] 112:  Cann't open file: /var/run/ripd.pid.
+ifx_ppa_init - init succeeded
+iptables: Bad rule (does a matching rule exist in that chain?)
+ifx_ppa_init - init succeeded
+iptables: Bad rule (does a matching rule exist in that chain?)
+ifx_ppa_init - init succeeded
+iptables: Bad rule (does a matching rule exist in that chain?)
+........pid 228: pPlugDevId[0]=, plugDevClass[0]=, plugAction[0]=.........
+ip6tables: Bad rule (does a matching rule exist in that chain?)
+[ rsl_setStorageServiceObj ] 1140:  mountFlag is 3,We start usb server
+
+killall: ushare: no process killed
+uShare (version 1.1a), a lightweight UPnP A/V and DLNA Media Server.
+Benjamin Zores (C) 2005-2007, for GeeXboX Team.
+See http://ushare.geexbox.org/ for updates.
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+xDSL Handshake!!
+Enable forwarding
+xDSL Training !!
+xDSL Enter SHOWTIME!!
+Terminating on signal 15
+iptables: No chain/target/match by that name
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+pppoe_init() success
+PPPoE DevName Hook, the name is nas0_2
+PPPoE DevName Hook, the name is nas0_2
+PPP session is 5838
+Connected to 00:90:1a:xx:xx:xx via interface nas0_2
+Using interface ppp1
+Connect: ppp1 <--> nas0_2
+CHAP authentication succeeded: Authentication success,Welcome!
+CHAP authentication succeeded
+peer from calling number 00:90:1A:xx:xx:xx authorized
+local  IP address XX.XX.XX.XX
+remote IP address XX.XX.XX.XX
+primary   DNS address XX.XX.XX.XX
+secondary DNS address XX.XX.XX.XX
+iptables: No chain/target/match by that name
+iptables: No chamatch by that na
+                                ifx_ppa_init - init succeeded
+iptables: No chain/target/match by that name
+ifx_ppa_init - init succeeded
+iptables: No chain/target/match by that name
+ifx_ppa_init - init succeeded
+ifx_ppa_init - init succeeded
+112.048: upnp_wps_device M-SEARCH parse failure
+112.079: upnp_wps_device M-SEARCH parse failure
+112.110: upnp_wps_device M-SEARCH parse failure
+112.142: upnp_wps_device M-SEARCH parse failure
+112.204: upnp_wps_device M-SEARCH parse failure
+115.245: upnp_wps_device M-SEARCH parse failure
+115.277: upnp_wps_device M-SEARCH parse failure
+115.308: upnp_wps_device M-SEARCH parse failure
+115.340: upnp_wps_device M-SEARCH parse failure
+115.401: upnp_wps_device M-SEARCH parse failure
+
+starting pid 245, tty '': '/sbin/getty -L ttyS0 115200 vt100'
+
+TD-W8970 login: admin
+Password:
+May 21 21:52:48 login[245]: root login on 'console'
+~ #</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>ROM VER: 1.1.4
+<nowiki>CFG 05
+
+DDR autotuning Rev 0.3d
+DDR size from 0xa0000000 - 0xa3ffffff
+DDR check ok... start booting...
+
+
+
+U-Boot 2010.06-LANTIQ-v-2.0.40-svn2583 (Oct 26 2012 - 12:15:55)
+
+CLOCK CPU 500M RAM 250M
+DRAM:  64 MiB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   Internal phy(GE) firmware version: 0x841d
+vr9 Switch8192 KiB EN25Q64 at 0:3 is now current device
+
+
+Type "run flash_nfs" to mount root filesystem over NFS
+
+Hit any key to stop autoboot:  0
+VR9 # ttttttt
+VR9 # setenv serverip 192.168.1.2
+VR9 # setenv bootargs 'board=WD8970'
+VR9 # tftpboot openwrt-lantiq-xrx200-TDW8970-uImage-initramfs
+8192 KiB EN25Q64 at 0:3 is now current device
+Using vr9 Switch device
+TFTP from server 192.168.1.2; our IP address is 192.168.1.1
+Filename 'openwrt-lantiq-xrx200-TDW8970-uImage-initramfs'.
+Load address: 0x81000000
+Loading: #################################################################
+         #################################################################
+         #################################################################
+         #################################
+done
+Bytes transferred = 3346323 (330f93 hex)
+VR9 # bootm
+        Uncompressing ...
+Starting kernel ...
+
+[    0.000000] Linux version 3.10.17 (fld@HA) (gcc version 4.6.4 (OpenWrt/Linaro GCC 4.6-2013.05 r38578) ) #26 Sat Nov 2 15:28:31 EET 2013
+[    0.000000] SoC: VR9 rev 1.2
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019556 (MIPS 34Kc)
+[    0.000000] MIPS: machine is TDW8970 - TP-LINK TD-W8970
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyLTQ0,115200 init=/etc/preinit
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00042e40
+[    0.000000] Readback ErrCtl register=00042e40
+[    0.000000] Memory: 58948k/65536k available (2652k kernel code, 6588k reserved, 876k data, 2220k init, 0k highmem)
+[    0.000000] NR_IRQS:256
+[    0.000000] CPU Clock: 500MHz
+[    0.000000] Calibrating delay loop... 332.54 BogoMIPS (lpj=665088)
+[    0.032000] pid_max: default: 32768 minimum: 301
+[    0.036000] Mount-cache hash table entries: 512
+[    0.040000] pinctrl core: initialized pinctrl subsystem
+[    0.044000] NET: Registered protocol family 16
+[    0.056000] pinctrl-xway 1e100b10.pinmux: Init done
+[    0.060000] dma-xway 1e104100.dma: Init done - hw rev: 7, ports: 7, channels: 28
+[    0.068000] dcdc-xrx200 1f106a00.dcdc: Core Voltage : 1016 mV
+[    0.072000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_assert[185]
+[    0.184000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_deassert[193]
+[    0.188000] ath9k,eeprom ath9k_eep.8: failed to find mtd device
+[    0.200000] bio: create slab <bio-0> at 0
+[    0.204000] usbcore: registered new interface driver usbfs
+[    0.208000] usbcore: registered new interface driver hub
+[    0.212000] usbcore: registered new device driver usb
+[    0.216000] PCI host bridge to bus 0000:00
+[    0.220000] pci_bus 0000:00: root bus resource [mem 0x1c000000-0x1cffffff]
+[    0.224000] pci_bus 0000:00: root bus resource [io  0x1d800000-0x1d8fffff]
+[    0.228000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.232000] ifx_pcie_rc_class_early_fixup: fixed pcie host bridge to pci-pci bridge
+[    0.244000] pci 0000:00:00.0: BAR 8: assigned [mem 0x1c000000-0x1c0fffff]
+[    0.248000] pci 0000:00:00.0: BAR 9: assigned [mem 0x1c100000-0x1c1fffff pref]
+[    0.252000] pci 0000:01:00.0: BAR 0: assigned [mem 0x1c000000-0x1c01ffff 64bit]
+[    0.256000] pci 0000:01:00.0: BAR 6: assigned [mem 0x1c100000-0x1c10ffff pref]
+[    0.260000] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    0.264000] pci 0000:00:00.0:   bridge window [mem 0x1c000000-0x1c0fffff]
+[    0.268000] pci 0000:00:00.0:   bridge window [mem 0x1c100000-0x1c1fffff pref]
+[    0.272000] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[    0.276000] ifx_pcie_bios_map_irq port 0 dev 0000:00:00.0 slot 0 pin 1
+[    0.280000] ifx_pcie_bios_map_irq dev 0000:00:00.0 irq 144 assigned
+[    0.284000] ifx_pcie_bios_map_irq port 0 dev 0000:01:00.0 slot 0 pin 1
+[    0.288000] ifx_pcie_bios_map_irq dev 0000:01:00.0 irq 144 assigned
+[    0.292000] Switching to clocksource MIPS
+[    0.300000] NET: Registered protocol family 2
+[    0.304000] TCP established hash table entries: 512 (order: 0, 4096 bytes)
+[    0.312000] TCP bind hash table entries: 512 (order: -1, 2048 bytes)
+[    0.316000] TCP: Hash tables configured (established 512 bind 512)
+[    0.324000] TCP: reno registered
+[    0.328000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.332000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.340000] NET: Registered protocol family 1
+[    3.800000] gptu: totally 6 16-bit timers/counters
+[    3.804000] gptu: misc_register on minor 63
+[    3.808000] gptu: succeeded to request irq 126
+[    3.816000] gptu: succeeded to request irq 127
+[    3.820000] gptu: succeeded to request irq 128
+[    3.824000] gptu: succeeded to request irq 129
+[    3.828000] gptu: succeeded to request irq 130
+[    3.832000] gptu: succeeded to request irq 131
+[    3.840000] phy-xrx200 gphy-xrx200.5: requesting lantiq/vr9_phy11g_a2x.bin
+[    3.848000] phy-xrx200 gphy-xrx200.5: booting GPHY0 firmware at 2EE0000
+[    3.852000] phy-xrx200 gphy-xrx200.5: booting GPHY1 firmware at 2EE0000
+[    3.964000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    3.968000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    3.980000] msgmni has been set to 115
+[    3.984000] io scheduler noop registered
+[    3.984000] io scheduler deadline registered (default)
+[    3.992000] 1e100c00.serial: ttyLTQ0 at MMIO 0x1e100c00 (irq = 112) is a lantiq,asc
+[    4.000000] console [ttyLTQ0] enabled, bootconsole disabled
+[    4.000000] console [ttyLTQ0] enabled, bootconsole disabled
+[    4.016000] spi_gpio spi.7: master is unqueued, this is deprecated
+[    4.020000] m25p80 spi32766.0: en25q64 (8192 Kbytes)
+[    4.024000] 4 ofpart partitions found on MTD device spi32766.0
+[    4.032000] Creating 4 MTD partitions on "spi32766.0":
+[    4.036000] 0x000000000000-0x000000020000 : "u-boot"
+[    4.044000] 0x000000020000-0x0000007c0000 : "firmware"
+[    4.048000] 0x00000015b7b5-0x0000007c0000 : "rootfs"
+[    4.052000] mtd: partition "rootfs" must either start or end on erase block boundary or be smaller than an erase block -- forcing read-only
+[    4.068000] mtd: partition "rootfs" set to be root filesystem
+[    4.072000] mtdsplit: no squashfs found in "spi32766.0"
+[    5.072000] 0x0000007c0000-0x0000007d0000 : "config"
+[    5.076000] 0x0000007d0000-0x000000800000 : "boardconfig"
+[    5.188000] libphy: lantiq,xrx200-mdio: probed
+[    5.196000] net-xrx200: invalid MAC, using random
+[    5.200000] eth0: attached PHY [Lantiq XWAY PEF7071] (phy_addr=0:00, irq=-1)
+[    5.208000] eth0: attached PHY [Lantiq XWAY PEF7071] (phy_addr=0:05, irq=-1)
+[    5.212000] eth0: attached PHY [Lantiq XWAY VR9 GPHY 11G v1.4] (phy_addr=0:11, irq=-1)
+[    5.220000] eth0: attached PHY [Lantiq XWAY VR9 GPHY 11G v1.4] (phy_addr=0:13, irq=-1)
+[    5.232000] wdt 1f8803f0.watchdog: Init done
+[    5.236000] leds-gpio gpio-leds.10: pins are not configured from the driver
+[    5.244000] TCP: cubic registered
+[    5.244000] NET: Registered protocol family 17
+[    5.248000] 8021q: 802.1Q VLAN Support v1.8
+[    5.336000] ath9k,eeprom ath9k_eep.8: using random mac
+[    5.340000] ath9k,eeprom ath9k_eep.8: pci slot: 0
+[    5.344000] ath9k,eeprom ath9k_eep.8: loaded ath9k eeprom
+[    5.360000] Freeing unused kernel memory: 2220K (80375000 - 805a0000)
+Console is alive
+procd: Console is alive
+- watchdog -
+procd: - watchdog -
+[    5.412000] IFXUSB: ifxusb_hcd: version 3.2 B110801
+[    5.416000] Chip Version :000c BurstSize=4
+[    6.020000] IFXUSB: USB core #0 soft-reset
+[    6.320000] IFXUSB: USB core #0 soft-reset
+[    6.324000] ifxusb_hcd ifxusb_hcd: IFX USB Controller
+[    6.328000] ifxusb_hcd ifxusb_hcd: new USB bus registered, assigned bus number 1
+[    6.336000] ifxusb_hcd ifxusb_hcd: irq 62, io mem 0xbe101000
+[    6.340000] IFXUSB: Init: Power Port (0)
+[    6.348000] eth0: port 5 got link
+[    6.352000] hub 1-0:1.0: USB hub found
+[    6.352000] hub 1-0:1.0: 1 port detected
+[    6.856000] IFXUSB: USB core #1 soft-reset
+[    7.160000] IFXUSB: USB core #1 soft-reset
+[    7.164000] ifxusb_hcd ifxusb_hcd: IFX USB Controller
+[    7.168000] ifxusb_hcd ifxusb_hcd: new USB bus registered, assigned bus number 2
+[    7.176000] ifxusb_hcd ifxusb_hcd: irq 91, io mem 0xbe106000
+[    7.180000] IFXUSB: Init: Power Port (0)
+[    7.188000] hub 2-0:1.0: USB hub found
+[    7.188000] hub 2-0:1.0: 1 port detected
+[    7.192000] ifxusb_hcd ifxusb_hcd: requested GPIO 233
+kmod: ran 4 iterations
+- preinit -
+procd: - preinit -
+Press the [f] key and hit [enter] to enter failsafe mode
+- early -
+procd: - early -
+- watchdog -
+procd: - watchdog -
+- init -
+procd: - init -
+Please press Enter to activate this console.
+[   11.040000] IFXOS, Version 1.5.14 (c) Copyright 2009, Lantiq Deutschland GmbH
+
+[   11.064000] NET: Registered protocol family 10
+[   11.072000] NET: Registered protocol family 8
+[   11.076000] NET: Registered protocol family 20
+[   11.092000] PPP generic driver version 2.4.2
+[   11.116000] nf_conntrack version 0.5.0 (955 buckets, 3820 max)
+[   11.128000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   11.184000] MEI CPE Driver, Version 1.2.0
+
+[   11.188000] (c) Copyright 2009, Infineon Technologies AG
+### MEI CPE - MEI CPE - MEI CPE - MEI CPE ###
+
+
+Lantiq CPE API Driver version: DSL CPE API V4.11.4
+[   11.232000]
+[   11.232000] Predefined debug level: 2
+[   11.272000] u32 classifier
+[   11.272000]     input device check on
+[   11.276000]     Actions configured
+[   11.280000] Mirror/redirect action on
+[   11.300000] Loading modules backported from Linux version master-2013-06-27-0-gdcfa6d5
+[   11.308000] Backport generated by backports.git backports-20130617-4-ge3220f5
+[   11.320000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   11.340000] ATM1.0.26    ATM (A1) firmware version 0.24
+[   11.344000] ifxmips_atm: ATM init succeed
+[   11.352000] Infineon Technologies DEU driver version 2.0.0
+[   11.364000] IFX DEU DES initialized (multiblock).
+[   11.368000] IFX DEU AES initialized (multiblock).
+[   11.376000] IFX DEU ARC4 initialized (multiblock).
+[   11.376000] IFX DEU SHA1 initialized.
+[   11.380000] IFX DEU MD5 initialized.
+[   11.388000] IFX DEU SHA1_HMAC initialized.
+[   11.392000] IFX DEU MD5_HMAC initialized.
+[   11.424000] NET: Registered protocol family 24
+[   11.484000] xt_time: kernel timezone is -0000
+[   11.508000] cfg80211: Calling CRDA to update world regulatory domain
+[   11.512000] cfg80211: World regulatory domain updated:
+[   11.516000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp)
+[   11.524000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   11.532000] cfg80211:   (2457000 KHz - 2482000 KHz @ 20000 KHz), (300 mBi, 2000 mBm)
+[   11.540000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (300 mBi, 2000 mBm)
+[   11.548000] cfg80211:   (5170000 KHz - 5250000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   11.556000] cfg80211:   (5735000 KHz - 5835000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   11.668000] PCI: Enabling device 0000:01:00.0 (0000 -> 0002)
+[   11.692000] cfg80211: Calling CRDA for country: US
+[   11.700000] cfg80211: Regulatory domain changed to country: US
+[   11.704000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp)
+[   11.712000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (300 mBi, 2700 mBm)
+[   11.720000] cfg80211:   (5170000 KHz - 5250000 KHz @ 40000 KHz), (300 mBi, 1700 mBm)
+[   11.728000] cfg80211:   (5250000 KHz - 5330000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   11.736000] cfg80211:   (5490000 KHz - 5600000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   11.744000] cfg80211:   (5650000 KHz - 5710000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   11.748000] cfg80211:   (5735000 KHz - 5835000 KHz @ 40000 KHz), (300 mBi, 3000 mBm)
+[   11.760000] ieee80211 phy0: Atheros AR9300 Rev:3 mem=0xbc000000, irq=144
+[   16.048000] device eth0 entered promiscuous mode
+[   16.056000] br-lan: port 1(eth0) entered forwarding state
+[   16.060000] br-lan: port 1(eth0) entered forwarding state
+[   18.064000] br-lan: port 1(eth0) entered forwarding state
+procd: - init complete -
+
+
+
+BusyBox v1.19.4 (2013-11-01 22:55:08 EET) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ BARRIER BREAKER (Bleeding Edge, r38578)
+ -----------------------------------------------------
+  * 1/2 oz Galliano         Pour all ingredients into
+  * 4 oz cold Coffee        an irish coffee mug filled
+  * 1 1/2 oz Dark Rum       with crushed ice. Stir.
+  * 2 tsp. Creme de Cacao
+ -----------------------------------------------------
+root@OpenWrt:/#
+
+root@OpenWrt:/# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00020000 00010000 "u-boot"
+mtd1: 007a0000 00010000 "firmware"
+mtd2: 0066484b 00010000 "rootfs"
+mtd3: 00010000 00010000 "config"
+mtd4: 00030000 00010000 "boardconfig"
+
+root@OpenWrt:/# cat /proc/partitions
+major minor  #blocks  name
+
+  31        0        128 mtdblock0
+  31        1       7808 mtdblock1
+  31        2       6546 mtdblock2
+  31        3         64 mtdblock3
+  31        4        192 mtdblock4
+
+root@OpenWrt:/# df -h
+Filesystem                Size      Used Available Use% Mounted on
+tmpfs                    29.9M    524.0K     29.4M   2% /tmp
+tmpfs                   512.0K         0    512.0K   0% /dev
+
+root@OpenWrt:/# free -m
+             total         used         free       shared      buffers
+Mem:         61168        28504        32664            0            0
+-/+ buffers:              28504        32664
+Swap:            0            0            0
+
+root@OpenWrt:/# ifconfig -a
+br-lan    Link encap:Ethernet  HWaddr 02:C3:48:8B:24:CB
+          inet addr:192.168.1.1  Bcast:192.168.1.255  Mask:255.255.255.0
+          inet6 addr: fd15:9c5b:f18::1/60 Scope:Global
+          inet6 addr: fe80::c3:48ff:fe8b:24cb/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:99 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:18 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:13347 (13.0 KiB)  TX bytes:3136 (3.0 KiB)
+
+eth0      Link encap:Ethernet  HWaddr 02:C3:48:8B:24:CB
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:184 errors:0 dropped:83 overruns:0 frame:0
+          TX packets:18 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:25059 (24.4 KiB)  TX bytes:3208 (3.1 KiB)
+
+ifb0      Link encap:Ethernet  HWaddr 76:27:DE:0E:12:0C
+          BROADCAST NOARP  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:32
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+ifb1      Link encap:Ethernet  HWaddr 56:D4:8B:68:C2:55
+          BROADCAST NOARP  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:32
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+lo        Link encap:Local Loopback
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:19680 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:19680 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:1338240 (1.2 MiB)  TX bytes:1338240 (1.2 MiB)
+
+nas0      Link encap:Ethernet  HWaddr 00:00:01:00:00:00
+          inet6 addr: fe80::200:1ff:fe00:0/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:966 errors:966 dropped:0 overruns:966 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:0 (0.0 B)  TX bytes:73094 (71.3 KiB)
+
+root@OpenWrt:/# iw list
+Wiphy phy0
+        max # scan SSIDs: 4
+        max scan IEs length: 2257 bytes
+        Coverage class: 0 (up to 0m)
+        Device supports RSN-IBSS.
+        Supported Ciphers:
+                * WEP40 (00-0f-ac:1)
+                * WEP104 (00-0f-ac:5)
+                * TKIP (00-0f-ac:2)
+                * CCMP (00-0f-ac:4)
+                * CMAC (00-0f-ac:6)
+        Available Antennas: TX 0x7 RX 0x7
+        Configured Antennas: TX 0x7 RX 0x7
+        Supported interface modes:
+                 * IBSS
+                 * managed
+                 * AP
+                 * AP/VLAN
+                 * WDS
+                 * monitor
+                 * mesh point
+                 * P2P-client
+                 * P2P-GO
+        Band 1:
+                Capabilities: 0x11ef
+                        RX LDPC
+                        HT20/HT40
+                        SM Power Save disabled
+                        RX HT20 SGI
+                        RX HT40 SGI
+                        TX STBC
+                        RX STBC 1-stream
+                        Max AMSDU length: 3839 bytes
+                        DSSS/CCK HT40
+                Maximum RX AMPDU length 65535 bytes (exponent: 0x003)
+                Minimum RX AMPDU time spacing: 8 usec (0x06)
+                HT TX/RX MCS rate indexes supported: 0-23
+                Bitrates (non-HT):
+                        * 1.0 Mbps
+                        * 2.0 Mbps (short preamble supported)
+                        * 5.5 Mbps (short preamble supported)
+                        * 11.0 Mbps (short preamble supported)
+                        * 6.0 Mbps
+                        * 9.0 Mbps
+                        * 12.0 Mbps
+                        * 18.0 Mbps
+                        * 24.0 Mbps
+                        * 36.0 Mbps
+                        * 48.0 Mbps
+                        * 54.0 Mbps
+                Frequencies:
+                        * 2412 MHz [1] (27.0 dBm)
+                        * 2417 MHz [2] (27.0 dBm)
+                        * 2422 MHz [3] (27.0 dBm)
+                        * 2427 MHz [4] (27.0 dBm)
+                        * 2432 MHz [5] (27.0 dBm)
+                        * 2437 MHz [6] (27.0 dBm)
+                        * 2442 MHz [7] (27.0 dBm)
+                        * 2447 MHz [8] (27.0 dBm)
+                        * 2452 MHz [9] (27.0 dBm)
+                        * 2457 MHz [10] (27.0 dBm)
+                        * 2462 MHz [11] (27.0 dBm)
+                        * 2467 MHz [12] (disabled)
+                        * 2472 MHz [13] (disabled)
+                        * 2484 MHz [14] (disabled)
+        Band 2:
+                Capabilities: 0x11ef
+                        RX LDPC
+                        HT20/HT40
+                        SM Power Save disabled
+                        RX HT20 SGI
+                        RX HT40 SGI
+                        TX STBC
+                        RX STBC 1-stream
+                        Max AMSDU length: 3839 bytes
+                        DSSS/CCK HT40
+                Maximum RX AMPDU length 65535 bytes (exponent: 0x003)
+                Minimum RX AMPDU time spacing: 8 usec (0x06)
+                HT TX/RX MCS rate indexes supported: 0-23
+                Bitrates (non-HT):
+                        * 6.0 Mbps
+                        * 9.0 Mbps
+                        * 12.0 Mbps
+                        * 18.0 Mbps
+                        * 24.0 Mbps
+                        * 36.0 Mbps
+                        * 48.0 Mbps
+                        * 54.0 Mbps
+                Frequencies:
+                        * 5180 MHz [36] (17.0 dBm)
+                        * 5200 MHz [40] (17.0 dBm)
+                        * 5220 MHz [44] (17.0 dBm)
+                        * 5240 MHz [48] (17.0 dBm)
+                        * 5260 MHz [52] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5280 MHz [56] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5300 MHz [60] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5320 MHz [64] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5500 MHz [100] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5520 MHz [104] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5540 MHz [108] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5560 MHz [112] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5580 MHz [116] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5600 MHz [120] (disabled)
+                        * 5620 MHz [124] (disabled)
+                        * 5640 MHz [128] (disabled)
+                        * 5660 MHz [132] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5680 MHz [136] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5700 MHz [140] (20.0 dBm) (passive scanning, no IBSS, radar detection)
+                          DFS state: usable (for 4826 sec)
+                        * 5745 MHz [149] (30.0 dBm)
+                        * 5765 MHz [153] (30.0 dBm)
+                        * 5785 MHz [157] (30.0 dBm)
+                        * 5805 MHz [161] (30.0 dBm)
+                        * 5825 MHz [165] (30.0 dBm)
+        Supported commands:
+                 * new_interface
+                 * set_interface
+                 * new_key
+                 * start_ap
+                 * new_station
+                 * new_mpath
+                 * set_mesh_config
+                 * set_bss
+                 * authenticate
+                 * associate
+                 * deauthenticate
+                 * disassociate
+                 * join_ibss
+                 * join_mesh
+                 * remain_on_channel
+                 * set_tx_bitrate_mask
+                 * frame
+                 * frame_wait_cancel
+                 * set_wiphy_netns
+                 * set_channel
+                 * set_wds_peer
+                 * tdls_mgmt
+                 * tdls_oper
+                 * probe_client
+                 * set_noack_map
+                 * register_beacons
+                 * start_p2p_device
+                 * Unknown command (92)
+                 * testmode
+                 * connect
+                 * disconnect
+        Supported TX frame types:
+                 * IBSS: 0x00 0x10 0x20 0x30 0x40 0x50 0x60 0x70 0x80 0x90 0xa0 0xb0 0xc0 0xd0 0xe0 0xf0
+                 * managed: 0x00 0x10 0x20 0x30 0x40 0x50 0x60 0x70 0x80 0x90 0xa0 0xb0 0xc0 0xd0 0xe0 0xf0
+                 * AP: 0x00 0x10 0x20 0x30 0x40 0x50 0x60 0x70 0x80 0x90 0xa0 0xb0 0xc0 0xd0 0xe0 0xf0
+                 * AP/VLAN: 0x00 0x10 0x20 0x30 0x40 0x50 0x60 0x70 0x80 0x90 0xa0 0xb0 0xc0 0xd0 0xe0 0xf0
+                 * mesh point: 0x00 0x10 0x20 0x30 0x40 0x50 0x60 0x70 0x80 0x90 0xa0 0xb0 0xc0 0xd0 0xe0 0xf0
+                 * P2P-client: 0x00 0x10 0x20 0x30 0x40 0x50 0x60 0x70 0x80 0x90 0xa0 0xb0 0xc0 0xd0 0xe0 0xf0
+                 * P2P-GO: 0x00 0x10 0x20 0x30 0x40 0x50 0x60 0x70 0x80 0x90 0xa0 0xb0 0xc0 0xd0 0xe0 0xf0
+                 * P2P-device: 0x00 0x10 0x20 0x30 0x40 0x50 0x60 0x70 0x80 0x90 0xa0 0xb0 0xc0 0xd0 0xe0 0xf0
+        Supported RX frame types:
+                 * IBSS: 0x40 0xb0 0xc0 0xd0
+                 * managed: 0x40 0xd0
+                 * AP: 0x00 0x20 0x40 0xa0 0xb0 0xc0 0xd0
+                 * AP/VLAN: 0x00 0x20 0x40 0xa0 0xb0 0xc0 0xd0
+                 * mesh point: 0xb0 0xc0 0xd0
+                 * P2P-client: 0x40 0xd0
+                 * P2P-GO: 0x00 0x20 0x40 0xa0 0xb0 0xc0 0xd0
+                 * P2P-device: 0x40 0xd0
+        software interface modes (can always be added):
+                 * AP/VLAN
+                 * monitor
+        valid interface combinations:
+                 * #{ managed, WDS, P2P-client } <= 2048, #{ AP, mesh point, P2P-GO } <= 8, #{ IBSS } <= 1,
+                   total <= 2048, #channels <= 1, STA/AP BI must match
+                 * #{ AP } <= 1,
+                   total <= 1, #channels <= 1, STA/AP BI must match, radar detect widths: { 20 MHz (no HT), 20 MHz }
+
+        HT Capability overrides:
+                 * MCS: ff ff ff ff ff ff ff ff ff ff
+                 * maximum A-MSDU length
+                 * supported channel width
+                 * short GI for 40 MHz
+                 * max A-MPDU length exponent
+                 * min MPDU start spacing
+        Device supports TX status socket option.
+        Device supports HT-IBSS.
+        Device supports low priority scan.
+        Device supports scan flush.
+        Device supports AP scan.
+
+root@OpenWrt:/# iw phy phy0 interface add wlan0 type station
+root@OpenWrt:/# ifconfig wlan0 up
+[ 5081.520000] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+
+root@OpenWrt:/# iwconfig
+ifb0      no wireless extensions.
+
+nas0      no wireless extensions.
+
+lo        no wireless extensions.
+
+wlan0     IEEE 802.11abgn  ESSID:off/any
+          Mode:Managed  Access Point: Not-Associated   Tx-Power=5 dBm
+          RTS thr:off   Fragment thr:off
+          Encryption key:off
+          Power Management:off
+
+eth0      no wireless extensions.
+
+ifb1      no wireless extensions.
+
+br-lan    no wireless extensions.</nowiki>
+</WRAP>\\
+
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * OEM source code available at: [[http://static.tp-link.com/resources/gpl/GPL_TD-W8970.tar.gz|GPL_TD-W8970.tar.gz]]
+  * [[https://forum.openwrt.org/viewtopic.php?id=42380|forum.openwrt.org - Tp-Link td-w8970]]
+  * [[https://forum.openwrt.org/viewtopic.php?id=32204&p=2|forum.openwrt.org - Vdsl2]]
+  * [[http://translate.google.com/translate?hl=en&ie=UTF8&prev=_t&sl=pl&tl=en&u=http://openrouter.info/forum/viewtopic.php%3Ff%3D18%26t%3D2727|openrouter.info - TP-LINK TD-W8970]] (//translated//)
+  * [[https://hycrandom.wordpress.com/2018/10/12/flash-openwrt-to-tp-link-td-w8970-using-serial/|Detailed walkthrough to flash via serial, header pin soldering]]
+
+
+==== Bugs ====
+
+  * [[https://dev.openwrt.org/ticket/14413|ticket #14413 ltq-vdsl-app does not get included for xrx200 targets]] - //**fixed** by blogic//
+  * [[https://dev.openwrt.org/ticket/14414|ticket #14414 w921v_fw_cutter Illegal instruction]] - //**fixed** by blogic//
+  * [[https://dev.openwrt.org/ticket/14417|ticket #14417 TD-W8970 ramdisk does not boot]] - //**fixed** by blogic//
+  * [[https://dev.openwrt.org/ticket/14433|ticket #14433 Bug mac address TD-8970v1]] - //**fixed** by blogic//
+  * [[https://dev.openwrt.org/ticket/14436|ticket #14436 Double the router TD8970]] - //**fixed** by jow//
+  * [[https://dev.openwrt.org/ticket/14439|ticket #14439 TD-W8970 full support]] 
+  * [[https://dev.openwrt.org/ticket/14451|ticket #14451 error in the script dsl_notify in the trunk modem TD-8970]]  //**fixed** by rpc//
+  * [[https://dev.openwrt.org/ticket/14453|ticket #14453 lantiq ar9/vr9 insmod memory leak]]  //**fixed** by nbd//
+  * [[https://dev.openwrt.org/ticket/14454|ticket #14454 TD-W8970 WiFi toggle button not working with hotplug.d]] - //**fixed** by blogic//
+  * [[https://dev.openwrt.org/ticket/14455|ticket #14455 TD-W8970 ath9k WiFi LED not working]] //**fixed** by VittGam//
+  * [[https://bugs.openwrt.org/index.php?do=details&task_id=1794&string=8970|FS#1794 - W8970 - ADSL stops working after some time]]
+
+===== Tags =====
+{{tag>Lantiq VR9 8Flash 64RAM 4Port GigabitEthernet MIPS MIPS32 34Kc 1NIC 1WNIC xDSL VDSL2 ADSL2+ USB 2USB JTAG Serial 802.11bgn ath9k 3Ant DetachableAntenna}}

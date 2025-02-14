@@ -1,0 +1,247 @@
+====== MikroTik RouterBoard RB750GL ======
+
+Small SOHO router with five independent Gigabit Ethernet ports and optional switch chip functionality.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^RB750GL$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^RB750GL$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^RB750GL$"}
+} -->
+
+==== Using a Linux workstation ====
+Here is a simple guide to flash OpenWrt/LEDE on your RB750GL from your Linux workstation...
+
+Get these files (available [[https://downloads.openwrt.org/releases/17.01.4/targets/ar71xx/mikrotik/ | here]] for the OpenWrt/LEDE 17.01 release):
+<code>
+lede-17.01.4-ar71xx-mikrotik-vmlinux-initramfs.elf
+lede-17.01.4-ar71xx-mikrotik-nand-large-squashfs-sysupgrade.bin
+lede-17.01.4-ar71xx-mikrotik-nand-64m-squashfs-sysupgrade.bin
+</code>
+
+Connect your Linux workstation directly to the first port (1) of the device to your wired interface (directly to make sure that there won't any other DHCP server interfere).
+
+Set a static ip on your wired interface (if you use NetworkManager or a similar tool use its capabilities or turn off the interface so that it won't interfere):
+<code>
+$ sudo ip addr add 192.168.1.200/24 dev eth0
+</code>
+
+Start Dnsmasq (DHCP+TFTP server):
+<code>
+$ sudo dnsmasq --no-daemon --port=0 --dhcp-range="192.168.1.50,192.168.1.150,12h" --enable-tftp --bootp-dynamic --dhcp-boot="lede-17.01.4-ar71xx-mikrotik-vmlinux-initramfs.elf" --tftp-root="/path/to/downloaded/files"
+</code>
+
+Press the ''RES'' button on the device and connect it to power. Wait for ~15s you will that device is using BOOTP to fetch the file in the dnsmasq output. At this point release the button and close dnsmasq using Ctrl+C:
+
+<code>
+$ sudo dnsmasq --no-daemon --port=0 --dhcp-range="192.168.1.50,192.168.1.150,12h" --enable-tftp --bootp-dynamic --dhcp-boot="lede-17.01.4-ar71xx-mikrotik-vmlinux-initramfs.elf" --tftp-root="/home/user/path/to/file"
+dnsmasq: started, version 2.79 DNS disabled
+dnsmasq: compile time options: IPv6 GNU-getopt DBus i18n IDN DHCP DHCPv6 no-Lua TFTP conntrack ipset auth DNSSEC loop-detect inotify
+dnsmasq-dhcp: DHCP, IP range 192.168.1.50 -- 192.168.1.150, lease time 12h
+dnsmasq-tftp: TFTP root is /home/user/path/to/file
+dnsmasq-dhcp: BOOTP(enp0s25) 192.168.1.78 d4:ca:6d:e3:f5:b7 
+dnsmasq-tftp: sent /home/user/path/to/file/lede-17.01.4-ar71xx-mikrotik-vmlinux-initramfs.elf to 192.168.1.78
+^C
+</code>
+
+OpenWrt/LEDE will boot from RAM. It will use Port 2-5 as LAN by default where it is available at the IP 192.168.1.1. Connect to the second ethernet port (2) and wait until the device responds to ICMP echo requests:
+<code>
+$ ping 192.168.1.1
+...
+From 192.168.1.200 icmp_seq=15 Destination Host Unreachable
+64 bytes from 192.168.1.1: icmp_seq=16 ttl=64 time=0.767 ms
+</code>
+
+After a short while ssh daemon should be up too, and you should be able to login using ssh:
+
+<code>
+$ ssh root@192.168.1.1
+...
+BusyBox v1.25.1 () built-in shell (ash)
+
+     _________
+    /        /\      _    ___ ___  ___
+   /  LE    /  \    | |  | __|   \| __|
+  /    DE  /    \   | |__| _|| |) | _|
+ /________/  LE  \  |____|___|___/|___|                      lede-project.org
+ \        \   DE /
+  \    LE  \    /  -----------------------------------------------------------
+   \  DE    \  /    Reboot (17.01.4, r3560-79f57e422d)
+    \________\/    -----------------------------------------------------------
+
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@LEDE:~#
+</code>
+
+Check the NAND size by looking at the kernel log output:
+<code>
+root@LEDE:~# dmesg | grep nand
+[    4.692579] nand: device found, Manufacturer ID: 0x98, Chip ID: 0xf1
+[    4.699024] nand: Toshiba NAND 128MiB 3,3V 8-bit
+[    4.703668] nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+</code>
+
+In this case it is a device with 128MiB flash and a page size of 2048 bytes.
+
+Next we will use the ...sysupgrade.bin file to flash OpenWrt/LEDE to flash. Depending on the page size use:
+
+  * Page size 512: lede-17.01.4-ar71xx-mikrotik-nand-64m-squashfs-sysupgrade.bin
+  * Page size 2048: lede-17.01.4-ar71xx-mikrotik-nand-large-squashfs-sysupgrade.bin
+
+You can use the web interface to flash the device. Point your browser to http://192.168.1.1/ and login as root. Since OpenWrt/LEDE is now running from RAM, this installation won't be persistent. You can also see under System -> Software that there is no flash available yet.
+
+To flash OpenWrt/LEDE to NAND go to System => Backup/Flash Firmware. Choose the correct ...sysupgrade.bin according to page size. Deselect "Keep settings". Now press "Flash image...", this will load another page. Check the Checksums and press "Proceed". After a short while the router will reboot and be reachable on ethernet port 2-5 at the default IP address 192.168.1.1 via ssh or http again. This time the router started from flash, hence changes are now persistent.
+
+
+==== References of older instructions ====
+
+For more details and alternative method, see Eric Conrad's blog [[http://www.ericconrad.com/2012/05/installing-openwrt-on-routerboard-750gl.html|Installing OpenWRT on a RouterBOARD 750GL]]
+
+==== With the help of another openwrt router ====
+See the steps for the routerboard 493g: [[toh/mikrotik/rb493g]]
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+==== Network interfaces ====
+The default network configuration is:
+<WRAP BOX>
+
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | LAN                          | 192.168.1.1/24           |
+| eth0.1           | Ports (2 to 5)               | None                     |
+| eth0.2           | Port 1                       | DHCP                 |
+
+</WRAP>
+
+==== Switch ====
+
+=== Default after openwrt installation ===
+<file>
+config interface 'lan'
+        option ifname 'eth0.1'
+        option type 'bridge'
+        option proto 'static'
+        option ipaddr '192.168.1.1'
+        option netmask '255.255.255.0'
+
+config interface 'wan'
+        option ifname 'eth0.2'
+        option proto 'dhcp'
+
+config switch
+        option name 'switch0'
+        option reset '1'
+        option enable_vlan '1'
+
+config switch_vlan
+        option device 'switch0'
+        option vlan '1'
+        option ports '0t 2 3 4 5'
+
+config switch_vlan
+        option device 'switch0'
+        option vlan '2'
+        option ports '0t 1'
+</file>
+
+=== Every port as single port ===
+<file>
+config interface 'lan'
+        option ifname 'eth0.2 eth0.3 eth0.4 eth0.5'
+        option type 'bridge'
+        option proto 'static'
+        option ipaddr '192.168.1.1'
+        option netmask '255.255.255.0'
+
+config interface 'wan'
+        option ifname 'eth0.1'
+        option proto 'dhcp'
+
+config switch
+        option name 'switch0'
+        option reset '1'
+        option enable_vlan '1'
+
+#port 1/Poe
+config switch_vlan
+        option device 'switch0'
+        option vlan '1'
+        option ports '0t 1'
+
+#Ethernet 2
+config switch_vlan
+        option device 'switch0'
+        option vlan '2'
+        option ports '0t 2'
+
+#Ethernet 3
+config switch_vlan
+        option device 'switch0'
+        option vlan '3'
+        option ports '0t 3'
+
+#Ethernet 4
+config switch_vlan
+        option device 'switch0'
+        option vlan '4'
+        option ports '0t 4'
+        
+#Ethernet 5
+config switch_vlan
+        option device 'switch0'
+        option vlan '5'
+        option ports '0t 5'        
+</file>
+
+
+===== Hardware =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedcurrentrel", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RB750GL$"}
+} -->
+
+==== Photos ====
+Photos of PCB (circa May 2014). Note that there appear to be testpoints for a serial port connection along with 3.3V power. In addition you can see the spot where USB could be, but the connector and power supply apear to de-populated. The back side was very uninteresting.
+
+{{:media:mikrotik:rb750gl_top.jpg?400|}}
+{{:media:mikrotik:rb750gl_testpoints.jpg?400|}}
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR7242 128flash 64ram}}

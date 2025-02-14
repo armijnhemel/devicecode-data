@@ -1,0 +1,210 @@
+====== Samsung SMT-G3000 series ======
+FIXME: Please transfer the informations from the old wiki pages [[https://oldwiki.archive.openwrt.org/oldwiki/openwrtdocs/hardware/samsung/smt_g3010|SMT-G3010]], [[https://oldwiki.archive.openwrt.org/oldwiki/openwrtdocs/hardware/samsung/smt_g3210|SMT-G3210]] and [[https://oldwiki.archive.openwrt.org/oldwiki/openwrtdocs/hardware/samsung/smt_g3220|SMT-G3220]] into this page. Thank you.
+
+===== Supported Versions =====
+
+===== Hardware Highlights =====
+^ CPU ^ Ram ^ Flash ^ Network ^ WLAN ^ VoIP ^ S0 ^ USB ^ Serial ^ JTag ^
+| [[docs:techref:hardware:soc:soc.lantiq|Lantiq Amazon]] | 64MB | 16MB | 4x1 | b/g | Yes | Yes | Yes | Yes |  Yes |
+
+==== Model Featurematrix  ====
+
+^ Feature\Model ^  SMT-G3000  ^  SMT-G3200  ^  SMT-G3010  ^  SMT-G3020  ^  SMT-G3210  ^  SMT-G3220  ^ 
+|  Modem Router\\ (ADSL2+)  |  Y  |  Y  |  Y  |  Y  |  Y  |  Y  |
+|  LAN port  |  1  |  2  |  4  |  4  |  4  |  4  |
+|  WLAN\\ (802.11b/g/Super G)  |  -  |  Y  |  -  |  -  |  Y  |  Y  |
+|  USB 2.0 port  |  -  |  -  |  1  |  1  |  1  |  1  |
+|  Trunk\\ (PSTN or ISDN)  |  -  |  -  |  -  |  Y  |  -  |  Y  |
+|  VoIP  |  -  |  -  |  Y  |  Y  |  Y  |  Y  |
+|  S0 port  |  -  |  -  |  Y  |  Y  |  Y  |  Y  |
+|  TAE-U port  |  -  |  -  |  3  |  3  |  3  |  3  |
+
+From: [[http://www.samsung.com/global/business/telecommunication/productDetailDown.do?b2b_down_file=2200
+ | Samsung IAD SMT-G3000 series]] (109 kB, pdf)
+
+===== Status =====
+at: 31. January 2010
+^ Feature ^ Status ^
+| PCI | WIP |
+| WLAN | WAIT for PCI |
+| USB | WAIT for PCI |
+| Ethernet | DONE |
+| DSL | TODO |
+| VLAN | TODO |
+| Led | TODO |
+| VoIP | TODO |
+| GPIO | UNKNOWN |
+
+What do these mean? 
+  * "DONE" means that it is implemented
+  * "WIP" means that the implementation is being worked on, but should not be considered ready for general testing. 
+  * "SLOW" means that the feature is DONE, but not performant due to known deficiencies in the code. 
+  * "TODO" means that the implementation is incomplete and nobody is working on it. 
+  * "WAIT for ..." means the the feature is basically DONE but waits for implementation of an other feature
+  * "UNKNOWN" means that the current status of this item isn't known.
+
+===== Installation =====
+==== Installing OpenWrt on a RAMdisk via tftp ====
+
+This was only tested on a Samsung SMT-G3210, but should also work with other devices.
+You need access to the serial console and OpenWrt trunk.
+
+  - remove broken from target/linux/amazon/Makefile
+  - run //**make menuconfig**//, select **infineon amazon** and configure the **target image** to **ramdisk with lzma** compression.
+  - setup a tftp server and place bin/amazon/openwrt-amazon-uImage into the server dir
+  - start the Samsung device, connect to it through serial console and enter u-boot (press enter while it starts u-boot, works only with Samsung firmware 1.02)
+  - connect the pc with Ethernet to the device
+  - change serverip in u-Boot to the ip address the PC has (//**setenv serverip 192.168.220.100**//), do not set it to the ip address of the Samsung device (//printenv ipaddr//)
+  - change the bootfile variable (**setenv bootfile openwrt-amazon-uImage**)
+  - run the boot command (**run net_nfs**)
+
+Only if you want your device always boot via tftp, do the following before running the boot command:
+  * change boot command (setenv bootcmd net_nfs)
+  * save the u-boot environment to flash (saveenv)
+  * test your configuration by rebooting the router (reset)
+
+If you want to change back to boot from flash to the following:
+  * change back to default boot command (setenv bootcmd flash_flash)
+  * save the u-boot environment to flash (saveenv)
+
+==== Installation ====
+Only OpenWrt trunk is running on these devices. You need a serial console to install. This was only tested on a Samsung SMT-G3010 and a Samsung SMT-G3210.
+
+The following will only work if "AMD/SPANSION S29LG128 (128 Mbit)" or S29GL128  is used. This should be the normal flash chip on these devices. The flash chip can be verified with //flinfo// in u-boot.
+
+  - remove broken from target/linux/amazon/Makefile
+  - run //make menuconfig//, select infineon amazon and configure the image.
+  - setup an tftp server and place bin/amazon/openwrt-amazon-squashfs.image into the server dir
+  - start the Samsung device, connect to it through serial console and enter u-boot (press enter while it starts u-boot)
+  - connect the pc with Ethernet to the device
+  - change serverip in u-Boot to the ip address the PC has (//setenv serverip 192.168.220.100//), do not set it to the ip address of the Samsung device (//printenv ipaddr//)
+  - enter flinfo to check if the flash chip is the correct one. It should print out "AMD/SPANSION S29LG128 (128 Mbit)"
+  - The next commands will erase most parts of the flash chip. This is only correct if you have the correct flash chip. 
+    * //%%erase 0xb3060000 0xb3fdffff%%//
+    * //%%protect off 0xB3060000 0xb3fdffff%%//
+  - load the image into memory
+    * //%%tftpboot 80400000 openwrt-amazon-squashfs.image%%//
+  - write the image into the flash chip. Replace {image length} with the bytes transfered by tftpboot. If you get (//Bytes transferred = 1835012 (**1c0004** hex)//) use //%%cp.b 0x80400000 0xB3060000 1c0004%%//
+    * //%%cp.b 0x80400000 0xB3060000 {image length}%%//
+  - reboot the system.
+    * //%%reset%%//
+  - Now OpenWrt should start on the device.
+
+The manufactures flash layout should look like this: 
+|%%0x00000000-0x00020000%% : "U-Boot"|
+|%%0x00020000-0x00060000%% : "firmware"|
+|%%0x00060000-0x00160000%% : "kernel"|
+|%%0x00160000-0x007e0000%% : "rootfsA"|
+|%%0x007e0000-0x00e60000%% : "rootfsB"|
+|%%0x00e60000-0x00fe0000%% : "configs"|
+|%%0x00fe0000-0x01000000%% : "Environment"|
+
+===== Basic configuration =====
+Since this part is identical for all devices, see [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]].
+
+===== Hardware =====
+The hardware seems to be centered around Infineons reference design for an xDSL gateway (see page 9 of [[http://solution.eccn.com/pdf/Infineon_063141w.pdf]]).
+==== Info ====
+| **Architecture:** MIPS | 
+| **Vendor:** Lantiq | 
+| **Bootloader:** [[docs:techref:bootloader:uboot|U-Boot]] | 
+| **System-On-Chip:** Infineon PSB50505 | 
+| **CPU Speed:** 235 Mhz | 
+| **Flash-Chip:** AMD/SPANSION S29GL128 (128 Mbit) | 
+| **Flash size:** 16 MiB | 
+| **RAM:** 64 MiB | 
+| **Wireless:** Atheros 802.11 b/g | 
+| **Ethernet:** Infineon ADM6996I |
+| **USB:** Yes | 
+| **Serial:** [[#Serial|Yes]] | 
+| **JTAG:** [[#JTAG|Yes]] |
+
+==== Photos ====
+Model Number
+
+//Front://
+
+**Photo of front**
+
+//Back://
+
+**Photo of back**
+
+//Main PCB//
+
+**Photo of PCB**
+
+For more photos see [[http://laforge.gnumonks.org/photoalbum/devices/samsung_smt-g3210/]].
+
+==== Disassembly notes ====
+=== Opening the case ===
+There are four clearly visible screws on the backside of the device. Once they are removed, the two halves of the case can be taken apart easily. 
+
+=== Removing WLAN miniPCI card ===
+The WiFi antenna is connected via a standard U.FL connector. Simply unplug it. 
+The miniPCI card is glued into the socket, and also glued with an adhesive pad to the PCB below. With a bit of force, it can be removed from the adhesive pad.
+
+=== Removing SLIC PCB ===
+On the inside, there is one stacked SLIC PCB which is fixed with one further screw. If you remove it, you can remove the stacked PCB. Removal is quite hard, since the connectors fit very tightly. Make sure to notice there are two stacking connectors!
+
+==== Serial ====
+
+Connector P1:
+^ Pin 1 ^ Pin 2 ^ Pin 3 ^ Pin 4 ^
+| n/a  | TxD | RxD | GND |
+Running at 3.3 Volt; 115200 Baud, 8N1.
+
+==== JTAG ====
+See [[docs:techref:hardware:port.jtag]].
+
+=== JTAG Board ===
+
+On the bottom of the PCB, there are testpads close to P1. The test pads are labelled TDI TDO TMS and TCK. TRST is pin1 of P1.
+
+=== JTAG XILINX CPLD ===
+
+Right of connector P1:
+^ 6 ^ 5 ^ 4 ^ 3 ^ 2 ^ 1 ^
+| Vcc | GND | TCK | TDO | TDI | TMS |
+
+The successful dump from the cpld.
+http://ting.ip-phone-forum.de/attachment.php?attachmentid=25944&d=1214415436
+(Can someone fix this link? I fixed link bottom but I dont speak german and cannot find right attachment)
+The post of xorshadow in the forum.
+http://www.ip-phone-forum.de/showthread.php?t=151980&p=1121038&viewfull=1#post1121038
+
+
+==== Telephonie ====
+
+=== Trunk Fx0 /S0 ===
+DSL/TEL port:
+^ 1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^
+| Dsl a | Dsl b | ISDN 2a | ISDN 1a | ISDN 1b | ISDN 2b | analog 1a | analog 1b |
+
+===== Hardware mods =====
+
+==== Soft reset ====
+Connecting pin 7 (EN) with pin 4 (GND) of MP1583DN (U1 and U3, both next to the 12V DC connector) will disable these Step-Down converter.\\ U1 generates 5 volt and U3 generates 3 volt, it is sufficient to disable U3 to force a reset.\\
+**WARNING:** You could damage your device by doing this, do it on your own risk.
+
+
+===== Links =====
+Original information on [[http://www.samsungnetwork.com/IAD]]
+ 
+  * [[http://wiki.gpl-devices.org/wiki/Samsung_SMT-G3210|GPL-Devices Wiki - Samsung SMT-G3210]] (Most of it applies to all routers of this series.)
+  * [[http://bitflip.de/samsung|Bitflip.de - "Ressourcen für die Samsung SMT-G3XX0 Router"]] (german)
+  * [[http://www.ip-phone-forum.de/showthread.php?t=161720| IP-Phone-Forum - "Samsung SMT-G3010, SMT-G3210, SMT-G3220: rootfs patchen"]] (german)
+
+==== OEM Firmware ====
+^  Model  ^  Firmware  ^
+|  SMT-G3000  | FIXME |
+|  SMT-G3200  | FIXME |
+|  SMT-G3010  | http://hilfe-center.1und1.de/dsl-hardware-c83894/samsung-dsl-modem-c85060/firmware-aktualisierung-im-samsung-dsl-modem-durchfuehren-a792288.html (german) |
+|  SMT-G3020  | FIXME |
+|  SMT-G3210  | http://hilfe-center.1und1.de/dsl-hardware-c83894/samsung-dsl-modem-c85060/firmware-aktualisierung-im-samsung-dsl-modem-durchfuehren-a792288.html (german) |
+|  SMT-G3220  | http://hilfe-center.1und1.de/dsl-hardware-c83894/samsung-dsl-modem-c85060/firmware-aktualisierung-im-samsung-dsl-modem-durchfuehren-a792288.html (german) |
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>lantiq amazon unsupported}}

@@ -1,0 +1,545 @@
+====== Belkin F7D4401 ======
+^ CPU                       ^ Ram     ^ Flash   ^ Network   ^ USB   ^ Serial   ^ JTag   ^
+| BCM4716 rev 1 @ 453 MHz   | 64MiB   | 8MiB    | 4 x 1     | Yes   | Yes      | Yes    |
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                            |
+^ Vendor           | Broadcom                        |
+^ Bootloader       | CFE                             |
+^ System-On-Chip   | BCM4718                         |
+^ CPU Speed        | 453 MHz                         |
+^ Flash size       | 8 MiB                           |
+^ RAM              | 64 MiB                          |
+^ Wireless         | BCM4329 and BCMa8d8             |
+^ Ethernet         | BCM47xx GBit, BCM53115 Switch   |
+^ USB              | 2 x USB 2.0                     |
+^ Serial           | Yes                             |
+^ JTAG             | Yes                             |
+^ ADSL Modem       | Yes                             |
+
+==== ADSL Modem ====
+
+Provided by an Infineon PSB 50601 (Amazon) ADSL chipset. This is a separate SoC with its own firmware that is configured in bridge mode with an embedded connection to the switch chip. This should appear on switch port 4 with an IP address of 192.168.5.1. Telnet and SSH to the ADSL chipset is unavailable, though there appears to be a web server and a serial port with a locked down terminal. ADSL does work by setting up a PPPoE session from within OpenWrt, but no modem statistics are available. It is suspected that there may be diagnostic webpages present in the chipset firmware that publish ADSL statistics but further analysis is required. 
+
+==== Serial Ports ====
+
+There are two serial ports of interest on this unit, both are populated:
+
+  * J3 header next to the BCM4718 SoC (Where Belkin / OpenWrt would usually reside)
+  * J4 header under the grey shroud covering the ADSL chipset (For ADSL firmware)
+
+Both headers have identical pinouts.
+
+The silkscreen indicates Pin 1 on each header:
+
+  Pin 1 - ??
+  Pin 2 - TX
+  Pin 3 - RX
+  Pin 4 - GND
+
+
+Directions are relative from the router (I.E plug your Rx into router's Tx) \\ 
+
+Voltage levels are 3V3, serial port settings are 8N1, 115200 bps
+
+===== Supported Versions =====
+^ Version/Model ^ S/N ^ OpenWrt Version Supported ^ Model Specific Notes ^
+| v1  | ? |WIP (Barrier Breaker) \\ Broken in Chaos Calmer | [[https://dev.openwrt.org/changeset/36241/trunk|R36241]] Patches @ [[https://github.com/gmtii/openwrt-f7d4401/blob/master/f7d4401-r36241.patch]] adapted from http://manojpi.blogspot.com |
+
+===== Bad Flash =====
+
+Adapted from the [[http://www.dslreports.com/faq/13796| generic DSLreports solution]]
+
+A serial adapter is optional, but it does give detailed information about the router status during this process \\ 
+
+This was tested using a Windows XP virtual machine but is by no means exclusive. It assumes:
+  * A functional CFE on the target
+  * The target fails to boot (I.E. falls back to CFE shell at power on)
+
+The aim of this process is to return the router to a known working firmware (I.E. stock) before flashing experimental builds again. Flashing known working builds of OpenWrt will likely work as well.
+ 
+Other de-bricking strategies may work, see notes afterwards
+
+  - Get the latest Belkin firmware [[http://cache-www.belkin.com/support/dl/F7D4401-4_WW_1.00.46.bin|here]]
+  - On the VM, ensure that the Microsoft tftp client is installed. This should be installed by default, Vista upwards need it installed via "Add/Remove Windows Components" in "Add/Remove Programs"
+  - Open port 69 (or temporarily disable the firewall - not recommended)
+  - Set the IP address of the machine to anything in the 192.168.2.0/24 range, with the exception of 192.168.2.1
+  - Open a command prompt and type in the following but do not press enter (yet): <code> tftp -i 192.168.2.1 put "path/to/belkin/firmware" </code>
+  - Unplug the router then plug the router back in, immediately followed by pressing 'enter' at the Windows command prompt
+  - If the transfer is successful you will get a message saying "Transfer successful: 8028160 bytes in X seconds"
+  - If a serial adapter was attached, you will see the router receiving the file then show 'Programming' at the prompt once the transfer is complete
+  - Wait between 5 to 10 minutes, if everything went well the top green LED will start flashing and the router's webpage will once again be at 192.168.2.1
+  - Try doing what you were trying to do again!
+
+==== Notes ====
+
+=== Kernel Panic / Soft Brick ===
+
+It appears that if you successfully flash a firmware with a functional boot block but kernel panics during boot for whatever reason then recovering is a bit more complicated. As noted below, trying to flash firmware via CFE other than automatic TFTP recovery doesn't seem to work. \\ 
+
+You will need a serial adapter for this as CFE commands are required \\
+
+The easiest way out is to break the current image bootblock so that the CFE is forced to intervene. One way to break it is as follows:
+
+  * On the panicked router, attached a serial adapter to header J3 and power cycle the unit. 
+  * Using your favourite serial terminal emulator, hit spacebar during router CFE boot to get into the CFE prompt.
+  * Follow steps 1 through 5 in the previous procedure to set up the remote machine
+  * At the CFE prompt type 'flash -noheader : flash0.trx' (sans quotes) and hit enter
+  * 'Reading :: ' should appear on the console
+  * At the remote machine start sending a firmware over TFTP
+  * The CFE should read in the firmware, but only write 28 bytes or so
+  * At the CFE prompt type in 'reboot' and hit enter
+  * CFE should now attempt to reboot, find a bad bootblock and read from TFTP three times
+  * At this point, continue from step 5 above to recover to stock
+  * If the router times out, power cycle and try again.
+
+=== General ===
+
+  * Router default IP is 192.168.2.1 for both Belkin and CFE
+  * When CFE boots it gives three attempts to boot from TFTP before hitting CFE shell, this is where the previous procedure uploads the stock firmware.
+  * This router contains a CFE mini web server at 192.168.2.1 activated in the event of boot failure. I could not get it to flash any firmware however (serial logs indicated it tried to read the input file 5 times then stopped, no obvious signs of file rejection)
+  * If using a *nix machine to recover from a bad flash, 'atftp' is known to work while the plain 'tftp' seems to transmit wrongly sized firmware images as indicated by its own logs.
+  * Using 'Load' and 'Boot' commands via CFE with the -tftp option froze the unit (stuck at 'loading' on prompt), had to pull power in order to get the shell back. Used tftpd-hpa on Debian 8.
+
+===== Bootlogs =====
+
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>Linux version 2.6.22 (violet@localhost.localdomain) (gcc version 4.1.2) #72 Thu Jan 13 11:23:05 CST 2011
+CPU revision is: 00019740
+Found chip type AI (0x19a14716)
+Chipc: rev 31, caps 0x184807c9, chipst 0x8800 pmurev 5, pmucaps 0x11242c05
+No PLL init done for chip 4716 rev 1 pmurev 5
+si_kattach done. ccrev = 31, wd_msticks = 32
+Determined physical RAM map:
+ memory: 04000000 @ 00000000 (usable)
+On node 0 totalpages: 16384
+  Normal zone: 128 pages used for memmap
+  Normal zone: 0 pages reserved
+  Normal zone: 16256 pages, LIFO batch:3
+Built 1 zonelists.  Total pages: 16256
+Kernel command line: root=/dev/mtdblock2 console=ttyS0,115200 init=/sbin/preinit
+Primary instruction cache 32kB, physically tagged, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, linesize 32 bytes.
+Synthesized TLB refill handler (20 instructions).
+Synthesized TLB load handler fastpath (32 instructions).
+Synthesized TLB store handler fastpath (32 instructions).
+Synthesized TLB modify handler fastpath (31 instructions).
+PID hash table entries: 256 (order: 8, 1024 bytes)
+CPU: BCM4716 rev 1 at 453 MHz
+Using 226.500 MHz high precision timer.
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Memory: 60652k/65536k available (2817k kernel code, 4824k reserved, 1131k data, 132k init, 0k highmem)
+Calibrating delay loop... 225.28 BogoMIPS (lpj=112640)
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+PCI: Using membase 8000000
+PCI: Initializing host
+PCI: Reset RC
+PCI: Fixing up bus 0
+PCI: Fixing up bridge
+PCI: Setting latency timer of device 0000:01:00.0 to 64
+PCI: Fixing up bridge
+PCI: Setting latency timer of device 0000:01:00.1 to 64
+PCI: Enabling device 0000:01:00.1 (0004 -> 0006)
+PCI: Fixing up bus 1
+Time: MIPS clocksource has been installed.
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+gpio_init 479
+VFS: Disk quotas dquot_6.5.1
+Dquot-cache hash table entries: 1024 (order 0, 4096 bytes)
+squashfs: version 3.2-r2 (2007/01/15) Phillip Lougher
+fuse init (API version 7.8)
+io scheduler noop registered (default)
+Serial: 8250/16550 driver $Revision: 1.1.1.1 $ 4 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x0 (irq = 8) is a 16550A
+loop: module loaded
+PPP generic driver version 2.4.2
+PPP MPPE Compression module registered
+NET: Registered protocol family 24
+Physically mapped flash: Found 1 x16 devices at 0x0 in 8-bit bank
+Physically mapped flash: Found an alias at 0x800000 for the chip at 0x0
+Physically mapped flash: Found an alias at 0x1000000 for the chip at 0x0
+Physically mapped flash: Found an alias at 0x1800000 for the chip at 0x0
+ Amd/Fujitsu Extended Query Table at 0x0040
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+Flash device: 0x800000 at 0x1c000000
+Physically mapped flash: squash filesystem with lzma found at block 1763
+Creating 4 MTD partitions on "Physically mapped flash":
+0x00000000-0x00030000 : "boot"
+0x00030000-0x007f0000 : "linux"
+0x001b8f78-0x007f0000 : "rootfs"
+0x007f0000-0x00800000 : "nvram"
+Found a 0MB  serial flash
+sflash: found no supported devices
+usbmon: debugfs is not available
+GACT probability on
+Mirror/redirect action on
+u32 classifier
+    input device check on
+    Actions configured
+Netfilter messages via NETLINK v0.30.
+nf_conntrack version 0.5.0 (512 buckets, 4096 max)
+ctnetlink v0.93: registering with nfnetlink.
+ip_tables: (C) 2000-2006 Netfilter Core Team
+ClusterIP Version 0.8 loaded successfully
+arp_tables: (C) 2002 David S. Miller
+TCP cubic registered
+NET: Registered protocol family 1
+NET: Registered protocol family 10
+IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+Ebtables v2.0 registered
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted root (squashfs filesystem) readonly.
+Freeing unused kernel memory: 132k freed
+Warning: unable to open an initial console.
+Algorithmics/MIPS FPU Emulator v1.5
+emf: module license 'Proprietary' taints kernel.
+et_module_init: msglevel set to 0x1
+PCI: Setting latency timer of device 0000:00:02.0 to 64
+si_doattach: incoming bus is PCI but it's a lie, switching to SI devid:0x4715
+Found chip type AI (0x19a14716)
+Chipc: rev 31, caps 0x184807c9, chipst 0x8800 pmurev 5, pmucaps 0x11242c05
+No PLL init done for chip 4716 rev 1 pmurev 5
+eth0: Broadcom BCM47XX 10/100/1000 Mbps Ethernet Controller 5.10.128.0
+wl_module_init: msglevel set to 0x1
+wl_module_init: msglevel2 set to 0x0
+PCI: Setting latency timer of device 0000:00:01.0 to 64
+si_doattach: incoming bus is PCI but it's a lie, switching to SI devid:0x4329
+Found chip type AI (0x19a14716)
+Chipc: rev 31, caps 0x184807c9, chipst 0x8800 pmurev 5, pmucaps 0x11242c05
+No PLL init done for chip 4716 rev 1 pmurev 5
+Overriding device id = 0x4329
+wlc_bmac_attach, deviceid 0x4329 nbands 1
+eth1: Broadcom BCM4329 802.11 Wireless Controller 5.10.128.0 (Compiled in . at 11:24:59 on Jan 13 2011)
+PCI: Enabling device 0000:01:01.0 (0000 -> 0002)
+PCI: Setting latency timer of device 0000:01:01.0 to 64
+Found chip type AI (0x1381a8d8)
+Chipc: rev 34, caps 0x58500000, chipst 0x20081 pmurev 6, pmucaps 0x108c2606
+Neither SPROM nor OTP has valid image
+Applying 43224B0+ WARs
+Overriding device id = 0x432d
+wlc_bmac_attach, deviceid 0x432d nbands 1
+eth2: Broadcom BCMa8d8 802.11 Wireless Controller 5.10.128.0 (Compiled in . at 11:24:59 on Jan 13 2011)
+br0: starting userspace STP failed, staring kernel STP
+vlan2: add 33:33:00:00:00:01 mcast address to master interface
+vlan2: add 01:00:5e:00:00:01 mcast address to master interface
+vlan2: add 33:33:ff:e2:cd:ef mcast address to master interface
+vlan2: dev_set_promiscuity(master, 1)
+device eth0 entered promiscuous mode
+device vlan2 entered promiscuous mode
+si_pmu_fast_pwrup_delay: chip 4716 rev 1 delay 15000
+wl0: wlc_switch_ab_11n ERROR 0 restoring amsdu to 0
+wl0: wlc_switch_ab_11n ERROR 0 restoring amsdu to 0
+wl0: wlc_set_rate_override: 5G band not available
+wl0: wlc_set_rate_override: 5G band not available
+si_pmu_fast_pwrup_delay: chip 4716 rev 1 delay 15000
+device eth1 entered promiscuous mode
+si_pmu_fast_pwrup_delay: chip 43224 rev 1 delay 7000
+wl1: wlc_switch_ab_11n ERROR 0 restoring amsdu to 0
+wl1: wlc_switch_ab_11n ERROR 0 restoring amsdu to 0
+wl1: wlc_set_rate_override: 2.4G band not available
+wl1: wlc_set_rate_override: 2.4G band not available
+si_pmu_fast_pwrup_delay: chip 43224 rev 1 delay 7000
+device eth2 entered promiscuous mode
+br0: port 3(eth2) entering listening state
+br0: port 2(eth1) entering listening state
+br0: port 1(vlan2) entering listening state
+br0: port 3(eth2) entering learning state
+br0: port 2(eth1) entering learning state
+br0: port 1(vlan2) entering learning state
+br0: topology change detected, propagating
+br0: port 3(eth2) entering forwarding state
+br0: topology change detected, propagating
+br0: port 2(eth1) entering forwarding state
+br0: topology change detected, propagating
+br0: port 1(vlan2) entering forwarding state
+br1: starting userspace STP failed, staring kernel STP
+vlan2: add 33:33:00:00:00:02 mcast address to master interface
+vlan2: add 33:33:ff:00:00:00 mcast address to master interface
+ohci_hcd: 2006 August 04 USB 1.1 'Open' Host Controller (OHCI) Driver
+PCI: Setting latency timer of device 0000:00:04.0 to 64
+ohci_hcd 0000:00:04.0: OHCI Host Controller
+ohci_hcd 0000:00:04.0: new USB bus registered, assigned bus number 1
+ohci_hcd 0000:00:04.0: irq 5, io mem 0x18009000
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 2 ports detected
+PCI: Setting latency timer of device 0000:00:04.1 to 64
+ehci_hcd 0000:00:04.1: EHCI Host Controller
+ehci_hcd 0000:00:04.1: new USB bus registered, assigned bus number 2
+ehci_hcd 0000:00:04.1: irq 5, io mem 0x18004000
+ehci_hcd 0000:00:04.1: USB 0.0 started, EHCI 1.00, driver 10 Dec 2004
+usb usb2: configuration #1 chosen from 1 choice
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 2 ports detected
+vlan1: Setting MAC address to  94 44 52 e2 cd f0.
+vlan1: add 33:33:00:00:00:02 mcast address to master interface
+vlan1: add 33:33:00:00:00:01 mcast address to master interface
+vlan1: add 01:00:5e:00:00:01 mcast address to master interface
+vlan1: add 33:33:ff:e2:cd:f0 mcast address to master interface
+vlan1: add 33:33:ff:00:00:00 mcast address to master interface
+sxuptp: sxuptp_keepalive_thread start
+USB port mode selector has been enabled
+usbcore: registered new interface driver sxuptp_driver
+jcpcore: start
+jcp_command_register: new command registered GET USB_DEVICE_LIST
+jcp_command_register: new command registered EXEC SCANNER CONNECT
+jcp_command_register: new command registered EXEC SCANNER DISCONNECT
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+wl0: wl_link_up: link up
+wl1: wl_link_up: link up
+vlan1: dev_set_allmulti(master, 1)</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 3.6.11 (gmtii@dell) (gcc version 4.6.4 (OpenWrt/Linaro GCC 4.6-2012.12 r36194) ) #4 Sun Apr 7 13:37:37 CEST 2013
+[    0.000000] CPU revision is: 00019740 (MIPS 74Kc)
+[    0.000000] bcm47xx: using bcma bus
+[    0.000000] bcma: bus0: Found chip with id 0x4716, rev 0x01 and package 0x0A
+[    0.000000] bcma: bus0: Core 0 found: ChipCommon (manuf 0x4BF, id 0x800, rev 0x1F, class 0x0)
+[    0.000000] bcma: bus0: Core 3 found: MIPS 74K (manuf 0x4A7, id 0x82C, rev 0x01, class 0x0)
+[    0.000000] bcma: bus0: Found rev 5 PMU (capabilities 0x11242C05)
+[    0.000000] bcma: bus0: Found parallel flash
+[    0.000000] bcma: bus0: Early bus registered
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 802de970, node_mem_map 81000000
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16256 pages, LIFO batch:3
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line:  root=/dev/mtdblock2 rootfstype=squashfs,jffs2 noinitrd console=ttyS0,115200
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] __ex_table already sorted, skipping sort
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 61572k/65536k available (2416k kernel code, 3964k reserved, 519k data, 164k init, 0k highmem)
+[    0.000000] NR_IRQS:128
+[    0.032000] Calibrating delay loop... 225.02 BogoMIPS (lpj=450048)
+[    0.036000] pid_max: default: 32768 minimum: 301
+[    0.036000] Mount-cache hash table entries: 512
+[    0.036000] NET: Registered protocol family 16
+[    0.056000] bio: create slab <bio-0> at 0
+[    0.060000] Switching to clocksource MIPS
+[    0.068000] NET: Registered protocol family 2
+[    0.068000] TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+[    0.068000] TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.068000] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.068000] TCP: reno registered
+[    0.068000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.068000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.068000] NET: Registered protocol family 1
+[    0.068000] PCI: CLS 0 bytes, default 32
+[    0.072000] bcma: bus0: Core 1 found: IEEE 802.11 (manuf 0x4BF, id 0x812, rev 0x11, class 0x0)
+[    0.072000] bcma: bus0: Core 2 found: GBit MAC (manuf 0x4BF, id 0x82D, rev 0x00, class 0x0)
+[    0.072000] bcma: bus0: Core 4 found: USB 2.0 Host (manuf 0x4BF, id 0x819, rev 0x04, class 0x0)
+[    0.072000] bcma: bus0: Core 5 found: PCIe (manuf 0x4BF, id 0x820, rev 0x0E, class 0x0)
+[    0.072000] bcma: bus0: Core 6 found: DDR1/DDR2 Memory Controller (manuf 0x4BF, id 0x82E, rev 0x01, class 0x0)
+[    0.072000] bcma: bus0: Core 7 found: Internal Memory (manuf 0x4BF, id 0x80E, rev 0x07, class 0x0)
+[    0.072000] bcma: bus0: Core 8 found: I2S (manuf 0x4BF, id 0x834, rev 0x00, class 0x0)
+[    0.316000] bcma: bus0: Using SPROM revision 8 provided by platform.
+[    0.316000] bcma: bus0: PMU resource config unknown or not needed for device 0x4716
+[    0.320000] bcma: bus0: Workarounds unknown or not needed for device 0x4716
+[    0.320000] bcma: bus0: Initializing MIPS core...
+[    0.320000] bcma: bus0: Moved i2s interrupt to oob line 7 instead of 8
+[    0.320000] bcma: bus0: set_irq: core 0x0812, irq 3 => 3
+[    0.320000] bcma: bus0: set_irq: core 0x082d, irq 4 => 4
+[    0.320000] bcma: bus0: set_irq: core 0x0819, irq 5 => 5
+[    0.320000] bcma: bus0: set_irq: core 0x0820, irq 6 => 6
+[    0.320000] bcma: bus0: set_irq: core 0x0800, irq 2 => 2
+[    0.320000] bcma: bus0: set_irq: core 0x0834, irq 0 => 2
+[    0.320000] bcma: bus0: IRQ reconfiguration done
+[    0.320000] bcma: core 0x0800, irq : 2(S)* 3  4  5  6  D  I 
+[    0.320000] bcma: core 0x082c, irq : 2(S)  3  4  5  6  D  I*
+[    0.320000] bcma: core 0x0812, irq : 2(S)  3* 4  5  6  D  I 
+[    0.320000] bcma: core 0x082d, irq : 2(S)  3  4* 5  6  D  I 
+[    0.320000] bcma: core 0x0819, irq : 2(S)  3  4  5* 6  D  I 
+[    0.320000] bcma: core 0x0820, irq : 2(S)  3  4  5  6* D  I 
+[    0.320000] bcma: core 0x082e, irq : 2(S)  3  4  5  6  D* I 
+[    0.320000] bcma: core 0x080e, irq : 2(S)  3  4  5  6  D  I*
+[    0.320000] bcma: core 0x0834, irq : 2(S)* 3  4  5  6  D  I 
+[    0.320000] bcma: bus0: PCIEcore in host mode found
+[    0.496000] PCI host bridge to bus 0000:00
+[    0.496000] pci_bus 0000:00: root bus resource [mem 0x08000000-0x0bffffff]
+[    0.496000] pci_bus 0000:00: root bus resource [io  0x0100-0x07ff]
+[    0.496000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.496000] pci_bus 0000:00: busn_res: [bus 00-ff] is inserted under domain [bus 00-ff]
+[    0.496000] pci 0000:00:00.0: [14e4:4716] type 00 class 0x060000
+[    0.496000] bcma: PCI: Fixing up bridge 0000:00:00.0
+[    0.496000] bcma: PCI: Fixing up device 0000:00:00.0
+[    0.496000] pci 0000:00:00.0: reg 10: [mem 0x00000000-0x00003fff 64bit]
+[    0.496000] pci 0000:00:00.0: reg 18: [mem 0x00000000-0x07ffffff 64bit]
+[    0.496000] pci 0000:00:00.0: supports D1 D2
+[    0.496000] pci 0000:00:00.1: [14e4:0000] type 00 class 0x060000
+[    0.496000] bcma: PCI: Fixing up bridge 0000:00:00.1
+[    0.496000] bcma: PCI: Fixing up device 0000:00:00.1
+[    0.496000] pci 0000:00:00.1: reg 10: [mem 0x00000000-0x00003fff 64bit]
+[    0.496000] pci 0000:00:00.1: reg 18: [mem 0x00000000-0x07ffffff 64bit]
+[    0.496000] pci 0000:00:00.1: supports D1 D2
+[    0.496000] pci 0000:00:01.0: [14e4:a8d8] type 00 class 0x028000
+[    0.496000] pci 0000:00:01.0: reg 10: [mem 0x00000000-0x00003fff 64bit]
+[    0.496000] bcma: PCI: Fixing up addresses 0000:00:01.0
+[    0.496000] pci 0000:00:01.0: BAR 0: assigned [mem 0x08000000-0x08003fff 64bit]
+[    0.496000] pci 0000:00:01.0: supports D1 D2
+[    0.496000] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[    0.500000] PCI: Enabling device 0000:00:01.0 (0000 -> 0002)
+[    0.500000] bcma: PCI: Fixing up device 0000:00:01.0
+[    0.500000] bcma: bus1: Found chip with id 0xA8D8, rev 0x01 and package 0x08
+[    0.500000] bcma: bus1: Core 0 found: ChipCommon (manuf 0x4BF, id 0x800, rev 0x22, class 0x0)
+[    0.500000] bcma: bus1: Core 1 found: IEEE 802.11 (manuf 0x4BF, id 0x812, rev 0x17, class 0x0)
+[    0.500000] bcma: bus1: Core 2 found: PCIe (manuf 0x4BF, id 0x820, rev 0x0F, class 0x0)
+[    0.500000] bcma: bus1: Found rev 6 PMU (capabilities 0x108C2606)
+[    0.632000] bcma: bus1: Using SPROM revision 8 provided by platform.
+[    0.632000] bcma: bus1: PMU resource config unknown or not needed for device 0xA8D8
+[    0.644000] bcma: bus1: Bus registered
+[    0.648000] bcma: bus0: Bus registered
+[    0.652000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.652000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.652000] msgmni has been set to 120
+[    0.652000] io scheduler noop registered
+[    0.652000] io scheduler deadline registered (default)
+[    0.652000] Serial: 8250/16550 driver, 2 ports, IRQ sharing enabled
+[    0.676000] serial8250.0: ttyS0 at MMIO 0xb8000300 (irq = 2) is a U6_16550A
+[    1.140000] console [ttyS0] enabled
+[    1.144000] bcm47xx_pflash: flash init: 0x1c000000 0x02000000
+[    1.152000] Physically mapped flash: Found 1 x16 devices at 0x0 in 8-bit bank. Manufacturer ID 0x00007f Chip ID 0x0000cb
+[    1.164000] Physically mapped flash: Found an alias at 0x800000 for the chip at 0x0
+[    1.164000] Physically mapped flash: Found an alias at 0x1000000 for the chip at 0x0
+[    1.164000] Physically mapped flash: Found an alias at 0x1800000 for the chip at 0x0
+[    1.164000] Amd/Fujitsu Extended Query Table at 0x0040
+[    1.168000]   Amd/Fujitsu Extended Query version 1.1.
+[    1.172000] number of CFI chips: 1
+[    1.176000] bcm47xx_pflash: Flash device: 0x2000000 at 0x1fc00000
+[    1.184000] bcm47xx_part: Found Belkin_F7D4401 header:cfe
+[    1.188000] bcm47xx_part: bootloader size: 196608
+[    1.196000] Found board: "Belkin F7D4401"
+[    1.200000] bcm47xx_part: Looking for dual image
+[    1.208000] bcm47xx_part: Found Belkin_F7D4401 header:root
+[    1.216000] bcm47xx_part: TRX offset : 0
+[    1.656000] bcm47xx_part: Updating TRX offsets and length:
+[    1.664000] bcm47xx_part: old trx = [0x0000001c, 0x00000968, 0x000f7c00], len=0x003c1000 crc32=0x15633263
+[    1.672000] bcm47xx_part: new trx = [0x0000001c, 0x00000968, 0x000f7c00], len=0x000f7c00 crc32=0x982c2f94
+[    3.552000] bcm47xx_part: Done
+[    3.556000] 4 bcm47xx partitions found on MTD device Physically mapped flash
+[    3.560000] Creating 4 MTD partitions on "Physically mapped flash":
+[    3.568000] 0x000000000000-0x000000030000 : "cfe"
+[    3.576000] 0x000000030000-0x0000007f0000 : "linux"
+[    3.584000] 0x000000127c00-0x0000007f0000 : "rootfs"
+[    3.588000] mtd: partition "rootfs" must either start or end on erase block boundary or be smaller than an erase block -- forcing read-only
+[    3.604000] mtd: partition "rootfs" set to be root filesystem
+[    3.612000] mtd: partition "rootfs_data" created automatically, ofs=3B0000, len=440000 
+[    3.620000] 0x0000003b0000-0x0000007f0000 : "rootfs_data"
+[    3.628000] 0x0000007f0000-0x000000800000 : "nvram"
+[    3.640000] bcm47xx-wdt bcm47xx-wdt.0: BCM47xx Watchdog Timer enabled (30 seconds)
+[    3.648000] TCP: cubic registered
+[    3.652000] NET: Registered protocol family 17
+[    3.656000] 8021q: 802.1Q VLAN Support v1.8
+[    3.668000] VFS: Mounted root (squashfs filesystem) readonly on device 31:2.
+[    3.676000] Freeing unused kernel memory: 164k freed
+[    5.652000] diag: kernel found a "Belkin F7D4401"
+[    5.656000] diag: Detected 'Belkin PlayMax F7D4401'
+[    5.660000] diag: led:power
+[    5.664000] diag: led:diag
+[    5.668000] diag: led:wlan
+[    5.672000] diag: led:wlan_red
+[    5.672000] diag: led:led_usb0
+[    5.676000] diag: led:led_usb1
+[    5.868000] bgmac bcma0:1: Found PHY addr: 30 (NOREGS)
+[    5.880000] bgmac bcma0:1: Support for Roboswitch not implemented
+[    5.912000] bgmac: Broadcom 47xx GBit MAC driver loaded
+[    6.120000] roboswitch: Probing device 'eth0'
+[    6.208000] roboswitch: found a 53115! at eth0
+[   12.268000] Compat-drivers backport release: compat-drivers-2013-01-21-1
+[   12.272000] Backport based on wireless-testing.git master-2013-02-22
+[   12.280000] compat.git: wireless-testing.git
+[   12.324000] cfg80211: Calling CRDA to update world regulatory domain
+[   12.328000] cfg80211: World regulatory domain updated:
+[   12.336000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp)
+[   12.344000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   12.352000] cfg80211:   (2457000 KHz - 2482000 KHz @ 20000 KHz), (300 mBi, 2000 mBm)
+[   12.360000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (300 mBi, 2000 mBm)
+[   12.368000] cfg80211:   (5170000 KHz - 5250000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   12.376000] cfg80211:   (5735000 KHz - 5835000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   12.836000] SCSI subsystem initialized
+[   13.068000] usbcore: registered new interface driver usbfs
+[   13.072000] usbcore: registered new interface driver hub
+[   13.080000] usbcore: registered new device driver usb
+[   14.428000] wl: module license 'unspecified' taints kernel.
+[   14.436000] Disabling lock debugging due to kernel taint
+[   14.572000] wl0: Broadcom BCM4329 802.11 Wireless Controller 5.10.56.27
+[   14.580000] SSB/BCMA glue driver successfully attached
+[   15.340000] PPP generic driver version 2.4.2
+[   15.844000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   16.012000] NET: Registered protocol family 24
+[   16.128000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[   16.136000] ehci-platform ehci-platform.0: Generic Platform EHCI Controller
+[   16.144000] ehci-platform ehci-platform.0: new USB bus registered, assigned bus number 1
+[   16.152000] ehci-platform ehci-platform.0: irq 5, io mem 0x18004000
+[   16.168000] ehci-platform ehci-platform.0: USB 2.0 started, EHCI 1.00
+[   16.172000] hub 1-0:1.0: USB hub found
+[   16.176000] hub 1-0:1.0: 2 ports detected
+[   16.308000] nf_conntrack version 0.5.0 (964 buckets, 3856 max)
+[   17.092000] usbcore: registered new interface driver cdc_acm
+[   17.100000] cdc_acm: USB Abstract Control Model driver for USB modems and ISDN adapters
+[   17.204000] usbcore: registered new interface driver usbserial
+[   17.212000] usbcore: registered new interface driver usbserial_generic
+[   17.220000] USB Serial support registered for generic
+[   17.224000] usbserial: USB Serial Driver core
+[   17.352000] Initializing USB Mass Storage driver...
+[   17.360000] usbcore: registered new interface driver usb-storage
+[   17.364000] USB Mass Storage support registered.
+[   17.584000] usbcore: registered new interface driver cp210x
+[   17.588000] USB Serial support registered for cp210x
+[   17.704000] usbcore: registered new interface driver pl2303
+[   17.712000] USB Serial support registered for pl2303
+[   17.816000] usbcore: registered new interface driver usbhid
+[   17.820000] usbhid: USB HID core driver
+[   22.496000] device eth0.1 entered promiscuous mode
+[   22.500000] device eth0 entered promiscuous mode
+[   22.508000] br-lan: port 1(eth0.1) entered forwarding state
+[   22.512000] br-lan: port 1(eth0.1) entered forwarding state
+[   24.516000] br-lan: port 1(eth0.1) entered forwarding state
+[   33.016000] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   33.032000] jffs2_build_filesystem(): unlocking the mtd device... done.
+[   44.244000] usb 1-2: new high-speed USB device number 3 using ehci-platform
+[   44.388000] scsi0 : usb-storage 1-2:1.0
+[   45.392000] scsi 0:0:0:0: Direct-Access     SanDisk  Cruzer           8.02 PQ: 0 ANSI: 0 CCS
+[   45.408000] sd 0:0:0:0: [sda] Attached SCSI removable disk
+[   33.036000] jffs2_build_filesystem(): erasing all blocks after the end marker... done.
+[   69.512000] jffs2: notice: (834) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 de.</nowiki>
+</WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>BCM4716 8flash 64ram 4port GigabitEthernet ADSL 2USB USB2.0 WIP unsupported}}

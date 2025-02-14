@@ -1,0 +1,1066 @@
+====== Seagate BlackArmor NAS220 ======
+
+/* This template is intended to be used via https://openwrt.org/meta/create_new_device_page ONLY.  */
+/* DO NOT CREATE NEW DEVICEPAGES VIA COPY & PASTE! */
+/* USE https://openwrt.org/meta/create_new_device_page */
+
+The Seagate BlackArmor NAS220 is a consumer NAS with two internal sata drive bays. The stock OS runs RAID 1 over the disks via mdadm. This device has a single ethernet port, no wifi radios and does not have a switch. OpenWrt sets the interface on the ethernet port to come up as a DHCP client.
+
+{{media:seagate:seagate_ba_nas220_hero-a002237-270x270_copy.png|Seagate BlackArmor NAS220}}
+
+
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^Seagate$", "model": "^BlackArmor NAS220$"}
+} -->
+
+===== Experimental Versions =====
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+ *   The official Table of Hardware only lists current, stable versions of OpenWrt.  *
+ *   Use this space to describe any on-going efforts to create a newer version       *
+ *   of the firmware for this device. Provide links to firmware images,              *
+ *   active threads on the forum, or other sources of information.                   *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+//None at this time.//
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^Seagate$", "model": "^BlackArmor NAS220$"}
+} -->
+
+
+===== Installation =====
+/* stable release */
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Seagate$", "model": "^BlackArmor NAS220$"}
+} -->
+
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+===== Installation Procedure =====
+The installation of OpenWrt requires a serial connection and also requires the installation of an updated u-boot boot loader. The u-boot update is necessary to support ubifs, which the older stock u-boot version does not support. The stock OS is primarily installed from flash, however it loads some components from small partitions on the SATA drives. OpenWrt will run entirely from flash. 
+
+<color #ed1c24>WARNING: There isn't a known procedure to revert this device back to stock firmware.</color>
+
+==== Flash Layout ====
+
+**Stock flash layout**
+  * ''0x00000000-0x000a0000 : "uboot"''
+  * ''0x000a0000-0x000b0000 : "param"''
+  * ''0x000c0000-0x002c0000 : "preroot"''
+  * ''0x002c0000-0x00540000 : "uimage"''
+  * ''0x00540000-0x01f40000 : "rootfs"''
+  * ''0x01f40000-0x02000000 : "misc"''
+  * ''0x00000000-0x02000000 : "flash"''
+
+**OpenWrt flash layout** leaves the first 2 partitions at the same size. The "u-boot" partition is flashed with an updated u-boot and the uboot-env is overwritten also during the installation procedure. Note there is a gap from 0x000b0000 to 0x000c0000 in the stock configuration and that area of flash is left alone and not used by OpenWrt. OpenWrt creates a "ubi" partition over what was preroot, uimage and rootfs in stock form. The final stock "misc" paritition is also left alone and not used by OpenWrt. 
+
+  * ''0x000000000000-0x0000000a0000 : "uboot"''
+  * ''0x0000000a0000-0x0000000b0000 : "uboot-env"''
+  * ''0x0000000b0000-0x0000000c0000 : "reserved"''
+  * ''0x0000000c0000-0x000001f40000 : "ubi"''
+
+==== Serial installation ====
+
+NOTE: this process uses a serial connection. It will upgrade the
+bootloader and reset the bootloader environment variables
+
+| {{:meta:icons:tango:48px-dialog-warning.svg.png?nolink }} | Replacing the bootloader can potentially "brick" your device and require JTAG recovery. |
+
+**Download binaries**
+  * Download u-boot binary "uboot.kwb" which is listed in the supplemental kirkwood download and will be in a "u-boot-nas220" folder
+  * Download all of the OpenWrt images. Depending on the option you will not use all of them. 
+
+**TFTP server setup**
+  * Setup PC with TFTP server set the PC IP to 10.4.50.5 as TFTP server
+  * Copy these files to TFTP server location
+    * u-boot.kwb
+    * seagate_blackarmor-nas220-initramfs-uImage
+    * seagate_blackarmor-nas220-squashfs-sysupgrade.bin
+    * seagate_blackarmor-nas220-squashfs-factory.bin
+
+**Seagate NAS setup**
+  * Connect LAN cable between PC and seagate device
+  * Connect to serial to seagate device (see serial section for details)
+
+**Install u-boot**
+  * Boot seagate device and stop in bootloader by pressing any key
+  * run 'printenv' from u-boot and save the values
+  * ''tftpboot 0x2000000 u-boot.kwb''
+  * ''nand erase.part uboot''
+  * ''nand write 0x2000000 0x0 ${filesize}''
+  * ''reset''
+
+**Update MAC address in u-boot env**
+  * Stop in u-boot by pressing any key
+  * Get your MAC address from your saved printenv. Is also on chassis
+  * ''setenv ethaddr <your MAC>''
+  * ''saveenv''
+
+**Option 1 (recommended) - Install OpenWrt via initramfs and sysupgrade**
+  * ''tftpboot 0x2000000 seagate_blackarmor-nas220-initramfs-uImage''
+  * ''bootm 0x2000000''
+  * //OpenWrt should be running now, however it is not written to flash yet//
+  * From the running instance of OpenWrt use Luci's "flash image" feature from the web site or use sysupgrade from the console to write seagate_blackarmor-nas220-squashfs-sysupgrade.bin to flash
+
+**Option 2 - Install OpenWrt by flashing factory image from u-boot**
+  * ''nand erase.part ubi''
+  * ''tftpboot 0x2000000 seagate_blackarmor-nas220-squashfs-factory.bin''
+  * ''nand write 0x2000000 ubi ${filesize}''
+  * ''reset''
+==== OEM installation using the TFTP method ====
+
+->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+TFTP option is not possible from stock OS without using a serial connection for the console. See serial installation instructions.
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+
+===== Debricking =====
+
+This device supports the kirkwood serial recovery via kwboot.
+  - Attach serial cable between device and another computer.
+  - Download https://downloads.openwrt.org/releases/21.02.0-rc3/targets/kirkwood/generic/u-boot-nas220/u-boot.kwb
+  - Install kwboot binary for your computer.
+  - On computer run 'kwboot -t -B 115200 /dev/ttyUSB0 -b u-boot.kwb -p'
+  - Apply power to NAS220
+  - u-boot.kwb is uploaded and executed.  When complete you will be at u-boot prompt.
+  - Follow u-boot install instructions above.
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+
+This device has a single ethernet port, no wifi or switch. OpenWrt will bring up a DHCP client interface on the single ethernet port after install. 
+
+===== Specific Configuration =====
+
+==== System Fan ====
+This device uses an adt7476 fan control chip to control the fan speed based on on board sensors. It basically continually varies the fan speed between the min and max RPMs configured based on temperature. The default installation sets the fan to 1/4 speed at 35C and max speed at 48C with the chip varying the RPM between those ranges. If you would like to change these settings you can in a script like the following, which can be run in startup
+
+<code>
+path_to_hwmon='/sys/devices/platform/ocp@f1000000/f1011000.i2c/i2c-0/0-002e/hwmon/hwmon0'
+# each thousand is 1 degree Celsius
+low_temp=32000 
+high_temp=42000
+# range 0-255
+low_fan_speed=64 
+high_fan_speed=255
+
+# adt7476 fan control chip. 3 temp sensors.
+echo 7 > "$path_to_hwmon/pwm1_auto_channels_temp"
+echo $low_fan_speed > "$path_to_hwmon/pwm1_auto_point1_pwm"
+echo $high_fan_speed > "$path_to_hwmon/pwm1_auto_point2_pwm"
+echo $low_temp > "$path_to_hwmon/temp1_auto_point1_temp"
+echo $high_temp > "$path_to_hwmon/temp1_auto_point2_temp"
+echo $low_temp > "$path_to_hwmon/temp2_auto_point1_temp"
+echo $high_temp > "$path_to_hwmon/temp2_auto_point2_temp"
+echo $low_temp > "$path_to_hwmon/temp3_auto_point1_temp"
+echo $high_temp > "$path_to_hwmon/temp3_auto_point2_temp"
+echo 2 > "$path_to_hwmon/pwm1_enable"
+</code>
+==== Switch Ports (for VLANs) ====
+The device has a single ethernet port and does not have a switch.
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+===== Hardware =====
+==== Info ====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Seagate$", "model": "^BlackArmor NAS220$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+^ Serial connection parameters\\ for Seagate Blackarmor NAS220 | 10 pin header, (115200,8,N,1), 3.3V TTL |
+
+{{media:seagate:nas220-serial-header.jpg?400|Seagate BlackArmor NAS220 - serial header location}}
+
+{{media:seagate:nas220-serial-with-labels.jpeg?400|Seagate BlackArmor NAS220 - serial pins labeled}}
+
+  * ''	9|x  -   x|10''
+  * ''	7|x  -   x|8''
+  * ''	5|x  - GND|6''
+  * ''	3|x  -  RX|4''
+  * ''	1|TX -   x|2''
+  * ''	front of case'' 
+
+
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+===== Bootloader mods =====
+-> [[docs:techref:bootloader]]
+
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>
+         __  __                      _ _
+        |  \/  | __ _ _ ____   _____| | |
+        | |\/| |/ _` | '__\ \ / / _ \ | |
+        | |  | | (_| | |   \ V /  __/ | |
+        |_|  |_|\__,_|_|    \_/ \___|_|_|
+ _   _     ____              _
+| | | |   | __ )  ___   ___ | |_
+| | | |___|  _ \ / _ \ / _ \| __|
+| |_| |___| |_) | (_) | (_) | |_
+ \___/    |____/ \___/ \___/ \__|  ** uboot_ver:v0.1.7 **
+
+ ** MARVELL BOARD: LASSEN LE
+
+U-Boot 1.1.4 (Aug 17 2009 - 10:16:51) Marvell version: 3.4.14
+
+U-Boot code: 00600000 -> 0067FFF0  BSS: -> 006CDE60
+
+Soc: 88F6192 A0 (DDR2)
+CPU running @ 800Mhz L2 running @ 400Mhz
+SysClock = 200Mhz , TClock = 166Mhz
+
+DRAM CAS Latency = 3 tRP = 3 tRAS = 8 tRCD=3
+DRAM CS[0] base 0x00000000   size 128MB
+DRAM Total size 128MB  16bit width
+Found ADT7473, program PWM1 ... OK
+Addresses 8M - 0M are saved for the U-Boot usage.
+Mem malloc Initialization (8M - 7M): Done
+NAND:32 MB
+
+Marvell Serial ATA Adapter
+Integrated Sata device found
+[0 0 0]: Enable DMA mode
+  Device 0 @ 0 0:
+Model: ST32000542AS                             Firm: CC94     Ser#:             6XW18TPS
+            Type: Hard Disk
+            Supports 48-bit addressing
+            Capacity: 1907729.0 MB = 1863.0 GB (3907029168 x 512)
+[0 1 0]: Enable DMA mode
+  Device 1 @ 0 1:
+Model: ST32000542AS                             Firm: CC34     Ser#:             5XW1DV9X
+            Type: Hard Disk
+            Supports 48-bit addressing
+            Capacity: 1907729.0 MB = 1863.0 GB (3907029168 x 512)
+
+
+CPU : Marvell Feroceon (Rev 1)
+Scanning partition header:
+Found sign PrEr at c0000
+Found sign KrNl at 2c0000
+Found sign RoOt at 540000
+
+Streaming disabled
+Write allocate disabled
+
+
+USB 0: host mode
+PEX 0: interface detected no Link.
+Net:   egiga0 [PRIME]
+Hit any key to stop autoboot:  0
+
+NAND read: device 0 offset 0xc4000, size 0x195200
+
+Reading data from 0x259000 -- 100% complete.
+ 1659392 bytes read: OK
+Calculate CRC32:
+crc32 checksum Pass
+
+NAND read: device 0 offset 0x2c4000, size 0x226600
+
+Reading data from 0x4ea400 -- 100% complete.
+ 2254336 bytes read: OK
+Calculate CRC32:
+crc32 checksum Pass
+## Booting image at 00040000 ...
+   Image Name:   Linux-2.6.22.18
+   Created:      2011-08-18   7:57:14 UTC
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    2254008 Bytes =  2.1 MB
+   Load Address: 00008000
+   Entry Point:  00008000
+   Verifying Checksum ... OK
+OK
+
+Starting kernel ...
+
+Uncompressing Linux............................................................................................................................................. done, booting the kernel.
+Linux version 2.6.22.18 (arsene@localhost.localdomain) (gcc version 4.2.1) #1 Thu Aug 18 15:57:03 CST 2011 v0.2.5
+CPU: ARM926EJ-S [56251311] revision 1 (ARMv5TE), cr=00053977
+Machine: Feroceon-KW
+Using UBoot passing parameters structure
+Memory policy: ECC disabled, Data cache writeback
+CPU0: D VIVT write-back cache
+CPU0: I cache: 16384 bytes, associativity 4, 32 byte lines, 128 sets
+CPU0: D cache: 16384 bytes, associativity 4, 32 byte lines, 128 sets
+Built 1 zonelists.  Total pages: 32512
+Kernel command line: console=ttyS0,115200 mtdparts=nand_mtd:0xa0000@0x0(uboot),0x00010000@0x000a0000(param),0x00200000@0x000c0000(preroot),0x00280000@0x002c0000(uimage),0x01a00000@0x00540000(rootfs),0x000c0000@0x01f40000(misc),32m@0x0(flash) root=/dev/ram0 rootfstype=cramfs init=/etc/rc.preroot initrd=0x800000,0x1000000
+PID hash table entries: 512 (order: 9, 2048 bytes)
+Console: colour dummy device 80x30
+Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+Memory: 128MB 0MB 0MB 0MB = 128MB total
+Memory: 108928KB available (4128K code, 291K data, 128K init)
+Security Framework v1.0.0 initialized
+Mount-cache hash table entries: 512
+CPU: Testing write buffer coherency: ok
+NET: Registered protocol family 16
+
+CPU Interface
+-------------
+SDRAM_CS0 ....base 00000000, size 128MB
+SDRAM_CS1 ....disable
+SDRAM_CS2 ....disable
+SDRAM_CS3 ....disable
+PEX0_MEM ....base e8000000, size 128MB
+PEX0_IO ....base f2000000, size   1MB
+INTER_REGS ....base f1000000, size   1MB
+NFLASH_CS ....base fa000000, size   2MB
+SPI_CS ....base f4000000, size  16MB
+BOOT_ROM_CS ....no such
+DEV_BOOTCS ....no such
+CRYPT_ENG ....base f0000000, size   2MB
+
+  Marvell Development Board (LSP Version KW_LSP_4.2.7_patch21_with_rx_desc_tuned)-- LASSEN  Soc: 88F6192 A0 LE
+
+ Detected Tclk 166666667 and SysClk 200000000
+MV Buttons Device Load
+Marvell USB EHCI Host controller #0: c05c6400
+PEX0 interface detected no Link.
+PCI: bus0: Fast back to back transfers enabled
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+NET: Registered protocol family 2
+Time: kw_clocksource clocksource has been installed.
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+TCP: Hash tables configured (established 4096 bind 4096)
+TCP reno registered
+checking if image is initramfs...it isn't (bad gzip magic numbers); looks like an initrd
+Freeing initrd memory: 16384K
+RTC registered
+Use the XOR engines (acceleration) for enhancing the following functions:
+  o RAID 5 Xor calculation
+  o kernel memcpy
+  o kenrel memzero
+Number of XOR engines to use: 4
+cesadev_init(c00116c4)
+mvCesaInit: sessions=640, queue=64, pSram=f0000000
+MV Buttons Driver Load
+VFS: Disk quotas dquot_6.5.1
+Dquot-cache hash table entries: 1024 (order 0, 4096 bytes)
+Installing knfsd (copyright (C) 1996 okir@monad.swb.de).
+JFFS2 version 2.2. (NAND) Â© 2001-2006 Red Hat, Inc.
+fuse init (API version 7.8)
+SGI XFS with large block numbers, no debug enabled
+io scheduler noop registered
+io scheduler anticipatory registered (default)
+Serial: 8250/16550 driver $Revision: 1.90 $ 4 ports, IRQ sharing disabled
+serial8250.0: ttyS0 at MMIO 0xf1012000 (irq = 33) is a 16550A
+serial8250.0: ttyS1 at MMIO 0xf1012100 (irq = 34) is a 16550A
+RAMDISK driver initialized: 2 RAM disks of 16384K size 1024 blocksize
+loop: module loaded
+Loading Marvell Ethernet Driver:
+  o Cached descriptors in DRAM
+  o DRAM SW cache-coherency
+  o Single RX Queue support - ETH_DEF_RXQ=0
+  o Single TX Queue support - ETH_DEF_TXQ=0
+  o TCP segmentation offload enabled
+  o Receive checksum offload enabled
+  o Transmit checksum offload enabled
+  o Network Fast Processing (Routing) supported
+  o Driver ERROR statistics enabled
+  o Driver INFO statistics enabled
+  o Proc tool API enabled
+  o Rx descripors: q0=256
+  o Tx descripors: q0=532
+  o Loading network interface(s):
+    o egiga0, ifindex = 1, GbE port = 0
+
+Warning: Giga 1 is Powered Off
+
+mvFpRuleDb (c73a3000): 1024 entries, 4096 bytes
+e100: Intel(R) PRO/100 Network Driver, 3.5.17-k4-NAPI
+e100: Copyright(c) 1999-2006 Intel Corporation
+Integrated Sata device found
+scsi0 : Marvell SCSI to SATA adapter
+scsi1 : Marvell SCSI to SATA adapter
+scsi 0:0:0:0: Direct-Access     Seagate  ST32000542AS     CC94 PQ: 0 ANSI: 5
+scsi 1:0:0:0: Direct-Access     Seagate  ST32000542AS     CC34 PQ: 0 ANSI: 5
+sd 0:0:0:0: [sda] 3907029168 512-byte hardware sectors (2000399 MB)
+sd 0:0:0:0: [sda] Write Protect is off
+sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, supports DPO and FUA
+sd 0:0:0:0: [sda] 3907029168 512-byte hardware sectors (2000399 MB)
+sd 0:0:0:0: [sda] Write Protect is off
+sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, supports DPO and FUA
+ sda: sda1 sda2 sda3 sda4
+sd 0:0:0:0: [sda] Attached SCSI disk
+sd 1:0:0:0: [sdb] 3907029168 512-byte hardware sectors (2000399 MB)
+sd 1:0:0:0: [sdb] Write Protect is off
+sd 1:0:0:0: [sdb] Write cache: enabled, read cache: enabled, supports DPO and FUA
+sd 1:0:0:0: [sdb] 3907029168 512-byte hardware sectors (2000399 MB)
+sd 1:0:0:0: [sdb] Write Protect is off
+sd 1:0:0:0: [sdb] Write cache: enabled, read cache: enabled, supports DPO and FUA
+ sdb: sdb1 sdb2 sdb3 sdb4
+sd 1:0:0:0: [sdb] Attached SCSI disk
+sd 0:0:0:0: Attached scsi generic sg0 type 0
+sd 1:0:0:0: Attached scsi generic sg1 type 0
+NFTL driver: nftlcore.c $Revision: 1.98 $, nftlmount.c $Revision: 1.41 $
+NAND device: Manufacturer ID: 0xec, Chip ID: 0x75 (Samsung NAND 32MiB 3,3V 8-bit)
+Scanning device for bad blocks
+7 cmdlinepart partitions found on MTD device nand_mtd
+Using command line partition definition
+Creating 7 MTD partitions on "nand_mtd":
+0x00000000-0x000a0000 : "uboot"
+0x000a0000-0x000b0000 : "param"
+0x000c0000-0x002c0000 : "preroot"
+0x002c0000-0x00540000 : "uimage"
+0x00540000-0x01f40000 : "rootfs"
+0x01f40000-0x02000000 : "misc"
+0x00000000-0x02000000 : "flash"
+ehci_marvell ehci_marvell.70059: Marvell Orion EHCI
+ehci_marvell ehci_marvell.70059: new USB bus registered, assigned bus number 1
+ehci_marvell ehci_marvell.70059: irq 19, io base 0xf1050100
+ehci_marvell ehci_marvell.70059: USB 2.0 started, EHCI 1.00, driver 10 Dec 2004
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+USB Universal Host Controller Interface driver v3.0
+usb 1-1: new high speed USB device using ehci_marvell and address 2
+usb 1-1: configuration #1 chosen from 1 choice
+hub 1-1:1.0: USB hub found
+hub 1-1:1.0: 4 ports detected
+usbcore: registered new interface driver usblp
+drivers/usb/class/usblp.c: v0.13: USB Printer Device Class driver
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+mice: PS/2 mouse device common for all mice
+i2c /dev entries driver
+attach_adapter....
+adt7473_detect....
+adt7473 0-002e: adt7473 chip found
+md: linear personality registered for level -1
+md: raid0 personality registered for level 0
+md: raid1 personality registered for level 1
+md: raid10 personality registered for level 10
+raid6: int32x1     73 MB/s
+raid6: int32x2     80 MB/s
+raid6: int32x4     83 MB/s
+raid6: int32x8     74 MB/s
+raid6: using algorithm int32x4 (83 MB/s)
+md: raid6 personality registered for level 6
+md: raid5 personality registered for level 5
+md: raid4 personality registered for level 4
+raid5: measuring checksumming speed
+   arm4regs  :   722.800 MB/sec
+   8regs     :   503.200 MB/sec
+   32regs    :   600.000 MB/sec
+raid5: using function: arm4regs (722.800 MB/sec)
+device-mapper: ioctl: 4.11.0-ioctl (2006-10-12) initialised: dm-devel@redhat.com
+dm_crypt using the OCF package.
+usbcore: registered new interface driver hiddev
+usbcore: registered new interface driver usbhid
+drivers/hid/usbhid/hid-core.c: v2.6:USB HID core driver
+wix gpio_init
+Advanced Linux Sound Architecture Driver Version 1.0.14 (Thu May 31 09:03:25 2007 UTC).
+ALSA device list:
+  No soundcards found.
+TCP cubic registered
+NET: Registered protocol family 1
+NET: Registered protocol family 17
+md: Autodetecting RAID arrays.
+md: autorun ...
+md: considering sdb4 ...
+md:  adding sdb4 ...
+md: sdb3 has different UUID to sdb4
+md: sdb2 has different UUID to sdb4
+md: sdb1 has different UUID to sdb4
+md:  adding sda4 ...
+md: sda3 has different UUID to sdb4
+md: sda2 has different UUID to sdb4
+md: sda1 has different UUID to sdb4
+md: created md3
+md: bind<sda4>
+md: bind<sdb4>
+md: running: <sdb4><sda4>
+raid1: raid set md3 active with 2 out of 2 mirrors
+md: considering sdb3 ...
+md:  adding sdb3 ...
+md: sdb2 has different UUID to sdb3
+md: sdb1 has different UUID to sdb3
+md:  adding sda3 ...
+md: sda2 has different UUID to sdb3
+md: sda1 has different UUID to sdb3
+md: created md2
+md: bind<sda3>
+md: bind<sdb3>
+md: running: <sdb3><sda3>
+raid1: raid set md2 active with 2 out of 2 mirrors
+md: considering sdb2 ...
+md:  adding sdb2 ...
+md: sdb1 has different UUID to sdb2
+md:  adding sda2 ...
+md: sda1 has different UUID to sdb2
+md: created md1
+md: bind<sda2>
+md: bind<sdb2>
+md: running: <sdb2><sda2>
+raid1: raid set md1 active with 2 out of 2 mirrors
+md: considering sdb1 ...
+md:  adding sdb1 ...
+md:  adding sda1 ...
+md: created md0
+md: bind<sda1>
+md: bind<sdb1>
+md: running: <sdb1><sda1>
+raid1: raid set md0 active with 2 out of 2 mirrors
+md: ... autorun DONE.
+RAMDISK: cramfs filesystem found at block 0
+RAMDISK: Loading 1620KiB [1 disk] into ram disk... done.
+VFS: Mounted root (cramfs filesystem) readonly.
+Freeing init memory: 128K
+Enter Pre-Root FileSystem:
+FW_UPDATE_FLAG_RES:1
+BOARDTEST_FALG:0
+1       100MB   1169MB  1069MB  ext3                               raid
+2       1169MB  2239MB  1070MB  linux-swap                         raid
+3       2239MB  2773MB  534MB   ext3                               raid
+4       2773MB  2000GB  1998GB                                     raid
+1       100MB   1169MB  1069MB  ext3         primary               raid
+2       1169MB  2239MB  1070MB  linux-swap   primary               raid
+3       2239MB  2773MB  534MB   ext3         primary               raid
+4       2773MB  2000GB  1998GB               primary               raid
+DSK1_RES:0
+DSK2_RES:0
+DSK3_RES:1
+DSK4_RES:1
+DSK1_S_RES:1
+DSK2_S_RES:1
+DSK3_S_RES:0
+DSK4_S_RES:0
+CHK_RES:1
+MD0CHK_RES:0
+CHK_RES:1
+/dev/md0: recovering journal
+/dev/md0: clean, 5756/130560 files, 73401/260960 blocks
+kjournald starting.  Commit interval 5 seconds
+EXT3 FS on md0, internal journal
+EXT3-fs: mounted filesystem with ordered data mode.
+init started:  BusyBox v1.1.1 (2008.10.08-08:58+0000) multi-call binary
+Adding 1044792k swap on /dev/md1.  Priority:-1 extents:1 across:1044792k
+kjournald starting.  Commit interval 5 seconds
+EXT3-fs warning: maximal mount count reached, running e2fsck is recommended
+EXT3 FS on md2, internal journal
+EXT3-fs: recovery complete.
+EXT3-fs: mounted filesystem with ordered data mode.
+Starting pid 452, console /dev/ttyS0: '/etc/init.d/rcS'
+
+
+==> Assembling MD arrays ................................... [ OK ]
+==> Activate volume vg0.................................... [ OK ]
+==> Activate volume vg1.................................... [FAIL]
+==> Activate volume vg2.................................... [FAIL]
+==> Activate volume vg3.................................... [FAIL]
+==> Updating disk information ............................. [ OK ]
+==> Disabling HDD standby for /dev/sda .................... [ OK ]
+==> Disabling HDD standby for /dev/sdb .................... [ OK ]
+==> Disabling HDD standby for /dev/sdc .................... [ OK ]
+==> Disabling HDD standby for /dev/sdd .................... [ OK ]
+==> Disabling HDD standby for /dev/sde .................... [ OK ]
+==> Disabling HDD standby for /dev/sdf .................... [ OK ]
+==> Disabling HDD standby for /dev/sdg .................... [ OK ]
+==> Disabling HDD standby for /dev/sdh .................... [ OK ]
+==> Inserting Paragon NTFS-3G module ...................... ufsd: module license 'Commercial product' taints kernel.
+ufsd: driver loaded at bf000000 built on Jun  5 2009 15:42:37
+UFSD version 7.04 (Jun  5 2009, 15:37:57)
+NTFS read/write support included
+$Id: ufsdvfs.c,v 1.207.4.1 2009/05/14 14:37:07 shura Exp $ (LBD=ON)
+[ OK ]
+==> Removing all usb storage setting ...................... [ OK ]
+==> Checking signature in /etc/netatalk/afpd.conf ......... [ OK ]
+==> Denying to export shares through AFP .................. [ OK ]
+
+==> Mounting /dev/vg0/lv0 to /DataVolume ...
+kjournald starting.  Commit interval 5 seconds
+EXT3-fs warning: maximal mount count reached, running e2fsck is recommended
+EXT3 FS on dm-0, internal journal
+EXT3-fs: mounted filesystem with ordered data mode.
+
+
+==> Starting quota check .................................. [ OK ]
+==> Mounting all shares with bind property ................ [ OK ]
+==> Updating the file "raclient_volume" ................... [ OK ]
+==> Starting portmap ...................................... [ OK ]
+==> Inserting bonding module .............................. [ NO ]
+==> Starting network ......................................
+udhcpc[858]: udhcpc (v0.9.9-pre) started
+egiga0: link down
+egiga0: started
+udhcpc[858]: Sending discover...
+egiga0: link up, full duplex, speed 100 Mbps
+udhcpc[858]: Sending discover...
+udhcpc[858]: Sending select for 192.168.0.11...
+udhcpc[892]: udhcpc (v0.9.9-pre) started
+udhcpc[892]: SIOCGIFINDEX failed!: No such device
+egiga0    Link encap:Ethernet  HWaddr 00:10:75:07:2A:32
+          inet addr:192.168.0.11  Bcast:192.168.0.255  Mask:255.255.255.0
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:4 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:4 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:532
+          RX bytes:834 (834.0 B)  TX bytes:1296 (1.2 KiB)
+          Interrupt:11
+
+lo        Link encap:Local Loopback
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          UP LOOPBACK RUNNING  MTU:16436  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+SIOCSIFADDR: No such device
+==> Updateing /etc/hosts ..................................
+Trying interface egiga0
+IP resolved to 192.168.0.11
+Host name is ChapelHill
+==> Starting mini_httpd ................................... [ OK ]
+==> Starting m_mini_httpdd ................................ [ OK ]
+==> Starting inetd ........................................ [ OK ]
+==> Printer's spooler is GOOD .............................
+==> Starting cupsd ........................................ [ OK ]
+==> Starting TappIn Agent  ........................
+==> Starting NTP client ................................... [ OK ]
+==> Starting recyclebind .................................. [ OK ]
+==> Starting smbd ......................................... [ OK ]
+==> Starting nmbd ......................................... [ OK ]
+==> Starting alias recheck............................. ==> Starting backup scheduled.............................. [ OK ]
+==> Starting backup getIPd................................. [ OK ]
+==> Starting logrotate .................................... [ OK ]
+==> Starting network interface plugging daemon ............ [ OK ]
+==> Initializing LCD H/W .................................. [ OK ]
+==> Showing "System Ready" in LCD ......................... [ OK ]
+==> Starting LCD button monitor ........................... [ OK ]
+==> Starting udevd ........................................ [ OK ]
+==> Starting udevadm trigger ..............................
+Doing LASSEN udev initial
+sda should be harddisk
+sdb should be harddisk
+Checking USB printer
+ifplugd_action completed
+==> Starting aronis license server ........................
+Start SharesManaged.
+==> Starting crond ........................................
+crond[1262]: crond 2.3.2 dillon, started, log level 0
+
+==> Starting WiAutoConfig ................................. [ OK ]
+Linux WiDMS v2.20 (1213.008)
+Copyright(c)2007-2011,Wistron Corp.
+All rights reserved.
+
+Portions Copyright (c) 2004, 2006 Intel Corporation
+
+Some codes of this software were generated by INTEL(R) DIGITAL HOME DEVICE CODE WIZARD.
+Copyright of INTEL(R) DIGITAL HOME DEVICE CODE WIZARD is reserved by Intel Corporation.
+
+==> Starting lltd ......................................... Seagate Corporationhttp://www.seagate.comWindows Media Connect Compatible (WiDMS)WiDMS000001http://www.seagate.com/supportsort by name
+xbox_compatible is false
+ChapelHill
+szServer = ChapelHill: 1
+/var/cds/media_library1
+DBinit.............
+-- Start Remove The Failed .tb file --
+-- Check Path: /var/cds/media_library --
+-- Complete Remove The Failed .tb file --
+-- Sleep :22677 sec --
+SearchFolder = /var/cds/media_library
+[ OK ]
+Linux iTunes Server v1.20 (1205.001)
+Copyright(c)2010,Wistron Corp.
+All rights reserved.
+UPnP SystemUpdate Event Fired: 1
+UPnP ContainerUpdateID Event Fired: 0500000000000000,1
+UPnP ContainerUpdateID Event Fired: 0600000000000000,1
+UPnP ContainerUpdateID Event Fired: 0700000000000000,1
+SearchFolder = /var/cds/media_library
+UPnP SystemUpdate Event Fired: 2
+UPnP ContainerUpdateID Event Fired: 0200000000000000,1
+SearchFolder = /var/cds/media_library
+UPnP SystemUpdate Event Fired: 3
+UPnP ContainerUpdateID Event Fired: 0300000000000000,1
+==> Starting mDNSResponder ................................ [ OK ]
+==> Set readahead 2048 for /dev/vg0/lv0 ................... [ OK ]
+==> Set readahead 2048 for /dev/vg1/lv1 ................... [FAIL]
+==> Set readahead 2048 for /dev/vg2/lv2 ................... [FAIL]
+==> Set readahead 2048 for /dev/vg3/lv3 ................... [FAIL]
+==> Set readahead 2048 for /dev/mapper/enclv0 ............. [FAIL]
+==> Set readahead 2048 for /dev/mapper/enclv1 ............. [FAIL]
+==> Set readahead 2048 for /dev/mapper/enclv2 ............. [FAIL]
+==> Set readahead 2048 for /dev/mapper/enclv3 ............. [FAIL]
+==> Starting syslogd ...................................... [ OK ]
+==> Setting trustees ...................................... [ OK ]
+==> Syncing time from system clock to H/W clock ........... [ OK ]
+==> Deleting the critical event(s) ........................ [ OK ]
+==> Cleaning flag for Downloader .......................... [ OK ]
+==> Starting Downloader monitor ........................... [ OK ]
+==> Setting UPnP for both of HTTP(S) and FTP ports ........ [ OK ]
+==> Checking preferred language in system_var ............. [ en ]
+==> Starting alarmd ....................................... [ OK ]
+==> Starting hwmonitord ................................... [ OK ]
+==> Disabling wiki Server ................................. [ OK ]
+Start SharesManaged.
+==> Starting IP monitor for DDNS .......................... [ OK ]
+==> Mounting encrypted volume(s) in background ............ [ OK ]
+
+==> Generating Factory Default Restore page ...............
+m-search
+>> FDR already existed. (VlFSRFhHSWhWJFVTRVxFb0VQQ0NdM1Y=)
+
+==> Set parmaters for lan ports ...........................
+GbE port 0: TxEnable WA - Enabled, deep=1, tx_en_bk=1
+
+==> Starting I/O Monitor for HDD standby ..................
+==> Forcedly set passwd for username "licenser" .........
+m-search
+==> Checking whether system get abnormal shutdown ......... [ NO ]
+==> Socket connection for raclientd .......................
+==> Starting backup server service ........................
+
+Starting pid 1583, console /dev/ttyS0: '/sbin/insmod'
+Starting pid 1588, console /dev/ttyS0: '/sbin/getty'
+
+ServerName login:
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+U-Boot 2020.04 (Jun 19 2020 - 13:50:29 +0000)
+NAS 220
+
+SoC:   Kirkwood 88F6281_A0
+DRAM:  128 MiB
+NAND:  32 MiB
+Loading Environment from NAND... OK
+In:    serial
+Out:   serial
+Err:   serial
+Net:   egiga0
+88E1116 Initialized on egiga0
+Hit any key to stop autoboot:  0
+ubi0: attaching mtd3
+ubi0: scanning is finished
+ubi0: attached mtd3 (name "ubi", size 31 MiB)
+ubi0: PEB size: 16384 bytes (16 KiB), LEB size: 15872 bytes
+ubi0: min./max. I/O unit sizes: 512/512, sub-page size 256
+ubi0: VID header offset: 256 (aligned 256), data offset: 512
+ubi0: good PEBs: 2000, bad PEBs: 0, corrupted PEBs: 0
+ubi0: user volume: 3, internal volumes: 1, max. volumes count: 92
+ubi0: max/mean erase counter: 5/3, WL threshold: 4096, image sequence number: 558434533
+ubi0: available PEBs: 48, total reserved PEBs: 1952, PEBs reserved for bad PEB handling: 40
+No size specified -> Using max size (2476032)
+Read 2476032 bytes from volume kernel to 00800000
+## Booting kernel from Legacy Image at 00800000 ...
+   Image Name:   ARM OpenWrt Linux-5.4.48
+   Created:      2020-06-25  21:09:05 UTC
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    2474266 Bytes = 2.4 MiB
+   Load Address: 00008000
+   Entry Point:  00008000
+   Verifying Checksum ... OK
+   Loading Kernel Image
+
+Starting kernel ...
+
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 5.4.51 (builder@buildhost) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r13836-1b3ca863ab)) #0 Mon Jul 13 00:08:04 2020
+[    0.000000] CPU: Feroceon 88FR131 [56251311] revision 1 (ARMv5TE), cr=0005397f
+[    0.000000] CPU: VIVT data cache, VIVT instruction cache
+[    0.000000] OF: fdt: Machine model: Seagate Blackarmor NAS220
+[    0.000000] Memory policy: Data cache writeback
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000]   Normal zone: 288 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32768 pages, LIFO batch:7
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: console=ttyS0,115200
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 121124K/131072K available (5030K kernel code, 176K rwdata, 1396K rodata, 1024K init, 210K bss, 9948K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 16, nr_irqs: 16, preallocated irqs: 16
+[    0.000000] random: get_random_bytes called from start_kernel+0x2d4/0x4fc with crng_init=0
+[    0.000000] clocksource: orion_clocksource: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 11467562657 ns
+[    0.000011] sched_clock: 32 bits at 166MHz, resolution 6ns, wraps every 12884901885ns
+[    0.000054] Switching to timer-based delay loop, resolution 6ns
+[    0.000167] Calibrating delay loop (skipped), value calculated using timer frequency.. 333.33 BogoMIPS (lpj=1666666)
+[    0.000195] pid_max: default: 32768 minimum: 301
+[    0.000516] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.000547] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.001949] CPU: Testing write buffer coherency: ok
+[    0.003332] Setting up static identity map for 0x100000 - 0x10003c
+[    0.003717] mvebu-soc-id: MVEBU SoC ID=0x6281, Rev=0x2
+[    0.008868] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.008911] futex hash table entries: 256 (order: -1, 3072 bytes, linear)
+[    0.009130] pinctrl core: initialized pinctrl subsystem
+[    0.011191] NET: Registered protocol family 16
+[    0.011817] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.013275] cpuidle: using governor ladder
+[    0.013779] Feroceon L2: Enabling L2
+[    0.013839] Feroceon L2: Cache support initialised.
+[    0.019547] No ATAGs?
+[    0.045985] SCSI subsystem initialized
+[    0.046918] libata version 3.00 loaded.
+[    0.047248] usbcore: registered new interface driver usbfs
+[    0.047325] usbcore: registered new interface driver hub
+[    0.047398] usbcore: registered new device driver usb
+[    0.050017] clocksource: Switched to clocksource orion_clocksource
+[    0.051021] thermal_sys: Registered thermal governor 'step_wise'
+[    0.051345] NET: Registered protocol family 2
+[    0.052237] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    0.052281] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.052309] TCP bind hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.052336] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.052460] UDP hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.052495] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.052733] NET: Registered protocol family 1
+[    0.052773] PCI: CLS 0 bytes, default 32
+[    0.057410] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    0.065295] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.065312] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.077421] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 251)
+[    0.079270] kirkwood-pinctrl f1010000.pin-controller: registered pinctrl driver
+[    0.080637] mvebu-gpio f1010140.gpio: IRQ index 3 not found
+[    0.081381] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.083758] printk: console [ttyS0] disabled
+[    0.083859] f1012000.serial: ttyS0 at MMIO 0xf1012000 (irq = 26, base_baud = 10416666) is a 16550A
+[    0.462496] printk: console [ttyS0] enabled
+[    0.467489] Loading iSCSI transport class v2.0-870.
+[    0.474984] nand: device found, Manufacturer ID: 0xec, Chip ID: 0x75
+[    0.481365] nand: Samsung NAND 32MiB 3,3V 8-bit
+[    0.485875] nand: 32 MiB, SLC, erase size: 16 KiB, page size: 512, OOB size: 16
+[    0.493189] Scanning device for bad blocks
+[    0.725291] 4 fixed-partitions partitions found on MTD device orion_nand
+[    0.731983] Creating 4 MTD partitions on "orion_nand":
+[    0.737105] 0x000000000000-0x0000000a0000 : "uboot"
+[    0.742915] 0x0000000a0000-0x0000000b0000 : "uboot-env"
+[    0.748920] 0x0000000b0000-0x0000000c0000 : "reserved"
+[    0.754880] 0x0000000c0000-0x000001f40000 : "ubi"
+[    0.762081] libphy: Fixed MDIO Bus: probed
+[    0.767114] libphy: orion_mdio_bus: probed
+[    0.778056] mv643xx_eth: MV-643xx 10/100/1000 ethernet driver version 1.4
+[    1.500744] mv643xx_eth_port mv643xx_eth_port.0 eth0: port 0 with MAC address 00:10:75:07:2a:32
+[    1.510267] rtc-mv f1010300.rtc: registered as rtc0
+[    1.515216] i2c /dev entries driver
+[    1.519991] watchdog: f1020300.watchdog-timer: driver supplied timeout (4294967295) out of range
+[    1.528777] watchdog: f1020300.watchdog-timer: falling back to default timeout (25)
+[    1.536622] orion_wdt: Initial timeout 25 sec
+[    1.548404] marvell-cesa f1030000.crypto: CESA device successfully registered
+[    1.556942] NET: Registered protocol family 10
+[    1.563995] Segment Routing with IPv6
+[    1.567745] NET: Registered protocol family 17
+[    1.572271] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.585407] 8021q: 802.1Q VLAN Support v1.8
+[    1.593065] regulator@1 GPIO handle specifies active low - ignored
+[    1.599660] regulator@2 GPIO handle specifies active low - ignored
+[    1.607150] UBI: auto-attach mtd3
+[    1.610509] ubi0: attaching mtd3
+[    1.945424] ubi0: scanning is finished
+[    1.964427] ubi0: attached mtd3 (name "ubi", size 30 MiB)
+[    1.969813] ubi0: PEB size: 16384 bytes (16 KiB), LEB size: 15872 bytes
+[    1.976439] ubi0: min./max. I/O unit sizes: 512/512, sub-page size 256
+[    1.982959] ubi0: VID header offset: 256 (aligned 256), data offset: 512
+[    1.989630] ubi0: good PEBs: 1952, bad PEBs: 0, corrupted PEBs: 0
+[    1.995713] ubi0: user volume: 3, internal volumes: 1, max. volumes count: 92
+[    2.002833] ubi0: max/mean erase counter: 5/3, WL threshold: 4096, image sequence number: 1594598884
+[    2.011941] ubi0: available PEBs: 0, total reserved PEBs: 1952, PEBs reserved for bad PEB handling: 40
+[    2.022258] block ubiblock0_1: created from ubi0:1(rootfs)
+[    2.027725] ubiblock: device ubiblock0_1 (rootfs) set to be root filesystem
+[    2.034736] rtc-mv f1010300.rtc: setting system clock to 2021-01-03T22:55:02 UTC (1609714502)
+[    2.043743] ubi0: background thread "ubi_bgt0d" started, PID 489
+[    2.056808] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    2.068341] Freeing unused kernel memory: 1024K
+[    2.073052] Run /sbin/init as init process
+[    2.390046] random: fast init done
+[    2.529058] init: Console is alive
+[    2.532741] init: - watchdog -
+[    3.100106] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    3.195351] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    3.205378] ehci-fsl: Freescale EHCI Host controller driver
+[    3.214268] ehci-orion: EHCI orion driver
+[    3.218519] orion-ehci f1050000.ehci: EHCI Host Controller
+[    3.224077] orion-ehci f1050000.ehci: new USB bus registered, assigned bus number 1
+[    3.231892] orion-ehci f1050000.ehci: irq 30, io mem 0xf1050000
+[    3.260054] orion-ehci f1050000.ehci: USB 2.0 started, EHCI 1.00
+[    3.266789] hub 1-0:1.0: USB hub found
+[    3.270897] hub 1-0:1.0: 1 port detected
+[    3.278436] ehci-platform: EHCI generic platform driver
+[    3.291692] sata_mv f1080000.sata: version 1.28
+[    3.292004] sata_mv f1080000.sata: slots 32 ports 2
+[    3.301126] scsi host0: sata_mv
+[    3.305281] scsi host1: sata_mv
+[    3.308670] ata1: SATA max UDMA/133 irq 33
+[    3.312808] ata2: SATA max UDMA/133 irq 33
+[    3.640039] usb 1-1: new high-speed USB device number 2 using orion-ehci
+[    3.810050] ata1: SATA link up 3.0 Gbps (SStatus 123 SControl F300)
+[    3.818673] ata1.00: ATA-10: WDC WD20EZAZ-00GGJB0, 80.00A80, max UDMA/133
+[    3.825463] ata1.00: 3907029168 sectors, multi 16: LBA48 NCQ (depth 31/32)
+[    3.834794] ata1.00: configured for UDMA/133
+[    3.839518] scsi 0:0:0:0: Direct-Access     ATA      WDC WD20EZAZ-00G 0A80 PQ: 0 ANSI: 5
+[    3.849881] sd 0:0:0:0: [sda] 3907029168 512-byte logical blocks: (2.00 TB/1.82 TiB)
+[    3.857666] sd 0:0:0:0: [sda] 4096-byte physical blocks
+[    3.863723] hub 1-1:1.0: USB hub found
+[    3.868058] hub 1-1:1.0: 4 ports detected
+[    3.872133] sd 0:0:0:0: [sda] Write Protect is off
+[    3.876948] sd 0:0:0:0: [sda] Mode Sense: 00 3a 00 00
+[    3.877167] sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+[    3.901117]  sda: sda1
+[    3.904874] sd 0:0:0:0: [sda] Attached SCSI disk
+[    4.360050] ata2: SATA link up 3.0 Gbps (SStatus 123 SControl F300)
+[    4.368678] ata2.00: ATA-10: WDC WD20EZAZ-00GGJB0, 80.00A80, max UDMA/133
+[    4.375468] ata2.00: 3907029168 sectors, multi 16: LBA48 NCQ (depth 31/32)
+[    4.384796] ata2.00: configured for UDMA/133
+[    4.389491] scsi 1:0:0:0: Direct-Access     ATA      WDC WD20EZAZ-00G 0A80 PQ: 0 ANSI: 5
+[    4.399329] sd 1:0:0:0: [sdb] 3907029168 512-byte logical blocks: (2.00 TB/1.82 TiB)
+[    4.407098] sd 1:0:0:0: [sdb] 4096-byte physical blocks
+[    4.412818] sd 1:0:0:0: [sdb] Write Protect is off
+[    4.417599] sd 1:0:0:0: [sdb] Mode Sense: 00 3a 00 00
+[    4.417735] sd 1:0:0:0: [sdb] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+[    4.445842]  sdb: sdb1
+[    4.449627] sd 1:0:0:0: [sdb] Attached SCSI disk
+[    4.454880] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    4.472528] init: - preinit -
+[    5.301955] random: jshn: uninitialized urandom read (4 bytes read)
+[    5.358422] random: jshn: uninitialized urandom read (4 bytes read)
+[    5.393271] random: jshn: uninitialized urandom read (4 bytes read)
+[    9.288962] mv643xx_eth_port mv643xx_eth_port.0 eth0: link up, 1000 Mb/s, full duplex, flow control disabled
+[    9.298834] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   10.451437] UBIFS (ubi0:2): Mounting in unauthenticated mode
+[   10.462537] UBIFS (ubi0:2): background thread "ubifs_bgt0_2" started, PID 651
+[   10.475138] UBIFS (ubi0:2): recovery needed
+[   10.510116] UBIFS (ubi0:2): recovery completed
+[   10.514660] UBIFS (ubi0:2): UBIFS: mounted UBI device 0, volume 2, name "rootfs_data"
+[   10.522481] UBIFS (ubi0:2): LEB size: 15872 bytes (15 KiB), min./max. I/O unit sizes: 512 bytes/512 bytes
+[   10.532020] UBIFS (ubi0:2): FS size: 25284096 bytes (24 MiB, 1593 LEBs), journal size 1269760 bytes (1 MiB, 80 LEBs)
+[   10.542515] UBIFS (ubi0:2): reserved for root: 1194229 bytes (1166 KiB)
+[   10.549104] UBIFS (ubi0:2): media format: w4/r0 (latest is w5/r0), UUID 6934BA28-6C1D-44AC-BBAA-69B98DDF28BF, small LPT model
+[   10.567312] mount_root: loading kmods from internal overlay
+[   10.587340] kmodloader: loading kernel modules from /tmp/overlay/upper/etc/modules-boot.d/*
+[   10.597010] kmodloader: done loading kernel modules from /tmp/overlay/upper/etc/modules-boot.d/*
+[   10.859078] block: attempting to load /tmp/ubifs_cfg/upper/etc/config/fstab
+[   10.868475] block: extroot: not configured
+[   10.874357] mount_root: switching to ubifs overlay
+[   10.894699] overlayfs: upper fs does not support xattr, falling back to index=off and metacopy=off.
+[   10.908049] urandom-seed: Seeding with /etc/urandom.seed
+[   10.964150] procd: - early -
+[   10.967120] procd: - watchdog -
+[   11.599853] procd: - watchdog -
+[   11.603509] procd: - ubus -
+[   11.761973] urandom_read: 5 callbacks suppressed
+[   11.762021] random: ubusd: uninitialized urandom read (4 bytes read)
+[   11.788375] random: ubusd: uninitialized urandom read (4 bytes read)
+[   11.803757] procd: - init -
+[   12.593035] kmodloader: loading kernel modules from /etc/modules.d/*
+[   12.846282] xt_time: kernel timezone is -0000
+[   12.889613] hwmon_vid: Unknown VRM version of your CPU
+[   12.895380] adt7475 0-002e: ADT7476 device, revision 0
+[   12.900535] adt7475 0-002e: Optional features: in0 in4 fan4 pwm2 vid
+[   13.026128] PPP generic driver version 2.4.2
+[   13.056556] NET: Registered protocol family 24
+[   13.108737] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   13.205869] urngd: v1.0.2 started.
+[   13.337254] random: crng init done
+[   16.281102] md: md0 stopped.
+[   16.378060] md/raid1:md0: active with 2 out of 2 mirrors
+[   16.483118] md0: detected capacity change from 0 to 2000262594560
+[   17.728027] EXT4-fs (md0): recovery complete
+[   17.732383] EXT4-fs (md0): mounted filesystem with ordered data mode. Opts:
+[   20.451600] br-lan: port 1(eth0) entered blocking state
+[   20.456816] br-lan: port 1(eth0) entered disabled state
+[   20.462409] device eth0 entered promiscuous mode
+[   23.485320] mv643xx_eth_port mv643xx_eth_port.0 eth0: link up, 1000 Mb/s, full duplex, flow control disabled
+[   23.495235] br-lan: port 1(eth0) entered blocking state
+[   23.500478] br-lan: port 1(eth0) entered forwarding state
+[   23.521806] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+
+
+
+BusyBox v1.31.1 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r13630-635f111148
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>kirkwood 88F6192 32flash 128RAM 1port GigabitEthernet 1NIC no_switch 0WNIC USB 2USB USB2.0 SATA2 ARM NAS}}

@@ -1,0 +1,520 @@
+====== MikroTik RBM33G ======
+
+/* This template is intended to be used via https://openwrt.org/meta/create_new_device_page ONLY.  */
+/* DO NOT CREATE NEW DEVICEPAGES VIA COPY & PASTE! */
+/* USE https://openwrt.org/meta/create_new_device_page */
+
+{{media:mikrotik:rbm33g:top_flat_redacted.jpg?200|RBM33G top view}}
+
+The RBM33G is a mt7621 based dual core router with three gigabit ethernet ports, a microSD card slot, two full size mini PCIe slots (both with sim card slots, one with USB 2.0), a pcie-enabled M.2 slot and a single USB 3.0 port. It is equipped with 256 MB of onboard DDR2 RAM and a 16 MB flash. There are also a number of other interfaces (I2C, SPI, I2S, MDIO) available on some unpopulated headers.
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RBM33G$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["version", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet1gports", "usbports"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RBM33G$"}
+} -->
+
+
+===== Installation onto Winbond 25Q128FVSG (16MiB flash chip) =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RBM33G$"}
+} -->
+
+===== Installation for Winbond 25Q128JVSM =====
+FIXME //Version "JVSM" does not exists, therefore it does not make sense to refer to it in a datatable. Please describe the installation procedure here.//
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+Installing OpenWrt requires access to the serial console of the RouterBOOT bootloader, a DHCP server, a TFTP server and both the initramfs and sysupgrade OpenWrt image.
+
+The basic steps are:
+  - Connect to serial port
+  - Connect board to PC with DHCP server and TFTP server running
+  - Boot openwrt initramfs image via network
+  - Flash openwrt
+
+==== Connecting to serial port ====
+Connect your PC to the RS-232 serial port of the board. Settings: 115200 8N1
+
+==== Set up DHCP server and TFTP server ====
+dnsmasq can be used as a combined DHCP and TFTP server for flashing.
+
+Connect the WAN port of the board to an ethernet port on your computer. Set the ip address of the port the board is connected to to 192.168.69.1/24.
+
+Configure dnsmasq as shown in the following example. Replace <interface> by the name of the interface the board is connected to.
+
+<code>
+enable-tftp
+tftp-root=/srv/tftp
+bootp-dynamic
+
+interface=<interface>
+dhcp-range=192.168.69.0,192.168.69.250,12h
+dhcp-option=6,192.168.69.1
+dhcp-option=3,192.168.69.1
+dhcp-boot=openwrt-ramips-mt7621-mikrotik_rbm33g-initramfs-kernel.bin
+</code>
+
+Now create the directory ''/srv/tftp'' and copy the ''dhcp-boot=openwrt-ramips-mt7621-mikrotik_rbm33g-initramfs-kernel.bin'' image to it. Start dnsmasq.
+
+
+==== Boot via network ====
+Power on the board and enter the RouterBOOT cli by pressing any key. Now press 'o', then 'e' to select boot via ethernet. Press 'o' once again followed by 'b' to start the boot process.
+RouterBOOT should download the OpenWRT image via TFTP and boot straight to OpenWrt.
+
+==== Flashing ====
+Once the board is fully booted copy the rbm33g sysupgrade image to /tmp. You can now flash the image using ''sysupgrade <sysupgrade.img>''
+The board should reboot straight to OpenWrt (make sure RouterBOOT is set to boot from flash!).
+
+
+===== Flash Layout =====
+The RBM33G has two flash chips. The first one is a Winbond 25X40CLNIG (4 Mbit [512 KiB]) and contains the RouterBOOT bootloader as well as the factory partition which contains the devices mac address. The second chip is a Winbond 25Q128FVSG or 25Q128JVSM (128 Mbit [16 MiB]) containing kernel and rootfs.
+
+^   MikroTik RBM33G routerboot flash layout           ^^^
+^ Layer0       |  w25q40 [[wp>Serial Peripheral Interface Bus|spi]]0.0: Winbond 25X40CLNIG 512 KiB  ||
+^ Layer1       |  mtd0                |  mtd1             |
+^ Size in KiB  |  60 KiB               |  452 KiB           |
+^ Name         |  **//RouterBOOT//**  |  **//factory//**  |
+^ mountpoint   |  none                |  none             |
+^ filesystem   |  none                |  none             |
+
+^   MikroTik RBM33G main flash layout           ^^^^
+^ Layer0       |  m25p128 [[wp>Serial Peripheral Interface Bus|spi]]0.0: Winbond 25Q128FVSG      16 MiB  |||
+^ Layer1       |  mtd2 **//firmware//** 16 MiB                                      |||
+^ Layer2       |  mtd3 **//kernel//**          |  mtd4 **//rootfs//**                                   ||
+^ mountpoint   |                               |  <color magenta>''/''</color>                          ||
+^ filesystem   |                               |  overlayfs           ||          
+^ Layer3       |                               |                 |  mtd5 **//rootfs_data//**             |
+^ Size in KiB  |                               |                 |                                       |
+^ Name         |  **//kernel//**               |                 |  **//rootfs_data//**             |
+^ mountpoint   |  //none//                     |  <color magenta>''/rom''</color>  |  <color magenta>''/overlay''</color>   |
+^ filesystem   |  //YAFFS//                     |  [[docs:techref:filesystems#SquashFS]]  |  [[docs:techref:filesystems#JFFS2]]  |
+
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+Generally debricking can be archieved by following the normal installation procedure.
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description     ^ Default configuration   ^
+| br-lan           | LAN1 & LAN2     | 192.168.1.1/24          |
+| vlan1 (eth0.1)   | br-lan master   | None                    |
+| vlan2 (eth0.2)   | WAN port        | DHCP                    |
+
+==== Switch Ports (for VLANs) ====
+Switch ports 1-2 are Ports 0-1 on the right side of the wan port, 6 is the internal connection to the router itself. Number 0 is the wan port labeld 'WAN' on the device.
+
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | 0             |
+| LAN 1            | 1             |
+| LAN 2            | 2             |
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+The MikroTik RBM33G has the following buttons:
+
+^ BUTTON   ^ Event   ^
+| Reset    |  reset  |
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RBM33G$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+{{media:mikrotik:rbm33g:top_flat_redacted.jpg?0x300|Top}}
+{{media:mikrotik:rbm33g:bottom.jpg?0x300|Back}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+
+^ Serial connection parameters\\ for MikroTik RBM33G | 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+The port next to the flash chip on the top of the board is probably a JTAG header. The only known pin on the header is currently Pin 6 which is RESET.
+
+===== Bootloader mods =====
+-> [[docs:techref:bootloader]]
+
+It is possible to flash u-boot on this device. Source code available here [[https://github.com/TobleMiner/u-boot-ralink/tree/master/MikroTik-RBM33G|U-boot rbm33g]]. However flashing U-boot on this device is neither required nor recommended since it won't work without modifying OpenWrt. It is recommended to just stick with the factory RouterBOOT.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>COPY HERE THE BOOTLOG WITH THE ORIGINAL FIRMWARE</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>RouterBOOT booter 6.42.1
+
+RouterBOARD M33G
+
+CPU frequency: 880 MHz
+  Memory size: 256 MiB
+ Storage size:  16 MiB
+
+Press any key within 2 seconds to enter setup..
+m33 boot from CS1
+
+loading kernel... OK
+setting up elf image... OK
+jumping to kernel code
+
+
+OpenWrt kernel loader for MIPS based SoC
+Copyright (C) 2011 Gabor Juhos <juhosg@openwrt.org>
+Decompressing kernel... done!
+Starting kernel at 80001000...
+
+[    0.000000] Linux version 4.14.37 (tsys@arch-build) (gcc version 7.3.0 (OpenWrt GCC 7.3.0 r6811-a9634b3c5a)) #0 SMP Wed Jun 20 02:00:09 2018
+[    0.000000] SoC Type: MediaTek MT7621 ver:1 eco:3
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] MIPS: machine is MikroTik RBM33G
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 10000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] VPE topology {2,2} total 4
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000]   HighMem  empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] random: get_random_bytes called from start_kernel+0x90/0x4ac with crng_init=0
+[    0.000000] percpu: Embedded 14 pages/cpu @8120f000 s26192 r8192 d22960 u57344
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 65024
+[    0.000000] Kernel command line: console=ttyS0,115200 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Writing ErrCtl register=00016513
+[    0.000000] Readback ErrCtl register=00016513
+[    0.000000] Memory: 253348K/262144K available (4463K kernel code, 235K rwdata, 996K rodata, 244K init, 269K bss, 8796K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS: 256
+[    0.000000] clocksource: GIC: mask: 0xffffffffffffffff max_cycles: 0xcaf478abb4, max_idle_ns: 440795247997 ns
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 4343773742 ns
+[    0.000009] sched_clock: 32 bits at 440MHz, resolution 2ns, wraps every 4880645118ns
+[    0.007799] Calibrating delay loop... 586.13 BogoMIPS (lpj=2930688)
+[    0.073964] pid_max: default: 32768 minimum: 301
+[    0.078728] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.085235] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.093874] Hierarchical SRCU implementation.
+[    0.098915] smp: Bringing up secondary CPUs ...
+[    4.665078] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    4.665087] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    4.665098] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    4.665232] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.163641] Synchronize counters for CPU 1: done.
+[    8.219462] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    8.219470] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    8.219478] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    8.219551] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.254609] Synchronize counters for CPU 2: done.
+[    2.580826] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    2.580834] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    2.580840] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    2.580920] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.339779] Synchronize counters for CPU 3: done.
+[    0.369636] smp: Brought up 1 node, 4 CPUs
+[    0.377107] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.386887] futex hash table entries: 1024 (order: 3, 32768 bytes)
+[    0.393165] pinctrl core: initialized pinctrl subsystem
+[    0.399685] NET: Registered protocol family 16
+[    0.415070] pull PCIe RST: RALINK_RSTCTRL = 0
+[    0.719646] release PCIe RST: RALINK_RSTCTRL = 7000000
+[    0.724693] ***** Xtal 40MHz *****
+[    0.728050] release PCIe RST: RALINK_RSTCTRL = 7000000
+[    0.733147] Port 0 N_FTS = 1b102800
+[    0.736613] Port 1 N_FTS = 1b102800
+[    0.740061] Port 2 N_FTS = 1b102800
+[    1.894657] PCIE0 no card, disable it(RST&CLK)
+[    1.899012] PCIE2 no card, disable it(RST&CLK)
+[    1.903412]  -> 20107f2
+[    1.905825] PCIE1 enabled
+[    1.908428] PCI host bridge /pcie@1e140000 ranges:
+[    1.913201]  MEM 0x0000000060000000..0x000000006fffffff
+[    1.918358]   IO 0x000000001e160000..0x000000001e16ffff
+[    1.923558] PCI coherence region base: 0x8fc35cf0, mask/settings: 0x60000000
+[    1.939558] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    1.945344] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    1.951033] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    1.959306] i2c-mt7621 1e000900.i2c: clock 100KHz, re-start not support
+[    1.966287] PCI host bridge to bus 0000:00
+[    1.970345] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff]
+[    1.977122] pci_bus 0000:00: root bus resource [io  0xffffffff]
+[    1.983024] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    1.989738] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    1.998039] pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    2.006508] pci 0000:00:00.0: BAR 0: no space for [mem size 0x80000000]
+[    2.013034] pci 0000:00:00.0: BAR 0: failed to assign [mem size 0x80000000]
+[    2.019929] pci 0000:00:00.0: BAR 8: assigned [mem 0x60000000-0x601fffff]
+[    2.026688] pci 0000:00:00.0: BAR 9: assigned [mem 0x60200000-0x602fffff pref]
+[    2.033842] pci 0000:00:00.0: BAR 1: assigned [mem 0x60300000-0x6030ffff]
+[    2.040610] pci 0000:01:00.0: BAR 0: assigned [mem 0x60000000-0x601fffff 64bit]
+[    2.047843] pci 0000:01:00.0: BAR 6: assigned [mem 0x60200000-0x6020ffff pref]
+[    2.055018] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    2.059932] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x601fffff]
+[    2.066688] pci 0000:00:00.0:   bridge window [mem 0x60200000-0x602fffff pref]
+[    2.075051] clocksource: Switched to clocksource GIC
+[    2.081375] NET: Registered protocol family 2
+[    2.086390] TCP established hash table entries: 2048 (order: 1, 8192 bytes)
+[    2.093276] TCP bind hash table entries: 2048 (order: 2, 16384 bytes)
+[    2.099697] TCP: Hash tables configured (established 2048 bind 2048)
+[    2.106101] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    2.111862] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    2.118335] NET: Registered protocol family 1
+[    2.354998] 4 CPUs re-calibrate udelay(lpj = 2924544)
+[    2.361329] Crashlog allocated RAM at address 0x3f00000
+[    2.366669] workingset: timestamp_bits=30 max_order=16 bucket_order=0
+[    2.379668] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    2.385459] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    2.397933] random: fast init done
+[    2.401632] io scheduler noop registered
+[    2.405478] io scheduler deadline registered (default)
+[    2.411576] Serial: 8250/16550 driver, 3 ports, IRQ sharing disabled
+[    2.419129] console [ttyS0] disabled
+[    2.422670] 1e000c00.uartlite: ttyS0 at MMIO 0x1e000c00 (irq = 18, base_baud = 3125000) is a 16550A
+[    2.431674] console [ttyS0] enabled
+[    2.431674] console [ttyS0] enabled
+[    2.438542] bootconsole [early0] disabled
+[    2.438542] bootconsole [early0] disabled
+[    2.447125] cacheinfo: Failed to find cpu0 device node
+[    2.452242] cacheinfo: Unable to detect cache hierarchy for CPU 0
+[    2.458983] MediaTek Nand driver init, version v2.1 Fix AHB virt2phys error
+[    2.466365] spi-mt7621 1e000b00.spi: sys_freq: 50000000
+[    2.482663] m25p80 spi0.0: w25x40 (512 Kbytes)
+[    2.487147] 2 fixed-partitions partitions found on MTD device spi0.0
+[    2.493468] Creating 2 MTD partitions on "spi0.0":
+[    2.498258] 0x000000000000-0x00000000f000 : "routerboot"
+[    2.504425] 0x00000000f000-0x000000080000 : "factory"
+[    2.521114] m25p80 spi0.1: w25q128 (16384 Kbytes)
+[    2.525852] 1 fixed-partitions partitions found on MTD device spi0.1
+[    2.532171] Creating 1 MTD partitions on "spi0.1":
+[    2.536969] 0x000000040000-0x000001000000 : "firmware"
+[    2.613688] 2 minor-fw partitions found on MTD device firmware
+[    2.619532] 0x000000040000-0x000000220000 : "kernel"
+[    2.625397] 0x000000220000-0x000001000000 : "rootfs"
+[    2.631108] mtd: device 4 (rootfs) set to be root filesystem
+[    2.636884] 1 squashfs-split partitions found on MTD device rootfs
+[    2.643046] 0x000000b40000-0x000001000000 : "rootfs_data"
+[    2.649874] libphy: Fixed MDIO Bus: probed
+[    2.717027] libphy: mdio: probed
+[    4.119764] mtk_soc_eth 1e100000.ethernet: loaded mt7530 driver
+[    4.126354] mtk_soc_eth 1e100000.ethernet eth0: mediatek frame engine at 0xbe100000, irq 21
+[    4.136888] NET: Registered protocol family 10
+[    4.142759] Segment Routing with IPv6
+[    4.146550] NET: Registered protocol family 17
+[    4.151022] 8021q: 802.1Q VLAN Support v1.8
+[    4.157476] hctosys: unable to open rtc device (rtc0)
+[    4.170146] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    4.177725] Freeing unused kernel memory: 244K
+[    4.182158] This architecture does not have kernel memory protection.
+[    4.554918] random: crng init done
+[    4.970757] init: Console is alive
+[    4.974386] init: - watchdog -
+[    5.821148] mtk_soc_eth 1e100000.ethernet eth0: port 0 link up
+[    7.940439] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    8.175751] usbcore: registered new interface driver usbfs
+[    8.181319] usbcore: registered new interface driver hub
+[    8.186786] usbcore: registered new device driver usb
+[    8.355349] raid6: int32x1  gen()    78 MB/s
+[    8.525031] raid6: int32x1  xor()    89 MB/s
+[    8.695023] raid6: int32x2  gen()   126 MB/s
+[    8.865256] raid6: int32x2  xor()   110 MB/s
+[    9.035188] raid6: int32x4  gen()   172 MB/s
+[    9.205062] raid6: int32x4  xor()   114 MB/s
+[    9.375395] raid6: int32x8  gen()   145 MB/s
+[    9.545083] raid6: int32x8  xor()    93 MB/s
+[    9.549329] raid6: using algorithm int32x4 gen() 172 MB/s
+[    9.554694] raid6: .... xor() 114 MB/s, rmw enabled
+[    9.559554] raid6: using intx1 recovery algorithm
+[    9.565098] xor: measuring software checksum speed
+[    9.665016]    8regs     :   742.800 MB/sec
+[    9.765020]    8regs_prefetch:   667.600 MB/sec
+[    9.865014]    32regs    :   742.400 MB/sec
+[    9.965014]    32regs_prefetch:   666.400 MB/sec
+[    9.969611] xor: using function: 8regs (742.800 MB/sec)
+[   10.329921] Btrfs loaded, crc32c=crc32c-generic
+[   10.363353] SCSI subsystem initialized
+[   10.371126] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[   10.378313] ohci-platform: OHCI generic platform driver
+[   10.391715] xhci-mtk 1e1c0000.xhci: 1e1c0000.xhci supply vbus not found, using dummy regulator
+[   10.400441] xhci-mtk 1e1c0000.xhci: 1e1c0000.xhci supply vusb33 not found, using dummy regulator
+[   10.409376] xhci-mtk 1e1c0000.xhci: xHCI Host Controller
+[   10.414695] xhci-mtk 1e1c0000.xhci: new USB bus registered, assigned bus number 1
+[   10.425192] xhci-mtk 1e1c0000.xhci: hcc params 0x01401198 hci version 0x96 quirks 0x00210010
+[   10.433668] xhci-mtk 1e1c0000.xhci: irq 20, io mem 0x1e1c0000
+[   10.440479] hub 1-0:1.0: USB hub found
+[   10.444296] hub 1-0:1.0: 2 ports detected
+[   10.448986] xhci-mtk 1e1c0000.xhci: xHCI Host Controller
+[   10.454296] xhci-mtk 1e1c0000.xhci: new USB bus registered, assigned bus number 2
+[   10.461955] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[   10.470921] hub 2-0:1.0: USB hub found
+[   10.474743] hub 2-0:1.0: 1 port detected
+[   10.483869] usbcore: registered new interface driver usb-storage
+[   10.490170] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[   10.505348] init: - preinit -
+[   11.931773] mtk_soc_eth 1e100000.ethernet: PPE started
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   15.252462] jffs2: notice: (497) jffs2_build_xattr_subsystem: complete building xattr subsystem, 3 of xdatum (0 unchecked, 1 orphan) and 4 of xref (1 dead, 0 orphan) found.
+[   15.269749] mount_root: switching to jffs2 overlay
+[   15.306195] overlayfs: upper fs does not support tmpfile.
+[   15.317206] urandom-seed: Seeding with /etc/urandom.seed
+[   15.451581] mtk_soc_eth 1e100000.ethernet: 0x100 = 0x6060000c, 0x10c = 0x80818
+[   15.466349] procd: - early -
+[   15.469323] procd: - watchdog -
+[   16.165190] procd: - watchdog -
+[   16.168625] procd: - ubus -
+[   16.277879] procd: - init -
+Please press Enter to activate this console.
+[   16.793197] kmodloader: loading kernel modules from /etc/modules.d/*
+[   16.884542] Key type dns_resolver registered
+[   16.901718] RPC: Registered named UNIX socket transport module.
+[   16.907658] RPC: Registered udp transport module.
+[   16.912338] RPC: Registered tcp transport module.
+[   16.917050] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[   16.933602] tun: Universal TUN/TAP device driver, 1.6
+[   16.950188] gre: GRE over IPv4 demultiplexor driver
+[   16.956547] ip_gre: GRE over IPv4 tunneling driver
+[   16.967193] ip6_gre: GRE over IPv6 tunneling driver
+[   17.003810] NFS: Registering the id_resolver key type
+[   17.008955] Key type id_resolver registered
+[   17.013129] Key type id_legacy registered
+[   17.022709] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   17.560853] i2c /dev entries driver
+[   17.573947] usbcore: registered new interface driver cdc_wdm
+[   17.581233] Loading modules backported from Linux version wt-2017-11-01-0-gfe248fc2c180
+[   17.589276] Backport generated by backports.git v4.14-rc2-1-31-g86cf0e5d
+[   17.599177] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   18.062254] nf_conntrack version 0.5.0 (4096 buckets, 16384 max)
+[   18.276115] usbcore: registered new interface driver ums-alauda
+[   18.283323] usbcore: registered new interface driver ums-cypress
+[   18.290677] usbcore: registered new interface driver ums-datafab
+[   18.297916] usbcore: registered new interface driver ums-freecom
+[   18.305298] usbcore: registered new interface driver ums-isd200
+[   18.312582] usbcore: registered new interface driver ums-jumpshot
+[   18.319939] usbcore: registered new interface driver ums-karma
+[   18.327473] usbcore: registered new interface driver ums-sddr09
+[   18.334767] usbcore: registered new interface driver ums-sddr55
+[   18.342201] usbcore: registered new interface driver ums-usbat
+[   18.352015] usbcore: registered new device driver usbip-host
+[   18.364110] vhci_hcd vhci_hcd.0: USB/IP Virtual Host Controller
+[   18.370099] vhci_hcd vhci_hcd.0: new USB bus registered, assigned bus number 3
+[   18.377375] vhci_hcd: created sysfs vhci_hcd.0
+[   18.382893] hub 3-0:1.0: USB hub found
+[   18.386914] hub 3-0:1.0: 8 ports detected
+[   18.392175] vhci_hcd vhci_hcd.0: USB/IP Virtual Host Controller
+[   18.398209] vhci_hcd vhci_hcd.0: new USB bus registered, assigned bus number 4
+[   18.405718] usb usb4: We don't know the algorithms for LPM for this host, disabling LPM.
+[   18.415220] hub 4-0:1.0: USB hub found
+[   18.419142] hub 4-0:1.0: 8 ports detected
+[   18.430000] wireguard: WireGuard 0.0.20180420 loaded. See www.wireguard.com for information.
+[   18.438558] wireguard: Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+[   18.461353] xt_time: kernel timezone is -0000
+[   18.468134] usbcore: registered new interface driver asix
+[   18.475555] usbcore: registered new interface driver cdc_ether
+[   18.484098] usbcore: registered new interface driver cdc_ncm
+[   18.803177] PPP generic driver version 2.4.2
+[   18.808925] NET: Registered protocol family 24
+[   18.815424] usbcore: registered new interface driver qmi_wwan
+[   18.838294] bus=0x1, slot = 0x0, irq=0xff
+[   18.843079] PCI: Enabling device 0000:00:00.0 (0004 -> 0006)
+[   18.848979] ath10k_pci 0000:01:00.0: pci irq legacy oper_irq_mode 1 irq_mode 0 reset_mode 0
+[   19.128099] ath10k_pci 0000:01:00.0: Direct firmware load for ath10k/pre-cal-pci-0000:01:00.0.bin failed with error -2
+[   19.138784] ath10k_pci 0000:01:00.0: Falling back to user helper
+[   19.225757] firmware ath10k!pre-cal-pci-0000:01:00.0.bin: firmware_loading_store: map pages failed
+[   19.235198] ath10k_pci 0000:01:00.0: Direct firmware load for ath10k/cal-pci-0000:01:00.0.bin failed with error -2
+[   19.245533] ath10k_pci 0000:01:00.0: Falling back to user helper
+[   19.314630] firmware ath10k!cal-pci-0000:01:00.0.bin: firmware_loading_store: map pages failed
+[   19.323880] ath10k_pci 0000:01:00.0: Direct firmware load for ath10k/QCA988X/hw2.0/firmware-6.bin failed with error -2
+[   19.334570] ath10k_pci 0000:01:00.0: Falling back to user helper
+[   19.403509] firmware ath10k!QCA988X!hw2.0!firmware-6.bin: firmware_loading_store: map pages failed
+[   19.417216] ath10k_pci 0000:01:00.0: qca988x hw2.0 target 0x4100016c chip_id 0x043222ff sub 0000:0000
+[   19.426499] ath10k_pci 0000:01:00.0: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 1
+[   19.440498] ath10k_pci 0000:01:00.0: firmware ver 10.2.4-1.0-00033 api 5 features no-p2p,raw-mode,mfp,allows-mesh-bcast crc32 c41417d0
+[   19.485414] ath10k_pci 0000:01:00.0: Direct firmware load for ath10k/QCA988X/hw2.0/board-2.bin failed with error -2
+[   19.495841] ath10k_pci 0000:01:00.0: Falling back to user helper
+[   19.535130] firmware ath10k!QCA988X!hw2.0!board-2.bin: firmware_loading_store: map pages failed
+[   19.549893] ath10k_pci 0000:01:00.0: board_file api 1 bmi_id N/A crc32 bebc7c08
+[   20.682131] ath10k_pci 0000:01:00.0: htt-ver 2.1 wmi-op 5 htt-op 2 cal otp max-sta 128 raw 0 hwcrypto 1
+[   20.823439] usbcore: registered new interface driver cdc_mbim
+[   20.832105] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   27.639610] mtk_soc_eth 1e100000.ethernet: PPE started
+[   27.652340] br-lan: port 1(eth0.1) entered blocking state
+[   27.657855] br-lan: port 1(eth0.1) entered disabled state
+[   27.663999] device eth0.1 entered promiscuous mode
+[   27.668833] device eth0 entered promiscuous mode
+[   27.676960] br-lan: port 1(eth0.1) entered blocking state
+[   27.682391] br-lan: port 1(eth0.1) entered forwarding state
+[   27.688431] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   28.692746] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready</nowiki>
+</WRAP>\\
+
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * ...
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ramips MT7621 16Flash 256RAM 3port GigabitEthernet 1USB USB3.0 2SIM minipciexpress PoE MIPS}}

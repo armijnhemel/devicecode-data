@@ -1,0 +1,512 @@
+====== NETGEAR GS108T v3======
+
+The NETGEAR GS108T v3 (GS108T-300PES) is a Realtek based 8 port Gigabit L2 switch with 802.3af PoE <abbr title="Power Delivery">PD</abbr> (power input) on port 1 (yellow label underneath).
+
+{{media:netgear:gs108t-v3:netgear-gs108t-v3.jpg?400||}}
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^NETGEAR$", "model": "^GS108T$", "version": "^v3$"}
+} -->
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["unsupported_functions"],
+  "filterColumns": {"brand": "^NETGEAR$", "model": "^GS108T$", "version": "^v3$"}
+} -->
+
+The GS108T v1 (GS108T-100PES) and v2 (GS108T-200PES) are unsupported; they apparently run eCos and don't have enough flash or RAM to run a modern OpenWrt (v1 has 4 MiB flash and 16 MiB RAM). They can also be recognized by their case: The v1 version is dark blue and has two groups of four ethernet ports on the front, the v2 version carries the "ProSafe" brand and has the reset hole on the right of the ethernet ports.
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^NETGEAR$", "model": "^GS108T$", "version": "^v3$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^NETGEAR$", "model": "^GS108T$", "version": "^v3$"}
+} -->
+
+
+==== Flash Layout ====
+
+Like other Realtek RLT383x devices, the GS108T v3 has a dual partition layout. You can select the active firmware image from within the OEM web UI, or set it through u-boot (serial needed). OpenWrt should be installed to the first partition (here called ''firmware'' - identified as mtd5).
+
+^   NETGEAR GS108T v3 flash Layout      ^^^^^^^^^^
+^ Layer0       |  raw NOR flash memory chip (Macronix MX25L25635E [[wp>Serial Peripheral Interface Bus|spi]]: mx25l25635e) 32768 KiB     |||||||||
+^ Layer1       |  mtd0 **//u-boot//** 896 KiB  |  mtd1 **//bdinfo//** 64 KiB  |  mtd2 **//sysinfo//** 64 KiB  |  mtd3 **//jffs2_cfg//** 1024 KiB |  mtd4 **//jfss2_log//** 1024 KiB  |  mtd5 **//firmware//** 14848 KiB   |||  mtd9 **//runtime2//** 14848 KiB  |
+^ Layer2       |  |  |  |  |  |  mtd6 **//kernel//** 1728 KiB     |  mtd7 **//rootfs//** 13120 KiB                           ||          |
+^ <color magenta>mountpoint</color>   |  |  |  |  |  |                               |  <color magenta>''/''</color>                          ||          |
+^ filesystem   |  |  |  |  |  |  |  [[docs:techref:filesystems#overlayfs|OverlayFS]]           ||          |
+^ Layer3       |  |  |  |  |  |                               |                 |  mtd8 **//rootfs_data//** 10112 KiB     |          |
+^ Size in KiB  |  896 KiB  |  64 KiB  |  64 KiB  |  1024 KiB  |  1024 KiB   |  1728 KiB  |  3008 KiB   |  10112 KiB                              |   14848 KiB  |
+^ Name         |  **//loader//**  |  **//bdinfo//**  |  **//sysinfo//**  |  **//jffs2_cfg//**  |  **//jffs2_log//**  |  **//kernel//**  |  |  **//rootfs_data//**             |  **//runtime2//**  |
+^ <color magenta>mountpoint</color>   |  //none//  |  //none//  |  //none//  |  //none//  |  //none//  |  //none//  |  <color magenta>''/rom''</color>  |  <color magenta>''/overlay''</color>   |  //none//  |
+^ filesystem   |  //none//  |  //none//  |  //none//  |  //none//  |  //none//  |  //none//  |  [[docs:techref:filesystems#SquashFS]]  |  [[docs:techref:filesystems#JFFS2]]  |  //none//  |
+
+==== OEM easy installation ====
+
+| {{:meta:icons:tango:48px-emblem-important.svg.png?nolink}} | <color #ed1c24>**The switch will prompt you to create a Netgear cloud account to manage the device and offer you 'limited access' to the device until you do so.**</color> According to the [[https://kb.netgear.com/000061174/What-features-of-my-NETGEAR-Smart-Managed-Pro-Switch-can-I-access-without-registering|Netgear knowledge base]], however, this 'limited access mode' should still allow you to update the firmware. |
+
+There are two ways to work around this:
+  * Block access to 8.8.8.8 from the device in your router's firewall.
+  * Connect the switch to a computer without internet access.
+
+
+----
+
+| {{:meta:icons:tango:48px-emblem-important.svg.png?nolink}} | <color #ed1c24>**This method sometimes fails. Be prepared to open the device and solder a pin header for serial console. The holes are filled with solder, so having desoldering tools is also highly recommended!**</color> |
+
+The OpenWrt **initramfs** image can be flashed directly from the Netgear web UI. Netgear designates two firmware partitions with ''Image1'' and ''Image2''. You want to flash to the first partition to benefit from OpenWrt's sysupgrade capabilities. After flashing the **initramfs** image also perform a sysupgrade to finish the installation. With the default configuration in current OpenWrt (22.03 and later), you can access the device directly over ethernet without any special VLAN configuration. Older versions of OpenWrt (21.02 and earlier) will require you to use port 1 and VLAN 100 to connect.
+
+The Netgear UI is a bit cumbersome, so follow the instructions carefully and double check everything:
+
+  * By default, the switch will get a DHCP IP. If it doesn't find a DHCP server to talk to, it will autoconfigure itself to ''192.168.0.239''.
+  * It is recommended to use the English version of the Netgear GUI because other language versions have slightly different behaviour.
+  * Log in to the web interface and browse to //Maintenance > File Management > Dual Image > Dual Image Status// to verify you are indeed booted into Image1.
+  * Once you confirmed you booted to Image1, browse to //Maintenance > Update > HTTP Firmware/File Update//.
+  * Pick 'Software' as //File Type// and make sure //Image Name// is set to 'Image1'.
+  * Click on 'Browse' to select and upload the initramfs image, then click 'Apply.'
+  * The web page should refresh once the transfer is completed, and the 'Browse' button should be invisible or greyed out.
+  * Go to //Maintenance > Reset Device Reboot// to reboot the device.
+  * Configure your computer to an IP like 192.168.1.3. If you are using current OpenWrt (22.03 and later) the switch does not require special VLAN configuration and thus you only need to assign the IP. Plug the Ethernet cable into any port. Pinging the device at 192.168.1.1 should succeed after roughly 60-90 seconds.
+    * On OpenWrt 21.02 (and earlier) you need to assign VLAN 100 to the NIC and use the first port of the switch to get access.
+  * You can now perform a sysupgrade from the currently installed initramfs image to the sysupgrade image (''openwrt-23.05.0-realtek-rtl838x-netgear_gs108t-v3-squashfs-sysupgrade.bin'') to finish the installation.
+    * If you are using a release version of OpenWrt, you can perform the sysupgrade via LuCI GUI, via SSH or via serial console. Please see the generic sysupgrade instructions for usage of the LuCI GUI.
+    * If you prefer to interact via console or have no LuCI installed (e.g. in a snapshot image) , you can either SSH into the device or use the serial console to perform a sysupgrade as follows. SCP over the sysupgrade image to ''/tmp'' on the switch and flash that: ''sysupgrade /tmp/openwrt-23.05.0-realtek-rtl838x-netgear_gs108t-v3-squashfs-sysupgrade.bin''.
+
+==== OEM installation using the TFTP method ====
+  - → [[docs:guide-user:troubleshooting:tftpserver#setting_up_tftp_server#bootloader_contains_tftp_client|Setting up a TFTP server]]
+  - → [[docs:guide-user:installation:generic.flashing.serial|Serial]]
+  - → [[docs:guide-user:installation:generic.flashing|Install OpenWrt]]
+
+=== Specific values needed for tftp ===
+
+^ Bootloader tftp server IPv4 address   | 192.168.1.1                                                     |
+^ Bootloader MAC address (special)      | N/A                                                             |
+^ Firmware tftp image                   | initramfs image from latest OpenWrt release (see table above)   |
+^ TFTP transfer window                  | FILL-IN seconds                                                 |
+^ TFTP window start                     | approximately FILL-IN seconds after power on                    |
+^ TFTP client required IP address       | 192.168.1.111                                                   |
+
+
+=== Instructions ===
+The instructions below presuppose a functional serial connection and TFTP server. See the links above if needed.
+
+  * Power up the switch, and interrupt the bootloader by hitting the Escape key when the `Hit Esc key to stop autoboot` prompt displays.
+  * OpenWrt can only boot off the first partition (this is hardcoded in the DTS). To make sure we are manipulating the first partition, issue the following commands: ''setsys bootpartition 0 && savesys''.
+  * Activate the network functionality by typing ''rtk network on'' and hitting Enter.
+  * Transfer the OpenWrt RAM disk onto the router: ''tftpboot 0x8f000000 192.168.1.111:openwrt-realtek-generic-netgear_gs108t-v3-initramfs-kernel.bin''
+  * Boot the image with the ''bootm'' command.
+  * Once OpenWrt has booted, hit //Enter// to activate the console and make sure you have a functional network connection to your computer.
+  * At this point, you can scp over the sysupgrade image to ''/tmp'' on the switch and just flash that: ''sysupgrade /tmp/openwrt-realtek-generic-netgear_gs108t-v3-squashfs-sysupgrade.bin''.
+
+Check the management VLAN ID 100 warning in the section above if you cannot (re)connect to OpenWrt after flashing and rebooting.
+
+===== Port LEDs =====
+The Port-LEDs are not working after flashing OpenWrt, because OpenWrt fails to initialize the Switch-ASIC to control the LEDs. Until this is fixed, there are two options to configure the LEDs: 
+  - via U-Boot during early boot. This has the side effect that the switch is initialized early on and might start leaking data.
+  - via rc.local script after bootup
+
+==== U-Boot method ====
+
+you can execute the following command inside OpenWrt:
+
+  fw_setenv bootcmd "rtk network on; boota"
+  reboot
+
+This configures the bootloader (U-Boot) to setup the realtek network before booting the OS. This feature is normally used to boot a kernel via TFTP, but it has the side-effect of already configuring the Switch-ASIC to control the LEDs. Reboot after changing this flag. To restore to the original state, execute:
+
+  fw_setenv bootcmd "boota"
+
+==== rc.local method ====
+
+You can put the following commands into ''%%/etc/rc.local%%'', right before ''%%exit 0%%'':
+
+<code>
+echo 0x2f396a1b > /sys/kernel/debug/rtl838x/led/led_glb_ctrl
+echo 0x3ef57dcd > /sys/kernel/debug/rtl838x/led/led_mode_ctrl
+echo 0x00000004 > /sys/kernel/debug/rtl838x/led/led_mode_sel
+echo 0x0000ff00 > /sys/kernel/debug/rtl838x/led/led_p_en_ctrl
+</code>
+
+
+===== Upgrading OpenWrt =====
+The GS108T v3 supports OpenWrt's generic sysupgrade framework. As such, you can just sysupgrade [[docs:guide-quick-start:sysupgrade.luci|through the OpenWrt web UI]] or [[docs:guide-user:installation:sysupgrade.cli|on the command line]].
+
+Do make sure to verify checksums prior to flashing, whatever method you use.
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+==== 21.02 ====
+The device default configuration is to bridge together Port1-8 (named LAN1-8 internally) without VLAN-tagging, so the device acts as a regular switch. Even though DHCP is running on that bridge (=switch.1) this interface is assigned to firewall zone WAN, thus SSH and LuCI interface cannot be reached per default through this interface. This is a secure default to prevent attached devices to reach the management daemons (=SSH & LuCI).
+
+Port 1 (=the yellow PoE port names LAN1 internally) **additionally** has VLAN100 configured and allows access to the management daemons (=like SSH and LuCI). Tagged packets with VLAN-ID 100 are accepted on Port 1 (=LAN1) and are available internally at interface //switch.100//. This interface has static IP 192.168.1.1/24 assigned per default and belongs to the firewall-zone LAN. In order to reach the device SSH or LuCI interface with default configuration:
+  * Use LAN1, only this port is configured to also accept VLAN100-tagged-data-packets.
+  * Configure your connected device (for example your PC) to VLAN100 and assign an IP out of the range 192.168.1.0/24 like 192.168.1.3/24.
+  * To check connectivity ping 192.168.1.1. Please note that after bootup it takes 1 or 2 minutes until the ports are up & ready. The LEDs do not indicate any link status as of now.
+  * If pinging succeeds you can access SSH and LuCI at 192.168.1.1. Please note that snapshot builds do not contain LuCI, only releases include LuCI.
+
+The switch VLAN configuration can be configured at //Network->Interfaces->Devices->switch->Configure...->Bridge VLAN filtering.// This differs from non-DSA devices where the switch configuration has a dedicated menuitem at //Network->Switch//.
+Ticking checkbox "Local" for VLAN-IDs will automatically create 802.1q devices that can be configured as required for your network.
+
+==== 22.03 ====
+The device default configuration is to bridge together Port1-8 (named LAN1-8 internally) without VLAN-tagging, so the device acts as a regular switch. DHCP is not running on the switch, instead it's configured as 192.168.1.1/24, and SSH and LuCI can be reached from any port. Should you wish for more secure defaults (as was configured in 21.02), you need to create VLANs and assign them manually through either management daemon (ie. SSH or LuCI). 
+
+  * To check connectivity ping 192.168.1.1. Please note that after powering the device, it takes 1 or 2 minutes until the ports are up & ready. You may observe the power LED as it works correctly in 22.03 - the switch is booted once the light is steady (blinking indicates the boot process is underway).
+  * If pinging succeeds you can access SSH and LuCI at 192.168.1.1. Please note that snapshot builds do not contain LuCI, only releases include LuCI.
+
+The switch VLAN configuration can be configured at //Network->Interfaces->Devices->switch->Configure...->Bridge VLAN filtering.// This differs from non-DSA devices where the switch configuration has a dedicated menuitem at //Network->Switch//.
+Ticking checkbox "Local" for VLAN-IDs will automatically create 802.1q devices that can be configured as required for your network.
+===== Specific Configuration =====
+
+==== 21.02 ====
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+=== Network interfaces ===
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+</WRAP>
+==== 22.03 ====
+=== Network interfaces ===
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| switch.1         | switching interface (port 1-8) | 192.168.1.1/24         |
+=== Switch Ports (for VLANs) ===
+^ Port                   ^ Switch port  ^
+| lan1 (PD/Yellow port)  | 1            |
+| lan2                   | 2            |
+| lan3                   | 3            |
+| lan4                   | 4            |
+| lan5                   | 5            |
+| lan6                   | 6            |
+| lan7                   | 7            |
+| lan8                   | 8            |
+
+==== Buttons ====
+Buttons are listed for reference only. Reset buttons usually have predefined behaviour (OpenWrt failsafe).
+
+The NETGEAR GS108T v3 sports a single button: a receded reset button.
+
+^ BUTTON   ^ Event   ^
+| Reset    |  reset  |
+
+See [[docs:guide-user:hardware:hardware.button|Attach functions to a push button]] on how use and configure the hardware button(s).
+
+===== Hardware =====
+==== Info ====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^NETGEAR$", "model": "^GS108T$", "version": "^v3$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+//Front://\\
+{{:media:netgear:gs108t-v3:gs108t_v3_-_front.jpg?400}}
+
+//Back://\\
+{{:media:netgear:gs108t-v3:gs108t_v3_-_back.jpg?400}}
+
+//Bottom label://\\
+{{:media:netgear:gs108t-v3:gs108t_v3_-_bottom.jpg?400}}
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+The device can be opened easily by unscrewing the two tiny screws on the back side. You can then slide off the top cover (towards the back).
+
+{{:media:netgear:gs108t-v3:gs108t-v3_back.jpg?400}}
+
+See [[toh:netgear:gs108t_v3#serial|Serial]] below for a picture of the PCB.
+==== Serial ====
+
+The through holes are filled with lead-free solder which melts at 375 °C. They can also be drilled using a 0.9mm bit. With a steady hand, you can also connect by keeping male headers pushed to the filled holes (but for stability reasons this obviously isn't recommended.
+
+See the red rectangle on the below photograph for the location of the unpopulated UART header.
+
+{{:media:netgear:gs108t-v3:gs108t-v3_board_resized.jpg?300.jpg}}
+
+Pin layout:
+
+  * J1.1: VCC, 3.3V (square pad)
+  * J1.2: RX (computer -> gs108t)
+  * J1.3: TX (gs108t -> computer)
+  * J1.4: GND
+
+^ Serial connection parameters for NETGEAR GS108T v3 | 115200, 8N1 |
+
+See [[docs:techref:hardware:port.serial|serial port]] for general information about serial port, serial port cable, etc.
+
+==== JTAG ====
+No JTAG header is present on the PCB.
+
+===== Bootloader mods =====
+-> [[docs:techref:bootloader]]
+
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>
+BOOT Loader Version 1.0.0.5 (2019-03-15 17:08:23 UTC)
+
+Board: RTL838x CPU:500MHz LXB:200MHz MEM:300MHz
+CPU  : 500 MHz
+RAM  : 128 MB
+FLASH: 32 MB
+
+Model: GS108Tv3
+MAC  : 9C:C9:EB:D8:FF:C8
+
+Hit Esc key to stop autoboot:  0 
+## Booting image from partition ... 0
+## Booting kernel from Legacy Image at 81000000 ...
+   Version:      7.0.4.6
+   Created:      2020-05-20  19:17:15 UTC
+   Data Size:    9307901 Bytes = 8.9 MB
+   Checksum ... OK
+   Uncompressing ... OK
+
+Starting kernel ...
+<181>1 2020-01-01T00:00:08.260Z: %0.0.0.0-1 TRAPMGR-5-SYSTEM_COLDSTART sal_snmp.c(772): Cold startup
+ESC[HESC[JPress any key to continue
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog><nowiki>
+BOOT Loader Version 1.0.0.2 (2018-08-31 17:05:26 UTC)
+
+Board: RTL838x CPU:500MHz LXB:200MHz MEM:300MHz
+CPU  : 500 MHz
+RAM  : 128 MB
+FLASH: 32 MB
+
+Model: GS108Tv3
+MAC  : BC:A5:xx:xx:xx:xx
+
+Hit Esc key to stop autoboot:  0 
+## Booting image from partition ... 0
+## Booting kernel from Legacy Image at 81000000 ...
+   Version:      MIPS OpenWrt Linux-5.4.99
+   Created:      2021-02-23  10:17:51 UTC
+   Data Size:    4273286 Bytes = 4.1 MB
+   Checksum ... OK
+   Uncompressing ... OK
+
+Starting kernel ...
+
+[    0.000000] Linux version 5.4.99 (builder@buildhost) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r15853-8f7a905ffb)) #0 Tue Feb 23 10:17:51 2021
+[    0.000000] RTL838X model is 83806800
+[    0.000000] SoC Type: RTL8380
+[    0.000000] Kernel command line: 
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019070 (MIPS 4KEc)
+[    0.000000] MIPS: machine is Netgear GS108T v3
+[    0.000000] Registering _machine_restart
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Using appended Device Tree.
+[    0.000000] Primary instruction cache 16kB, VIPT, 4-way, linesize 16 bytes.
+[    0.000000] Primary data cache 16kB, 2-way, VIPT, cache aliases, linesize 16 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000]   Normal zone: 288 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32768 pages, LIFO batch:7
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: console=ttyS0,115200
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 114512K/131072K available (5055K kernel code, 165K rwdata, 628K rodata, 9184K init, 207K bss, 16560K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 32
+[    0.000000] random: get_random_bytes called from 0x805b89fc with crng_init=0
+[    0.000000] timer_probe: no matching timers found
+[    0.000000] CPU frequency from device tree: 500MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041786 ns
+[    0.000018] sched_clock: 32 bits at 250MHz, resolution 4ns, wraps every 8589934590ns
+[    0.008687] Calibrating delay loop... 497.66 BogoMIPS (lpj=995328)
+[    0.047549] pid_max: default: 32768 minimum: 301
+[    0.053121] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.061254] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.080774] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.091593] futex hash table entries: 256 (order: -1, 3072 bytes, linear)
+[    0.099368] pinctrl core: initialized pinctrl subsystem
+[    0.108728] NET: Registered protocol family 16
+[    0.183592] workqueue: max_active 576 requested for napi_workq is out of range, clamping between 1 and 512
+[    0.205290] clocksource: Switched to clocksource MIPS
+[    0.213895] NET: Registered protocol family 2
+[    0.220593] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    0.229956] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.238482] TCP bind hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.246320] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.253890] UDP hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.261215] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.269704] NET: Registered protocol family 1
+[    0.850367] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    0.875024] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.881510] jffs2: version 2.2 (NAND) (SUMMARY) (ZLIB) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.944788] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 252)
+[    0.959485] pinctrl-single bb001000.pinmux: 32 pins, size 4
+[    0.966534] Probing RTL838X GPIOs
+[    1.081087] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    1.095023] printk: console [ttyS0] disabled
+[    1.099896] b8002000.uart: ttyS0 at MMIO 0xb8002000 (irq = 31, base_baud = 12500000) is a 16550A
+[    1.109673] printk: console [ttyS0] enabled
+[    1.109673] printk: console [ttyS0] enabled
+[    1.118988] printk: bootconsole [early0] disabled
+[    1.118988] printk: bootconsole [early0] disabled
+[    1.130982] b8002100.uart: ttyS1 at MMIO 0xb8002100 (irq = 30, base_baud = 12500000) is a 16550A
+[    1.145352] random: fast init done
+[    1.539773] brd: module loaded
+[    1.544131] Initializing rtl838x_nor_driver
+[    1.549008] SPI resource base is b8001200
+[    1.553590] Address mode is 4 bytes
+[    1.557556] rtl838x_nor_init called
+[    1.564217] rtl838x-nor b8001200.spi: mx25l25635e (32768 Kbytes)
+[    1.571149] 7 fixed-partitions partitions found on MTD device rtl838x_nor
+[    1.578827] Creating 7 MTD partitions on "rtl838x_nor":
+[    1.584766] 0x000000000000-0x0000000e0000 : "loader"
+[    1.592729] 0x0000000e0000-0x0000000f0000 : "bdinfo"
+[    1.600762] 0x0000000f0000-0x000000100000 : "sysinfo"
+[    1.608813] 0x000000100000-0x000000200000 : "jffs2_cfg"
+[    1.617100] 0x000000200000-0x000000300000 : "jffs2_log"
+[    1.625535] 0x000000300000-0x000001180000 : "firmware"
+[    1.656206] 0x000001180000-0x000002000000 : "runtime2"
+[    1.665651] libphy: Fixed MDIO Bus: probed
+[    1.672527] Probing RTL838X eth device pdev: 87c75800, dev: 87c75810
+[    1.695537] Found SoC ID: 8380: RTL8380, family 8380
+[    1.701182] rtl8380_init_mac
+[    1.704522] Using MAC 000000e04c000000
+[    1.708791] rtl838x_mdio_init called
+[    1.713183] rtl838x_mdio_reset called
+[    1.717398] libphy: rtl838x-eth-mdio: probed
+[    1.780073] Realtek RTL8218B (internal) mdio-bus:08: Detected internal RTL8218B
+[    1.788347] Firmware loaded. Size 1184, magic: 83808380
+[    2.586833] Realtek RTL8218B (internal) mdio-bus:08: ERROR: Port 8 not ready for patch.
+[    2.595903] Realtek RTL8218B (internal): probe of mdio-bus:08 failed with error -1
+[    2.834152] In rtl838x_validate
+[    2.837844] In rtl838x_validate
+[    2.844562] NET: Registered protocol family 10
+[    2.862055] Segment Routing with IPv6
+[    2.866449] NET: Registered protocol family 17
+[    2.871675] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    2.886855] 8021q: 802.1Q VLAN Support v1.8
+[    3.189831] Realtek RTL8218B (internal) rtl838x slave mii-0:08: Detected internal RTL8218B
+[    3.199163] Firmware loaded. Size 1184, magic: 83808380
+[    4.026833] Realtek RTL8218B (internal) rtl838x slave mii-0:08: ERROR: Port 8 not ready for patch.
+[    4.036971] Realtek RTL8218B (internal): probe of rtl838x slave mii-0:08 failed with error -1
+[    4.403529] libphy: rtl838x slave mii: probed
+[    4.439994] > 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff
+[    4.448864] > 10000100 10000200 10000400 10000800 10001000 10002000 10004000 10008000
+[    4.457693] > 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff 1fffffff
+[    4.466514] > 1fffffff 1fffffff 1fffffff 1fffffff 1000ff00        0        0        0
+[    4.475321] CPU_PORT> 1000ff00
+[    6.515941] rtl83xx-switch switch@bb000000 lan1 (uninitialized): PHY [mdio-bus:08] driver [Generic PHY]
+[    6.529201] rtl83xx-switch switch@bb000000 lan2 (uninitialized): PHY [mdio-bus:09] driver [Realtek RTL8218B (internal)]
+[    6.544027] rtl83xx-switch switch@bb000000 lan3 (uninitialized): PHY [mdio-bus:0a] driver [Realtek RTL8218B (internal)]
+[    6.559372] rtl83xx-switch switch@bb000000 lan4 (uninitialized): PHY [mdio-bus:0b] driver [Realtek RTL8218B (internal)]
+[    6.574724] rtl83xx-switch switch@bb000000 lan5 (uninitialized): PHY [mdio-bus:0c] driver [Realtek RTL8218B (internal)]
+[    6.589558] rtl83xx-switch switch@bb000000 lan6 (uninitialized): PHY [mdio-bus:0d] driver [Realtek RTL8218B (internal)]
+[    6.604381] rtl83xx-switch switch@bb000000 lan7 (uninitialized): PHY [mdio-bus:0e] driver [Realtek RTL8218B (internal)]
+[    6.619724] rtl83xx-switch switch@bb000000 lan8 (uninitialized): PHY [mdio-bus:0f] driver [Realtek RTL8218B (internal)]
+[    6.633832] rtl83xx-switch switch@bb000000: configuring for fixed/internal link mode
+[    6.642892] DSA: tree 0 setup
+[    6.646361] LINK state irq: 20
+[    6.649912] In rtl83xx_setup_qos
+[    6.653599] Setting up RTL838X QoS
+[    6.657474] RTL838X_PRI_SEL_TBL_CTRL(i): 00033112
+[    6.662797] Current Intprio2queue setting: 00000000
+[    6.668318] QM_PKT2CPU_INTPRI_MAP: 00fac688
+[    6.673079] rtl838x_dbgfs_init called
+[    6.797504] Freeing unused kernel memory: 9184K
+[    6.802662] This architecture does not have kernel memory protection.
+[    6.809930] Run /init as init process
+[    6.814397] rtl83xx-switch switch@bb000000: Link is Up - 1Gbps/Full - flow control off
+[    8.269103] init: Console is alive
+[    8.306077] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    8.318954] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    8.337969] init: - preinit -
+[    8.734186] random: jshn: uninitialized urandom read (4 bytes read)
+[    8.859782] random: jshn: uninitialized urandom read (4 bytes read)
+mtd_get_mac_ascii: partition u-boot-env not found!
+[    9.408368] random: jshn: uninitialized urandom read (4 bytes read)
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   13.930856] procd: - early -
+[   16.182576] procd: - ubus -
+[   16.204060] urandom_read: 2 callbacks suppressed
+[   16.204075] random: ubusd: uninitialized urandom read (4 bytes read)
+[   16.238690] random: ubusd: uninitialized urandom read (4 bytes read)
+[   16.247076] random: ubusd: uninitialized urandom read (4 bytes read)
+[   16.263322] procd: - init -
+Please press Enter to activate this console.
+[   17.370845] kmodloader: loading kernel modules from /etc/modules.d/*
+[   17.428820] Mirror/redirect action on
+[   17.474878] u32 classifier
+[   17.478042]     input device check on
+[   17.482210]     Actions configured
+[   17.597142] xt_time: kernel timezone is -0000
+[   17.605146] urngd: v1.0.2 started.
+[   17.687136] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   17.831353] random: crng init done
+[   17.835302] random: 2 urandom warning(s) missed due to ratelimiting
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+Support for the LEDs might improve by this kernel patch: [[https://lwn.net/ml/linux-kernel/cover.1622713678.git.sander@svanheule.net/]], [[https://lore.kernel.org/all/cover.1623532208.git.sander@svanheule.net/]]
+
+===== Tags =====
+{{tag>realtek 32flash 128ram 8port GigabitEthernet PoE MIPS}} 

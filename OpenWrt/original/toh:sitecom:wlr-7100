@@ -1,0 +1,256 @@
+====== Sitecom WLR-7100 ======
+
+Manufacturer's site: http://www.sitecom.com/en/wi-fi-router-x7-ac1200/wlr-7100/p/1619 
+
+===== OpenWrt support =====
+
+<color green>**Supported**</color>, both variants (v1 001 and v1 002), since [[commit>1bc921f419df508c57dc07cd3e43cdf0408c17dd]] with errata [[commit>474aa3237c1bac86b475c3b2955e9501353a87f5]].
+
+===== Hardware =====
+==== Info ====
+
+^ Architecture    | MIPS32                                    |
+^ Target          | ar7xxx/ar9xxx                             |
+^ Vendor          | Sitecom                                   |
+^ Bootloader      | u-boot                                    |
+^ CPU Model       | AR1022                                    |
+^ CPU Speed       | 533MHz                                    |
+^ Flash size      | 8MB                                       |
+^ RAM size        | 64MB                                      |
+^ WAN             | 1x RJ45                                   |
+^ Ethernet        | QCA8337 (4xGbe)                           |
+^ Wireless        | AR1022(Integrated 2.4GHz)+QCA9882(5GHz)   |
+^ Serial          | yes                                       |
+^ Buttons         | power switch, WPS button                  |
+^ Power           | external 12V 1.25A                           |
+
+==== Photos ====
+//Front://\\
+{{:media:sitecom:wlr7100:wlr7100-v1-002_front.png?400|}}
+
+//Side://\\
+{{:media:sitecom:wlr7100:wlr7100-v1-002_side.png?400|}}
+
+==== Opening the case ====
+**Note**: This will void your warranty!
+
+  * To remove the cover, unscrew four screws found under the rubber feet on the backside of the device.
+  * Then, on the frontside (the side with the indicator lights) pull the (long) side outward slightly to release four catches and pull off the front cover.
+//Cover (both sides shown in edited image)://\\
+{{:media:sitecom:wlr7100:wlr7100-v1-002_cover.png?400|}}
+
+//Main PCB://\\
+{{:media:sitecom:wlr7100:wlr7100-v1-002_pcb.png?400|}}
+
+//Backside of PCB://\\
+{{:media:sitecom:wlr7100:wlr7100-v1-002_pcb-back.png?400 |}}
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+
+{{media:sitecom:wlr7100:wlr7100-v1-002_serial.png?400|}}
+
+^ Serial connection parameters | 115200, 8N1 |
+
+Serial Port is labeled **JP1** on the board and is a standard 2.54mm pin header footprint without connector soldered.
+
+Pin 1 has 3.3V, but the signal on the TxD pin is 2.65V, so the processor //probably// runs at 2.65V. Putting 3.3V on the RxD pin (i.e. using a 3.3V serial adapter) //might// be problematic (there also seems to be a footprint on the PCB for a resistor divider, but it had a 0Ω), so add a resistor divider or level shifter to be sure.
+
+When TxD line on UART is connected on power-on, the DDR memory training may fail (you will see some output on serial, but booting does not continue). A workaround is to disconnect TxD, power on and then directly connect TxD to catch most of the output and/or interact with uboot.
+
+After the original firmware has booted, you can login to the shell using password: SitecomSenao
+
+^  <color #508CAA>Pin Out</color>  ^^^^^
+^  <color #508CAA>Pins</color>  ^  <color #508CAA>1</color>  ^  <color #508CAA>2</color>  ^  <color #508CAA>3</color>  ^  <color #508CAA>4</color>  ^
+^  <color #508CAA>Function</color>  |  3v3  |  Gnd  |  TxD  |  RxD  |
+
+===== Stock firmware ====
+
+The original source code for firmware version 1.1.2 can be found at http://www.sitecomlearningcentre.com/download/firmware/gnu_gpl_source_code/626 (be patient, it can take few moments for file to be prepared).
+
+==== Flash Layout ====
+Original:
+
+
+<code>
+# cat /proc/mtd 
+dev:    size   erasesize  name
+mtd0: 00800000 00010000 "ALL"
+mtd1: 00030000 00010000 "Bootloader"
+mtd2: 00010000 00010000 "Config"
+mtd3: 00750000 00010000 "Kernel"
+mtd4: 00590000 00010000 "apps"
+mtd5: 00040000 00010000 "manufacture"
+mtd6: 00010000 00010000 "backup"
+mtd7: 00050000 00010000 "storage"
+mtd8: 00010000 00010000 "caldata"
+</code>
+
+^  WLR-7100 Flash Layout stock firmware (v1.8)  ^^^^^^^^
+^ Layer0     |              8192KiB           |||||||
+^ Layer1     | mtd1 **//Bootloader//** 192KiB | mtd2 **//Config//** 64KiB |  mtd3 **//Kernel//** 7488KiB                     || mtd6 **//backup//** 64KiB | mtd7 **//storage//** 320KiB | mtd8 **//caldata//** 64KiB |
+^ Layer2     |                                |                           |  1792KiB | mtd4 **//apps//** 5696KiB |            |                           |                             |                            |
+^ mountpoint |  none                          |  none                     |  none                                |  /apps     |  none                     |  /storage                   |  none                      |
+^ filesystem |  none                          |  none                     |  none                                |  SquashFS  |  none                     |  JFFS2                      |  none                      |
+
+Partition placement was deduced by localizing each partition's data in a backup. mtd5 **//manufacture//** 256KiB is not listed, since it contained only 0xff bytes and was impossible to exactly locate. The only place with enough 0xff bytes to accomodate it was mtd4, so mtd5 likely overlaps with the end of mtd4.
+
+==== Backup original firmware ====
+-> [[docs:guide-user:installation:generic.backup]] general information about backups.
+
+If you have serial access, you can create a backup of the original flash contents (see above for instructions and the login password). However, the stock firmware is very limited (it has no ''cut'', ''ssh'', ''dd'' and ''read'' requires an explicit argument), so the backup script in the generic backup article does not work here.
+
+So to make a backup while running the stock firmware, insert an USB stick, login to serial and run the below script to write backup files to the USB stick:
+
+<code>
+cat /proc/mtd | tail -n+2 | while read REPLY; do
+  MTD_DEV=$(echo ${REPLY} | awk -F':' '{print $1}')
+  MTD_NAME=$(echo ${REPLY} | awk -F'"' '{print $2}')
+  echo "Backing up ${MTD_DEV} (${MTD_NAME})"
+  cat /dev/${MTD_DEV} > /tmp/usb/sda1/${MTD_DEV}_${MTD_NAME}.backup
+done
+</code>
+
+==== Revert to stock ====
+
+  - Download original fw from http://www.sitecomlearningcentre.com/download/firmware/2739
+  - SSH into device 
+  - mtd erase "kernel"
+  - reboot
+  - now the device hangs at boot with ip 192.168.99.9, set any other 192.168.99.0/24 and then access via web to 192.168.99.9.
+  - upload the .dlf from sitecom site and wait
+
+==== Bootlog ====
+Full bootlog can be obtained by keeping TX disconnected at poweron, connecting it, entering the u-boot console with "4" and then giving a "reset" command to reset the MCU (skipping the DRAM check that reportedly prevents boot from completing when TX is connected at poweron).
+
+<code>
+U-Boot 2.0.0 (May 22 2013 - 13:25:23)
+Board:MI124
+
+sri
+Wasp 1.1
+wasp_ddr_initial_config(276): Wasp (16bit) ddr1 init
+wasp_ddr_initial_config(426): Wasp ddr init done
+DRAM: 4 MB
+Top of RAM usable for U-Boot at: 80400000
+Reserving 236k for U-Boot at: 803c4000
+Reserving 192k for malloc() at: 80394000
+Reserving 44 Bytes for Board Info at: 80393fd4
+Reserving 36 Bytes for Global Data at: 80393fb0
+Reserving 128k for boot params() at: 80373fb0
+Stack Pointer at: 80373f98
+Now running in RAM - U-Boot at: 83fc4000
+id read 0xc216
+venid=c2,devid=16
+SPI Flash [MXIC-MX25L 6406E/6405D]: Size: 0x800000 bytes.
+flash size 8388608, sector count = 128
+Flash:  8 MB
+BOARD IS NOT CALIBRATED!!!
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ag934x_enet_initialize...
+No valid address in Flash. Using fixed address
+ wasp  reset mask:c03300 
+WASP  ----> S17 PHY *
+: cfg1 0x7 cfg2 0x7114
+eth0: 00:03:7f:09:0b:ad
+athrs17_reg_init: complete
+eth0 up
+eth0
+ag934x_enet_initialize...
+No valid address in Flash. Using fixed address
+ wasp  reset mask:c03300 
+WASP  ----> S17 PHY *
+: cfg1 0xf cfg2 0x7114
+eth0: 00:03:7f:09:0b:ad
+eth0 up
+eth0
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+ 0 
+   
+3: System Boot system code via Flash.
+## Booting image at 9f040000 ...
+   Image Name:   Linux Kernel Image
+   Created:      2015-12-09   9:35:22 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1834635 Bytes =  1.7 MB
+   Load Address: 80002000
+   Entry Point:  80006110
+   Verifying Checksum at 0x9f040040 ...OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 80006110) ...
+## Giving linux memsize in bytes, 67108864
+
+Starting kernel ...
+
+Booting Atheros AR934x
+init started: BusyBox v1.7.5 (2015-12-09 17:30:42 CST)
+starting pid 809, tty '/dev/console': '/sbin/config_init'
+mknod: /dev/ttyS0: File exists
+mknod: /dev/ttyS1: File exists
+Config Init version: 1.8.0.1 date: 2015/12/09
+Thu Jan  1 00:00:00 UTC 2015
+ln: /lib/./modules: File exists
+insmod: can't open '/lib/ar8327_drv.ko': No such file or directory
+starting pid 864, tty '/dev/ttyS0': '/sbin/config_term'
+************************************************************************
+*                                 WLR-7100                             *
+************************************************************************
+
+KernelApp/Ramdisk Ver:1.8.0.1                    Date:2015/12/09
+</code>
+
+==== Uboot config ====
+<code>
+U-Boot 2.0.0 (May 22 2013 - 13:25:23)
+ar7240> printenv
+bootdelay=4
+baudrate=115200
+ethaddr="64:D1:A3:3C:98:F5"
+sn=167245176
+hw_ver=1.0.0
+hw_id=02261055
+pro_id=000
+country=000
+domain=1
+op_mode=0
+wanaddr=64:D1:A3:3C:98:F7
+wlanaddr=00:AA:BB:CC:DD:12
+snextra=167245176***********
+bootfile=uImage
+dir=
+bc=mi124_f1e
+lu=tftp 0x80060000 ${dir}u-boot.bin&&erase 0x9f000000 +$filesize;cp.b $fileaddr 0x9f000000 $filesize
+lf=tftp 0x80060000 ${dir}${bc}-jffs2&&erase 0x9f050000 +$filesize;cp.b $fileaddr 0x9f050000 $filesize
+lk=tftp 0x80060000 ${dir}vmlinux_${bc}.lzma.uImage&&erase 0x9f300000 +$filesize;cp.b $fileaddr 0x9f300000 $filesize
+ethact=eth0
+bootargs=console=ttyS0,115200 root=31:03 rootfstype=jffs2 init=/sbin/init mtdparts=ath-nor0:192k(u-boot),64k(u-boot-env),896k(uImage),6912k(rootfs),64k(NVRAM),64k(ART)
+ipaddr=192.168.99.9
+serverip=192.168.99.8
+uboot_ver=2.0.0.3
+stdin=serial
+stdout=serial
+stderr=serial
+
+Environment size: 855/65532 bytes
+ar7240> imls
+Image at 9F040000:
+   Image Name:   Linux Kernel Image
+   Created:      2015-12-09   9:35:22 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1834635 Bytes =  1.7 MB
+   Load Address: 80002000
+   Entry Point:  80006110
+   Verifying Checksum ... OK
+
+</code>
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>GigabitEthernet 5Port USB 1USB USB2.0 802.11ac 802.11abgn 802.11abgn_simultan ath10k 64RAM 8Flash MIPS}}

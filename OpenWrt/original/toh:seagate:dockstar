@@ -1,0 +1,605 @@
+====== Seagate Dockstar ======
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "Dockstar"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "Dockstar"}
+} -->
+
+
+===== Installation =====
+
+==== Before the Installation ====
+Before you install OpenWrt on your Dockstar, you could read this page: [[toh:seagate:dockstar:alternatives|Alternative operating systems for the Seagate Dockstar]].
+
+==== Installation ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "Dockstar"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+Note that using this guide will replace the original firmware found on the Dockstar. If you ever plan to restore the original firmware please take a [[#Backup|backup]]. One OpenWrt install procedure will place a 2nd stage bootloader. The original U-Boot in mtd0 will be retained and will chainload the 2nd one. The Ethernet address of your device is set by the original U-Boot. The 2nd stage bootloader shows a bogus ethaddr. OpenWrt will use a different flash layout than the original one.
+
+==== Upgrading To The uboot Bootloader ====
+
+The most recent versions of uboot on the OpenWrt downloads pages do *not* work as a first-stage bootloader.
+
+The latest version of uboot that *does* work as a first-stage bootloader is from [[https://archive.openwrt.org/barrier_breaker/14.07/kirkwood/generic/uboot-kirkwood-dockstar/openwrt-kirkwood-dockstar-u-boot.kwb|14.07]].
+
+Warning: If this procedure fails, JTAG is the only recovery option.
+
+<code>
+CE>> printenv ethaddr
+ethaddr=00:10:75:1A:10:4F
+# Save this output! Particularly the MAC address of ethaddr
+CE>> tftpboot 0x800000 openwrt-kirkwood-dockstar-u-boot.kwb
+Using egiga0 device
+TFTP from server 10.0.2.10; our IP address is 10.0.2.11
+Filename 'openwrt-kirkwood-dockstar-u-boot.kwb'.
+Load address: 0x800000
+Loading: #################################################################
+         ########################
+done
+Bytes transferred = 454108 (6eddc hex)
+
+# Notice the erase size argument. You could optionally erase the entire thing if you wanted to
+CE>> nand erase 0x0 6eddc
+NAND erase: device 0 offset 0x0, size 0x6eddc
+Erasing at 0x60000 -- 100% complete.
+OK
+
+# The arguments nand write.e here are
+# 1. 0x800000, the location in ram where our data was tftpd to
+# 2. Start location 0x0, the beginning of the flash where the bootloader goes
+# 3. 0x6eddc, the size of data to write, which matches how big the file was when we ran the tftboot command
+CE>> nand write.e 0x800000 0x0 0x6eddc
+CE>> reset
+</code>
+
+Upgrading the bootloader to a modern version is a **requirement** for booting modern kernels (3.2+) **and** modern filesystems (ubifs).
+After upgrading you can inspect the version of uboot and it should be:
+
+<code>
+U-Boot 2014.04 (Sep 21 2014 - 05:44:22) Seagate FreeAgent DockStar
+arm-openwrt-linux-uclibcgnueabi-gcc (OpenWrt/Linaro GCC 4.8-2014.04 r42625) 4.8.3
+GNU ld (GNU Binutils) 2.22
+</code>
+
+==== Flash Layout ====
+->[[docs:techref:flash.layout]] for explanations!
+
+^           OpenWrt FlashLayout       ^^^^^^
+^ mtd#          | mtd0       | mtd1         | mtd2                       | mtd3         |
+^ start         | 0x000000   | 0x0e0000     | 0x100000                   | 0x200000     |
+^ size          | 0x100000   | 0x020000     | 0x200000                   | to the end   |
+^ in MiB        | 1          | 0.128        | 1                          | 253          |
+^ name          | u-boot     | u-boot-env   | second_stage_uboot         | root         |
+^ file system   |  none      | none         | none                       | UBI          |
+
+^           Original FlashLayout 14.07 and older         ^^^^^
+^ mtd#          | mtd0       | mtd1       | mtd2        | mtd3        |
+^ start         | 0x000000   | 0x100000   | 0x500000    | 0x2500000   |
+^ size          | 0x100000   | 0x400000   | 0x2000000   | 0xdb00000   |
+^ in MiB        | 1          | 4          | 32          | 219         |
+^ name          | u-boot     | uImage     | root        | data        |
+^ file system   | none       | none       | JFFS2       |     ??      |
+
+==== Reading And Writing uboot Variables From Openwrt ====
+
+<code>
+$ opkg update && opkg install uboot-envtools
+$ echo "/dev/mtd0 0xc0000 0x20000 0x20000" >/etc/fw_env.config
+$ fw_printenv 
+....
+# Now set foo='bar baz'
+$ fw_setenv foo "bar baz"
+</code>
+
+==== Installing OpenWrt 19.07.7 With Serial ====
+
+== Plan ==
+
+  - Get a [[#Serial|serial connection]] to the dockstar
+  - Backup your [[#reading_and_writing_uboot_variables_from_openwrt|uboot env]] and any other files if applicable
+  - Get a [[docs/guide-user/troubleshooting/tftpserver|tftpserver]] ready with [[https://downloads.openwrt.org/releases/19.07.7/targets/kirkwood/generic/openwrt-19.07.7-kirkwood-seagate_dockstar-squashfs-factory.bin|openwrt-19.07.7-kirkwood-seagate_dockstar-squashfs-factory.bin]]
+  - Verify you have either an upgraded uboot or a 2-stage [[#upgrading_uboot|uboot]] that can understand ubifs.
+  - Flash openwrt, set new uboot variables, reboot
+
+== Flashing Openwrt ==
+
+<code>
+nand erase.part clean root
+tftpboot   0x800000  openwrt-19.07.7-kirkwood-seagate_dockstar-squashfs-factory.bin
+echo "Note that the size here 420000 is exactly the hex value reported from tftpboot above ^"
+nand write 0x800000 root 420000
+</code>
+
+That is it for flashing! The .bin file is already a UBI image with 3 volumes that are installed on top of the mtd partition called ''root'':
+  - ''kernel'': A uboot-compatible kernel image
+  - ''rootfs'': A squashfs filesytem for OpenWrt to use as /rom
+  - ''rootfs_data'': The overlay with all your files
+
+== Configuring uboot ==
+
+Uboot needs to be configured to understand this flash layout:
+<code>
+# Console settings are pretty standard, just abstracting into a variable
+setenv console 'console=ttyS0,115200'
+# bootargs_root encapsulates the kernel arguments we need to boot. We flashed our ubi image to mtd3 ('root'),
+# our root block device is /dev/ubiblock0_1, the squashfs volume, and ro for read only
+setenv bootargs_root 'ubi.mtd=3 root=/dev/ubiblock0_1 ro'
+# ubiboot_n1 tells uboot to read the kernel from flash && boot that kernel
+setenv ubiboot_n1 'ubi read 0x800000 kernel; bootm 0x800000'
+# This last variable, bootcmd, composes everything together in a chain, ending on the bootm command
+setenv bootcmd 'setenv bootargs ${console} ${mtdparts} ${bootargs_root}; ubi part root; run ubiboot_n1'
+saveenv
+reset
+</code>
+
+==== OpenWrt 19.07 Initramfs Rescue Image ====
+
+If you have a [[docs/guide-user/troubleshooting/tftpserver|tftpserver]] ready and the ''initramfs-uImage'' downloaded, you can easily boot into a ram rescue image without adjusting flash:
+
+<code>
+tftpboot 0x800000 openwrt-19.07.7-kirkwood-seagate_dockstar-initramfs-uImage
+bootm 0x800000
+</code>
+
+(assuming the bootloader is new enough)
+
+==== Reinstalling OpenWrt 19.07 Without Serial ====
+This procedure is only recommended after a modern bootloader and uboot configuration are already in place.
+If you do not already have that, then this procedure will not work, and you will need Serial to recover.
+
+<code>
+opkg update && opkg install openssl-util libustream-openssl20150806 ca-certificates
+cd /tmp
+wget https://downloads.openwrt.org/releases/19.07.7/targets/kirkwood/generic/openwrt-19.07.7-kirkwood-seagate_dockstar-squashfs-factory.bin
+mtd  -r write openwrt-19.07.7-kirkwood-seagate_dockstar-squashfs-factory.bin root
+# Notes that rootfs_data is untouched! Anything in /overlay will be preserved.
+</code>
+
+In theory you can also use the [[docs/guide-user/installation/installation_methods/sysupgrade|sysupgrade tool]], but this is not recommended if you don't already have a modern bootloader, uboot config, partitions, etc. This tool should work, however, going forward after 19.07.7 and up:
+
+<code>
+opkg update && opkg install openssl-util libustream-openssl20150806 ca-certificates
+cd /tmp
+wget https://downloads.openwrt.org/releases/19.07.7/targets/kirkwood/generic/openwrt-19.07.7-kirkwood-seagate_dockstar-squashfs-sysupgrade.bin
+sysupgrade openwrt-19.07.7-kirkwood-seagate_dockstar-squashfs-sysupgrade.bin
+</code>
+==== Installing CC 15.05 with console access via serial connection with UBIFS ====
+
+Here we describe how to install OpenWrt on the Dockstar with the help of a [[#Serial|serial connection]] to access the console.
+
+You'll also need a tftpserver on your host computer. Make sure that the following files from the bin/kirkwood folder are accessible through the tftpserver.
+  * http://downloads.openwrt.org/chaos_calmer/15.05/kirkwood/generic/openwrt-15.05-kirkwood-dockstar-zImage
+  * http://downloads.openwrt.org/chaos_calmer/15.05/kirkwood/generic/openwrt-15.05-kirkwood-dockstar-rootfs.ubifs
+  * http://downloads.openwrt.org/chaos_calmer/15.05/kirkwood/generic/openwrt-15.05-kirkwood-dockstar.dtb
+
+Above addresses for 15.05.1
+  * http://downloads.openwrt.org/chaos_calmer/15.05.1/kirkwood/generic/openwrt-15.05.1-kirkwood-dockstar-zImage
+  * http://downloads.openwrt.org/chaos_calmer/15.05.1/kirkwood/generic/openwrt-15.05.1-kirkwood-dockstar-rootfs.ubifs
+  * http://downloads.openwrt.org/chaos_calmer/15.05.1/kirkwood/generic/openwrt-15.05.1-kirkwood-dockstar.dtb
+
+The Dockstar expects the tftp server to have the IP address 169.254.254.254. You can modify this using setenv or blparam, just set 'serverip' to your tftp server IP address.
+
+As mentioned above, you can install the 2-stage bootloader or the single stage one. The process is pretty much the same; the only thing that changes are the locations (addresses) in the Dockstar NVRAM; we will point out when we are dealing with the single or the 2-stage booloader.
+
+[NOTE: given access to a uboot prompt, the following instructions for loading CC 15.05 to nand worked on 2015-10-28, with some fiddling done as in the notes inserted below] 
+
+=== Installing bootloader ===
+
+| {{:meta:icons:tango:48px-dialog-warning.svg.png?nolink }} | Replacing the bootloader can potentially "brick" your device and require JTAG recovery. |
+
+Connect your Dockstar and reset the device
+
+Now execute the following commands to retrieve and install both bootloaders:
+
+== 2-stage bootloader ==
+| <code>
+mw 0x800000 0xffff 0x40000
+tftpboot 0x800000 openwrt-kirkwood-dockstar-u-boot.bin
+nand erase 0x100000 0x100000
+nand write.e 0x800000 0x100000 0x80000
+setenv bootcmd nand read.e 0x800000 0x100000 0x80000\; go 0x800000
+saveenv
+</code> |
+
+== single stage bootloader ==
+| <code>
+mw 0x800000 0xffff 0x80000
+tftpboot 0x800000 openwrt-kirkwood-dockstar-u-boot.kwb
+nand erase 0x000000 0x100000
+nand write.e 0x800000 0x000000 0x80000
+setenv bootcmd nand read.e 0x2000000 0x100000 0x400000\; go 0x2000000
+saveenv
+</code> |
+
+Note: This erases also the environment of the old uboot, If you are on an uboot from openwrt 14.07, you can preserve the environment by 
+replacing 0x100000 with 0x80000 in the nand erase command.
+Pro: UBoot initializes with default environment allowing automagic booting via UBIFS. If using only the single stage bootloader with default, einvironment, the 2nd stage UBoot is not used.
+
+Where:
+ * //nand erase X Y// means "Erase from Y (in Hex) MiB starting from X location (also in hex)
+ * //nand write.e X Y Z// means "Go to the RAM location X (in hex) and grab the first Z MiB of data and then put it in Y NVRAM location."
+
+If everything succeeded without errors the bootloader was installed successfully and you can now continue to install the kernel and rootfs.
+Reset your Dockstar. Press enter to get a command prompt at the bootloader.
+
+Verify that your MAC, IP address and TFTP server is set correctly. Below are examples, please adjust this to your needs.
+The Uboot environment can be saved with //saveenv//.
+| <code>
+setenv ipaddr  203.0.113.32
+setenv serverip 203.0.113.1
+setenv netmask 255.255.255.0
+setenv ethaddr c0:1d:c0:ff:ee
+</code> |
+
+=== Installing rootfs ===
+
+To install the kernel and rootfs enter the following commands into the command prompt of the 1st or 2nd-stage bootloader. We expect here a fresh uboot environment. Verify these settings with //printenv// and if needed modify the variables.
+| <code>
+setenv mtdids         nand0=orion_nand
+setenv mtdparts       mtdparts=orion_nand:0xe0000@0x0(uboot),0x20000@0xe0000(uboot_env),0x100000@0x100000(second_stage_uboot),-@0x200000(root)
+setenv bootargs_root  ubi.mtd=3 root=ubi0:rootfs rootfstype=ubifs rw
+setenv bootcmd        'setenv bootargs ${console} ${mtdparts} ${bootargs_root}; ubi part root; ubifsmount ubi:rootfs; ubifsload 0x800000 ${kernel}; ubifsload 0x700000 ${fdt}; ubifsumount; fdt addr 0x700000; fdt resize; fdt chosen; bootz 0x800000 - 0x700000'
+setenv fdt            /boot/dockstar.dtb
+setenv kernel         /boot/zImage
+saveenv
+</code> |
+NOTE: If you have rebooted into the 2-stage uboot, the above bootcmd setting fails with the complaint that it has "too many arguments". You can replace that with the following:
+| <code>
+setenv bootcmd 'setenv bootargs ${console} ${mtdparts} ${bootargs_root}; ubi part root; ubifsmount ubi:rootfs; run ubifinish1'
+setenv ubifinish1 'ubifsload 0x800000 ${kernel}; ubifsload 0x700000 ${fdt}; ubifsumount; run ubifinish2'
+setenv ubifinish2 'fdt addr 0x700000; fdt resize; fdt chosen; bootz 0x800000 - 0x700000'
+saveenv
+</code> |
+
+NOTE: 2015/11/14. Fresh Chaos Calmer install.
+I had to change the bootcmd to ignore the dtb reference (basically, what was already mentionned for the first boot) to be able to boot from Flash. Otherwire, the bootargs where ignored or replaced by the ones from the dtb file. 
+Also, I'm using the single stage bootloader but I had to split the commandline in two ("too many arguments").
+| <code>
+setenv bootcmd 'setenv bootargs ${console} ${mtdparts} ${bootargs_root}; ubi part root; ubifsmount ubi:rootfs; run ubiboot_n1'
+setenv ubiboot_n1 'ubifsload 0x800000 ${kernel}; ubifsumount; bootz 0x800000'
+</code> |
+NOTE: 2016/06/11. The above two lines were needed to make the dockstar boot successfully--with 15.05 and 15.05.1.
+
+=== Partition the flash and install rootfs. ===
+This is the same for both single and 2nd-stage bootloaders.
+| <code>
+nand erase 0x200000 0xfe00000
+ubi part root
+ubi create rootfs 0xA00000
+tftpboot 0x800000 openwrt-15.05-kirkwood-dockstar-rootfs.ubifs
+ubi write 0x800000 rootfs ${filesize}
+ubi create rootfs_data
+</code> |
+
+Note here: 0xa00000 is the size of your UBIFS rootfs image in hex. 0xa00000 means 10MiB. If you have selected many packages to be integrate into rootfs, it may be bigger than 10MiB. This size is sufficient for the stock image downloadable from openwrt.
+
+OpenWrt rootfs should now be successfully installed on you Dockstar, but it does not boot, correctly. We need to boot in to the system once manually.
+| <code>
+setenv bootargs ${console} ${mtdparts} ${bootargs_root}
+tftpboot 0x800000 openwrt-15.05-kirkwood-dockstar-zImage
+OMIT* tftpboot 0x700000 openwrt-15.05-kirkwood-dockstar.dtb
+OMIT* fdt addr 0x700000; fdt resize; fdt chosen
+OMIT* bootz 0x800000 - 0x700000;
+bootz 0x800000;
+</code> |
+* Note: Above lines marked "OMIT" cause the boot to fail as of 15/10/27; leaving them out and just using "bootz 0x800000" after the tftpboot works. Continue as below.
+[If this fails, try again INCLUDING the lines with "OMIT*"; if that fails, try a third time without them; that worked on 2015-10-28.]
+
+It now should boot into OpenWrt 15.05. With DHCP by default. 
+You have 
+* base file system under /rom (ubifs: rootfs)
+* overlay file system where your changes go in /overlay (ubifs: rootfs_data)
+
+To make it reboot safe, we need to store the kernel into the rootfs:
+| <code>
+mkdir -p /rom/boot
+wget -O /rom/boot/dockstar.dtb http://downloads.openwrt.org/chaos_calmer/15.05/kirkwood/generic/openwrt-15.05-kirkwood-dockstar.dtb
+wget -O /rom/boot/zImage       http://downloads.openwrt.org/chaos_calmer/15.05/kirkwood/generic/openwrt-15.05-kirkwood-dockstar-zImage
+</code> |
+
+You are finished. Now do a reboot.
+==== Installing without serial ====
+Then copy images to the device:
+
+# Combined 2-stage bootloader and kernel image
+| <code>
+(dd if=bin/kirkwood/openwrt-kirkwood-dockstar-u-boot.bin conv=sync bs=1M; dd if=bin/kirkwood/openwrt-kirkwood-uImage bs=2048 conv=sync) > openwrt-kirkwood-dockstar-uboot-uImage.bin
+scp openwrt-kirkwood-dockstar-uboot-uImage.bin root@169.254.206.33:/tmp
+</code> |
+# Rootfs image
+| <code>
+scp bin/kirkwood/openwrt-kirkwood-Dockstar-jffs2-128k.img root@169.254.206.33:/tmp
+</code> |
+# blparam
+| <code>
+wget http://dockstar.googlecode.com/files/blparam
+scp blparam root@169.254.206.33:/tmp
+</code> |
+
+---
+
+Return to your ssh session on the Dockstar.
+The first set commands modifies the stock bootloader to load our second stage bootloader. This is done by using blparam to modify the 'bootcmd'.
+
+| <code>
+cd /tmp
+chmod +x blparam
+./blparam "bootcmd=nand read.e 0x800000 0x100000 0x80000; go 0x800000"
+</code> |
+
+Now it's time to flash the OpenWrt images.
+Note that the last two commands will erase and overwrite the running system. It is a bit risky. But since the file system is read-only and `nandwrite` is in the fs-cache it should work.
+
+| <code>
+flash_eraseall /dev/mtd1
+nandwrite /dev/mtd1 openwrt-kirkwood-dockstar-uboot-uImage.bin
+flash_eraseall /dev/mtd2
+nandwrite /dev/mtd2 openwrt-kirkwood-Dockstar-jffs2-128k.img
+</code> |
+
+Press the reset button or power cycle your Dockstar. Your Dockstar should now boot into OpenWrt.
+If it does not something went wrong and you'll need to gain serial access to recover it.
+
+
+
+===== Basic configuration =====
+Since this part is identical for all devices, see [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]].
+
+===== Connect stuff to the USB port =====
+To connect stuff to the USB port, please see [[docs:guide-user:hardware:usb.overview|Connect stuff to the USB port]].
+
+===== Specific Configuration =====
+==== Interfaces ====
+The default network configuration is:
+
+^ Interface Name   ^ Description     ^ Default configuration   ^
+| eth0             | Ethernet port   | DHCP                    |
+
+==== Failsafe ====
+
+The DockStar cannot be put into failsafe mode by pressing the button.
+
+It can however be put in failsafe mode using serial console and pressing 'f' and <enter> when prompted during boot-up
+
+==== Buttons ====
+
+The DockStar's only button is not configurable and inevitably performs a hard reset when pressed.
+
+==== Crypto Hardware Acceleration ====
+
+The mv_cesa driver allows you to utilize the Cryptographic Engines and Security Accelerator (CESA) which can be found on the Marvell Orion and Kirkwood SoCs. Currently the driver supports AES in ECB and CBC mode without DMA[1]. This can be used for example to accelerate I/O on a dm-crypted harddrive.
+
+On modern 4.2 OpenWrt kernels, the module is built into the kernel:
+
+<code>
+root@Dockstar1:~# grep -C1 'mv-' /proc/crypto
+name         : xts(aes)
+driver       : xts(mv-ecb-aes)
+module       : xts
+--
+name         : hmac(sha1)
+driver       : mv-hmac-sha1
+module       : kernel
+--
+name         : hmac(md5)
+driver       : mv-hmac-md5
+module       : kernel
+--
+name         : sha1
+driver       : mv-sha1
+module       : kernel
+--
+name         : md5
+driver       : mv-md5
+module       : kernel
+--
+name         : cbc(aes)
+driver       : mv-cbc-aes
+module       : kernel
+--
+name         : ecb(aes)
+driver       : mv-ecb-aes
+module       : kernel
+--
+name         : cbc(des3_ede)
+driver       : mv-cbc-des3-ede
+module       : kernel
+--
+name         : ecb(des3_ede)
+driver       : mv-ecb-des3-ede
+module       : kernel
+--
+name         : cbc(des)
+driver       : mv-cbc-des
+module       : kernel
+--
+name         : ecb(des)
+driver       : mv-ecb-des
+module       : kernel
+</code>
+
+Under heavy load the ''[irq/28-f1030000]'' kernel thread shows up under top as doing all the work.
+
+<code>
+root@Dockstar1:~# dmesg | grep -i marvell
+[    1.858627] marvell-cesa f1030000.crypto: CESA device successfully registered
+</code>
+
+You can verify this from userspace with the cryptodev module (which allows userspace programs to use kernel-accelerated crypto) installed, asking openssl to use it:
+
+<code>
+root@Dockstar1:~# opkg install libopenssl-devcrypto kmod-cryptodev
+root@Dockstar1:~# openssl speed -evp aes-128-cbc -engine devcrypto -elapsed
+...
+aes-128-cbc        230.79k      843.15k     3349.42k    13747.54k    38393.17k    43362.99k
+# Versus without:
+root@Dockstar1:~# openssl speed -evp aes-128-cbc  -elapsed
+aes-128-cbc      10549.24k    13889.39k    15015.25k    15379.80k    15512.92k    15433.73k
+</code>
+
+-----
+
+On older versions of OpenWrt, you need the **kmod-crypto-mv-cesa** package installed and **mv_cesa** loaded. If you see a message like:
+<code>mv_cesa: Unknown symbol crypto_aes_expand_key (err 0)</code>
+Make sure to have the aes-module installed, too (Kernel modules->Crypto).
+'ps' should list a **[mv_crypto]**-kernelthread. 
+
+The dm-crypted harddrive could be made like this:
+| <code>
+cryptsetup luksFormat --cipher aes --hash sha1 --verify-passphrase /dev/sda1
+</code> |
+Now when you read or write to the disk, 'top' should show the **[mv_crypto]**-kernelthread.
+
+For some numbers see [[http://smorgasbord.gavagai.nl/2010/02/sheevaplug-hardware-crypto/]]. It states that you’ll get about 19 MB/s writing to an encrypted USB HDD.
+
+[1] TDMA support for mv_cesa is tracked in this [[http://code.google.com/p/openrd/issues/detail?id=18#c0|ticket]]
+
+===== Hardware =====
+==== Info ====
+^ Architecture | armv5te (big endian, runs also with little endian) | 
+^ Vendor | Marvell | 
+^ Bootloader | U-Boot | 
+^ System-On-Chip | Marvell [[http://www.marvell.com/products/processors/embedded/kirkwood/HW_88F6281_OpenSource.pdf|MV88F6281 A0 (DDR2)]] with ARM926EJ-S CPU (Marvell Feroceon) | 
+^ CPU Speed | 1200 Mhz | 
+^ Flash-Chip | Manufacturer ID: 0x2c, Chip ID: 0xda (Micron NAND 256MiB 3,3V 8-bit) | 
+^ Flash size | 256 MiB (PartNo 100576825C, 100576827B) or 512 MiB (PartNo 100576825B)  | 
+^ RAM | 128 MiB / 1x Nanya NT5TU64M16DG-AC | 
+^ Wireless | n/a | 
+^ Ethernet | 1x GigE port / Marvell "Alaska" 88E1116R |
+^ USB | 3x USB 2.0 ports, 1x mini USB 2.0 port for harddisk | 
+^ Serial | [[#Serial|Yes]] | 
+^ JTAG | [[http://www.plugapps.com/index.php5?title=Hardware:_Seagate_DockStar_JTAG|Yes]] |
+
+==== Photos ====
+{{:media:seagate:freeagent-dockstar-front_small.png|Frontview without HD}}
+{{:media:seagate:dockstar-board-stripped-caption.png?110|Click to enlarge}} 
+
+==== Opening the case ====
+
+There are no screws - the bottom cover is held by eight plastic snap on clips, two on each side. To open the case, place 2 thin screwdrivers or expired credit cards at either side of a front corner of the Dockstar into the join between the top cover and the base and gently pry it open.
+
+The upper case part is connected with a five pin cable to the PCB, carefully unplug it to remove the casing. The serial pins are accessible without unplugging the top usb connector. 
+
+==== Serial ====
+
+A 2x5 pin pad (J1) is located left of the LED at the front side of the PCB. The row the three pins ([RX] [TX] [GD]) you are interested on are close to edge of the board. There is a small white arrow pointing to pin #1:
+
+<code>
+  9     7     5     3      1
+[TCK] [TMS] [TDI] [TRST] [VCC] ◅
+[TDO] [RST] [RX ] [TX  ] [GND]
+ 10     8     6     4      2
+</code>
+
+Serial port settings are 115200@8n1. The signal level is 3.3V (TTL). Here is another example permanently [[http://www.yourwarrantyisvoid.com/2010/07/21/seagate-dockstar-add-an-accessible-serial-port/|installing a serial connection on the Dockstar]]. 
+
+Connect to the Dockstar from your workstation using ''screen'', ''picocom'', ''putty'', or any other compatible serial tool:
+
+<code>
+user@host ~ $ screen /dev/ttyUSB0 115200
+</code>
+
+The Reset pin (RS) can be wired to the DTR line of the serial converter to make it easy reset the Dockstar remotely. On ''picocom'' you can raise the DTR line High, then Low by pressing C-a, C-t, C-a, C-t. If the DTR line of the serial connector is connected to the Reset pin 8 (RS), then this will reset the dockstar!
+
+
+
+==== Recovery ====
+
+There are many recovery images out in the wild. Some have requirements on the version of U-Boot that your boot-strapping from. Information regarding recovery on older version of U-Boot can be obtained in this [[http://forum.doozan.com/read.php?4,1871,1871#msg-1871|thread]]. To bypass a bug in U-Boot, it might be required to specify the Machine ID to 0x831 in the U-Boots enviroment.
+<code>
+setenv machid 831
+</code>
+
+Here is details of the post from Johannes and the required [[http://www.sendspace.com/file/d6ffyd|RAM based rescue system here:]] (The md5 hash of the zip file is 7f225435709cd0ffbb3619f86af42986)
+
+"Booting the rescue system is accomplished by using uBoot to load the kernel and the root filesystem into RAM and calling bootm with the two addresses. For example, the following sequence will load the [[http://forum.doozan.com/read.php?4,1871,1871#msg-1871|rescue system]] from the root directory of an ext2 (or ext3) formatted USB stick (in position 1):
+<code>
+setenv machid 831
+usb start
+ext2load usb 0:1 0x800000 uImage-rescue
+ext2load usb 0:1 0xe00000 uInitrd-rescue
+setenv bootargs console=$console netconsole=6666@10.0.0.3/eth0,6666@10.0.0.2/12:23:34:45:56:67 $mtdparts
+bootm 0x800000 0xe00000
+</code>
+
+These files can also be loaded from a TFTP server (tftp-hpa). 
+<code>
+setenv ipaddr 10.0.0.2
+setenv serverip 10.0.0.1
+setenv machid 831
+tftpboot 0x800000 uImage-rescue
+tftpboot 0xe00000 uInitrd-rescue
+setenv bootargs console=$console netconsole=6666@10.0.0.3/eth0,6666@10.0.0.2/12:23:34:45:56:67 $mtdparts
+bootm 0x800000 0xe00000
+</code>
+or to set it as a script:
+<code>
+setenv recovery 'setenv serverip 10.0.1 ; setenv ipaddr 10.0.0.2 ; machid 831 ;tftpboot 0x800000 uImage-rescue ; tftpboot 0xe00000 uInitrd-rescue ; setenv bootargs console=$console $mtdparts ; bootm 0x800000 0xe00000
+run recovery
+</code>
+
+The L/P are: root/root
+
+
+
+===== JTAG Recovery =====
+Here are a few links for JTAG recovery:
+
+  * [[https://web.archive.org/web/20180218060441/http://plume.redox.ws/article13/dockstar-debricking-jtag-with-buspirate|Debricking w/ BusPirate]]
+  * [[https://lunarius.fe80.eu/blog/openwrt-dockstar-jtag.html|Condensed uboot upgrade w/BusPirate]]
+  * [[http://www.yourwarrantyisvoid.com/2010/09/08/dead-dockstar-resurrected-with-jtag/| Debricking w/ Parallel JTAG]]  
+
+The general instructions are:
+
+  - Hook up the Dockstar to your JTAG interface, given the correct dockstar.cfg files for OpenOCD
+  - Reset & ''halt'' the dockstar, get it to ''target halted in Thumb state''
+  - Run ''dockstar_init'' to configure OpenOCD for the dockstar's hardware
+  - ''nand probe 0'' should report the flash chip
+  - Then either:
+    - Upload a temporary custom version of uboot into ram at ''0x800000'' then ''resume 0x800200'' (skipping the ''0x200'' hardware init instructions), press any key on the normal serial port, then follow the instructions at the top of the page to flash the recommended openwrt uboot kwb image
+    - Or ''nand write'' a uboot kwb image directly to location ''0x0'' on the flash, reset the dockstar
+===== Hardware Mods =====
+
+==== SD Card and I2C Support ====
+
+[[http://plugapps.com/forum/viewtopic.php?f=6&t=258#p1748|The first page of this thread]] documents the pin-out for attaching a SD Card reader to the Dockstar. Also, there's information about the I2C interface.
+
+==== RTC Clock ====
+
+The Dockstar has no built-in RTC clock, but [[http://plugapps.com/forum/viewtopic.php?f=6&t=258&sid=47bb1e538bb1dac848634cb6d2aef400&start=10#p1822|it can be added back]]. 
+
+==== Overclocking and Underclocking ====
+
+According to [[http://gsg-elektronik.de/?id=96|this page]] (German), the Dockstar has jumpers to set the multipliers for the CPU, RAM and AHB, and there are three selectable CPU speed: 1.0 GHz, 1.2 GHz and 1.5 GHz. To switch from 1.2 to 1.5 GHz, three surface-mounted resistors have to be resoldered. Please note that according to the author of the page, the Dockstar is not 100% reliable at full speed, and may require further modifications to achieve stability. Underclocking to 1.0 Ghz is also possible, but the decrease in power consumption is likely not worth the hassle
+
+===== External Guides ======
+* [[https://github.com/solarkennedy/wiki.xkyle.com/wiki/Installing-OpenWrt-14.07-On-A-Seagate-Dockstar|Install OpenWrt 14.07 on a Seagate Dockstar]]
+* [[http://ahsoftware.de/dockstar/#backup|Backing up the original firmware]]
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>kirkwood gt32Flash 128RAM GigabitEthernet 1NIC 0WNIC no_switch USB 4USB JTAG ARM ARMv5 ARM926EJ-S crypto}}

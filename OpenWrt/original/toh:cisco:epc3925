@@ -1,0 +1,833 @@
+====== Cisco EPC3925 ======
+[[docs:techref:hardware:soc:soc.broadcom.bcm33xx|BCM33xx]]
+
+This is a DOCSIS 3.0 Wireless cable Residential Gateway. It uses an eCos operating system. It seems it shares the same hardware with the Netgear CG3100D/CG3101D, Motorola SBG6580, Virgin Media Super Hub VMDG480.
+
+| {{:meta:icons:tango:package-x-generic.png|}} | There exist GPL sources available from [[ftp://downloads.netgear.com/files/GPL/|Netgear FTP]]:\\ [[https://www.downloads.netgear.com/files/GPL/CG3100_GPL_src.zip|CG3100_GPL_src.zip]] eCos source code (38 MB) \\ [[https://www.downloads.netgear.com/files/GPL/CG3100Dv2_V5.5.5.83.mp2_LxG1.0.5.83.mp2_EU_src.zip|CG3100Dv2_V5.5.5.83.mp2_LxG1.0.5.83.mp2_EU_src.zip]] eCos and Linux source code\\ \\ visit [[ftp://downloads.netgear.com/files/GPL/|Netgear FTP]], models CG3xxx seems to share similar hardware |
+
+
+There might be some more information about the bootloader, creating images, etc at [[https://github.com/Broadcom/aeolus|https://github.com/Broadcom/aeolus]] from Broadcom. Its about the BCM3384, which might share some internals with the BCM3380
+
+===== Hardware Highlights =====
+^ SoC       ^ Ram     ^ Flash   ^ Network   ^ USB   ^ Serial   ^ JTag   ^
+| BCM3380   | 64MiB   | 16MiB   | 4         | Yes   | Yes      | ?      |
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set|Instruction set]]  | [[wp>MIPS architecture|MIPS]] |
+^ Vendor          | [[wp>Broadcom]] |
+^ [[docs:techref:bootloader]]     | SA BootLoader |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | [[http://datasheet.elcodis.com/pdf/48/45/484522/bcm3380dkfsbg.pdf|Broadcom BCM3380]] |
+^ [[docs:techref:hardware:cpu|CPU]] @Frq   | BMIPS4350 Viper @333MHz|
+^ Flash-Chip      | Macronix MX25L12845EMI-10G (SPI) |
+^ Flash size      | 16 MiB      |
+^ RAM             | Hynix H5PS5162GFR-Y5C 512Mbit 32Mx16/ DDR2-667 |
+^ RAM size        | 64 MiB      |
+^ Wireless        | Broadcom BCM43225 (802.11b/g/n) (MiniPCIe) |
+^ Ethernet        | Atheros AR8316, switch Gigabit w/ vlan support [[docs:techref:swconfig]] |
+^ Internet        | DOCSIS 3.0  |
+^ USB             | Yes 1 x 2.0 |
+^ [[docs:techref:hardware:port.serial|Serial]]   | [[#Serial|Yes]]   |
+^ [[docs:techref:hardware:port.jtag|JTAG]]       | ?       |
+^ Tuner           | Broadcom BCM3410 |
+^ LNA             | Broadcom BCM3422 |
+
+==== Photos ====
+**Casing**\\
+{{media:cisco:epc3925_case1.jpeg?350x200|}}
+{{media:cisco:epc3925_case2.jpg?500x200|}}
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+  *To remove the cover just unscrew the screws at the bottom of the case.
+
+**Photo of PCB**\\
+{{media:cisco:epc3925_board0.jpg?500|}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+1 (Square): RXD (Incoming data to modem)
+2         : TXD (Outging data from modem)
+3         : GND (Ground)
+4         : VCC (3.3V VCC)
+
+All levels are TTL 3V3
+
+
+
+**Photo of PCB with markings**
+
+{{:media:cisco:epc3925_uart.png?400|UART connections for the EPC3925}}
+Use a serial TTL adapter to connect. Console is available at 115200 Baud, 8 Databits, No parity, 1 Stopbit
+
+{{:media:cisco:epc3925_isp.png?400|ISP pin for the EPC3925}}
+
+Pin7 of the middle IC is the enable pin of the 2.5V Regulator. If you disable it, the CPU will not boot and the SPI pins are tristated (read: you can use them with an external programmer)
+VCC is already applied to the SPI Flash chip, so only GND,SO,SI,CS and CLK are needed to program the flash (verified)
+
+
+
+
+==== Flash chip programming ====
+FIXME
+
+{{media:cisco:epc3925_flashchip0.jpg?500x300|}}
+
+Flash structure:
+  * Bootloader (64K)
+  * Permanent NVRAM (64K)
+  * Image 1 (8064K)
+  * Image 2 (8064K)
+  * Dynamic NVRAM (128K)
+
+
+Total: 16384K (=16M)
+
+P.S. Images are LZMA packed. You can unpack them with [[https://github.com/Broadcom/aeolus|aeolus ProgramStore]] tool:
+
+<code>
+root@kernel2:~/aeolus/ProgramStore# ./ProgramStore -x -f image1.bin -o image1-uncompressed.bin
+   Signature: a041
+     Control: 0005
+   Major Rev: 0003
+   Minor Rev: 0000
+  Build Time: 2015/2/16 06:46:10 Z
+ File Length: 4853893 bytes
+Load Address: 80004000
+    Filename: e3925-E10-5-c1200r5592-150216c-XXX.bin
+         HCS: b2de
+         CRC: dfcc00aa
+
+Performing CRC on Image...
+Detected LZMA compressed image... decompressing...
+
+Decompressed length unknown.  Padded to 49545216 bytes.
+</code>
+
+
+<WRAP bootlog>
+<nowiki>
+CM/Flash> show
+
+
+Flash Device Information:
+
+      CFI Compliant: no
+        Command Set: Generic SPI Flash
+   Device/Bus Width: x16
+ Little Word Endian: no
+    Fast Bulk Erase: no
+    Multibyte Write: 256 bytes max
+  Phys base address: 0xbadf1a5
+ Uncached Virt addr: 0x1badf1a5
+   Cached Virt addr: 0x2badf1a5
+   Number of blocks: 257
+         Total size: 16777216 bytes, 16 Mbytes
+       Current mode: Read Array
+        Device Size: 16 MB, Write buffer: 256, Flags: 0
+
+      Size  Device      Device     Region
+Block  kB   Address     Offset     Offset   Region Allocation
+----- ---- ---------- ----------- --------- -----------------
+    0   32 0x1badf1a5           0         0 Bootloader
+    1   32 0x1bae71a5      0x8000    0x8000 Bootloader (65536 bytes)
+    2   64 0x1baef1a5     0x10000         0 Permanent NonVol (65536 bytes)
+    3   64 0x1baff1a5     0x20000         0 Image1
+    4   64 0x1bb0f1a5     0x30000   0x10000 Image1
+    5   64 0x1bb1f1a5     0x40000   0x20000 Image1
+    6   64 0x1bb2f1a5     0x50000   0x30000 Image1
+    7   64 0x1bb3f1a5     0x60000   0x40000 Image1
+    8   64 0x1bb4f1a5     0x70000   0x50000 Image1
+    9   64 0x1bb5f1a5     0x80000   0x60000 Image1
+   10   64 0x1bb6f1a5     0x90000   0x70000 Image1
+   11   64 0x1bb7f1a5     0xa0000   0x80000 Image1
+   12   64 0x1bb8f1a5     0xb0000   0x90000 Image1
+   13   64 0x1bb9f1a5     0xc0000   0xa0000 Image1
+   14   64 0x1bbaf1a5     0xd0000   0xb0000 Image1
+   15   64 0x1bbbf1a5     0xe0000   0xc0000 Image1
+   16   64 0x1bbcf1a5     0xf0000   0xd0000 Image1
+   17   64 0x1bbdf1a5    0x100000   0xe0000 Image1
+   18   64 0x1bbef1a5    0x110000   0xf0000 Image1
+   19   64 0x1bbff1a5    0x120000  0x100000 Image1
+   20   64 0x1bc0f1a5    0x130000  0x110000 Image1
+   21   64 0x1bc1f1a5    0x140000  0x120000 Image1
+   22   64 0x1bc2f1a5    0x150000  0x130000 Image1
+   23   64 0x1bc3f1a5    0x160000  0x140000 Image1
+   24   64 0x1bc4f1a5    0x170000  0x150000 Image1
+   25   64 0x1bc5f1a5    0x180000  0x160000 Image1
+   26   64 0x1bc6f1a5    0x190000  0x170000 Image1
+   27   64 0x1bc7f1a5    0x1a0000  0x180000 Image1
+   28   64 0x1bc8f1a5    0x1b0000  0x190000 Image1
+   29   64 0x1bc9f1a5    0x1c0000  0x1a0000 Image1
+   30   64 0x1bcaf1a5    0x1d0000  0x1b0000 Image1
+   31   64 0x1bcbf1a5    0x1e0000  0x1c0000 Image1
+   32   64 0x1bccf1a5    0x1f0000  0x1d0000 Image1
+   33   64 0x1bcdf1a5    0x200000  0x1e0000 Image1
+   34   64 0x1bcef1a5    0x210000  0x1f0000 Image1
+   35   64 0x1bcff1a5    0x220000  0x200000 Image1
+   36   64 0x1bd0f1a5    0x230000  0x210000 Image1
+   37   64 0x1bd1f1a5    0x240000  0x220000 Image1
+   38   64 0x1bd2f1a5    0x250000  0x230000 Image1
+   39   64 0x1bd3f1a5    0x260000  0x240000 Image1
+   40   64 0x1bd4f1a5    0x270000  0x250000 Image1
+   41   64 0x1bd5f1a5    0x280000  0x260000 Image1
+   42   64 0x1bd6f1a5    0x290000  0x270000 Image1
+   43   64 0x1bd7f1a5    0x2a0000  0x280000 Image1
+   44   64 0x1bd8f1a5    0x2b0000  0x290000 Image1
+   45   64 0x1bd9f1a5    0x2c0000  0x2a0000 Image1
+   46   64 0x1bdaf1a5    0x2d0000  0x2b0000 Image1
+   47   64 0x1bdbf1a5    0x2e0000  0x2c0000 Image1
+   48   64 0x1bdcf1a5    0x2f0000  0x2d0000 Image1
+   49   64 0x1bddf1a5    0x300000  0x2e0000 Image1
+   50   64 0x1bdef1a5    0x310000  0x2f0000 Image1
+   51   64 0x1bdff1a5    0x320000  0x300000 Image1
+   52   64 0x1be0f1a5    0x330000  0x310000 Image1
+   53   64 0x1be1f1a5    0x340000  0x320000 Image1
+   54   64 0x1be2f1a5    0x350000  0x330000 Image1
+   55   64 0x1be3f1a5    0x360000  0x340000 Image1
+   56   64 0x1be4f1a5    0x370000  0x350000 Image1
+   57   64 0x1be5f1a5    0x380000  0x360000 Image1
+   58   64 0x1be6f1a5    0x390000  0x370000 Image1
+   59   64 0x1be7f1a5    0x3a0000  0x380000 Image1
+   60   64 0x1be8f1a5    0x3b0000  0x390000 Image1
+   61   64 0x1be9f1a5    0x3c0000  0x3a0000 Image1
+   62   64 0x1beaf1a5    0x3d0000  0x3b0000 Image1
+   63   64 0x1bebf1a5    0x3e0000  0x3c0000 Image1
+   64   64 0x1becf1a5    0x3f0000  0x3d0000 Image1
+   65   64 0x1bedf1a5    0x400000  0x3e0000 Image1
+   66   64 0x1beef1a5    0x410000  0x3f0000 Image1
+   67   64 0x1beff1a5    0x420000  0x400000 Image1
+   68   64 0x1bf0f1a5    0x430000  0x410000 Image1
+   69   64 0x1bf1f1a5    0x440000  0x420000 Image1
+   70   64 0x1bf2f1a5    0x450000  0x430000 Image1
+   71   64 0x1bf3f1a5    0x460000  0x440000 Image1
+   72   64 0x1bf4f1a5    0x470000  0x450000 Image1
+   73   64 0x1bf5f1a5    0x480000  0x460000 Image1
+   74   64 0x1bf6f1a5    0x490000  0x470000 Image1
+   75   64 0x1bf7f1a5    0x4a0000  0x480000 Image1
+   76   64 0x1bf8f1a5    0x4b0000  0x490000 Image1
+   77   64 0x1bf9f1a5    0x4c0000  0x4a0000 Image1
+   78   64 0x1bfaf1a5    0x4d0000  0x4b0000 Image1
+   79   64 0x1bfbf1a5    0x4e0000  0x4c0000 Image1
+   80   64 0x1bfcf1a5    0x4f0000  0x4d0000 Image1
+   81   64 0x1bfdf1a5    0x500000  0x4e0000 Image1
+   82   64 0x1bfef1a5    0x510000  0x4f0000 Image1
+   83   64 0x1bfff1a5    0x520000  0x500000 Image1
+   84   64 0x1c00f1a5    0x530000  0x510000 Image1
+   85   64 0x1c01f1a5    0x540000  0x520000 Image1
+   86   64 0x1c02f1a5    0x550000  0x530000 Image1
+   87   64 0x1c03f1a5    0x560000  0x540000 Image1
+   88   64 0x1c04f1a5    0x570000  0x550000 Image1
+   89   64 0x1c05f1a5    0x580000  0x560000 Image1
+   90   64 0x1c06f1a5    0x590000  0x570000 Image1
+   91   64 0x1c07f1a5    0x5a0000  0x580000 Image1
+   92   64 0x1c08f1a5    0x5b0000  0x590000 Image1
+   93   64 0x1c09f1a5    0x5c0000  0x5a0000 Image1
+   94   64 0x1c0af1a5    0x5d0000  0x5b0000 Image1
+   95   64 0x1c0bf1a5    0x5e0000  0x5c0000 Image1
+   96   64 0x1c0cf1a5    0x5f0000  0x5d0000 Image1
+   97   64 0x1c0df1a5    0x600000  0x5e0000 Image1
+   98   64 0x1c0ef1a5    0x610000  0x5f0000 Image1
+   99   64 0x1c0ff1a5    0x620000  0x600000 Image1
+  100   64 0x1c10f1a5    0x630000  0x610000 Image1
+  101   64 0x1c11f1a5    0x640000  0x620000 Image1
+  102   64 0x1c12f1a5    0x650000  0x630000 Image1
+  103   64 0x1c13f1a5    0x660000  0x640000 Image1
+  104   64 0x1c14f1a5    0x670000  0x650000 Image1
+  105   64 0x1c15f1a5    0x680000  0x660000 Image1
+  106   64 0x1c16f1a5    0x690000  0x670000 Image1
+  107   64 0x1c17f1a5    0x6a0000  0x680000 Image1
+  108   64 0x1c18f1a5    0x6b0000  0x690000 Image1
+  109   64 0x1c19f1a5    0x6c0000  0x6a0000 Image1
+  110   64 0x1c1af1a5    0x6d0000  0x6b0000 Image1
+  111   64 0x1c1bf1a5    0x6e0000  0x6c0000 Image1
+  112   64 0x1c1cf1a5    0x6f0000  0x6d0000 Image1
+  113   64 0x1c1df1a5    0x700000  0x6e0000 Image1
+  114   64 0x1c1ef1a5    0x710000  0x6f0000 Image1
+  115   64 0x1c1ff1a5    0x720000  0x700000 Image1
+  116   64 0x1c20f1a5    0x730000  0x710000 Image1
+  117   64 0x1c21f1a5    0x740000  0x720000 Image1
+  118   64 0x1c22f1a5    0x750000  0x730000 Image1
+  119   64 0x1c23f1a5    0x760000  0x740000 Image1
+  120   64 0x1c24f1a5    0x770000  0x750000 Image1
+  121   64 0x1c25f1a5    0x780000  0x760000 Image1
+  122   64 0x1c26f1a5    0x790000  0x770000 Image1
+  123   64 0x1c27f1a5    0x7a0000  0x780000 Image1
+  124   64 0x1c28f1a5    0x7b0000  0x790000 Image1
+  125   64 0x1c29f1a5    0x7c0000  0x7a0000 Image1
+  126   64 0x1c2af1a5    0x7d0000  0x7b0000 Image1
+  127   64 0x1c2bf1a5    0x7e0000  0x7c0000 Image1
+  128   64 0x1c2cf1a5    0x7f0000  0x7d0000 Image1 (8257536 bytes)
+  129   64 0x1c2df1a5    0x800000         0 Image2
+  130   64 0x1c2ef1a5    0x810000   0x10000 Image2
+  131   64 0x1c2ff1a5    0x820000   0x20000 Image2
+  132   64 0x1c30f1a5    0x830000   0x30000 Image2
+  133   64 0x1c31f1a5    0x840000   0x40000 Image2
+  134   64 0x1c32f1a5    0x850000   0x50000 Image2
+  135   64 0x1c33f1a5    0x860000   0x60000 Image2
+  136   64 0x1c34f1a5    0x870000   0x70000 Image2
+  137   64 0x1c35f1a5    0x880000   0x80000 Image2
+  138   64 0x1c36f1a5    0x890000   0x90000 Image2
+  139   64 0x1c37f1a5    0x8a0000   0xa0000 Image2
+  140   64 0x1c38f1a5    0x8b0000   0xb0000 Image2
+  141   64 0x1c39f1a5    0x8c0000   0xc0000 Image2
+  142   64 0x1c3af1a5    0x8d0000   0xd0000 Image2
+  143   64 0x1c3bf1a5    0x8e0000   0xe0000 Image2
+  144   64 0x1c3cf1a5    0x8f0000   0xf0000 Image2
+  145   64 0x1c3df1a5    0x900000  0x100000 Image2
+  146   64 0x1c3ef1a5    0x910000  0x110000 Image2
+  147   64 0x1c3ff1a5    0x920000  0x120000 Image2
+  148   64 0x1c40f1a5    0x930000  0x130000 Image2
+  149   64 0x1c41f1a5    0x940000  0x140000 Image2
+  150   64 0x1c42f1a5    0x950000  0x150000 Image2
+  151   64 0x1c43f1a5    0x960000  0x160000 Image2
+  152   64 0x1c44f1a5    0x970000  0x170000 Image2
+  153   64 0x1c45f1a5    0x980000  0x180000 Image2
+  154   64 0x1c46f1a5    0x990000  0x190000 Image2
+  155   64 0x1c47f1a5    0x9a0000  0x1a0000 Image2
+  156   64 0x1c48f1a5    0x9b0000  0x1b0000 Image2
+  157   64 0x1c49f1a5    0x9c0000  0x1c0000 Image2
+  158   64 0x1c4af1a5    0x9d0000  0x1d0000 Image2
+  159   64 0x1c4bf1a5    0x9e0000  0x1e0000 Image2
+  160   64 0x1c4cf1a5    0x9f0000  0x1f0000 Image2
+  161   64 0x1c4df1a5    0xa00000  0x200000 Image2
+  162   64 0x1c4ef1a5    0xa10000  0x210000 Image2
+  163   64 0x1c4ff1a5    0xa20000  0x220000 Image2
+  164   64 0x1c50f1a5    0xa30000  0x230000 Image2
+  165   64 0x1c51f1a5    0xa40000  0x240000 Image2
+  166   64 0x1c52f1a5    0xa50000  0x250000 Image2
+  167   64 0x1c53f1a5    0xa60000  0x260000 Image2
+  168   64 0x1c54f1a5    0xa70000  0x270000 Image2
+  169   64 0x1c55f1a5    0xa80000  0x280000 Image2
+  170   64 0x1c56f1a5    0xa90000  0x290000 Image2
+  171   64 0x1c57f1a5    0xaa0000  0x2a0000 Image2
+  172   64 0x1c58f1a5    0xab0000  0x2b0000 Image2
+  173   64 0x1c59f1a5    0xac0000  0x2c0000 Image2
+  174   64 0x1c5af1a5    0xad0000  0x2d0000 Image2
+  175   64 0x1c5bf1a5    0xae0000  0x2e0000 Image2
+  176   64 0x1c5cf1a5    0xaf0000  0x2f0000 Image2
+  177   64 0x1c5df1a5    0xb00000  0x300000 Image2
+  178   64 0x1c5ef1a5    0xb10000  0x310000 Image2
+  179   64 0x1c5ff1a5    0xb20000  0x320000 Image2
+  180   64 0x1c60f1a5    0xb30000  0x330000 Image2
+  181   64 0x1c61f1a5    0xb40000  0x340000 Image2
+  182   64 0x1c62f1a5    0xb50000  0x350000 Image2
+  183   64 0x1c63f1a5    0xb60000  0x360000 Image2
+  184   64 0x1c64f1a5    0xb70000  0x370000 Image2
+  185   64 0x1c65f1a5    0xb80000  0x380000 Image2
+  186   64 0x1c66f1a5    0xb90000  0x390000 Image2
+  187   64 0x1c67f1a5    0xba0000  0x3a0000 Image2
+  188   64 0x1c68f1a5    0xbb0000  0x3b0000 Image2
+  189   64 0x1c69f1a5    0xbc0000  0x3c0000 Image2
+  190   64 0x1c6af1a5    0xbd0000  0x3d0000 Image2
+  191   64 0x1c6bf1a5    0xbe0000  0x3e0000 Image2
+  192   64 0x1c6cf1a5    0xbf0000  0x3f0000 Image2
+  193   64 0x1c6df1a5    0xc00000  0x400000 Image2
+  194   64 0x1c6ef1a5    0xc10000  0x410000 Image2
+  195   64 0x1c6ff1a5    0xc20000  0x420000 Image2
+  196   64 0x1c70f1a5    0xc30000  0x430000 Image2
+  197   64 0x1c71f1a5    0xc40000  0x440000 Image2
+  198   64 0x1c72f1a5    0xc50000  0x450000 Image2
+  199   64 0x1c73f1a5    0xc60000  0x460000 Image2
+  200   64 0x1c74f1a5    0xc70000  0x470000 Image2
+  201   64 0x1c75f1a5    0xc80000  0x480000 Image2
+  202   64 0x1c76f1a5    0xc90000  0x490000 Image2
+  203   64 0x1c77f1a5    0xca0000  0x4a0000 Image2
+  204   64 0x1c78f1a5    0xcb0000  0x4b0000 Image2
+  205   64 0x1c79f1a5    0xcc0000  0x4c0000 Image2
+  206   64 0x1c7af1a5    0xcd0000  0x4d0000 Image2
+  207   64 0x1c7bf1a5    0xce0000  0x4e0000 Image2
+  208   64 0x1c7cf1a5    0xcf0000  0x4f0000 Image2
+  209   64 0x1c7df1a5    0xd00000  0x500000 Image2
+  210   64 0x1c7ef1a5    0xd10000  0x510000 Image2
+  211   64 0x1c7ff1a5    0xd20000  0x520000 Image2
+  212   64 0x1c80f1a5    0xd30000  0x530000 Image2
+  213   64 0x1c81f1a5    0xd40000  0x540000 Image2
+  214   64 0x1c82f1a5    0xd50000  0x550000 Image2
+  215   64 0x1c83f1a5    0xd60000  0x560000 Image2
+  216   64 0x1c84f1a5    0xd70000  0x570000 Image2
+  217   64 0x1c85f1a5    0xd80000  0x580000 Image2
+  218   64 0x1c86f1a5    0xd90000  0x590000 Image2
+  219   64 0x1c87f1a5    0xda0000  0x5a0000 Image2
+  220   64 0x1c88f1a5    0xdb0000  0x5b0000 Image2
+  221   64 0x1c89f1a5    0xdc0000  0x5c0000 Image2
+  222   64 0x1c8af1a5    0xdd0000  0x5d0000 Image2
+  223   64 0x1c8bf1a5    0xde0000  0x5e0000 Image2
+  224   64 0x1c8cf1a5    0xdf0000  0x5f0000 Image2
+  225   64 0x1c8df1a5    0xe00000  0x600000 Image2
+  226   64 0x1c8ef1a5    0xe10000  0x610000 Image2
+  227   64 0x1c8ff1a5    0xe20000  0x620000 Image2
+  228   64 0x1c90f1a5    0xe30000  0x630000 Image2
+  229   64 0x1c91f1a5    0xe40000  0x640000 Image2
+  230   64 0x1c92f1a5    0xe50000  0x650000 Image2
+  231   64 0x1c93f1a5    0xe60000  0x660000 Image2
+  232   64 0x1c94f1a5    0xe70000  0x670000 Image2
+  233   64 0x1c95f1a5    0xe80000  0x680000 Image2
+  234   64 0x1c96f1a5    0xe90000  0x690000 Image2
+  235   64 0x1c97f1a5    0xea0000  0x6a0000 Image2
+  236   64 0x1c98f1a5    0xeb0000  0x6b0000 Image2
+  237   64 0x1c99f1a5    0xec0000  0x6c0000 Image2
+  238   64 0x1c9af1a5    0xed0000  0x6d0000 Image2
+  239   64 0x1c9bf1a5    0xee0000  0x6e0000 Image2
+  240   64 0x1c9cf1a5    0xef0000  0x6f0000 Image2
+  241   64 0x1c9df1a5    0xf00000  0x700000 Image2
+  242   64 0x1c9ef1a5    0xf10000  0x710000 Image2
+  243   64 0x1c9ff1a5    0xf20000  0x720000 Image2
+  244   64 0x1ca0f1a5    0xf30000  0x730000 Image2
+  245   64 0x1ca1f1a5    0xf40000  0x740000 Image2
+  246   64 0x1ca2f1a5    0xf50000  0x750000 Image2
+  247   64 0x1ca3f1a5    0xf60000  0x760000 Image2
+  248   64 0x1ca4f1a5    0xf70000  0x770000 Image2
+  249   64 0x1ca5f1a5    0xf80000  0x780000 Image2
+  250   64 0x1ca6f1a5    0xf90000  0x790000 Image2
+  251   64 0x1ca7f1a5    0xfa0000  0x7a0000 Image2
+  252   64 0x1ca8f1a5    0xfb0000  0x7b0000 Image2
+  253   64 0x1ca9f1a5    0xfc0000  0x7c0000 Image2
+  254   64 0x1caaf1a5    0xfd0000  0x7d0000 Image2 (8257536 bytes)
+  255   64 0x1cabf1a5    0xfe0000         0 Dynamic NonVol
+  256   64 0x1cacf1a5    0xff0000   0x10000 Dynamic NonVol (131072 bytes)
+
+CM/Flash>
+</nowiki>
+</WRAP>
+
+Writing a new bootloader:
+
+<code>
+CM/IpHal> bootloader
+
+ERROR - required parameter ( IpAddress) was not specified!
+
+COMMAND:  bootloader
+
+USAGE:  bootloader  [-f] IpAddress Filename{255}
+
+DESCRIPTION:
+Downloads the specified bootloader image from the TFTP server and stores it
+to the bootloader region.  The image must be valid for the platform, and must
+have a ProgramStore header (but no compression).
+
+EXAMPLES:
+bootloader 11.24.4.3 bootloader3360_2_1_2_c0.bin     -- Upgrades the
+                                                        bootloader.
+bootloader -f 11.24.4.3 bootloader3360_2_1_2_c0.bin  -- Accepts a bootloader
+                                                        with non-matching
+                                                        signature.
+</code>
+
+or a new image file
+
+<code>
+CM/IpHal> dload
+
+ERROR - required parameter ( IpAddress) was not specified!
+
+COMMAND:  dload
+
+USAGE:  dload  [-i Number] [-l] [-f] IpAddress Filename{255}
+
+DESCRIPTION:
+Downloads the specified s/w image from the TFTP server and stores it in the
+image slot specified.  The image must be valid for the platform, and must not
+contain any security, encryption, or digital signatures.  It must be a simple
+image file with only the normal ProgramStore compression header.  Parameters:
+
+  -i  -- Specifies the image slot to store the image to.
+  -l  -- Allows a large image to be stored, spanning images 1 and 2, if
+         allowed by the flash driver configuration.
+  -f  -- Forces the given image to be accepted, as long as the CRCs are
+         valid.
+
+Note that you must always specify the TFTP server address and filename;
+unlike the dload command in the Docsis directory, this command doesn't make
+use of any Docsis-specific nonvol settings, so it can't remember the last
+values used.
+
+EXAMPLES:
+dload 11.24.4.3 vxram_sto.bin       -- Stores the image to the default image
+                                       slot.
+dload -i 1 11.24.4.3 vxram_sto.bin  -- Store the image to slot 1.
+</code>
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+To unbrick your device, you need a valid bootloader and a valid image.
+The bootloader is 64K and should be flashed at address 0.
+
+ADVICE: Make a backup of the bootloader and image first before attempting an erase/write!
+
+
+
+
+
+
+===== Bootlogs =====
+==== Unlocked bootloader ====
+Patched bootloader enabling TFTP + boot from RAM, loading a custom built u-boot image
+<WRAP bootlog><nowiki>BCM3380A1 TP0
+1
+Sync:1
+346890
+
+SA BootLoader Version: 2.3.0_R1(S) Release Gnu pcminit spiboot [ OverDOCSIS patch]
+Build Date: Mar 29 2019
+Build Time: 17:36:33
+SPI flash ID 0xc22018, size 16MB, block size 64KB, write buffer 256, busy bit 1
+Board IP Address  [192.168.100.1]:
+Board IP Mask     [255.255.255.0]:
+Board IP Gateway  [0.0.0.0]:
+Board MAC Address [00:10:18:ff:ff:ff]:
+
+Internal/External phy? (e/i)[i] e
+Config AR8316 registers
+
+Link up: 1G full
+
+
+Main Menu:
+==========
+  b) Boot from flash
+  g) Download and run from RAM
+  d) Download and save to flash
+  e) Erase flash sector
+  m) Set mode
+  s) Store bootloader parameters to flash
+  i) Re-init ethernet
+  r) Read memory
+  w) Write memory
+  j) Jump to arbitrary address
+  q) Set GPIO (as output) value
+  z) Reset
+
+TFTP Get Selected
+Board TFTP Server IP Address [192.168.100.3]:
+Enter filename [uboot3925.bin]: uboot-image
+
+
+Destination: a2f00000
+
+Destination: a2f00000
+Starting TFTP of uboot-image from 192.168.100.3
+Getting uboot-image using octet mode
+........................................
+Tftp complete
+Received 82023 bytes
+
+Store parameters to flash? [n] y
+Saving permanent non-vol...
+SpiFlashWrite: Writing flash at 00000000
+Restoring permanent non-vol...
+SpiFlashWrite: Writing flash at 00008000
+
+
+U-Boot 2018.11-rc3-00068-gc80cc3d-dirty (Mar 23 2019 - 09:24:39 +0100)
+
+Chip ID: BCM3380A1, MIPS: 333 MHz
+Model: Cisco EPC3925
+DRAM:  64 MiB
+In:    serial@14e00200
+Out:   serial@14e00200
+Err:   serial@14e00200
+EPC3925 #
+
+
+
+</nowiki>
+</WRAP>
+
+
+
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>P
+BCM3380A1 TP0 
+1
+Sync:1 
+346890
+
+
+SA BootLoader Version: 2.3.0_R1(S) Release Gnu pcminit spiboot reduced DDR drive
+
+Build Date: Jul  1 2009
+
+Build Time: 19:20:01
+
+SPI flash ID 0xc22018, size 16MB, block size 64KB, write buffer 256, busy bit 1
+
+
+Found image 1 at offset 20000
+
+ eCos - hal_diag_init
+Init device '/dev/BrcmTelnetIoDriver'
+Init device '/dev/ttydiag'
+Init tty channel: 814566c0
+Init device '/dev/tty0'
+Init tty channel: 814566e0
+Init device '/dev/haldiag'
+HAL/diag SERIAL init
+Init device '/dev/ser0'
+BCM 33XX SERIAL init - dev: 0.2
+Set output buffer - buf: 0x81644810 len: 4096
+Set input buffer - buf: 0x81645810 len: 4096
+BCM 33XX SERIAL config
+
+LsSpiInit 3380
+[00:00:00 01/01/1970] [tStartup] BcmBfcStdEmbeddedTarget::InitStorageDrivers:  (BFC Target) Configuring/Loading Flash driver...
+detecting flash3...
+[00:00:00 01/01/1970] [tStartup] BcmSpiFlashDevice::DetectFlash:  (SPI Flash Device Factory) WARNING - Detected SPI flash with JEDEC ID =0xc22018
+[00:00:00 01/01/1970] [tStartup] FlashDeviceDriver::SpiFlashPlaceRegions:  (Flash Driver C API) WARNING - Permanent NonVol would fit in the boot block of this flash device, but I found existing NonVol in the following block; using this location instead...
+[00:00:00 01/01/1970] [tStartup] BcmBfcStdEmbeddedTarget::InitStorageDrivers:  (BFC Target) Loading BootloaderStore driver...
+[00:00:00 01/01/1970] [tStartup] BcmBfcStdEmbeddedTarget::InitStorageDrivers:  (BFC Target) Loading ProgramStore driver...
+ProgramStoreDeviceDriver::ProgramStoreDriverInit:  INFO - Initializing...
+[00:00:00 01/01/1970] [tStartup] BcmBfcStdEmbeddedTarget::InitStorageDrivers:  (BFC Target) Loading NonVol driver...
+[00:00:00 01/01/1970] [tStartup] BcmBfcStdEmbeddedTarget::InitStorageDrivers:  (BFC Target) Storage drivers initialized successfully.
+[00:00:00 01/01/1970] [tStartup] BcmBfcStdEmbeddedTarget::InitDeviceAbstractions:  (BFC Target) Creating singletons for ProgramStore/BootloaderStore/NonVol devices...
+Detecting the next image number that we will store to by default...
+Bootloader indicates we are running image 1
+By default, we will dload to image number 2!
+
+[00:00:00 01/01/1970] [tStartup] BcmBfcStdEmbeddedTarget::InitDeviceAbstractions:  (BFC Target) Device abstraction singletons created successfully.
+
+BcmCmDocsisCtlThread::GetSingletonInstance:  WARNING - the singleton is NULL, and someone is accessing it!
+BcmCmDocsisCtlThread::GetSingletonInstance:  WARNING - the singleton is NULL, and someone is accessing it!
+SAHttpCacheVariables::GetSingletonInstance:  WARNING - the singleton instance is NULL, and someone is accessing it!
+Setting up the SAHttpCacheVariables singleton pointer.
+CmSnmpNonVolSettings::GetSingletonInstance:  WARNING - the singleton instance is NULL, and someone is accessing it!
+CmSnmpNonVolSettings::GetSingletonInstance:  WARNING - the singleton instance is NULL, and someone is accessing it!
+CmSnmpNonVolSettings::GetSingletonInstance:  WARNING - the singleton instance is NULL, and someone is accessing it!
+BcmCmSANonVolSettings::GetSingletonInstance:  WARNING - the singleton instance is NULL, and someone is accessing it!
+[00:00:03 01/01/1970] [tStartup] BcmCmSANonVolSettings::BcmCmSANonVolSettings:  (CM SA NonVol Settings) WARNING - Current CxC Version is 3.9.21.11.mp8
+BcmEmtaBlindDataNonVolSettings::GetSingletonInstance:  WARNING - the singleton instance is NULL, and someone is accessing it!
+ERROR: Unable to get GetCountry blind data. (BcmEmtaBlindDataNonVolSettings = NULL)
+WARNING: ResetDefaultBlindEmtaData() -Resetting EMTA non-vol data section to default values
+mtaNvCalcChecksum: checksum= 1273036006
+Reading Permanent settings from non-vol...
+Checksum for permanent settings:  0x4f6bf263
+[00:00:03 01/01/1970] [tStartup] BcmMessageLogNonVolSettings::ReadFromImpl:  (User Interface NonVol Settings) WARNING - Read older version of the settings (0.2); they have been upgraded to version 0.3, preserving original settings.
+[00:00:03 01/01/1970] [tStartup] BcmHalIfNonVolSettings::ReadFromImpl:  (HalIf NonVol Settings) WARNING - Read older version of the settings (0.19); they have been upgraded to version 0.21, preserving original settings.
+[00:00:03 01/01/1970] [tStartup] BcmWiFi80211NonVolSettings::ReadFromImpl:  (WiFi 802.11 NonVol Settings) WARNING - Read older version of the settings (0.8); they have been upgraded to version 0.10, preserving original settings.
+[00:00:03 01/01/1970] [tStartup] BcmCmDocsis30NonVolSettings::ReadFromImpl:  (</nowiki>
+</WRAP>\\
+
+=== U-boot working on the Cisco EPC3925 ===
+<WRAP bootlog>
+<nowiki>
+P
+BCM3380A1 TP0
+1
+Sync:1
+346890
+
+SA BootLoader Version: 2.3.0_R1(S) Release Gnu pcminit spiboot reduced DDR drive
+Build Date: Jul  1 2009
+Build Time: 19:20:01
+SPI flash ID 0xc22018, size 16MB, block size 64KB, write buffer 256, busy bit 1
+
+Found image 1 at offset 20000
+
+
+U-Boot 2018.11-rc3-00068-gc80cc3d (Nov 14 2018 - 16:27:54 +0100)
+
+Chip ID: BCM3380A1, MIPS: 333 MHz
+Model: Netgear CG3100D
+DRAM:  64 MiB
+In:    serial@14e00200
+Out:   serial@14e00200
+Err:   serial@14e00200
+Net:   Net Initialization Skipped
+No ethernet found.
+EPC3925 #
+
+
+
+</nowiki>
+</WRAP>
+
+==== Linux bootlog (first attempts) ====
+
+<code>
+P
+BCM338021 TP0
+1
+Sync:1
+346890
+
+OverDOCSIS Bootloader: 2.3.0_R1(S) Release Gnu pcminit spiboot reduced DDR drive
+Build Date: Jun 22 2009
+Build Time: 21:55:15
+SPI flash ID 0x010216, size 8MB, block size 64KB, write buffer 256, busy bit 1
+Board IP Address  [192.168.100.1]:
+Board IP Mask     [255.255.255.0]:
+Board IP Gateway  [0.0.0.0]:
+Board MAC Address [00:10:18:ff:ff:ff]:
+
+Internal/External phy? (e/i)[i]
+Waiting for link up...
+
+
+Main Menu:
+==========
+  b) Boot from flash
+  g) Download and run from RAM
+  d) Download and save to flash
+  e) Erase flash sector
+  m) Set mode
+  s) Store bootloader parameters to flash
+  i) Re-init ethernet
+  r) Read memory
+  w) Write memory
+  j) Jump to arbitrary address
+  q) Set GPIO (as output) value
+  z) Reset
+
+TFTP Get Selected
+Board TFTP Server IP Address [192.168.100.3]:
+Enter filename [Linux3380]:
+
+
+Destination: a2f00000
+
+Destination: a2f00000
+Starting TFTP of Linux3380 from 192.168.100.3
+Getting Linux3380 using octet mode
+Tftp timeout...
+
+Link up: 1G full
+Tftp timeout...
+.................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+Tftp complete
+Received 4557705 bytes
+
+Store parameters to flash? [n]
+[    0.000000] Linux version 5.1.0-rc2+ (root@kernelbak2) (gcc version 4.8.4 20140811 (prerelease) (Broadcom stbgcc-4.8-1.0)) #93 SMP Wed Apr 10 13:46:10 CEST 2019
+[    0.000000] CPU0 revision is: 0002a070 (Broadcom BMIPS4350)
+[    0.000000] MIPS: machine is Broadcom BCM3380
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] earlycon: bcm63xx_uart0 at MMIO 0x14e00200 (options '')
+[    0.000000] printk: bootconsole [bcm63xx_uart0] enabled
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Memblock 1 alloc 1024 bytes: 0x80C94000
+[    0.000000] Memblock 2 alloc 2048 bytes: 0x80C94400
+[    0.000000] Memblock 3 alloc 4096 bytes: 0x80C94C00
+[    0.000000] Memblock 4 alloc 8192 bytes: 0x80C95C00
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 16 bytes.
+[    0.000000] Primary data cache 32kB, 2-way, VIPT, cache aliases, linesize 16 bytes
+[    0.000000] This processor doesn't support highmem. -65536k highmem ignored
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000]   HighMem  empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] random: get_random_bytes called from start_kernel+0x94/0x528 with crng_init=0
+[    0.000000] percpu: Embedded 14 pages/cpu @(ptrval) s35712 r0 d21632 u57344
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,115200 root=/dev/ram earlycon
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Memory: 51992K/65536K available (6134K kernel code, 227K rwdata, 980K rodata, 5196K init, 268K bss, 13544K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] SLUB: HWalign=128, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu:     RCU event tracing is enabled.
+[    0.000000] rcu:     RCU restricting CPUs from NR_CPUS=4 to nr_cpu_ids=1.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=1
+[    0.000000] NR_IRQS: 128
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 5739520860 ns
+[    0.000481] sched_clock: 32 bits at 333MHz, resolution 3ns, wraps every 6448900094ns
+[    0.006654] Calibrating delay loop... 7.52 BogoMIPS (lpj=15040)
+[    0.071935] pid_max: default: 32768 minimum: 301
+[    0.084287] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.089386] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.127914] *** VALIDATE proc ***
+[    0.188634] rcu: Hierarchical SRCU implementation.
+[    0.240829] smp: Bringing up secondary CPUs ...
+[    0.244567] smp: Brought up 1 node, 1 CPU
+[    0.273824] devtmpfs: initialized
+[    0.393735] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.400463] futex hash table entries: 256 (order: 3, 32768 bytes)
+[    0.423559] NET: Registered protocol family 16
+[    1.186928] random: fast init done
+[    3.835507] SCSI subsystem initialized
+[    3.854448] usbcore: registered new interface driver usbfs
+[    3.861207] usbcore: registered new interface driver hub
+[    3.867781] usbcore: registered new device driver usb
+[    4.092847] clocksource: Switched to clocksource MIPS
+[    4.304705] NET: Registered protocol family 2
+[    4.359720] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes)
+[    4.367417] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    4.374555] TCP bind hash table entries: 1024 (order: 1, 8192 bytes)
+[    4.382417] TCP: Hash tables configured (established 1024 bind 1024)
+[    4.392457] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    4.398429] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    4.413052] NET: Registered protocol family 1
+[    4.464261] RPC: Registered named UNIX socket transport module.
+[    4.468746] RPC: Registered udp transport module.
+[    4.472591] RPC: Registered tcp transport module.
+[    4.476468] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[   10.571335] Initialise system trusted keyrings
+[   10.648577] workingset: timestamp_bits=30 max_order=14 bucket_order=0
+[   11.871810] fuse init (API version 7.29)
+[   12.563580] Key type asymmetric registered
+[   12.566300] Asymmetric key parser 'x509' registered
+[   12.571554] io scheduler mq-deadline registered
+[   12.575254] io scheduler kyber registered
+[   12.611317] of_fixed_clk: probe of clocks:periph-osc failed with error -17
+[   23.361200] 14e00200.serial: ttyS0 at MMIO 0x14e00200 (irq = 9, base_baud = 1500000) is a bcm63xx_uart
+[   23.367927] printk: console [ttyS0] enabled
+[   23.367927] printk: console [ttyS0] enabled
+[   23.373337] printk: bootconsole [bcm63xx_uart0] disabled
+[   23.373337] printk: bootconsole [bcm63xx_uart0] disabled
+[   23.552222] libphy: Fixed MDIO Bus: probed
+[   23.566293] usbcore: registered new interface driver asix
+[   23.573416] usbcore: registered new interface driver ax88179_178a
+[   23.580837] usbcore: registered new interface driver cdc_ether
+[   23.588288] usbcore: registered new interface driver net1080
+[   23.595501] usbcore: registered new interface driver cdc_subset
+[   23.602337] usbcore: registered new interface driver zaurus
+[   23.609852] usbcore: registered new interface driver cdc_ncm
+[   23.613943] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[   23.619206] ehci-platform: EHCI generic platform driver
+[   23.629962] ehci-platform 15000000.usb: EHCI Host Controller
+[   23.636078] ehci-platform 15000000.usb: new USB bus registered, assigned bus number 1
+[   24.213661] ehci-platform 15000000.usb: can't setup: -145
+[   24.218036] ehci-platform 15000000.usb: USB bus 1 deregistered
+[   24.224129] ehci-platform: probe of 15000000.usb failed with error -145
+[   24.231550] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[   24.236248] ohci-platform: OHCI generic platform driver
+[   24.247566] ohci-platform 15200000.usb: Generic Platform OHCI controller
+[   24.253265] ohci-platform 15200000.usb: new USB bus registered, assigned bus number 1
+[   24.265253] ohci-platform 15200000.usb: irq 10, io mem 0x15200000
+[   24.595930] ohci-platform 15200000.usb: init err (00000000 b5200000)
+[   24.600590] ohci-platform 15200000.usb: can't start
+[   24.613058] ohci-platform 15200000.usb: startup error -79
+[   24.617764] ohci-platform 15200000.usb: USB bus 1 deregistered
+[   24.623904] ohci-platform: probe of 15200000.usb failed with error -79
+[   24.633616] usbcore: registered new interface driver usb-storage
+[   24.702105] NET: Registered protocol family 10
+[   24.832027] Segment Routing with IPv6
+[   24.840820] sit: IPv6, IPv4 and MPLS over IPv4 tunneling driver
+[   24.896529] NET: Registered protocol family 17
+[   25.013864] Loading compiled-in X.509 certificates
+[   25.052695] cfg80211: Loading compiled-in X.509 certificates for regulatory database
+[   25.469090] cfg80211: Loaded X.509 cert 'sforshee: 00b28ddf47aef9cea7'
+[   25.500654] platform regulatory.0: Direct firmware load for regulatory.db failed with error -2
+[   25.507563] cfg80211: failed to load regulatory.db
+[   25.956028] Freeing unused kernel memory: 5196K
+[   25.959517] This architecture does not have kernel memory protection.
+[   25.963941] Run /init as init process
+
+</code>
+===== Notes =====
+  * [[http://cdkr.co.uk/projects/computers/virgin_VMDG480/|VMDG480]] (disassembling, hardware specifications)
+  * [[http://w00tsec.blogspot.com.es/2013/11/unpacking-firmware-images-from-cable.html|w00tsec]] Unpacking Firmware 
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>bcm33xx bcm3380 GigabitEthernet 5Port USB 64RAM 16Flash MIPS DOCSIS3 unsupported}}

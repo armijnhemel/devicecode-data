@@ -1,0 +1,4691 @@
+====== NETGEAR WNR3500 v2 ======
+NETGEAR RangeMax Wireless-N Gigabit Router WNR3500 v2
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+{{section>meta:infobox:broadcom_wifi#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+===== Warning =====
+Currently the device is supported under OpenWrt, however there are no flashable firmware images small enough to fit the device! In other words, all current OpenWrt/Lede images available will brick this device! Depending how big the original OpenWrt image is that you flashed via stock Netgear webinterface the device will end up soft-bricked (easy tftp recoverable) or even hard-bricked where recovery via tftp is possible (but it needs opening the case and shorting the FLASH chip). Therefore, the only solution is to flash LEDE 17.
+
+===== Installation =====
+By looking at the telnet log output of the mtd1 partition size you see that the image cannot bigger than 3473408 bytes! However after first successfull cross flash the partition size increases to 3735552 bytes. So a two steps flash installation is necessary. Using the imagebuilder for Lede 17.01.7 a small image for cross flashing must be created (lacks wifi) which can afterwards be upgraded with a larger image including wifi support(lacking ppp/pppoe). The gigabit switch config is working for LAN/WAN however the ports are numbered incorrect see fix [[https://github.com/openwrt/openwrt/pull/2650|pull request]]). 
+
+Flashing the device to OpenWrt can be done via stock Netgear firmware webinterface "Maintenance > Router Upgrade". If you reseted the stock firmware and are greeted with a netgear setupwizard and cannot find the maintenance firmware tab goto "http://192.168.1.1/start.htm". Tested using stock Netgear version "1.0.2.10(All regions except North America)" with [[https://downloads.openwrt.org/releases/17.01.7/targets/brcm47xx/mips74k/lede-imagebuilder-17.01.7-brcm47xx-mips74k.Linux-x86_64.tar.xz|imagebuilder 17.01.7]].
+
+<code>
+make image PROFILE="netgear-wnr3500-v2" PACKAGES="-kmod-b43 uhttpd uhttpd-mod-ubus libiwinfo-lua luci-base luci-app-firewall luci-mod-admin-full luci-theme-bootstrap -ppp -ppp-mod-pppoe"
+ls -la bin/targets/brcm47xx/mips74k/lede-17.01.7-brcm47xx-mips74k-netgear-wnr3500-v2-squashfs.chk #3215418 bytes
+</code>
+
+After succesfull flash the power led will stay solid amber/orange wait a couple of minutes to login 192.168.1.1. Prepare a new image including wifi and upgrade it via regular OpenWrt upgrade procedure(still use the chk file).
+
+<code>
+make image PROFILE="netgear-wnr3500-v2" PACKAGES="uhttpd uhttpd-mod-ubus libiwinfo-lua luci-base luci-app-firewall luci-mod-admin-full luci-theme-bootstrap -ppp -ppp-mod-pppoe"
+ls -la bin/targets/brcm47xx/mips74k/lede-17.01.7-brcm47xx-mips74k-netgear-wnr3500-v2-squashfs.chk #3608634 bytes
+</code>
+
+===== Return to Factory Firmware =====
+Reverting to stock Netgear firmware "1.0.2.10" via OpenWrt 17.01.7 webinterface soft-bricks router into green flashing/blinking tftp recovery state! Set your PC to a static ip 192.168.1.22 and use a tftpclient in binary mode and type the following(asuming linux) enter after each line:
+
+<code>
+tfpt 192.168.1.1
+bin
+trace
+put stockfirmware.chk
+</code>
+After a couple of minutes router power led is solid green and running stock restored Netgear firmware.
+
+===== Hardware details ===== 
+  * SoC: BCM4718
+  * Switch: BCM53115SKFBG
+  * CPU: MIPS 74Kc V4.0 @ 226.09
+  * RAM: 64MB software limited to 32MB ? (Samsung 943 K4T51163QG-HCE6 CJI543PVN)
+  * FLASH: 4MB
+  * SWITCH: 5port 1Gbit
+  * RADIO: Broadcom BCM4329 802.11 Wireless Controller 5.10.56.2807 2,4GHz
+  * BUTTONS: 1x Restore Factory Settings 1x WPS
+
+PCB info
+<code>
+CK 77-1 3 94V-0
+U12H136
+800472
+
+SEX6L55
+U12H127T99 LF
+E100027663-01L1
+
+MX B093846 
+25L3205DMI-12G
+3C635600
+
+BCM53115SKFBG
+UG0944 P30
+945806 01A
+
+BCM4718A1KFBG
+CA0949 P11
+948867 P1
+
+Samsung 943
+K4T51163QG-HCE6
+CJI543PVN
+</code>
+
+===== Wireless Drivers =====
+By default OpenWrt comes with the open "b43" driver which is easy to configure via Webinterface but lacks performance and features compared to the closed "wl" driver. To build an image with the "wl" driver prepare to get dirty with cli setup of AP/STA mode since uci/luci webinterface will not correctly setup/communicate with the "wl" driver but you may get better performance and more features like multi-ssid.
+
+<code>
+make image PROFILE="netgear-wnr3500-v2" PACKAGES="-kmod-b43 -wpad-mini -hostapd-common kmod-brcm-wl wl wlc nas uhttpd uhttpd-mod-ubus libiwinfo-lua luci-base luci-app-firewall luci-mod-admin-full luci-theme-bootstrap -ppp -ppp-mod-pppoe"
+</code> 
+
+===== unlock 64MB RAM  ======
+By comparing nvram variables from the WNR3500U/WNR3500L with 64MB ram and similar PCB layout as the WNR3500_v2 with 32MB(actually 64MB) I noticed one variable related to RAM was different "sdram_config=0x0184/sdram_config=0x0284". By editing that variable in the WNR3500_v2 from 2>1 I got 64MB ram working instead of 32MB ram. Warning first check if you really have a 64MB ram chip on your 32MB WNR3500_v2 by opening up the case and looking up the spec sheet of the RAM chip!
+
+<code>
+free
+#             total       used       free     shared    buffers     cached
+#Mem:         28568      15624      12944         52       1668       4748
+#-/+ buffers/cache:       9208      19360
+#Swap:            0          0          0
+
+nvram show | grep sdram
+#sdram_ncdl=0x6a26162a
+#sdram_config=0x0284
+#sdram_init=0x0419
+#sdram_refresh=0x183f
+
+nvram set sdram_config=0x0184
+
+nvram commit
+
+reboot;exit
+
+free
+#             total       used       free     shared    buffers     cached
+#Mem:         61056      15952      45104         52       1668       4756
+#-/+ buffers/cache:       9528      51528
+#Swap:            0          0          0
+</code>
+
+===== Telnet stock firmware ======
+
+The stock firmware has a telnet deamon that gets enabled by sending a magic packet, see unlock netgear [[https://openwrt.org/toh/netgear/telnet.console|telnet console]] for more info. Example console output of multiple commands:
+ 
+<WRAP bootlog>
+<nowiki>
+./telnetenable 192.168.1.1 C03F0E5C0E76 Gearguy Geardog
+
+telnet 192.168.1.1
+
+# cat /dev/mtd1 > /tmp/mtd1.img
+# ls -la /tmp/mtd1.img 
+-rw-r--r--    1 0        0         3473408 Jan  1 00:04 /tmp/mtd1.img
+
+# echo $0
+/bin/sh
+
+# version
+Release version : Netgear Wireless Router WNR3500v2
+                  U12H12700/V1.0.2.10/23.0.70
+           Time : Aug  5 2009 12:00:51
+    CFE version : v1.0.29
+
+# cat /proc/version 
+Linux version 2.4.20 (water@sunshine) (gcc version 3.2.3 with Broadcom modifications) #214 Wed Aug 5 11:57:52 CST 2009
+
+# cat /proc/version 
+Linux version 2.4.20 (water@sunshine) (gcc version 3.2.3 with Broadcom modifications) #214 Wed Aug 5 11:57:52 CST 2009
+# cat /proc/cpuinfo 
+system type             : Broadcom BCM4716 chip rev 1
+processor               : 0
+cpu model               :  V4.0
+BogoMIPS                : 226.09
+wait instruction        : no
+microsecond timers      : yes
+tlb_entries             : 64
+extra interrupt vector  : no
+hardware watchpoint     : yes
+VCED exceptions         : not available
+VCEI exceptions         : not available
+unaligned_instructions  : 0
+System clocks
+        (cpu/mem/si/xtal)       : 453/226/113/20 Mhz.
+dcache hits             : 2147483648
+dcache misses           : 720371487
+icache hits             : 2147483648
+icache misses           : 4175131840
+instructions            : 2147483648
+
+# cat /proc/devices 
+Character devices:
+  1 mem
+  2 pty/m%d
+  3 pty/s%d
+  4 tts/%d
+  5 cua/%d
+ 10 misc
+ 90 mtd
+100 acos_nat_cli
+108 ppp
+123 aglog
+162 raw
+252 wps_led
+253 nvram
+254 gpio
+
+Block devices:
+ 31 mtdblock
+
+# cat /proc/modules 
+module:  acos_nat            c01dc000   400656   0 (unused)
+module:  wl                  c0026000  1788688   0 (unused)
+module:  et                  c0018000    49504   0 (unused)
+module:  igs                 c0013000    15616   0 [wl]
+module:  emf                 c000d000    20080   0 [wl igs]
+
+# cat /proc/mtd 
+dev:    size   erasesize  name
+mtd0: 00040000 00010000 "boot"
+mtd1: 00350000 00010000 "linux"
+mtd2: 002cf2c4 00010000 "rootfs"
+mtd3: 00010000 00010000 "ML1"
+mtd4: 00010000 00010000 "ML2"
+mtd5: 00010000 00010000 "T_Meter1"
+mtd6: 00010000 00010000 "T_Meter2"
+mtd7: 00010000 00010000 "POT"
+mtd8: 00010000 00010000 "board_data"
+mtd9: 00010000 00010000 "nvram"
+
+# cat /proc/self/mounts 
+rootfs / rootfs rw 0 0
+/dev/root / squashfs ro 0 0
+none /dev devfs rw 0 0
+proc /proc proc rw 0 0
+ramfs /tmp ramfs rw 0 0
+
+# cat /proc/kmsg 
+<4>CPU ProcId is: 0x00019740, options: 0x000021cd
+<4>Primary instruction cache 32kb, linesize 32 bytes (4 ways)
+<4>Primary data cache 32kb, linesize 32 bytes (4 ways)
+<4>Linux version 2.4.20 (water@sunshine) (gcc version 3.2.3 with Broadcom modifications) #214 Wed Aug 5 11:57:52 CST 2009
+<4>Found a 4MB ST compatible serial flash
+<4>Determined physical RAM map:
+<4> memory: 02000000 @ 00000000 (usable)
+<4>On node 0 totalpages: 8192
+<4>zone(0): 8192 pages.
+<4>zone(1): 0 pages.
+<4>zone(2): 0 pages.
+<4>Kernel command line: root=/dev/mtdblock2 noinitrd console=ttyS0,115200
+<4>CPU: BCM4716 rev 1 at 453 MHz
+<4>Calibrating delay loop... 226.09 BogoMIPS
+<6>Memory: 30480k/32768k available (1439k kernel code, 2288k reserved, 112k data, 60k init, 0k highmem)
+<6>Dentry cache hash table entries: 4096 (order: 3, 32768 bytes)
+<6>Inode cache hash table entries: 2048 (order: 2, 16384 bytes)
+<4>Mount-cache hash table entries: 512 (order: 0, 4096 bytes)
+<4>Buffer-cache hash table entries: 1024 (order: 0, 4096 bytes)
+<4>Page-cache hash table entries: 8192 (order: 3, 32768 bytes)
+<4>Checking for 'wait' instruction...  unavailable.
+<4>POSIX conformance testing by UNIFIX
+<4>PCI: Using membase 8000000
+<4>PCI: Disabled
+<4>PCI: Fixing up bus 0
+<4>PCI: Fixing up bus 1
+<6>Linux NET4.0 for Linux 2.4
+<6>Based upon Swansea University Computer Society NET3.039
+<4>Initializing RT netlink socket
+<4>Starting kswapd
+<6>devfs: v1.12c (20020818) Richard Gooch (rgooch@atnf.csiro.au)
+<6>devfs: boot_options: 0x1
+<6>Squashfs 2.2-r2 (released 2005/09/08) (C) 2002-2005 Phillip Lougher
+<6>Serial driver version 5.05c (2001-07-08) with MANY_PORTS SHARE_IRQ SERIAL_PCI enabled
+<6>ttyS00 at 0xb8000300 (irq = 8) is a 16550A
+<6>PPP generic driver version 2.4.2
+<3>pflash: found no supported devices
+<5>sflash: squashfs filesystem found at block 771
+<5>Creating 10 MTD partitions on "sflash":
+<5>0x00000000-0x00040000 : "boot"
+<5>0x00040000-0x00390000 : "linux"
+<5>0x000c0d3c-0x00390000 : "rootfs"
+<5>0x00390000-0x003a0000 : "ML1"
+<5>0x003a0000-0x003b0000 : "ML2"
+<5>0x003b0000-0x003c0000 : "T_Meter1"
+<5>0x003c0000-0x003d0000 : "T_Meter2"
+<5>0x003d0000-0x003e0000 : "POT"
+<5>0x003e0000-0x003f0000 : "board_data"
+<5>0x003f0000-0x00400000 : "nvram"
+<6>NET4: Linux TCP/IP 1.0 for NET4.0
+<6>IP Protocols: ICMP, UDP, TCP, IGMP
+<6>IP: routing cache hash table of 512 buckets, 4Kbytes
+<6>TCP: Hash tables configured (established 2048 bind 4096)
+<6>Linux IP multicast router 0.06 plus PIM-SM
+<6>NET4: Unix domain sockets 1.0/SMP for Linux NET4.0.
+<6>NET4: Ethernet Bridge 008 for NET4.0
+<1>802.1Q VLAN Support v1.7 Ben Greear <greearb@candelatech.com>
+<1>All bugs added by David S. Miller <davem@redhat.com>
+<4>VFS: Mounted root (squashfs filesystem) readonly.
+<6>Mounted devfs on /dev
+<6>Freeing unused kernel memory: 60k freed
+<4>Algorithmics/MIPS FPU Emulator v1.5
+<4>eth0: Broadcom BCM47XX 10/100/1000 Mbps Ethernet Controller 5.10.56.2807
+<4>eth1: Broadcom BCM4329 802.11 Wireless Controller 5.10.56.2807
+<6>vlan1: dev_set_promiscuity(master, 1)
+<6>device eth0 entered promiscuous mode
+<6>device vlan1 entered promiscuous mode
+<6>device eth1 entered promiscuous mode
+<6>br0: port 2(eth1) entering learning state
+<6>br0: port 1(vlan1) entering learning state
+<6>br0: port 2(eth1) entering forwarding state
+<6>br0: topology change detected, propagating
+<6>br0: port 1(vlan1) entering forwarding state
+<6>br0: topology change detected, propagating
+<0>IOCTL_AG_REGION_SET: English
+<6>br0: port 1(vlan1) entering disabled state
+<6>vlan1: dev_set_promiscuity(master, 1)
+<6>br0: port 1(vlan1) entering learning state
+<6>br0: port 1(vlan1) entering forwarding state
+<6>br0: topology change detected, propagating
+
+# cat /proc/pci  
+PCI devices found:
+  Bus  0, device   0, function  0:
+    Class 0501: PCI device 14e4:0800 (rev 1).
+      IRQ 8.
+      Non-prefetchable 32 bit memory at 0x18000000 [0x18000fff].
+      Non-prefetchable 32 bit memory at 0x0 [0xfff].
+  Bus  0, device   1, function  0:
+    Class 0280: PCI device 14e4:4329 (rev 1).
+      IRQ 3.
+      Non-prefetchable 32 bit memory at 0x18001000 [0x18001fff].
+      Non-prefetchable 32 bit memory at 0x0 [0xfff].
+  Bus  0, device   2, function  0:
+    Class 0200: PCI device 14e4:4715 (rev 1).
+      IRQ 4.
+      Non-prefetchable 32 bit memory at 0x18002000 [0x18002fff].
+      Non-prefetchable 32 bit memory at 0x0 [0xfff].
+  Bus  0, device   4, function  0:
+    Class 0c03: PCI device 14e4:471a (rev 1).
+      IRQ 5.
+      Non-prefetchable 32 bit memory at 0x18009000 [0x18009fff].
+  Bus  0, device   4, function  1:
+    Class 0c03: PCI device 14e4:471a (rev 1).
+      IRQ 5.
+      Non-prefetchable 32 bit memory at 0x18004000 [0x18004fff].
+  Bus  0, device   5, function  0:
+    Class 0604: PCI device 14e4:0820 (rev 1).
+      IRQ 6.
+      Non-prefetchable 32 bit memory at 0x18005000 [0x18005fff].
+      Non-prefetchable 32 bit memory at 0x0 [0xfff].
+  Bus  0, device   6, function  0:
+    Class 0500: PCI device 14e4:082e (rev 1).
+      IRQ 14.
+      Non-prefetchable 32 bit memory at 0x18006000 [0x18006fff].
+      Non-prefetchable 32 bit memory at 0x0 [0xfff].
+  Bus  0, device   7, function  0:
+    Class 0500: PCI device 14e4:080e (rev 1).
+      IRQ 8.
+      Non-prefetchable 32 bit memory at 0x18007000 [0x18007fff].
+      Non-prefetchable 32 bit memory at 0x0 [0xfff].
+  Bus  0, device   8, function  0:
+    Class 0401: PCI device 14e4:4711 (rev 1).
+      IRQ 16.
+      Non-prefetchable 32 bit memory at 0x18008000 [0x18008fff].
+      Non-prefetchable 32 bit memory at 0x0 [0xfff].
+
+# free
+              total         used         free       shared      buffers
+  Mem:        30540        17216        13324            0         2244
+ Swap:            0            0            0
+Total:        30540        17216        13324
+
+# lsmod
+Module                  Size  Used by
+acos_nat              400656   0 (unused)
+wl                   1788688   0 (unused)
+et                     49504   0 (unused)
+igs                    15616   0 [wl] 
+emf                    20080   0 [wl igs]
+
+# ifconfig -a
+br0       Link encap:Ethernet  HWaddr C0:3F:0E:5C:0E:76  
+          inet addr:192.168.1.1  Bcast:192.168.1.255  Mask:255.255.255.0
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:1907 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:834 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:139702 (136.4 kb)  TX bytes:198603 (193.9 kb)
+
+eth0      Link encap:Ethernet  HWaddr C0:3F:0E:5C:0E:77  
+          UP BROADCAST RUNNING PROMISC ALLMULTI MULTICAST  MTU:1500  Metric:1
+          RX packets:1791 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:906 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:162786 (158.9 kb)  TX bytes:244419 (238.6 kb)
+          Interrupt:4 Base address:0x2000 
+
+eth1      Link encap:Ethernet  HWaddr C0:3F:0E:5C:0E:76  
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:5860
+          TX packets:128 errors:7 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 b)  TX bytes:24349 (23.7 kb)
+          Interrupt:3 Base address:0x1000 
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          UP LOOPBACK RUNNING MULTICAST  MTU:16436  Metric:1
+          RX packets:118 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:118 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:22686 (22.1 kb)  TX bytes:22686 (22.1 kb)
+
+teql0     Link encap:UNSPEC  HWaddr 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00  
+          NOARP  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 b)  TX bytes:0 (0.0 b)
+
+vlan1     Link encap:Ethernet  HWaddr C0:3F:0E:5C:0E:76  
+          UP BROADCAST RUNNING PROMISC MULTICAST  MTU:1500  Metric:1
+          RX packets:1791 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:834 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:130548 (127.4 kb)  TX bytes:201939 (197.2 kb)
+
+vlan2     Link encap:Ethernet  HWaddr C0:3F:0E:5C:0E:76  
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 b)  TX bytes:0 (0.0 b)
+
+# ls /bin/
+zcat         sh           ping         ls           eapd
+wps_monitor  rmdir        msh          kill         cp
+wps_enr      rm           mount        gzip         chmod
+wps_ap       pwd          mknod        gunzip       cat
+umount       ps           mkdir        echo         busybox
+
+# ls /sbin/
+write            read_bd          insmod           burnpin
+version          rc               init             burnethermac
+uptime           preinit          ifconfig         burnboardid
+ubdcmd           pppd             hotplug          bd
+routerinfo       ntpclient        gpio             acos_service
+rmmod            lsmod            erase            acos_init
+reset_no_reboot  ledup            burnsn
+reboot           leddown          burnrf
+
+# ls /usr/bin/
+wget     tftp     telnetd  route    killall  free
+
+# ls /usr/sbin/
+zebra              upnp               pot                emf
+wpsd               udhcpd             outputimage        email
+wlconf             udhcpc             nvram              dnsmasq
+wlanconfigd        timesync           nas                dnsRedirectReplyd
+wl                 tfmeter            lld2d              ddnsd
+wanled             telnetenabled      igs                brctl
+wandetect          tc                 httpd              bpalogin
+wan_debug          swresetd           heartbeat          bpa_monitor
+vconfig            ripd               ftpc               acl_logd
+upnpnat            pptp               et
+upnpd              pppoecd            epi_ttcp
+
+# ls /lib/modules/2.4.20/kernel/drivers/net/
+wl
+igs
+et
+emf
+
+# routerinfo 
+Release version : Netgear Wireless Router WNR3500v2
+                  U12H12700/V1.0.2.10/23.0.70
+           Time : Aug  5 2009 12:00:51
+    CFE version : v1.0.29
+WSC PIN - 15734112
+LAN mac address - C03F0E5C0E76
+WAN mac address - C03F0E5C0E77
+WLAN mac address - C03F0E5C0E76
+Board ID - U12H127T00_NETGEAR
+serial number - 2442027X0162E
+
+# brctl show
+bridge name     bridge id               STP enabled
+br0             8000.c03f0e5c0e76       no
+
+# brctl showbr br0
+br0
+        STP disabled
+
+# nvram show
+wl_radius_port=1812
+wlan_acl_dev24=
+wan2_dns=
+gui_check_enable=1
+wlan_acl_dev25=
+wlan_acl_dev26=
+wan_unit=0
+wlan_acl_dev27=
+antswctl2g=0
+os_ram_addr=80001000
+wl0_wmf_bss_enable=0
+wla_temp_ssid=NETGEAR
+wlan_acl_dev28=
+wan_route=
+bs_trustedip=192.168.1.0
+wl_txstreams=0
+wla_region=5
+wlan_acl_dev29=
+pppoe2_keepalive=0
+wl0_frameburst=on
+wla_repeater=0
+potValue=4320
+bs_keywords=
+rxchain=3
+sel_region=0
+bs_enable=0
+log_ipaddr=
+wan2_gateway=0.0.0.0
+boardrev=0x1213
+br0_ifnames=vlan1 eth1
+wl0.14_hwaddr=C2:3F:0E:5C:0E:74
+wl_nctrlsb=none
+wl_version=5.10.56.2807
+ddns_enable=0
+wla_temp_key1=
+et0macaddr=C0:3F:0E:5C:0E:76
+wl0_leddc=0x640000
+wiz_dhcp_wait_time=5
+wla_temp_passphrase=
+wla_temp_key2=
+traffic_enable=0
+wla_temp_key3=
+pppoe2_bs_keyword=
+pppoe2_east_username=guest@flets
+wl0_akm=
+wl_maxassoc=128
+wla_temp_key4=
+wl0_radarthrs=0 0x6a8 0x6c8 0x6ac 0x6c7
+maxp2ga0=0x42
+boot_wait=off
+watchdog=3000
+pptp_idletime=5
+wps_modelname=WNR3500v2
+wl_leddc=0x640000
+wl_phytypes=
+maxp2ga1=0x42
+pppoe_localnetmask=...
+traffic_restart_hour=00
+wl0_infra=1
+wl0_country_code=GB
+pppoe_tmp_mtu=1454
+fw_disable=0
+et0mdcport=0
+emf_rtport_entry=
+wps_aplockdown_ageout=300
+pppoe_keepalive=1
+wps_config_command=0
+wla_wds_ptp_mac=
+ddns_wildcard=0
+rip_multicast=1
+wl_infra=1
+run_test=0
+reset_gpio=4
+wlan_acl_dev30=
+pmon_ver=CFE 5.10.56.28
+wl0_bcn_rotate=1
+restore_defaults=0
+wlan_acl_dev31=
+first_wan_status=0
+wlan_acl_dev32=
+vlan2ports=0 8u
+wlan_acl_dev33=
+wl0.1_hwaddr=C2:3F:0E:5C:0E:77
+wlan_acl_dev34=
+wl0_nctrlsb=none
+str_tbl_non_en_tag=
+wlan_acl_dev35=
+wan_lease=86400
+wl0_wme_sta_be=15 1023 3 0 0 off off
+str_tbl_non_en_ver=
+wl_wme_apsd=on
+wlan_acl_dev36=
+wl0_version=5.10.56.2807
+bs_trustedip_temp=192.168.1.0
+ddns_hostname=
+wl_radius_ipaddr=
+wlan_acl_dev37=
+http_wanport=
+wlan_acl_dev38=
+wan2_netmask=0.0.0.0
+wl0.7_hwaddr=C2:3F:0E:5C:0E:7D
+qos_rule_count=-1
+upnp_DHCPServerConfigurable=1
+wlan_acl_dev39=
+wl0_ifname=eth1
+pppoe2_bs_enable=0
+lan_domain=
+ofdm2gpo=0x88888888
+timer_interval=3600
+gpio1=ses_led
+wl0_wme_sta_bk=15 1023 7 0 0 off off
+pptp_username=
+wl_net_reauth=36000
+lan1_ipaddr=192.168.2.1
+wla_temp_enable=enable_ap
+pppoe_mtu=1492
+wl0_rxstreams=0
+upnp_advert_period=30
+gpio5=robo_reset
+gpio6=ses_button
+second_wan_status=0
+lan_route=
+schedule_daylightadjust=0
+fw_email_email_enable=0
+wps_device_pin=15734112
+wl0_mrate=0
+wl0_mode=ap
+wps_lan_led=0
+wla_secu_type=None
+wan_gateway=0.0.0.0
+dhcp_start=192.168.1.2
+wan2_dns1=
+wan_hwaddr_sel=0
+mcs2gpo0=0x8888
+pppoe2_bs_keywords=
+lan1_route=
+mcs2gpo1=0x8888
+wl0_ap_isolate=0
+traffic_warning_state=0
+wl_mrate=0
+dhcp_end=192.168.1.254
+ntp_update_interval=86400
+mcs2gpo2=0x8888
+wl_akm=
+wl_wmf_bss_enable=0
+triso2g=0x3
+mcs2gpo3=0x8888
+os_flash_addr=bfc40000
+wl0_ampdu=on
+qos_l7_apps=5:3 6:3 3:0 2:0 4:0 1:0
+sromrev=8
+mcs2gpo4=0x8888
+wl0_gmode=1
+wl0_wme_no_ack=off
+wl0.15_hwaddr=C2:3F:0E:5C:0E:75
+mcs2gpo5=0x8888
+wla_wds_enable=0
+wla_temp_region=5
+mcs2gpo6=0x8888
+pptp_passwd=
+pppoe2_demand=0
+pppoe2_mtu=1454
+boardtype=0x04CF
+mcs2gpo7=0x8888
+wl_ampdu_rr_rtylimit_tid=2 2 2 2 2 2 2 2
+wl_wme_bss_disable=0
+wla_autochannel=enable
+is_default=1
+aa2g=7
+wps_perm_lock=0
+wps_uuid=0x4be169c1fe1792e838f3fdf62e0a5e83
+wl_ampdu=on
+wl_gmode=1
+et1macaddr=C0:3F:0E:5C:0E:77
+wl0_nband=2
+wan_status=down
+traffic_cntime_monthly_limit=
+wlan_acl_dev40=
+stats_server=
+wps_start=none
+wla_auth_type=automatic
+wlan_acl_dev41=
+static_route=
+ver_check_ftp_password=WNR3500v2@
+bs_enable_temp=0
+wlan_acl_dev42=
+wl0_nreqd=0
+ver_check_enable=1
+wlan_acl_dev43=
+lan_netmask=255.255.255.0
+extpagain2g=0x0
+wl_nband=2
+wlan_acl_dev44=
+lan1_ifname=
+wl0_wme_txp_be=7 3 4 2 0
+wan_ipaddr_old=0.0.0.0
+wl0_ssid=NETGEAR
+wl_wme_sta_vi=7 15 2 6016 3008 off off
+wlan_acl_dev45=
+http_username=admin
+pppoe2_west_passwd=flets
+lan1_hwnames=
+wl0_dtim=3
+super_passwd=Geardog
+wlan_acl_dev46=
+tssipos2g=0x1
+wl_wme_ap_be=15 63 3 0 0 off off
+wl_nreqd=0
+wlan_acl_dev47=
+pptp_serv_ip=10.0.0.138
+http_rmenable=0
+wlan_acl_dev48=
+pppoe_tmp_servicename=
+os_date=Aug  5 2009
+wl0_dfs_preism=60
+wlan_acl_dev49=
+http_lanport=80
+bw40po=0
+wl0_wme_txp_bk=7 3 4 2 0
+wl_wme_sta_vo=3 7 2 3264 1504 off off
+wl_plcphdr=long
+itt2ga0=0x20
+wan_hwaddr2=C0:3F:0E:5C:0E:77
+wl_mimo_preamble=gfbcm
+wl_macmode=disabled
+lan1_wins=
+itt2ga1=0x20
+wl_wme_ap_bk=15 1023 7 0 0 off off
+wlan_acl_dev0=
+wan_domain=
+wan_hwname=
+wl_phytype=b
+wlan_acl_dev1=
+wan_netmask=0.0.0.0
+lan_lease=86400
+wl0id=0x4329
+wl0_key1=
+wl_lazywds=0
+wlan_acl_dev2=
+wl0_key2=
+wl0_vlan_prio_mode=off
+wl_dfs_postism=60
+wlan_acl_dev3=
+wl0_key3=
+wl0.2_hwaddr=C2:3F:0E:5C:0E:78
+traffic_restart_min=00
+wlan_acl_mac0=
+wlan_acl_dev4=
+wl0_key4=
+wla_temp_broadcast=ssid_bc
+wlan_acl_mac1=
+wlan_acl_dev5=
+wlan_acl_mac2=
+wlan_acl_dev6=
+pppoe2_bs_keywords_temp=
+lan1_lease=86400
+inbound_record=
+pptp_conn_id=
+wl_auth_mode=none
+wlan_acl_mac3=
+wlan_acl_dev7=
+wlan_acl_mac4=
+wlan_acl_dev8=
+wl0.8_hwaddr=C2:3F:0E:5C:0E:7E
+wlan_acl_mac5=
+wlan_acl_dev9=
+wlan_acl_mac6=
+pppoe2_flag_Smin=0
+vlan2hwname=et0
+wlan_acl_mac7=
+adc_vmid=0x89
+bpa_passwd=
+http_rmstartip=0.0.0.0
+wl_wpa_psk=
+wlan_acl_mac8=
+http_passwd=password
+ag0=0
+wl0_hw_rxchain=3
+pa2gw2a0=0xF9D9
+wlan_acl_mac9=
+ag1=0
+pa2gw2a1=0xF9C7
+lan_stp=1
+ag2=0
+wl0_wme_ap_vi=7 15 1 6016 3008 off off
+wl_mode=ap
+pppoe_acname=
+wl0_bss_maxassoc=128
+lang_check_ftp_svr=updates1.netgear.com
+wan_dns1=
+pppoe_tmp_idletime=300
+static_pptp_enable=0
+wlan_acl_mac10=
+wlan_acl_dev50=
+wl0_plcphdr=long
+wl0_closed=0
+wlan_acl_mac11=
+wlan_acl_dev51=
+wl0_rate=0
+wl0_tpc_db=0
+wl0_macmode=disabled
+wl_wpa_gtk_rekey=0
+wla_temp_setting=0
+wlan_acl_mac12=
+wlan_acl_dev52=
+xtalfreq=20000
+wl0.10_hwaddr=C2:3F:0E:5C:0E:70
+wlan_acl_mac13=
+wlan_acl_dev53=
+wl0_radioids=BCM2056
+wl0_wme_ap_vo=3 7 1 3264 1504 off off
+wl_wme_txp_vi=7 3 4 2 0
+wlan_acl_mac14=
+wlan_acl_dev54=
+pppoe_tmp_localip=0.0.0.0
+wl0_phytype=n
+wlan_acl_mac15=
+wlan_acl_dev55=
+wan2_ipaddr=0.0.0.0
+antswitch=3
+wl0_lazywds=0
+fw_email_email_alert=0
+wlan_acl_mac16=
+wlan_acl_dev56=
+lang_check_config_file_name=stringtable.txt
+wlan_acl_mac17=
+wlan_acl_dev57=
+wlan_acl_mac18=
+wlan_acl_dev58=
+pppoe2_tmp1=
+boardflags2=0x00000402
+wps_proc_status=0
+wlan_acl_mac19=
+wlan_acl_dev59=
+pppoe2_tmp2=
+pppoe2_fw_bks_block_type=0
+wl_wme_txp_vo=7 3 4 2 0
+pppoe2_tmp3=
+wl0_afterburner=off
+nat_inbound_filtering=1
+fwpt_count=0
+wps_aplockdown_duration=300
+wl_wds_timeout=1
+lan_hwaddr=C0:3F:0E:5C:0E:76
+wl0_antdiv=-1
+fw_spi_enab=1
+wl_wps_mode=enabled
+pppoe_flet_type=0
+wan_dns=0.0.0.0
+wla_preamble=long
+board_id=U12H127T00_NETGEAR
+lang_check_config_file_dir=stringtables
+pptp_dod=1
+wl_dtim=3
+wl_ssid=NETGEAR
+cfe_version=v1.0.29
+supported_languages=English German Chinese Korean Russian Spanish Polish French Italian Swedish Danish Dutch Greek Norwegian Czech Slovenian Portuguese Hungarian Romanian Finnish Slovak
+wl_radarthrs=0 0x6a8 0x6c8 0x6ac 0x6c7
+wl0_wpa_psk=
+schedule_config=127:0:0:23:59
+bpa_idletime=5
+wait_time=3
+potMaxValue=4320
+bpa_server_temp=
+wla_wme=1
+dhcp_mode=manual
+wl0_amsdu=auto
+dhcp_wins=
+pppoe_tmp_username=guest
+os_server=
+wan_bpa_minheartbeat=2
+wla_mode=130Mbps
+str_tbl_en_ver=1.0.2.10_0.1.0.2
+ver_check_config_file=fileinfo.txt
+bs_keyword=
+wl_amsdu=auto
+wl_key1=
+wan_proto=dhcp
+ledbh0=0x82
+wl_key2=
+wla_defaKey=0
+ledbh1=11
+wl_key3=
+wla_temp_defaKey=0
+bwduppo=0
+ledbh2=11
+wl0_unit=0
+dhcp_serv_ip=0.0.0.0
+tftp_serv_ipaddr=192.168.1.2
+all_service_tbl=
+wl_key4=
+wl_country_code=GB
+ledbh3=11
+wl_hwaddr=
+txchain=3
+ParentalCtrl_MAC_ID_tbl=
+pppoe2_flag_Emin=0
+wl0.3_hwaddr=C2:3F:0E:5C:0E:79
+str_tbl_en=1
+wl0_bss_enabled=1
+wl0_net_reauth=36000
+wl_vlan_prio_mode=off
+wlan_acl_mac20=
+wlan_acl_dev60=
+wl0_nmode=-1
+wps_timeout_enable=0
+wlan_acl_mac21=
+wlan_acl_dev61=
+lan1_stp=1
+wlan_acl_mac22=
+wlan_acl_dev62=
+wl0.9_hwaddr=C2:3F:0E:5C:0E:7F
+pppoe_switch=1
+wlan_acl_mac23=
+wlan_acl_dev63=
+wlan_acl_mac24=
+traffic_volume_ctrl_dir=0
+bpa_dod=1
+wlan_acl_mac25=
+wps_restart=0
+wla_wds_pmp_sta=1
+wl_nmode=-1
+wlan_acl_mac26=
+fw_bks_block_type=0
+wlan_acl_mac27=
+lan1_gateway=192.168.2.1
+bpa_username=
+wlan_acl_mac28=
+wl_wps_reg=enabled
+wl_rxstreams=0
+wla_ssid=NETGEAR
+wlan_acl_mac29=
+wl0_wds=
+upnp_portmap_entry=0
+gui_region=English
+wl_rate=0
+log_level=0
+load_defaults=
+pptp_user_netmask=...
+ntp_server=192.5.41.40 192.5.41.41 133.100.9.2
+wl0_reg_mode=off
+wps_mfstring=NETGEAR, Inc.
+wan_hwaddr=C0:3F:0E:5C:0E:77
+wl0.11_hwaddr=C2:3F:0E:5C:0E:71
+lan_ifnames=vlan1 eth1
+pppoe2_filter_rule_tbl=
+pppoe_ifname=ppp0
+wl0_wme=on
+wl0_auth=0
+wla_key1=
+wl0_radius_port=1812
+wla_key2=
+pppoe_policy_num=0
+traffic_restart_ampm=0
+wla_key3=
+wl0_wme_bss_disable=0
+wl0_radius_ipaddr=
+wl0_rxchain=3
+wla_key4=
+traffic_control_type=0
+wl_country=GB
+wlan_acl_num=64
+ure_disable=1
+leddc=0xFFFF
+wl0_wme_sta_vi=7 15 2 6016 3008 off off
+wan2_dns_sel=0
+ver_check_ftp_svr1=updates1.netgear.com
+ver_check_ftp_svr2=updates1.netgear.com
+ver_check_ftp_svr3=updates1.netgear.com
+wan_ifnames=eth0 
+http_timeout=5
+wl_crypto=tkip
+wl_rateset=12
+pppoe_wan_dns1=
+wl0_wme_sta_vo=3 7 2 3264 1504 off off
+wla_channel=0
+wla_temp_channel=0
+pppoe2_temp_type=4
+pa2gw1a0=0x1A56
+wlan_acl_mac30=
+pppoe2_east_passwd=guest
+pppoe_max_echo_fail=3
+wl0_wps_reg=enabled
+pa2gw1a1=0x1B05
+pptp_user_ip=...
+wlan_acl_mac31=
+wl_radius_key=
+wlan_acl_mac32=
+dhcp_resrv_mac=
+lan_proto=dhcp
+os_name=linux
+clkfreq=453,226,113
+lan_ipaddr=192.168.1.1
+ver_type=WW
+wlan_acl_mac33=
+lan1_netmask=255.255.255.0
+vlan1hwname=et0
+wl0_maxassoc=128
+wlan_acl_mac34=
+pppoe2_servicename=
+wl_unit=0
+wlan_acl_mac35=
+qos_port=
+ddns_last_ip=0.0.0.0
+wlan_acl_mac36=
+wl0_phytypes=n
+wl0_frag=2346
+wl0_wep=
+wan_bpa_maxheartbeat=20
+wps_sta_pin=00000000
+wl_nmode_protection=auto
+wlan_acl_mac37=
+lan1_proto=dhcp
+router_disable=0
+ddns_username=
+wla_rts=2347
+wlan_acl_mac38=
+ddns_passwd=
+http_rmport=8080
+wlan_acl_mac39=
+pppoe_passwd=
+ParentalControl=0
+ver_check_ftp_username=anonymous
+wl0.4_hwaddr=C2:3F:0E:5C:0E:7A
+sdram_config=0x0284
+wl0_rifs=
+logo_enable=1
+wl0_country=GB
+dmz_ipaddr=192.168.1.0
+pppoe2_idletime=300
+vlan1ports=1 2 3 4 8*
+wl_wds=
+traffic_round_up_volume=0
+bpa_status=0
+scratch=a0180000
+dhcp_resrv_ip=
+wps_aplockdown_count=30
+ccode=0
+pppoe2_acname=
+pppoe_servicename=
+wl0_rateset=12
+wl0_ampdu_rr_rtylimit_tid=2 2 2 2 2 2 2 2
+wl0_wme_apsd=on
+pppoe2_west_username=flets@flets
+wl0_wme_txp_vi=7 3 4 2 0
+wiz_pppoe_wait_time=5
+wl_wme=auto
+pppoe_idletime=300
+wl0_txstreams=0
+rip_enable=0
+system_name=WNR3500v2
+wl_wme_ap_vi=7 15 1 6016 3008 off off
+wan_primary=0
+lan_ifname=br0
+browser_language=
+fw_rsp_ping=0
+boardflags=0x00001710
+wl0_mimo_preamble=gfbcm
+sdram_refresh=0x183f
+wandevs=et0
+ddns_checked=0
+wla_wep_length=0
+dhcp_domain=
+wl0_wme_txp_vo=7 3 4 2 0
+fwpt_enable=1
+wl_auth=0
+wl0.12_hwaddr=C2:3F:0E:5C:0E:72
+wan_dns_sel=0
+sdram_ncdl=0x6a26162a
+wps_proc_mac=
+wl_wme_ap_vo=3 7 1 3264 1504 off off
+lan1_domain=
+fw_sip_enab=1
+wlan_acl_mac40=
+wl_bss_maxassoc=128
+wl_frameburst=on
+wlan_acl_mac41=
+pppoe_session_id=0
+ezc_enable=1
+adc_gain=0x00
+traffic_restart_day=1
+wlan_acl_mac42=
+wl0_nmode_protection=auto
+wlan_acl_mac43=
+pppoe2_schedule_enable=0
+is_modified=0
+qos_enable=0
+wlan_acl_mac44=
+pppoe2_username=guest
+pppoe_echo_interval=30
+upnp_duration=3600
+wla_wlanstate=Enable
+wlan_acl_mac45=
+wan2_ipaddr_old=0.0.0.0
+wan_ipaddr=0.0.0.0
+wlan_acl_mac46=
+macaddr=C0:3F:0E:5C:0E:76
+pdetrange2g=0
+wlan_acl_mac47=
+wl0_rts=2347
+fw_email_email_addr=
+wlan_acl_mac48=
+pppoe_flet_sel=fletdisable
+blk_srv_tbl=
+wlan_acl_mac49=
+wl_ifname=
+wan_wins=
+lan1_dhcp=0
+ipv6_enable=0
+wl_ampdu_rtylimit_tid=5 5 5 5 5 5 5 5
+wl_nbw_cap=0
+wl_wep=
+wl0_hw_txchain=3
+qos_bw_min_0=
+potInterval=60
+pppoe_username=guest
+os_version=5.20.42.7
+cck2gpo=0x2222
+qos_bw_min_1=
+wsc_pin_disable=0
+wl_gmode_protection=auto
+qos_bw_min_2=
+wl0_wpa_gtk_rekey=0
+qos_bw_set_sel=1
+qos_bw_min_3=1000000
+wla_wds_pmp_mac=
+upnp_advert_ttl=4
+wl0_sta_retry_time=5
+traffic_watermark=0
+pf_services_tbl=
+fw_dmz_enab=0
+wl_frag=2346
+wan_mtu=1500
+wan_bpa_localport=5050
+pppoe2_schedule_config=127:0:0:23:59
+wl0_key=1
+run_wiz=0
+regrev=0
+friendly_name=WNR3500v2
+emf_entry=
+wps_addER=0
+wl_maclist=
+wl_rifs=
+wla_passphrase=
+static_pppoe_enable=0
+pppoe_server_mac=
+console_loglevel=1
+et0phyaddr=30
+traffic_block_enable=0
+rip_version=2
+bpa_server=login-server
+wps_aplockdown_cap=1
+wl_bcn_rotate=1
+time_zone=0
+wl0.5_hwaddr=C2:3F:0E:5C:0E:7B
+wl_wps_config_state=0
+brs_lang_check_enable=1
+qos_bw_max_0=128000
+pppoe2_session_id=0
+qos_bw_max_1=
+wla_wds_ptp_sta=1
+qos_bw_max_2=
+upnp_turn_on=1
+wan_ifname=eth0
+qos_bw_max_3=
+wl_wme_sta_be=15 1023 3 0 0 off off
+pppoe2_all_service_tbl=
+inbound_policy_tbl=
+wl_radioids=
+wan_hostname=
+landevs=vlan1 wl0
+wl0_dfs_postism=60
+wl0_radio=1
+wl_nmcsidx=-1
+wl_corerev=
+wlan_acl_mac50=
+pppoe2_authtype=0
+pppoe_tmp_passwd=
+wl0_nbw_cap=0
+wlan_acl_mac51=
+traffic_led_enable=0
+wl_channel=0
+wlan_acl_mac52=
+pppoe_dod=1
+wl_wme_sta_bk=15 1023 7 0 0 off off
+wps_mode=enabled
+wlan_acl_mac53=
+wl0_bcn=100
+fw_email_email_smtp=
+wlan_acl_mac54=
+wps_currentband=
+pa2gw0a0=0xFEB6
+enable_gui_str_tbl=1
+fw_email_pid=138
+wl_afterburner=off
+wl_radio=1
+wlan_acl_mac55=
+wl0_hwaddr=C0:3F:0E:5C:0E:76
+pa2gw0a1=0xFEB3
+wlan_acl_mac56=
+wlan_acl_mac57=
+pppoe2_ifname=ppp1
+wl0_ampdu_rtylimit_tid=5 5 5 5 5 5 5 5
+port_tr_conf=
+emf_enable=0
+wlan_acl_mac58=
+ezc_version=2
+wlan_acl_mac59=
+wlan_acl_dev10=
+wl0_gmode_protection=auto
+wl0.13_hwaddr=C2:3F:0E:5C:0E:73
+wl0_maclist=
+wlan_acl_dev11=
+wla_frag=2346
+wlan_acl_dev12=
+fw_dmz_ip4=2
+wl_rts=2347
+wlan_acl_dev13=
+sdram_init=0x0419
+fw_email_send_all=0
+traffic_warning_time=0
+wlan_acl_dev14=
+stbcpo=0
+qos_bw_enable=0
+wl_ap_isolate=0
+wlan_acl_dev15=
+wan_desc=
+lan_wins=
+lanip_setup_changed=0
+fwpt_timeout=1200
+wps_modelnum=WNR3500v2
+wlan_acl_dev16=
+pppoe2_localip=0.0.0.0
+lan_hwnames=
+dl_ram_addr=a0001000
+rip_filter_enable=0
+wlan_acl_dev17=
+pppoe2_server_mac=
+pppoe2_dod=0
+lan1_ifnames=
+wps_method=1
+bpa_debug_level=1
+wl_wme_no_ack=off
+wlan_acl_dev18=
+parefldovoltage=45
+wlan_acl_dev19=
+wl0_wps_config_state=0
+wl0_radius_key=
+wl0_wme_ap_be=15 63 3 0 0 off off
+wl0_corerev=17
+wl0_nmcsidx=-1
+pptp_gateway=
+wl_key=1
+pppoe2_blk_srv_tbl=
+wl0_channel=0
+pppoe_mru=1492
+wps_aplockdown=0
+wps_device_name=WNR3500v2
+pppoe_wan_dns_sel=0
+wl0_wds_timeout=1
+traffic_volume_monthly_limit=
+cddpo=0
+wla_wds_mode=1
+wl_bss_enabled=1
+upnp_enable=1
+wl0_wps_mode=enabled
+wl0_wme_ap_bk=15 1023 7 0 0 off off
+str_tbl_non_en=0
+wl_wme_txp_be=7 3 4 2 0
+wps_config_method=0x84
+rip_dir=1
+emf_uffp_entry=
+runtest=0
+pppoe_flet_keyword=flets
+bs_keywords_temp=
+blank_state=0
+pppoe2_passwd=
+wl_dfs_preism=60
+wla_temp_mode=130Mbps
+wlan_acl_mac60=
+lan1_hwaddr=
+wps_status=0
+qos_bw_uplink=256000
+wl_sta_retry_time=5
+wlan_acl_mac61=
+wl_wme_txp_bk=7 3 4 2 0
+wl_closed=0
+wlan_acl_mac62=
+wl0_auth_mode=none
+wl_tpc_db=0
+wlan_acl_mac63=
+wl0.6_hwaddr=C2:3F:0E:5C:0E:7C
+lanip_wds_setup_changed=0
+ver_check_stringtable_dat=stringtable.dat
+wlan_acl_enable=0
+boardnum=01
+wl0_crypto=tkip
+pppoe_localgateway=...
+lanip_changed=0
+pppoe2_mru=1454
+wl0_txchain=3
+http_rmendip=255.255.255.255
+wl_bcn=100
+pppoe2_dns_server=
+wl_reg_mode=off
+super_username=Gearguy
+wlan_acl_dev20=
+gui_region2=
+ddns_update_time=0
+wlan_acl_dev21=
+pppoe2_bs_enable_temp=0
+pppoe_localip=0.0.0.0
+wlan_acl_dev22=
+wl_antdiv=-1
+wla_temp_secu_type=None
+wlan_acl_dev23=
+size: 14950 bytes (17818 left)
+# 
+
+
+
+# cat /proc/ksyms 
+c0237ac0 aDosIndex      [acos_nat]
+c01dcbc8 acosFw_ModService2     [acos_nat]
+c01f3300 Nat_AlgModifyOutboundSeq       [acos_nat]
+c0222960 g_uiFtpDataPortSelfInFromWan   [acos_nat]
+c02238e2 YAHOO_SERVICE_P2PFILEXFER      [acos_nat]
+c0222474 bTrafficMeterFlag      [acos_nat]
+c0239cc0 g_daylightsaving       [acos_nat]
+c0231240 g_acosNat_Filtering_Mode       [acos_nat]
+c0218e58 abNatUpdateInfByName   [acos_nat]
+c01f69c8 L2TP_PrepareCtrlConnTimeout    [acos_nat]
+c01e2190 Nat_HTTPURLFilterEndConnection [acos_nat]
+c0222ef8 g_iInitAlg     [acos_nat]
+c01f5c30 acosIpsecAlg_findMaxTsConnId   [acos_nat]
+c02388b8 g_FragChkHashTable     [acos_nat]
+c0222954 g_isJpMultiWan [acos_nat]
+c01e392c acosFW_URLFilterAddKeyword     [acos_nat]
+c02111e0 acosNat_Cli_RuleAdd    [acos_nat]
+c01e6120 acosNat_AddNatRule1    [acos_nat]
+c02177f4 acosNat_ResizePacket   [acos_nat]
+c0216cbc dnsRedirSetPID [acos_nat]
+c021bfd4 acosNat_DecreaseTTL    [acos_nat]
+c01e3114 FW_URLFilterBlockPage  [acos_nat]
+c01e6810 acosNat_SetDeviceListenPort    [acos_nat]
+c021c098 NatUpdateTimer [acos_nat]
+c01f8d00 Msn_AddHost    [acos_nat]
+c0222248 g_iWanIfCount  [acos_nat]
+c01e16f0 Nat_HTTPURLFilterInitialize    [acos_nat]
+c0217b90 acosNat_AddDefIpFilterRule     [acos_nat]
+c021b180 acosNat_ProcessOutboundPacket  [acos_nat]
+c01e3574 FW_NNTPURLFilterClean  [acos_nat]
+c01f42a0 Nat_FtpInitialize      [acos_nat]
+c0222fd0 g_iMediaNum    [acos_nat]
+c01f8a28 Msn_DelSession [acos_nat]
+c023af68 g_tTmUsrParam  [acos_nat]
+c01e6920 acosNat_GetUBDStatus   [acos_nat]
+c02080e0 doFLAGScan     [acos_nat]
+c0222ee4 g_CloseDlg     [acos_nat]
+c0222d48 g_LDAPAlg      [acos_nat]
+c0212140 acosNat_setTmConfActive        [acos_nat]
+c0238ab8 g_tDosAttacklog        [acos_nat]
+c0222ef0 g_memAlloc     [acos_nat]
+c01f3478 Nat_AlgAddInboundSeqDiff       [acos_nat]
+c0223e70 g_ScAlg        [acos_nat]
+c01e6b80 ChangeIpLen    [acos_nat]
+c02239a0 g_ptIpFragBuffTable    [acos_nat]
+c0222440 pRouterHeader2 [acos_nat]
+c023ab6c g_ptTSConf2    [acos_nat]
+c02229dc g_iNaptUsed    [acos_nat]
+c01df920 ProcessRouterFilter    [acos_nat]
+c01e2260 Nat_NNTPURLFilterProcessOutPacket      [acos_nat]
+c020955c DosWriteRule   [acos_nat]
+c01ec8f0 ProcessTcpPacket       [acos_nat]
+c01e505c tf_meter_flag_on       [acos_nat]
+c0211654 agListenPortList       [acos_nat]
+c0208370 doVanillaCount [acos_nat]
+c0222ba8 g_fpUpnpApplyAlgCb     [acos_nat]
+c01e3a64 acosFW_URLFilterDelKeyword     [acos_nat]
+c01e6f80 InitializeRuleTable    [acos_nat]
+c0228600 g_AgNatIfRefList       [acos_nat]
+c02238ec YAHOO_STATUS_BRB       [acos_nat]
+c01fb030 natsip_notify  [acos_nat]
+c0222450 pacosFw_CbNatRuleCheck [acos_nat]
+c01f25bc ESP_ReadyOrNot [acos_nat]
+c02287b0 g_pacosFw_PolicyList   [acos_nat]
+c020adc4 agLib_asctime_r        [acos_nat]
+c01ec8cc ProcessUdpOutboundPacket       [acos_nat]
+c01f10fc acosNat_ShowTimeout    [acos_nat]
+c0207758 doIcmpSelf2WanCheck    [acos_nat]
+c0222968 g_bUseIPsec    [acos_nat]
+c01ee980 InitializeConnTable    [acos_nat]
+c02044a0 porttr_RegisterCheckFn [acos_nat]
+c01e94a0 SetRuleTimeOut [acos_nat]
+c01efb20 EnumerateAllConn       [acos_nat]
+c0202ce4 Nat_AimProcessOutboundPacket   [acos_nat]
+c0213cd4 tmsch_taskcontext2     [acos_nat]
+c01dc598 acosFw_AddService_S2   [acos_nat]
+c0223358 g_sipRuleMap   [acos_nat]
+c0212580 acosNat_getFirstTmSchIdx       [acos_nat]
+c02229cc g_iNaptSize    [acos_nat]
+c023b3a8 dnsRedirPktContent     [acos_nat]
+c021d4fc acosNat_GetIpAddress   [acos_nat]
+c01f58d0 ProcessEspInboundPacket        [acos_nat]
+c01dd018 acosFw_GetIpFilterRule [acos_nat]
+c0219fb0 acosNat_CommonOutput   [acos_nat]
+c0212358 acosNat_getTmConfIdx   [acos_nat]
+c02097c8 MatchDenyTb    [acos_nat]
+c0222ba4 g_iDynAlgIndex [acos_nat]
+c021da74 abIfOutputHook [acos_nat]
+c0211a30 acosNat_addTmSch2      [acos_nat]
+c01f6c9c Nat_H323ProcessInboundPacket   [acos_nat]
+c020aec0 agLib_ctime_r  [acos_nat]
+c01f222c acosNat_connRecoveryIsConnExist        [acos_nat]
+c01eb8f8 acosNat_ShowDebugCnt   [acos_nat]
+c02046bc acosNat_setTriggerConf [acos_nat]
+c021c650 ModifyUdpChecksum      [acos_nat]
+c0209564 DosReadRule    [acos_nat]
+c01fb16c natsip_processInboundPacket    [acos_nat]
+c0207f58 doSourceRoute  [acos_nat]
+c0223994 g_iFragBufEntryUsed    [acos_nat]
+c02376a0 g_ptIpFragTable        [acos_nat]
+c0203f68 AddIpFragEntry [acos_nat]
+c0222438 pRouterTail    [acos_nat]
+c022244c pacosFw_CbNatConnCheck [acos_nat]
+c020a6ac agLib_localtime_r      [acos_nat]
+c021bfb0 acosNat_GarbageCollection      [acos_nat]
+c01f3fb8 Nat_DumpAlgTable       [acos_nat]
+c0222950 g_isMultiWan   [acos_nat]
+c0218cdc abNatLanHook   [acos_nat]
+c01f364c Nat_AlgAddNaptUdpConn  [acos_nat]
+c0223354 g_iKeyNum      [acos_nat]
+c0222c00 g_IcqClientToServerAlg [acos_nat]
+c01df1c8 CheckRouterRule        [acos_nat]
+c01e4020 wan_lan_conflict_check [acos_nat]
+c01e2c84 FW_NNTPURLFilterInspect        [acos_nat]
+c0223bf0 agLib_rand_next        [acos_nat]
+c01e64e8 acos_NatReCheckConn    [acos_nat]
+c02074b4 doIcmp_Unreachable     [acos_nat]
+c021240c acosNat_getFirstTmConfIdx2     [acos_nat]
+c02239d0 Dos_Name       [acos_nat]
+c01f54b4 Nat_IcqClientToServerEndConnection     [acos_nat]
+c0223d80 g_ptTSConfList [acos_nat]
+c0209fbc agLib_strtok_r [acos_nat]
+c0208cd0 AddFragChkToHashTable  [acos_nat]
+c0214220 tmsch_dumpInfo2        [acos_nat]
+c020799c doBroadcastPing        [acos_nat]
+c0222964 g_bUseAgnat    [acos_nat]
+c01dddf8 acosFw_AddBlockService2        [acos_nat]
+c01e1624 acosFw_RegCheckSelfInFromWanCb [acos_nat]
+c01e6ea4 CalcChecksum2  [acos_nat]
+c02229e0 g_iPortForwardingUsed  [acos_nat]
+c01e09b8 SpecifyHash    [acos_nat]
+c0223d8c g_ptTSConfList2        [acos_nat]
+c01ee6b0 acosNat_ShowConn       [acos_nat]
+c01e96bc DeleteNatRule  [acos_nat]
+c0209ba0 acos_ClearAllDenyTb    [acos_nat]
+c0203e90 MatchFragBuff  [acos_nat]
+c0223940 g_AimAlg       [acos_nat]
+c01fa5e8 Nat_PPTP_BeginConnection       [acos_nat]
+c020218c parseYahooContent20    [acos_nat]
+c01efe44 GetHashValueByConn     [acos_nat]
+c01ead80 acosNat_TranslateAsciiPort     [acos_nat]
+c0218fac abNatUpdateInfByIndex  [acos_nat]
+c021d388 dnsRedirect_dnsHookFn  [acos_nat]
+c01f2c68 Nat_AlgRegister        [acos_nat]
+c02098a8 FindDenyTbByHash       [acos_nat]
+c0219f8c acosNat_GetWanInfId    [acos_nat]
+c02169d0 dnsRedirect_isExceptionDomain  [acos_nat]
+c0222eec g_iInit        [acos_nat]
+c021bf34 acosNat_GetConnDstEntry        [acos_nat]
+c0222434 pRouterHeader  [acos_nat]
+c02229d0 g_iPortForwardingSize  [acos_nat]
+c01f3d60 Nat_RegDynAlg2 [acos_nat]
+c01f8cb0 Msn_FindHost   [acos_nat]
+c01edfa8 isLanClient    [acos_nat]
+c01f6790 Is_L2TP_CTRL_Packet    [acos_nat]
+c0201810 natsip_dumpNatRuleInfo [acos_nat]
+c01eb0fc acosNat_DumpPktIpPort  [acos_nat]
+c01f37fc Nat_FindAlg    [acos_nat]
+c0202c08 Nat_YMSGEndConnection  [acos_nat]
+c0222b58 g_iConnEntryUsed       [acos_nat]
+c01e6060 acosNat_FinalizeNat    [acos_nat]
+c0217594 agnat_register_proc_stats      [acos_nat]
+c01dc8cc acosFw_AddService2_S2  [acos_nat]
+c01e8494 AddPortForwardingRule1 [acos_nat]
+c0215ee0 acosFw_SubmitLog       [acos_nat]
+c01e9fb0 IsRuleEqual    [acos_nat]
+c01e8718 AddPortForwardingRule2 [acos_nat]
+c02121c0 acosNat_delTmSch       [acos_nat]
+c01e8908 AddPortForwardingRule3 [acos_nat]
+c02030e8 Nat_AimBeginConnection [acos_nat]
+c01ee07c FindMinSrcIdx  [acos_nat]
+c0228f78 RuleIndexArray2        [acos_nat]
+c01e8b5c AddPortForwardingRule4 [acos_nat]
+c01e8dc4 AddPortForwardingRule5 [acos_nat]
+c02061a4 porttr_delConf [acos_nat]
+c020909c doTearDrop     [acos_nat]
+c0216df4 acosNat_dumpQoSTbl     [acos_nat]
+c01e39c8 acosFW_URLFilterAddKeyword2    [acos_nat]
+c0211828 acosNat_initTm2        [acos_nat]
+c021bc88 Nat_CleanUnusedConnAndRule     [acos_nat]
+c0211878 acosNat_addTmConf      [acos_nat]
+c01e0700 DeleteRule     [acos_nat]
+c01e6990 acosNat_GetInboundFiltering    [acos_nat]
+c0209ee0 agLib_atoi     [acos_nat]
+c022242c IPSendFrame2   [acos_nat]
+c01e6b54 acosNat_FletEnable     [acos_nat]
+c01e953c SetRuleUseOnce [acos_nat]
+c01dd250 acosFw_DelIpFilterRule [acos_nat]
+c02229f8 ptacosNat_PreFoundRule [acos_nat]
+c023b3a0 qtype  [acos_nat]
+c01f4b40 Nat_IcqServerToClientInboundPacket     [acos_nat]
+c022d24c g_URLFilterConfig2     [acos_nat]
+c01eb044 acosNat_Stristr        [acos_nat]
+c01f67bc Is_L2TP_CTRL_Packet_Ex [acos_nat]
+c02223fc g_iPreAlgSize  [acos_nat]
+c02041fc ClearTimeoutFragEntry  [acos_nat]
+c01e699c acosNat_UpdateKernelTime       [acos_nat]
+c0222460 pacosFw_CbNatAddDefIpFilterRule        [acos_nat]
+c0202324 Nat_YMSGProcessOutboundPacket  [acos_nat]
+c0205828 porttr_clearTimeOut    [acos_nat]
+c01df4dc ProcessRouterFilter2   [acos_nat]
+c01dd450 acosFw_AttachRuleSchedule      [acos_nat]
+c01e04a8 AddDefaultRule [acos_nat]
+c0222ee8 g_ptSipRule    [acos_nat]
+c0202b74 AddYMSGTable   [acos_nat]
+c0212244 acosNat_delTmSch2      [acos_nat]
+c01f8858 Msn_FindSession        [acos_nat]
+c01f6e58 Nat_H323ProcessOutboundPacket  [acos_nat]
+c0212740 acosNat_getTmSchInfo2  [acos_nat]
+c01e5f00 PrintMsgFunc   [acos_nat]
+c02125bc acosNat_getFirstTmSchIdx2      [acos_nat]
+c0204920 acosNat_getTriggerFirstRec     [acos_nat]
+c02223b0 DevListenPortNum       [acos_nat]
+c01f2a90 agNat_getWanIdByIfname [acos_nat]
+c01e9ecc IsRuleDuplicate        [acos_nat]
+c0216710 dnsRedirect_enable     [acos_nat]
+c01f3590 Nat_AlgGetNewPort      [acos_nat]
+c0234bb0 iacosNat_PreFoundModifyType    [acos_nat]
+c01e6398 acosDeletePortForwardingRule   [acos_nat]
+c0208fd4 MatchFragChk   [acos_nat]
+c0222b5c g_bIsCliTblFull        [acos_nat]
+c02123a4 acosNat_getTmConfIdx2  [acos_nat]
+c01e1630 acosFw_RegAddDefIpFilterRuleCb [acos_nat]
+c01ee4b0 recountUsedCli [acos_nat]
+c022399c g_iIpFragBuffSize      [acos_nat]
+c020a670 GetNthDayOfWeek        [acos_nat]
+c0222b90 g_pptAlgTable  [acos_nat]
+c0219100 abNatUpdateAllInf      [acos_nat]
+c02229fc g_uiListenPortNum      [acos_nat]
+c02138bc tmsch_getFreeConf2     [acos_nat]
+c01f684c FindConnBy_L2TP_TunnelID       [acos_nat]
+c01f2fb8 Nat_AlgAddForwardingRule       [acos_nat]
+c02223c0 g_uiDMZIp      [acos_nat]
+c01e68f4 acosNat_GetSPIStatus   [acos_nat]
+c02239b0 g_ptConf       [acos_nat]
+c0209a34 RemoveDenyTbFromHash   [acos_nat]
+c02168cc dnsRedirect_getPtrQueryIndex   [acos_nat]
+c0208bf8 doNetBus       [acos_nat]
+c01f4974 Nat_FtpBeginConnection [acos_nat]
+c020a06c agLib_rand     [acos_nat]
+c0228d00 g_pacosFw_ServiceList2 [acos_nat]
+c0216660 agLog_cleanup  [acos_nat]
+c0222420 pCheckRule     [acos_nat]
+c0205ee0 porttr_showConf        [acos_nat]
+c02156e0 tmsch_utDelConf        [acos_nat]
+c0222408 g_uiacosFw_ServiceNum  [acos_nat]
+c01f42a8 Nat_FtpProcessInboundPacket    [acos_nat]
+c02239ac iICMPFragBuffCount     [acos_nat]
+c0205cd4 porttr_showRec [acos_nat]
+c01e6ce8 CalcIcmpChecksum       [acos_nat]
+c01e1618 acosFw_RegCheckFragCb  [acos_nat]
+c02361c0 g_MsnHostList  [acos_nat]
+c01e6088 acosNat_CleanAllConn   [acos_nat]
+c0215758 tmsch_utLoadRule       [acos_nat]
+c01e6900 acosNat_EnableSPI      [acos_nat]
+c02239a8 iTCPFragBuffCount      [acos_nat]
+c0214cc0 tmsch_utDump2  [acos_nat]
+c020673c acosDos_KeepAttackLog  [acos_nat]
+c0211100 agFileRelease  [acos_nat]
+c021ccc4 UpdateConnStateAndTime [acos_nat]
+c01f3b68 Nat_RegDynAlg  [acos_nat]
+c0203c24 RemoveFragBuffFromHash [acos_nat]
+c0222cb0 g_h245_src_port        [acos_nat]
+c01ee7ac acosNat_DumpConnForDosLog      [acos_nat]
+c0207c30 doEcho [acos_nat]
+c01e0d98 ModifyIpFilterRule     [acos_nat]
+c0215240 tmsch_utConf2  [acos_nat]
+c01f2d68 Nat_AlgDispatchPacket  [acos_nat]
+c01e6f24 ModifyChecksumWord     [acos_nat]
+c0216fc4 acosNat_EnableQos      [acos_nat]
+c02078b0 doIpSpoof      [acos_nat]
+c0214b58 tmsch_utDump   [acos_nat]
+c01e1600 acosFw_RegExistedNatRuleCb     [acos_nat]
+c02223b8 g_bSPIEnable   [acos_nat]
+c01dd0a4 acosFw_GetIpFilterRule2        [acos_nat]
+c021c8ac IsPrivateIp    [acos_nat]
+c01f5fa8 Nat_L2TP_BeginConnection       [acos_nat]
+c02223c4 g_bSIPEnable   [acos_nat]
+c0222ef4 g_iSipInitPort [acos_nat]
+c01deb1c acosFw_ModBlockServiceAction2  [acos_nat]
+c01e91a4 PortTrAddPortForwardingRule1   [acos_nat]
+c01f8584 bubble_sort    [acos_nat]
+c01e92fc PortTrAddPortForwardingRule3   [acos_nat]
+c02313d0 g_ConnHashTable        [acos_nat]
+c01ee0f0 FindMaxUsgCli  [acos_nat]
+c01ea784 DeletePortForwardingRule       [acos_nat]
+c0212a88 tmsch_checkTmSchStatus [acos_nat]
+c0204980 acosNat_getTriggerNextRec      [acos_nat]
+c01fafa0 Nat_RtspEndConnection  [acos_nat]
+c01dffec SearchRule2    [acos_nat]
+c0205304 porttr_delPortConf     [acos_nat]
+c0222b80 g_connCntr     [acos_nat]
+c020a484 agLib_DelTimerEvent    [acos_nat]
+c022255c htmlPageBuffer [acos_nat]
+c01eb32c acosNat_DumpPktIpPort2 [acos_nat]
+c01f6ab0 Nat_H225ProcessOutboundPacket  [acos_nat]
+c023a770 g_ptTSConf     [acos_nat]
+c01eb60c acosNat_DumpPktIpPort3 [acos_nat]
+c0211ac8 acosNat_setTmSchByRange        [acos_nat]
+c01e70d8 ChooseNatRule  [acos_nat]
+c01dffa8 SearchRule     [acos_nat]
+c01de1e4 acosFw_DelServiceByName2       [acos_nat]
+c01e7ef4 FindEmptyNatRule       [acos_nat]
+c0211ea0 acosNat_setTmSchActive [acos_nat]
+c020af38 agLib_setTime  [acos_nat]
+c0213804 tmsch_getFreeConf      [acos_nat]
+c0204084 FindIpFragEntry        [acos_nat]
+c0203f58 acosNat_DropFragPkt    [acos_nat]
+c01e2188 Nat_HTTPURLFilterBeginConnection       [acos_nat]
+c0217600 Nat_ScProcessOutboundPacket    [acos_nat]
+c01e1230 DumpIpFilterRule       [acos_nat]
+c02175f8 Nat_ScProcessInboundPacket     [acos_nat]
+c02110c8 agFileOpen     [acos_nat]
+c01f2314 updateConnCounter      [acos_nat]
+c01f559c Nat_IcqPeerToPeerInitialize    [acos_nat]
+c0229280 g_URLFilterConfig      [acos_nat]
+c0222a04 g_pusListenPortEnd     [acos_nat]
+c02085cc doSynIncreaseCnt       [acos_nat]
+c0214658 tmsch_usrCallBack2     [acos_nat]
+c01e54e8 traffic_httpHijack     [acos_nat]
+c02029b8 UpdateYMSGTable        [acos_nat]
+c021be34 FindTcpConn    [acos_nat]
+c02085a4 DosGlbSyncDrop [acos_nat]
+c01eedd0 FindConn2      [acos_nat]
+c01f2710 agNat_CheckPolicyRule  [acos_nat]
+c02223c8 g_bSIPFrag     [acos_nat]
+c0222958 g_isTrafficMeterOn     [acos_nat]
+c0214e28 tmsch_utConf   [acos_nat]
+c01f8f8c Nat_MsnProcessInboundPacket    [acos_nat]
+c0222c60 g_L2TP_Alg     [acos_nat]
+c01eeec8 FindConn3      [acos_nat]
+c02123f0 acosNat_getFirstTmConfIdx      [acos_nat]
+c01fba08 natsip_endConnection   [acos_nat]
+c01eefe8 FindConn4      [acos_nat]
+c0211998 acosNat_addTmSch       [acos_nat]
+c0211764 acosNat_setTmTaskActive2       [acos_nat]
+c022224c g_AgNatWanIfList       [acos_nat]
+c020956c GetDosRule     [acos_nat]
+c021c7c8 IsTcpFirstPacket       [acos_nat]
+c0222400 g_uiacosFw_PolicyNum   [acos_nat]
+c0217790 acosNat_FreePacketBuf  [acos_nat]
+c0209074 GetHashValueFromIpHeader_DoS   [acos_nat]
+c01ee360 countConnForCli        [acos_nat]
+c01e06dc ReadRule       [acos_nat]
+c02116f0 acosNat_setTmTaskActive        [acos_nat]
+c022240c g_uiacosFw_ServiceNum2 [acos_nat]
+c01ddf1c acosFw_ModBlockService [acos_nat]
+c02145a0 tmsch_bs_status        [acos_nat]
+c01f1270 acosNat_IsUsedAlgPort  [acos_nat]
+c0216d70 acosNat_cleanQoSRule   [acos_nat]
+c01e62f4 acosNat_RemoveNatRule  [acos_nat]
+c01f5fa0 Nat_L2TP_Initialize    [acos_nat]
+c0212464 acosNat_getNextTmConfIdx2      [acos_nat]
+c01f1180 acosNat_IsUsedPort     [acos_nat]
+c0235df0 gRuleIdStorage [acos_nat]
+c01e9a18 CheckNatPortForwardingRule     [acos_nat]
+c01f7264 Nat_H245ProcessOutboundPacket  [acos_nat]
+c0222de0 g_MsnAlg       [acos_nat]
+c02089a4 fastCleanUpCheck       [acos_nat]
+c021c190 IsFragPacket   [acos_nat]
+c022294c dwacosNatTime  [acos_nat]
+c023af7c g_tTmUsrParam2 [acos_nat]
+c0215f04 acosFw_SendAllLogByEmail       [acos_nat]
+c01e0a50 AddIpFilterRule        [acos_nat]
+c0223e40 gDnsPid        [acos_nat]
+c0222390 g_iIPsecInterface      [acos_nat]
+c0211908 acosNat_addTmConf2     [acos_nat]
+c01ed6d4 ProcessIcmpOutboundPacket      [acos_nat]
+c0223ec4 pWanIf [acos_nat]
+c021724c acosNat_modifyDSCP     [acos_nat]
+c021a750 acosNat_PostRouting    [acos_nat]
+c0211ff0 acosNat_setTmSchActive2        [acos_nat]
+c0208c84 acos_InitTearDrop      [acos_nat]
+c01f3ae8 Nat_FindAlgByName      [acos_nat]
+c0222e34 g_MsnHostIndex [acos_nat]
+c0222e28 g_MsnSessionFreeCount  [acos_nat]
+c01deaa8 abAddDnsQryIp  [acos_nat]
+c0206ef0 DoSFuncExec    [acos_nat]
+c02223cc g_pptPredefinedAlgTable        [acos_nat]
+c0222c50 g_iTmpMaxTimestampConnId       [acos_nat]
+c0202a34 DeleteYMSGTable        [acos_nat]
+c01e37ec acosFW_URLFilterSetTrustedIP2  [acos_nat]
+c01e614c acosNat_AddNaptRule1   [acos_nat]
+c01de274 acosFw_GetServiceByName        [acos_nat]
+c01fada8 Nat_RtspProcessInboundPacket   [acos_nat]
+c0204a74 porttr_chkPortTrigger  [acos_nat]
+c01ea0c0 IsPortOverlap  [acos_nat]
+c01e6178 acosNat_AddNaptRule2   [acos_nat]
+c02223b4 g_bFwEchoEnable        [acos_nat]
+c01dd4c8 acosFw_AttachRuleSchedule2     [acos_nat]
+c01e7178 FindNatRule    [acos_nat]
+c020a320 agLiib_inet_ntoa_b     [acos_nat]
+c01e0bf4 AddIpFilterRule2       [acos_nat]
+c02114ac acosNat_UPnP_RuleAdd   [acos_nat]
+c0212670 acosNat_getTmSchInfo   [acos_nat]
+c01e2380 Nat_NNTPURLFilterEndConnection [acos_nat]
+c01de4bc acosFw_GetServiceName  [acos_nat]
+c01ed6f8 ProcessIcmpPacket      [acos_nat]
+c02229c0 g_ptRuleTable  [acos_nat]
+c01f1580 acosNat_IsUsedSrcPort  [acos_nat]
+c021c920 FindConnByHash [acos_nat]
+c021c804 ModifyChecksumDWord    [acos_nat]
+c0218488 abNatHook      [acos_nat]
+c0222b94 g_iAlgSize     [acos_nat]
+c02097f0 AddDenyTbToHashTable   [acos_nat]
+c01dda40 acosFw_GetBlockServiceCnt2     [acos_nat]
+c0228800 recordIp       [acos_nat]
+c022243c RuleNumberMax2 [acos_nat]
+c02077b0 doJolt2        [acos_nat]
+c0206e6c GetOptionPayload       [acos_nat]
+c021701c acosNat_AddQoSRule     [acos_nat]
+c01e50fc acosNat_ResizePacket2  [acos_nat]
+c02044ac acosNat_dumpConf       [acos_nat]
+c01ed680 ProcessTcpOutboundPacket       [acos_nat]
+c01e50ac tf_meter_http_hijack_on        [acos_nat]
+c0222430 RuleNumberMax  [acos_nat]
+c01e21a0 Nat_NNTPURLFilterProcessInPacket       [acos_nat]
+c0209cd0 doJudgeUdpPortScan     [acos_nat]
+c01f2b00 Nat_AlgInitialize      [acos_nat]
+c0203f30 GetHashValueFromIpHeader       [acos_nat]
+c0216cd4 dnsRedirGetQtype       [acos_nat]
+c0223e50 g_qos_enable   [acos_nat]
+c0215d9c agLog_SubmitLog        [acos_nat]
+c01dd1c0 acosFw_InsertIpFilterRule2     [acos_nat]
+c01f7e28 pattern_get    [acos_nat]
+c01e69c4 acosNat_AddPreNatConn  [acos_nat]
+c0215d2c agLog_SendAll  [acos_nat]
+c0218168 abNatPptpWanHook       [acos_nat]
+c01f7664 Nat_LDAPProcessInboundPacket   [acos_nat]
+c0206690 agDos_getLogEntry      [acos_nat]
+c0212428 acosNat_getNextTmConfIdx       [acos_nat]
+c01f58f4 ProcessEspOutboundPacket       [acos_nat]
+c01f6a10 Nat_H323Initialize     [acos_nat]
+c0203b5c AddFragBuffToHashTable [acos_nat]
+c01e3720 new_FW_MatchTrustedIP2 [acos_nat]
+c01eac2c acosNat_Nat_GetLibVersion      [acos_nat]
+c020a378 agLib_time     [acos_nat]
+c02095cc GetSpecificDosRule     [acos_nat]
+c01e5c10 ProcessGreInboundPacket        [acos_nat]
+c0222cb8 g_H323Alg      [acos_nat]
+c0223e48 gEnableDnsRedirect     [acos_nat]
+c02082e4 doVanillaDetermine     [acos_nat]
+c02141a4 tmsch_dumpInfo [acos_nat]
+c0223bd8 g_dwDosAttackCnt       [acos_nat]
+c0222ba0 g_iDynAlgCnt   [acos_nat]
+c01f4dc8 Nat_IcqClientToServerOutboundPacket    [acos_nat]
+c01dd540 acosFw_MoveUpDownIpFilterRule  [acos_nat]
+c01fba00 natsip_beginConnection [acos_nat]
+c01ef750 DeleteConn     [acos_nat]
+c01eac88 acosNat_TranslateAsciiIp       [acos_nat]
+c01efb70 GetInboundHashValue    [acos_nat]
+c01f3f54 Nat_NotifyAlg  [acos_nat]
+c01faffc acosNatSip_cmiGetVersion       [acos_nat]
+c01f29a0 agNat_setGroupTab      [acos_nat]
+c0212810 acosNat_getTmConfStatus        [acos_nat]
+c02063c8 isPortUsedbyPorttr     [acos_nat]
+c0215cb4 agLogUpdate    [acos_nat]
+c0201dac natsip_regPFRs [acos_nat]
+c01e2990 FW_HTTPURLFilterInspect2       [acos_nat]
+c01e667c acosNat_CheckSelfInFromWan     [acos_nat]
+c01e8268 AddNaptRule1   [acos_nat]
+c0222d00 g_H245Alg      [acos_nat]
+c01f4150 Nat_AlgConnClose       [acos_nat]
+c01e837c AddNaptRule2   [acos_nat]
+c0223ed0 prerouting_okfn        [acos_nat]
+c0222b50 g_ptConnTable  [acos_nat]
+c01e08d0 acosFw_UpddateFilterRuleByServiceIdx   [acos_nat]
+c01dd8b0 acosFw_EnableBlockService      [acos_nat]
+c01de398 acosFw_GetServiceByName2       [acos_nat]
+c0231278 g_tacosNat_SelfInConnRule      [acos_nat]
+c01fada0 Nat_RtspInitialize     [acos_nat]
+c02022c4 Nat_YMSGProcessInboundPacket   [acos_nat]
+c01e38a4 acosFW_URLFilterCleanKeywords2 [acos_nat]
+c01dee5c isIgnoreICMPType       [acos_nat]
+c0209618 acos_InitDenyTable     [acos_nat]
+c0202c38 Nat_AimProcessInboundPacket    [acos_nat]
+c01f7d5c pattern_strstr [acos_nat]
+c01e0a44 SetFwEnable    [acos_nat]
+c01dd308 acosFw_ModIpFilterRule [acos_nat]
+c0209bfc doShowLogJudgeByFre    [acos_nat]
+c0211bc4 acosNat_setTmSchByRange2       [acos_nat]
+c021650c agLog_init     [acos_nat]
+c0207990 doLand [acos_nat]
+c021bf44 acosNat_ExistedRule    [acos_nat]
+c01dee28 QuickSearch2   [acos_nat]
+c01ea948 acosModifyRuleByID     [acos_nat]
+c021571c tmsch_utDelConf2       [acos_nat]
+c0212180 acosNat_setTmConfActive2       [acos_nat]
+c01e6980 acosNat_SetInboundFiltering    [acos_nat]
+c01f067c RemoveConnFromHash     [acos_nat]
+c0204624 acosNat_getTriggerConf [acos_nat]
+c021a254 acosNat_PreRouting     [acos_nat]
+c0202290 Nat_YMSGInitialize     [acos_nat]
+c02229ec g_iPortForwardingBase  [acos_nat]
+c02194ac abSendIpFrag   [acos_nat]
+c01f6820 Is_L2TP_LEN_Present    [acos_nat]
+c0208da0 RemoveFragChkFromHash  [acos_nat]
+c01e2378 Nat_NNTPURLFilterBeginConnection       [acos_nat]
+c021c138 IsFirstFrag    [acos_nat]
+c0208910 doSynDecreaseCnt       [acos_nat]
+c021671c dnsRedirect_isNeedRedirect     [acos_nat]
+c01f5eb4 acosIpsecAlg_removeOriginConnFromHashTable     [acos_nat]
+c02069f8 acosDos_KeepAttackLog2 [acos_nat]
+c0222244 g_iWanInterface2       [acos_nat]
+c01f6a20 Nat_LDAPInitialize     [acos_nat]
+c01f5fdc Nat_L2TP_ProcessOutboundPacket [acos_nat]
+c0228c00 g_pacosFw_ServiceList  [acos_nat]
+c02189b0 abNatHookForSingleWan  [acos_nat]
+c01e6118 acosNat_SetInterfaceType       [acos_nat]
+c01ebb90 ProcessUdpPacket       [acos_nat]
+c01ea8e8 acosGetNatRuleByID     [acos_nat]
+c021bea4 acosNat_ExistedConn    [acos_nat]
+c0222b54 g_iConnTableSize       [acos_nat]
+c01f3768 IsRetransmit   [acos_nat]
+c01dd3ac acosFw_ModIpFilterRule2        [acos_nat]
+c0205590 porttr_delConnRecord   [acos_nat]
+c01ded98 acosFwNat_Test [acos_nat]
+c0222bb0 g_FtpAlg       [acos_nat]
+c01fa5e0 Nat_PPTP_Initialize    [acos_nat]
+c02159d0 agLogWriteLog  [acos_nat]
+c02048a0 acosNat_getTriggerRec  [acos_nat]
+c0237b28 g_UdpPortScanEntryList [acos_nat]
+c01e6938 acosNat_EnableSIP      [acos_nat]
+c02224c4 g_NNTPUrlFilterAlg     [acos_nat]
+c01e34cc FW_URLFilterClean      [acos_nat]
+c02191d0 abNatShowInf   [acos_nat]
+c01ddb2c acosFw_GetBlockService2        [acos_nat]
+c01e18dc Nat_HTTPURLFilterProcessOutPacket      [acos_nat]
+c01dc168 acosFw_GetService2     [acos_nat]
+c02124a0 acosNat_getTmConfInfo  [acos_nat]
+c021c25c CalcTcpChecksum        [acos_nat]
+c0223ec0 g_iLpbkInterface       [acos_nat]
+c01e10e0 EnableIpFilterRule     [acos_nat]
+c0223d88 g_iTask        [acos_nat]
+c02193d8 abNatShowAllInf        [acos_nat]
+c01e2198 Nat_NNTPURLFilterInitialize    [acos_nat]
+c0217778 Nat_ScBeginConnection  [acos_nat]
+c01de5cc acosFw_GetServiceName2 [acos_nat]
+c021d4e4 acosNat_IsPacketBufMcast       [acos_nat]
+c021569c tmsch_utDelSch2        [acos_nat]
+c01f1a04 acosNat_PortUsedbyConn_Del     [acos_nat]
+c0208c34 doImapScan     [acos_nat]
+c01f0294 GetOutboundHashValue1  [acos_nat]
+c02174e0 inc_bpa_pkt_count      [acos_nat]
+c020195c natsip_dumpNatAlgInfo  [acos_nat]
+c02182f8 abNatIPsecHook [acos_nat]
+c01ea628 DeleteBasicNatRule     [acos_nat]
+c01f86d8 apply_diff     [acos_nat]
+c02239b8 g_acosNat_CheckHttpPoicy       [acos_nat]
+c0203d5c FindFragBuffByHash     [acos_nat]
+c01de834 acosFw_ModBlockServiceAction   [acos_nat]
+c0219ad0 abNatUnhookSingleWan   [acos_nat]
+c01ea344 isPortUsedbyRule       [acos_nat]
+c0222444 pRouterTail2   [acos_nat]
+c02046e0 acosNat_delTriggerConf [acos_nat]
+c01e79d4 FindNatRule2   [acos_nat]
+c01e7be8 FindNatRule3   [acos_nat]
+c0222cb2 g_peer_h245_port       [acos_nat]
+c01de154 acosFw_DelServiceByName        [acos_nat]
+c01ddeac acosFw_DelBlockService2        [acos_nat]
+c01f8dd8 Msn_DelHost    [acos_nat]
+c01dccb4 acosFw_ShowService     [acos_nat]
+c0223d90 g_iCurFreeConf2        [acos_nat]
+c01f6a18 Nat_H245Initialize     [acos_nat]
+c02238e0 YAHOO_SERVICE_NOTIFY   [acos_nat]
+c01ddbe8 acosFw_AddBlockService [acos_nat]
+c01e2388 StringFind     [acos_nat]
+c01f5dec acosIpsecAlg_addUpdateConnToHashTable  [acos_nat]
+c0222240 g_iWanInterface        [acos_nat]
+c0205534 porttr_getPortRecord   [acos_nat]
+c0211db0 acosNat_setTmSchBySpec2        [acos_nat]
+c0231250 g_tacosNat_SelfConnRule        [acos_nat]
+c01dc078 acosFw_GetService      [acos_nat]
+c020b090 agCliFuncUnRegister    [acos_nat]
+c02096c8 AddDenyTb      [acos_nat]
+c0223ed4 postrouting_okfn       [acos_nat]
+c0201f40 isYahooCmdPkt  [acos_nat]
+c0206d98 acosDos_ShowAttackLog  [acos_nat]
+c0206634 acosDos_ResetAttackLog [acos_nat]
+c0203f60 acosNat_CheckFragPkt   [acos_nat]
+c01de9e8 abDisplayRecordIpData  [acos_nat]
+c0223ecc pIPsecIf       [acos_nat]
+c01f6a30 Nat_NetMeetingBeginConnection  [acos_nat]
+c02229d8 g_iBasicNatUsed        [acos_nat]
+c0216bc4 stricmp        [acos_nat]
+c01e6ba8 SwapSourceDest [acos_nat]
+c01dc06c acosFw_GetServiceCnt2  [acos_nat]
+c01dda70 acosFw_GetBlockService [acos_nat]
+c02148f8 tmsch_utTraverse2      [acos_nat]
+c01e07e8 DeleteRule2    [acos_nat]
+c0206374 isSrcIPUsedInTriggerRec        [acos_nat]
+c02223bc g_bDMZEnable   [acos_nat]
+c01f8f58 Nat_MsnInitialize      [acos_nat]
+c020a09c agLib_srand    [acos_nat]
+c0203224 AddIpFragBuffEntry     [acos_nat]
+c01ed65c ProcessTcpInboundPacket        [acos_nat]
+c0204f68 porttr_setPortConf     [acos_nat]
+c01f0884 MatchConn      [acos_nat]
+c02174f8 agnat_proc_stats       [acos_nat]
+c0222cb4 gIdCount       [acos_nat]
+c0217a80 acosNat_IsWanIp        [acos_nat]
+c01f5d74 acosIpsecAlg_isEspFirstPacket  [acos_nat]
+c022245c pacosFw_CbNatSelfInFromWanCheck        [acos_nat]
+c0222b9c g_iAlgSessionSize      [acos_nat]
+c01e11f8 DeleteIpFilterRule     [acos_nat]
+c01f5fb0 Nat_L2TP_EndConnection [acos_nat]
+c021c39c CalcUdpChecksum        [acos_nat]
+c0215890 tmsch_utLoadRule2      [acos_nat]
+c0214b10 tmsch_utShowTime       [acos_nat]
+c0223be4 g_ptDenyTable  [acos_nat]
+c02111a8 agFileWrite    [acos_nat]
+c01f5918 ProcessEspPacket       [acos_nat]
+c01e0988 InitAllLink2   [acos_nat]
+c02349d0 g_CliConnUsgTbl        [acos_nat]
+c01fa540 Nat_MsnBeginConnection [acos_nat]
+c0212a90 tmsch_checkTmSchStatus2        [acos_nat]
+c0222f44 g_sipMediaMap  [acos_nat]
+c01e1640 AddSeqDiff     [acos_nat]
+c0209f44 agLib_stristr  [acos_nat]
+c01f13e0 acosNat_ReusePortMapping       [acos_nat]
+c01fb5a8 natsip_processOutboundPacket   [acos_nat]
+c01f41b0 Nat_AlgRegisterUpnpApplyAlgCb  [acos_nat]
+c022238c g_iPptpWanInterface    [acos_nat]
+c01e363c FW_MatchTrustedIP      [acos_nat]
+c0222a00 g_pusListenPortStart   [acos_nat]
+c0219550 abNatUnhook    [acos_nat]
+c0235e40 g_MsnSessionList       [acos_nat]
+c0213e10 tmsch_taskcontext      [acos_nat]
+c01dd6dc acosFw_MoveUpDownIpFilterRule2 [acos_nat]
+c0202c30 Nat_AimInitialize      [acos_nat]
+c01e0958 InitAllLink    [acos_nat]
+c01f9724 Nat_MsnProcessOutboundPacket   [acos_nat]
+c02080a4 doAscendKill   [acos_nat]
+c0228798 g_iLanInterface        [acos_nat]
+c01f4990 Nat_IcqClientToServerInitialize        [acos_nat]
+c02238d8 g_iRuleNum     [acos_nat]
+c0200498 natsip_clearTimeout    [acos_nat]
+c021a81c packetFilter_ipFilterHook      [acos_nat]
+c01e2424 Get_URL_Host_String    [acos_nat]
+c01f0e30 ReArrangeConn  [acos_nat]
+c01de038 acosFw_ModBlockService2        [acos_nat]
+c01ef920 ConnIsTimeout  [acos_nat]
+c0234bc0 g_ptAlgSessionTable    [acos_nat]
+c01e5f30 acosNat_InitializeNat  [acos_nat]
+c01e6474 TryResolvedRule2       [acos_nat]
+c01f177c isPortUsedbyConn       [acos_nat]
+c0202be4 Nat_YMSGBeginConnection        [acos_nat]
+c01fa5f8 Nat_PPTP_ProcessOutboundPacket [acos_nat]
+c01e3688 FW_MatchTrustedIP2     [acos_nat]
+c01e0030 ShowIpFilterRuleLink   [acos_nat]
+c0222424 IPSendFrame    [acos_nat]
+c0219be8 abCheckInterface       [acos_nat]
+c0216ae4 dnsRedirect_getQueryName       [acos_nat]
+c01e5c34 ProcessGreOutboundPacket       [acos_nat]
+c01ea868 IsEqualNaptWanIp       [acos_nat]
+c01e4450 acosNat_blockSiteCheck [acos_nat]
+c0217e98 acosNat_AddDefGRERule  [acos_nat]
+c0211cc0 acosNat_setTmSchBySpec [acos_nat]
+c01ea224 isPortUsedbyDeviceListenPort   [acos_nat]
+c02099dc DeleteDenyTb   [acos_nat]
+c02086a8 doSynDetermine [acos_nat]
+c0222944 g_acosNat_UBD_Enable   [acos_nat]
+c0222b98 g_iAlgUsed     [acos_nat]
+c023b3a4 pktLen [acos_nat]
+c020959c SetDosRule     [acos_nat]
+c020aba8 agLib_mktime   [acos_nat]
+c0222428 pCheckRule2    [acos_nat]
+c01e15f4 acosFw_RegExistedNatConnCb     [acos_nat]
+c02312a0 g_tacosNat_DMZRule     [acos_nat]
+c01ea9fc acosNat_portCheck      [acos_nat]
+c01e160c acosFw_RegNotifyDropFragCb     [acos_nat]
+c0208a88 doStormNew     [acos_nat]
+c01f1eb0 CleanConnEntry [acos_nat]
+c01ed6b0 ProcessIcmpInboundPacket       [acos_nat]
+c02239b4 g_ptRec        [acos_nat]
+c01dc4bc acosFw_StorePolicy     [acos_nat]
+c01e0270 ResetRuleNumber2       [acos_nat]
+c0223d84 g_iCurFreeConf [acos_nat]
+c01f54ac Nat_IcqClientToServerBeginConnection   [acos_nat]
+c0205454 porttr_getPortConfPtr  [acos_nat]
+c01eea78 FindConn       [acos_nat]
+c01f20c0 acosNat_connRecoveryAddConn    [acos_nat]
+c01e6b64 acosNat_FletDisable    [acos_nat]
+c021bf00 acosNat_SetConnDstEntry        [acos_nat]
+c01e381c acosFW_URLFilterCleanKeywords  [acos_nat]
+c0223d94 g_iTask2       [acos_nat]
+c020623c porttr_disableConf     [acos_nat]
+c01e37bc acosFW_URLFilterSetTrustedIP   [acos_nat]
+c01de9c4 abInitRecordIpData     [acos_nat]
+c020a550 GetNextDayOfWeek       [acos_nat]
+c0222410 fw_bks_block_type      [acos_nat]
+c01dc92c acosFw_DelService      [acos_nat]
+c01e269c FW_HTTPURLFilterInspect        [acos_nat]
+c0222414 fw_bks_block_type2     [acos_nat]
+c0223bdc g_dwDosTblFullCnt      [acos_nat]
+c02381b8 g_ptIpFragCheckTable   [acos_nat]
+c01dcd4c acosFw_ShowService2    [acos_nat]
+c01deda0 packetFilter_start     [acos_nat]
+c02229c4 g_iRuleTableSize       [acos_nat]
+c022296c g_ProtocolProcessArray [acos_nat]
+c01fb0ec natsip_init    [acos_nat]
+c0234bc4 g_DynAlgPool   [acos_nat]
+c02229e8 g_iNaptBase    [acos_nat]
+c0214744 tmsch_utTraverse       [acos_nat]
+c0216ce0 dnsRedirGetPktLen      [acos_nat]
+c01e37ac acosFW_URLFilterEnable2        [acos_nat]
+c01eb8ec acosNat_ResetDebugCnt  [acos_nat]
+c01dea6c abIsMatchRecordIpData  [acos_nat]
+c0219ca4 acosNat_DestIsLocal    [acos_nat]
+c01e2f10 FW_NNTPURLFilterInspect2       [acos_nat]
+c020afc0 agCliFuncRegister      [acos_nat]
+c01e1e0c Nat_HTTPURLFilterProcessOutPacket2     [acos_nat]
+c0216cc8 dnsRedirSetBlankstate  [acos_nat]
+c0222948 g_acosNat_SPI_Enable   [acos_nat]
+c01f2d24 Nat_AlgUnregister      [acos_nat]
+c0206560 Nat_RegPrintMsg        [acos_nat]
+c020a3a8 agLib_AddTimerEvent    [acos_nat]
+c0204704 acosNat_getTriggerFirstConf    [acos_nat]
+c0208a38 isFastCleanMode        [acos_nat]
+c01e0364 WriteRule      [acos_nat]
+c0209458 ClearIpFragCheckTable  [acos_nat]
+c01e6318 acosNat_EnumerateNatRule       [acos_nat]
+c01e68cc acosNat_GetDMZStatus   [acos_nat]
+c02229d4 g_iRuleEntryUsed       [acos_nat]
+c01eae78 acosNat_TranslateAsciiIpPort   [acos_nat]
+c0208a60 isSyncBlockMode        [acos_nat]
+c02238e4 YAHOO_SERVICE_PEARTOPEAR       [acos_nat]
+c0223ec8 pPptpWanIf     [acos_nat]
+c0216cec dnsFilterHook  [acos_nat]
+c020477c acosNat_getTriggerNextConf     [acos_nat]
+c01f88b8 Msn_AddSession [acos_nat]
+c02145b0 tmsch_bs_status2       [acos_nat]
+c01ddcf0 acosFw_AddBlockService_S2      [acos_nat]
+c021c4dc ModifyTcpChecksum      [acos_nat]
+c01e9e20 GetNatRule     [acos_nat]
+c0223be0 before [acos_nat]
+c0222e40 g_PPTP_Alg     [acos_nat]
+c01decb0 acosFwNat_ShowIpFilterRule     [acos_nat]
+c01e692c acosNat_GetSIPStatus   [acos_nat]
+c01e3784 FW_URLFilterReadConfig2        [acos_nat]
+c01fa61c Nat_PPTP_ProcessInboundPacket  [acos_nat]
+c01e4b10 acosNat_blockSiteCheck2        [acos_nat]
+c01ea6a0 DeleteNaptRule [acos_nat]
+c02029f4 FindYMSGTablePort      [acos_nat]
+c01dde3c acosFw_DelBlockService [acos_nat]
+c0201f90 parseYahooContent      [acos_nat]
+c0208ebc FindFragChkByHash      [acos_nat]
+c01ef124 AddConn        [acos_nat]
+c01f15fc InboundFiltering       [acos_nat]
+c01e633c acosDeleteBasicNatRule [acos_nat]
+c020781c doPingOfDeath  [acos_nat]
+c021af34 acosNat_LanToLanRouting        [acos_nat]
+c01f8e7c Msn_ListHost   [acos_nat]
+c020a0dc agLib_inet_aton        [acos_nat]
+c01fad54 PPTP_PrepareCtrlConnTimeout    [acos_nat]
+c01ee180 findOldestConn [acos_nat]
+c01e9568 MarkALGCreatedRule     [acos_nat]
+c02117d8 acosNat_initTm [acos_nat]
+c01e6e20 CalcChecksum   [acos_nat]
+c01fa640 Nat_PPTP_ProcessPacket [acos_nat]
+c01e6910 acosNat_EnableUBD      [acos_nat]
+c01edde0 FindPortforwardingRule [acos_nat]
+c01deeb4 CheckRouterRule2       [acos_nat]
+c01f0ed0 acosNat_CheckConnTable [acos_nat]
+c01e379c acosFW_URLFilterEnable [acos_nat]
+c022250c htmlHeaderBuffer1      [acos_nat]
+c01dce90 acosFw_EnableEchoResp  [acos_nat]
+c0231218 htmlHeaderBuffer2      [acos_nat]
+c01e017c ResetRuleNumber        [acos_nat]
+c01dda10 acosFw_GetBlockServiceCnt      [acos_nat]
+c01dca04 acosFw_DelService2     [acos_nat]
+c02229f0 g_iUnresolveInterface  [acos_nat]
+c01f6a28 Nat_H225Initialize     [acos_nat]
+c0209334 doDumpTearDropList     [acos_nat]
+c0217780 Nat_ScEndConnection    [acos_nat]
+c01f8304 get_total_diff [acos_nat]
+c0201a34 natsip_dumpRuleInfo    [acos_nat]
+c01dd960 acosFw_EnableBlockService2     [acos_nat]
+c02229e4 g_iBasicNatBase        [acos_nat]
+c01dfda0 AddRule        [acos_nat]
+c01e6948 acosNat_EnableAlg      [acos_nat]
+c01eb92c modify_tcp_mss [acos_nat]
+c01f497c Nat_FtpEndConnection   [acos_nat]
+c0222458 pacosFw_CbNatCheckFrag [acos_nat]
+c0228e70 RuleIndexArray [acos_nat]
+c0209af8 ClearUnusedDenyTb      [acos_nat]
+c01f3ea8 Nat_UnRegDynAlg        [acos_nat]
+c0223990 g_iFragEntryUsed       [acos_nat]
+c01fa5f0 Nat_PPTP_EndConnection [acos_nat]
+c0218094 acosNat_InitializeInf  [acos_nat]
+c0222b64 g_ConnStateSym [acos_nat]
+c01f1e7c GetConnByIndex [acos_nat]
+c0222398 DevListenPortStartList [acos_nat]
+c0212634 acosNat_getNextTmSchIdx2       [acos_nat]
+c01f76d8 Nat_LDAPProcessOutboundPacket  [acos_nat]
+c0222448 nFwType        [acos_nat]
+c01f37ac Nat_FindAlgSession     [acos_nat]
+c0222940 g_iNatDbgId    [acos_nat]
+c01f2440 Reserve_Conn_Check     [acos_nat]
+c0223e44 gBlankState    [acos_nat]
+c0217850 acosNat_GetIpAddressAndMask    [acos_nat]
+c01e9b28 DumpNatRuleTable       [acos_nat]
+c01f35f8 Nat_AlgGetNewPortPair  [acos_nat]
+c01e03d0 ModifyRule     [acos_nat]
+c01f33f0 Nat_AlgGetNewAlgSession        [acos_nat]
+c0222a10 g_multiWan     [acos_nat]
+c01e6b70 acosNat_IsFletEnable   [acos_nat]
+c0203f28 GetHashValueFromFragBuff       [acos_nat]
+c01dd878 acosFw_SaveRule        [acos_nat]
+c0207dc4 doChargen      [acos_nat]
+c023bc90 qos_lan_port_priority  [acos_nat]
+c021bee8 acosNat_CleanPreConn   [acos_nat]
+c02238e8 YAHOO_STATUS_AVAILABLE [acos_nat]
+c01e3b78 acosFW_URLFilterDelKeyword2    [acos_nat]
+c02122c8 acosNat_delTmConf      [acos_nat]
+c01e1758 Nat_HTTPURLFilterProcessInPacket       [acos_nat]
+c02229f4 g_iCurNaptPort [acos_nat]
+c0206e74 acos_DoSExection       [acos_nat]
+c0216904 dnsRedirect_getRedirectIndex   [acos_nat]
+c0222454 pacosFw_CbNatDropFrag  [acos_nat]
+c01e63d0 TryResolvedRule        [acos_nat]
+c02238f0 YAHOO_STATUS_TYPING    [acos_nat]
+c01dcff4 acosFw_EnableRemoteMgmt        [acos_nat]
+c02238f4 g_YMSGAlg      [acos_nat]
+c02125f8 acosNat_getNextTmSchIdx        [acos_nat]
+c01e9898 EnumerateNatRule       [acos_nat]
+c021c1e8 CalcIpChecksum [acos_nat]
+c01f3504 Nat_AlgAddOutboundSeqDiff      [acos_nat]
+c0222b60 ptacosNat_PreFoundConn [acos_nat]
+c01f3120 Nat_AlgModifyOutboundAck       [acos_nat]
+c01e9e78 GetNaptPort    [acos_nat]
+c01f6a38 Nat_NetMeetingEndConnection    [acos_nat]
+c0222d90 g_H225Alg      [acos_nat]
+c01e0f3c ModifyIpFilterRule2    [acos_nat]
+c01e61e4 acosNat_AddPortForwardingRule1 [acos_nat]
+c0206570 max_dumpDenyEntry      [acos_nat]
+c0222e90 g_RTSPAlg      [acos_nat]
+c02239a4 iUDPFragBuffCount      [acos_nat]
+c02097b8 GetHashValueBysourceIP [acos_nat]
+c0204568 acosNat_dumpRec        [acos_nat]
+c01e624c acosNat_AddPortForwardingRule2 [acos_nat]
+c02175f0 Nat_ScInitialize       [acos_nat]
+c01f58b4 Nat_IcqPeerToPeerBeginConnection       [acos_nat]
+c01e6214 acosNat_AddPortForwardingRule3 [acos_nat]
+c021d66c abIpFilterHook [acos_nat]
+c01e627c acosNat_AddPortForwardingRule4 [acos_nat]
+c01e62b4 acosNat_AddPortForwardingRule5 [acos_nat]
+c02080b4 doXmasTree     [acos_nat]
+c01f6000 Nat_L2TP_ProcessPacket [acos_nat]
+c022278c htmlTMPageBuffer       [acos_nat]
+c0208c18 doBO   [acos_nat]
+c01f7c20 b64_encode     [acos_nat]
+c0222fd4 g_sipKeyMap    [acos_nat]
+c02036f0 ProcessIpFragBuffEntry [acos_nat]
+c01faf98 Nat_RtspBeginConnection        [acos_nat]
+c0208c28 doWinNuke      [acos_nat]
+c01e376c FW_URLFilterReadConfig [acos_nat]
+c01dd130 acosFw_InsertIpFilterRule      [acos_nat]
+c02145c0 tmsch_usrCallBack      [acos_nat]
+c01dc060 acosFw_GetServiceCnt   [acos_nat]
+c01f39f8 Nat_FindDynAlgEntry    [acos_nat]
+c01dcadc acosFw_ModService      [acos_nat]
+c02223a4 DevListenPortEndList   [acos_nat]
+c01f55a4 Nat_IcqPeerToPeerOutboundPacket        [acos_nat]
+c02175e0 acosNat_ShowVerFunc    [acos_nat]
+c02062d8 porttr_enableConf      [acos_nat]
+c01f8574 pat_comp       [acos_nat]
+c0212850 acosNat_getTmConfStatus2       [acos_nat]
+c01eab20 acosNat_IfIdxToIfRefListIdx    [acos_nat]
+c01dc7fc acosFw_AddService2     [acos_nat]
+c01e6360 acosDeleteNaptRule     [acos_nat]
+c01f7ed0 get_modify_address     [acos_nat]
+c0222efc g_SipAlg       [acos_nat]
+c0219f98 acosNat_GetWanInfId2   [acos_nat]
+c01e0914 acosFw_UpddateFilterRuleByServiceIdx2  [acos_nat]
+c0222404 g_recordIPIdx  [acos_nat]
+c01fafb0 natsip_isWanIp [acos_nat]
+c01dcde4 acosFw_GetEchoRespStatus       [acos_nat]
+c020a0a8 agLib_inet_addr        [acos_nat]
+c0222e30 g_MsnHostFreeCount     [acos_nat]
+c0218030 acosNat_ChangeRemoteMgmtPort   [acos_nat]
+c01f58bc Nat_IcqPeerToPeerEndConnection [acos_nat]
+c01e95d8 CheckTimeOutRule       [acos_nat]
+c021d378 UpdateConnTime [acos_nat]
+c01f1bb0 acosNat_BS_PortUsedbyConn_Del  [acos_nat]
+c01ec8a8 ProcessUdpInboundPacket        [acos_nat]
+c0215658 tmsch_utDelSch [acos_nat]
+c01efe20 GetInboundHashValue1   [acos_nat]
+c01fa568 Nat_MsnEndConnection   [acos_nat]
+c021b710 acosNat_ProcessInboundPacket   [acos_nat]
+c02030f0 Nat_AimEndConnection   [acos_nat]
+c0222c48 g_pIcqPeerToPeerAlg    [acos_nat]
+c01ee144 FindUsgCliByIP [acos_nat]
+c01e0a38 GetFwEnable    [acos_nat]
+c0222478 trafficHttpHijackOn    [acos_nat]
+c0222ee0 g_UseOriPort   [acos_nat]
+c0212510 acosNat_getTmConfInfo2 [acos_nat]
+c0222e2c g_MsnSessionIndex      [acos_nat]
+c02229c8 g_iBasicNatSize        [acos_nat]
+c01dd2ac acosFw_DelIpFilterRule2        [acos_nat]
+c01f300c Nat_AlgRemoveForwardingRule    [acos_nat]
+c021111c agFileRead     [acos_nat]
+c01dfea4 AddRule2       [acos_nat]
+c0203100 IpFragInitialize       [acos_nat]
+c01dc85c acosFw_AddPolicy       [acos_nat]
+c01f421c Nat_SetAlg     [acos_nat]
+c01dedf4 QuickSearch    [acos_nat]
+c01f8b80 Msn_ListSession        [acos_nat]
+c022247c g_HTTPUrlFilterAlg     [acos_nat]
+c0201b94 natsip_dumpInfo        [acos_nat]
+c01e6d78 ModifyIcmpChecksum     [acos_nat]
+c02376a4 g_FragHashTable        [acos_nat]
+c020b118 agDoIoctl      [acos_nat]
+c020906c GetHashValueFromFragChk        [acos_nat]
+c0216d48 acosNat_qosInit        [acos_nat]
+c01dc258 acosFw_AddService      [acos_nat]
+c0212310 acosNat_delTmConf2     [acos_nat]
+c0223ed0 agnat_lock     [acos_nat]
+c0217a14 acosNat_IsWanIf        [acos_nat]
+c0237614 g_SipInfo      [acos_nat]
+c02095f0 SetSpecificDosRule     [acos_nat]
+c0214aac tmsch_utSetTime        [acos_nat]
+c01e036c ClearAllRouterRule     [acos_nat]
+c01f3030 Nat_AlgModifyInboundAck        [acos_nat]
+c02177e4 acosNat_IsPacketBufBcast       [acos_nat]
+c01e25b4 Get_URL_Path_String    [acos_nat]
+c01e116c EnableIpFilterRule2    [acos_nat]
+c01e80cc AddBasicNatRule        [acos_nat]
+c01f0514 AddConnToHashTable     [acos_nat]
+c01e5c58 ProcessGrePacket       [acos_nat]
+c01e3c8c wan_lan_conflict_flag_on       [acos_nat]
+c01f5fb8 Nat_L2TP_ProcessInboundPacket  [acos_nat]
+c0222394 g_iLanIfCount  [acos_nat]
+c01f43dc Nat_FtpProcessOutboundPacket   [acos_nat]
+c0238b78 g_DoSHashTable [acos_nat]
+c01eba98 computeTCPChecksum     [acos_nat]
+c0223998 g_iIpFragSize  [acos_nat]
+c01e36d4 new_FW_MatchTrustedIP  [acos_nat]
+c01e683c acosNat_SetDMZRule     [acos_nat]
+c01f3210 Nat_AlgModifyInboundSeq        [acos_nat]
+c0237620 YMSG_Table     [acos_nat]
+c01b3468 sslpnphy_gain_table    [wl]
+c005cb9c wlc_bmac_btc_wire_get  [wl]
+c01b3384 LPPHY_REV2_txdigfiltcoeffs_cck_chan14  [wl]
+c0196abc d11ucode_2w20sz        [wl]
+c002ad10 wl_free        [wl]
+c00281d8 qm_mul323216   [wl]
+c01a45a4 iq_lut_core0_rev3      [wl]
+c010764c d11ucode16_lp  [wl]
+c019f7e8 chanest_tbl_rev0       [wl]
+c0032274 wlc_set_gmode  [wl]
+c0031c58 wlc_up [wl]
+c0038d90 wlc_send80211pkt       [wl]
+c0034ea4 wlc_iovar_setint       [wl]
+c0027a20 qm_sat32       [wl]
+c00450b0 wlc_bssid_is_current   [wl]
+c01a3e84 chanest_tbl_rev3       [wl]
+c019f1d0 intlv_tbl_rev0 [wl]
+c002846c qm_log10       [wl]
+c005c074 wlc_bmac_info_init     [wl]
+c0060eec wlc_bmac_set_noreset   [wl]
+c004bf20 wlc_ampdu_null_delim_cnt       [wl]
+c00686f8 wlc_event_free [wl]
+c01a94b4 nf_table_rev0  [wl]
+c01a2528 intlv_tbl_rev3 [wl]
+c01b3370 LPPHY_REV2_txdigfiltcoeffs_cck_evm     [wl]
+c019949c nf_table_rev2  [wl]
+c0068878 wlc_eventq_test_ind    [wl]
+c0027d30 qm_shr32       [wl]
+c00546a4 wlc_bsscfg_apup_cnt    [wl]
+c019acf0 nf_table_rev3  [wl]
+c004ca74 wlc_amsdurx_cap        [wl]
+c005287c wlc_restart_ap [wl]
+c013ddb0 d11ucode19sz   [wl]
+c006d9d4 wlc_phy_cal_init       [wl]
+c0048f48 scb_ampdu_cleanup_all  [wl]
+c006230c wlc_bsscfg_down        [wl]
+c00b66a0 wlc_ratesel_minrate    [wl]
+c002c8b0 wl_set_monitor [wl]
+c003aa44 wlc_tx_suspended       [wl]
+c008b2b4 wlc_phy_txpower_set    [wl]
+c003f52c wlc_valid_rate [wl]
+c0196e08 txpwr_ctrl_tbl_rev0    [wl]
+c0043f74 wlc_default_rateset    [wl]
+c0197ad4 txpwr_ctrl_tbl_rev1    [wl]
+c002dc10 wlc_scan_request       [wl]
+c0066590 wlc_rclass_ctlsb       [wl]
+c00bb7e0 wlc_scbband    [wl]
+c00462e0 wlc_write_brcm_ht_cap_ie       [wl]
+c01a51a4 mimophytbl_info_rev3_volatile  [wl]
+c0047fec wlc_ucodembss_hwcap    [wl]
+c01a8c00 gain_idx_tbl_rev02     [wl]
+c005b0c8 wlc_bmac_set_chanspec  [wl]
+c004ecf0 wlc_antsel_antcfg_get  [wl]
+c00b57e0 wlc_ratesel_attach     [wl]
+c01a8e50 gain_idx_tbl_rev03     [wl]
+c0027d54 qm_shl16       [wl]
+c0038034 wlc_statsupd   [wl]
+c004808c wlc_pllreq     [wl]
+c004a350 wlc_ampdu_dotxstatus_regmpdu   [wl]
+c0196bd0 crs_gain_nft_tbl_rev0  [wl]
+c019789c crs_gain_nft_tbl_rev1  [wl]
+c00275e8 bcm_is_wpa_ie  [wl]
+c005ff24 wlc_bmac_xmtfifo_sz_get        [wl]
+c01a960c gain_tbl_rev0  [wl]
+c00bfa54 wlc_hdr_proc   [wl]
+c00619dc wlc_gpio_fast_deinit   [wl]
+c005de10 wlc_bmac_phyclk_fgc    [wl]
+c01988b4 gain_tbl_rev2  [wl]
+c002c808 wl_free_timer  [wl]
+c0042170 wlc_update_brcm_ie     [wl]
+c019a004 gain_tbl_rev3  [wl]
+c004f9ec wlc_send_action_switch_channel [wl]
+c00bc164 wlc_scb_ratesel_init   [wl]
+c0060e6c wlc_bmac_copyfrom_vars [wl]
+c00467c4 wlc_ht_read_obss_scanparams_ie [wl]
+c00b509c wlc_rateset_filter     [wl]
+c01a0e58 mimophytbl_info_rev0   [wl]
+c0040dfc wlc_bss_update_probe_resp      [wl]
+c0043978 wlc_pkt_callback_append        [wl]
+c002f78c wlc_is_wme_ie  [wl]
+c01755e4 d11ucode_2w16_sslpn_nobtsz     [wl]
+c01a51f4 mimophytbl_info_rev3   [wl]
+c003555c wlc_txpktcnt   [wl]
+c0197810 dot11lpphytbl_info_sz_rev0     [wl]
+c003896c wlc_chipmatch  [wl]
+c005b8a0 wlc_bmac_attach        [wl]
+c01984dc dot11lpphytbl_info_sz_rev1     [wl]
+c00bb748 wlc_scb_iterinit       [wl]
+c0047e18 wlc_set_rcmta  [wl]
+c01999c0 dot11lpphytbl_info_sz_rev2     [wl]
+c005542c wlc_ht_coex_update_fid_time    [wl]
+c0042408 wlc_recover_tsf32      [wl]
+c019b214 dot11lpphytbl_info_sz_rev3     [wl]
+c0043654 wlc_senddeauth [wl]
+c01b2180 rate_info      [wl]
+c00313dc wlc_down_for_mpc       [wl]
+c01b2870 log_table      [wl]
+c01a89b0 gain_idx_tbl_rev0      [wl]
+c0048cf0 wlc_ampdu_detach       [wl]
+c0029670 rijndaelDecrypt        [wl]
+c01989a8 gain_idx_tbl_rev2      [wl]
+c0199d98 gain_idx_tbl_rev3      [wl]
+c00beb20 wmf_sendup     [wl]
+c0064d38 wlc_set_quiet_chanspec [wl]
+c004fc00 wlc_wds_create [wl]
+c003a700 wlc_rssi_init  [wl]
+c0060e80 wlc_bmac_retrylimit_upd        [wl]
+c01a9ed8 dot11lpphy_rx_gain_init_tbls_40Mhz_sz  [wl]
+c0063b28 wlc_channel_locale_flags       [wl]
+c0034f9c wlc_module_register    [wl]
+c0066ae0 wlc_get_country_list   [wl]
+c01b335c LPPHY_REV2_txdigfiltcoeffs_cck_sm      [wl]
+c002d928 wlc_cs_scan_timer      [wl]
+c0027f6c qm_abs16       [wl]
+c0031410 wlc_out        [wl]
+c0198d20 gain_idx_aci_tbl_rev2  [wl]
+c00302a0 wlc_attach     [wl]
+c019a110 gain_idx_aci_tbl_rev3  [wl]
+c0027c9c qm_shl32       [wl]
+c0042bf8 wlc_prep_pdu   [wl]
+c002cb08 wlc_fatal_error        [wl]
+c0027048 xor_128bit_block       [wl]
+c0063f34 wlc_set_countrycode_rev        [wl]
+c00c99a0 d11b0g0bsinitvals4     [wl]
+c0196cd8 iq_local_tbl_rev0      [wl]
+c00630b8 wlc_vndr_ie_getlen     [wl]
+c01979a4 iq_local_tbl_rev1      [wl]
+c004a584 wlc_ampdu_dotxstatus   [wl]
+c01667c0 d11ucode_2w16_sslpn    [wl]
+c00cb298 d11b0g0bsinitvals5     [wl]
+c0199500 iq_local_tbl_rev2      [wl]
+c0045d10 wlc_txq_scb_init       [wl]
+c003f17c wlc_rate_lookup_init   [wl]
+c019ad54 iq_local_tbl_rev3      [wl]
+c0047df4 wlc_set_addrmatch      [wl]
+c002c924 wl_get_pktbuffer       [wl]
+c00cd500 d11b0g0bsinitvals9     [wl]
+c01a978c spur_tbl_rev0  [wl]
+c0042dc0 wlc_sendprobe  [wl]
+c002b954 wl_intrsrestore        [wl]
+c0027c44 qm_mac321616   [wl]
+c00410c0 wlc_copy_info_elt      [wl]
+c01ac838 wlc_iovars     [wl]
+c01a97cc spur_tbl_rev2  [wl]
+c00506c0 wlc_prq_process        [wl]
+c00731cc wlc_nphy_rxcore_setstate       [wl]
+c015deec d11ucode_2w16_lp       [wl]
+c0068594 wlc_eventq_detach      [wl]
+c00629e0 wlc_bsscfg_get [wl]
+c01a9300 aux_gain_idx_tbl_rev0  [wl]
+c0028384 qm_muls32      [wl]
+c005a048 wlc_apps_apsd_trigger  [wl]
+c004c07c wlc_ampdu_macaddr_upd  [wl]
+c009718c wlc_phy_freqtrack_end  [wl]
+c005a458 wlc_apps_bcmc_ps_enqueue       [wl]
+c0198974 aux_gain_idx_tbl_rev2  [wl]
+c00b4cbc wlc_rateset_merge      [wl]
+c0119d70 d11ucode16_sslpnsz     [wl]
+c0199fe8 aux_gain_idx_tbl_rev3  [wl]
+c01acdbc wme_fifo2ac    [wl]
+c01b2964 prio2fifo      [wl]
+c0044a98 wlc_mac_event  [wl]
+c0063b20 wlc_channel_regrev     [wl]
+c004443c wlc_rateset_elts       [wl]
+c00d7d08 d11sslpn2bsinitvals17  [wl]
+c00c5fec wlc_recv       [wl]
+c01a0568 gainctrl_lut_core1_rev0        [wl]
+c0028790 rc4    [wl]
+c00d8ae0 d11sslpn2bsinitvals19  [wl]
+c0035224 wlc_iovar_op   [wl]
+c005ace0 wlc_bmac_process_ps_switch     [wl]
+c01a0228 est_pwr_lut_core1_rev0 [wl]
+c002dc94 wlc_custom_scan_complete       [wl]
+c0064f54 wlc_valid_channel20_db [wl]
+c003a2d0 wlc_phytxctl1_calc     [wl]
+c01a43a4 gainctrl_lut_core1_rev3        [wl]
+c00275bc wpa2_cipher    [wl]
+c00280b0 qm_abs32       [wl]
+c0043900 wlc_getrand    [wl]
+c00b6720 wlc_ratesel_init       [wl]
+c01a0fb8 ant_swctrl_tbl_rev3_1  [wl]
+c01a4064 est_pwr_lut_core1_rev3 [wl]
+c0196db0 ofdm_cck_gain_tbl_rev0 [wl]
+c0048eb4 scb_ampdu_cleanup      [wl]
+c01a88c0 sslpnphy_fltr_ctrl_tbl_rev0    [wl]
+c006094c wlc_coredisable        [wl]
+c0042a58 wlc_send80211_raw      [wl]
+c019874c gain_val_tbl_A0_rev2   [wl]
+c0197a7c ofdm_cck_gain_tbl_rev1 [wl]
+c01a9e58 dot11sslpnphy_gain_tbl_extlna_cmrxaci  [wl]
+c01a0ff8 ant_swctrl_tbl_rev3_2  [wl]
+c0199098 gain_idx_ext_lna_g_tbl_rev2    [wl]
+c019f968 mcs_tbl_rev0   [wl]
+c00bb780 wlc_scb_cubby_reserve  [wl]
+c006245c wlc_bsscfg_disable     [wl]
+c019a564 gain_idx_ext_lna_g_tbl_rev3    [wl]
+c0199c30 gain_val_tbl_A0_rev3   [wl]
+c01a8570 sslpnphy_min_sig_sq_tbl_rev0   [wl]
+c00b9d10 wlc_scan       [wl]
+c01a1038 ant_swctrl_tbl_rev3_3  [wl]
+c00b5764 wlc_rateset_mcs_build  [wl]
+c002c718 wl_add_timer   [wl]
+c005fc2c wlc_bmac_txant_set     [wl]
+c0199330 dot11lpphytbl_rx_gain_ext_lna_g_info_sz_rev2   [wl]
+c019f624 tdi_tbl40_ant1_rev0    [wl]
+c0066924 wlc_get_channels_in_country    [wl]
+c019a80c dot11lpphytbl_rx_gain_ext_lna_g_info_sz_rev3   [wl]
+c01a85f0 sslpnphy_min_sig_sq_tbl_rev2   [wl]
+c01a93b4 sw_ctrl_tbl_rev02      [wl]
+c01a9434 sw_ctrl_tbl_rev03      [wl]
+c01a3844 mcs_tbl_rev3   [wl]
+c01a86f0 sslpnphy_min_sig_sq_tbl_rev3   [wl]
+c01a02e8 adj_pwr_lut_core1_rev0 [wl]
+c0196b44 dot11lpphytbl_ext_lna_info_sz_rev0     [wl]
+c006a46c wlc_key_hw_init        [wl]
+c0067198 wlc_get_valid_chanspecs        [wl]
+c00c5ae0 wlc_txfifo_complete    [wl]
+c01a3cb4 tdi_tbl40_ant1_rev3    [wl]
+c002c8a8 wl_monitor     [wl]
+c0064c20 wlc_quiet_chanspec     [wl]
+c004bdf8 wlc_ampdu_cap  [wl]
+c01a4124 adj_pwr_lut_core1_rev3 [wl]
+c00cc8f8 d11a0g1bsinitvals5     [wl]
+c00591c8 wlc_apps_psq_ageing    [wl]
+c01a4ea4 papd_cal_scalars_tbl_core0_rev3        [wl]
+c005a398 wlc_apps_update_bss_bcmc_fid   [wl]
+c006b858 wlc_led_activityset    [wl]
+c00629a0 wlc_bsscfg_find        [wl]
+c01b0638 cntry_locales_size     [wl]
+c00ced10 d11a0g1bsinitvals9     [wl]
+c00460b0 wlc_write_ht_cap_ie    [wl]
+c002fbb8 wlc_wme_acp_set        [wl]
+c01aa15c dot11sslpnphy_5GHz_gaintable_rev0      [wl]
+c0047a60 wlc_create_chspec      [wl]
+c00c0ef0 wlc_ether_8023hdr      [wl]
+c003e8a8 wlc_bss_list_xfer      [wl]
+c018e310 d11ucode_2w19sz        [wl]
+c00952a0 wlc_phy_ant_rxdiv_set  [wl]
+c0107648 d11ucode15sz   [wl]
+c0092b3c wlc_phy_get_chanspec   [wl]
+c004493c wlc_bss_mac_event      [wl]
+c0027af0 qm_muls16      [wl]
+c0060350 wlc_suspend_mac_and_wait       [wl]
+c00ba2e4 wlc_scan_terminate     [wl]
+c002e884 wlc_pretbtt_set        [wl]
+c019a8d0 aux_gain_idx_ext_lna_g_aci_tbl_rev3    [wl]
+c006a310 wlc_key_update [wl]
+c0054514 wlc_dfs_cacstate_init  [wl]
+c0047e3c wlc_mute       [wl]
+c01d2c0c nrssi_tbl      [wl]
+c013440c d11ucode17sz   [wl]
+c0045e50 wlc_txmod_fn_register  [wl]
+c00c87e0 wlc_isr        [wl]
+c003ea8c wlc_calc_lsig_len      [wl]
+c01a9ecc dot11sslpnphytbl_extlna_cmrxaci_sz     [wl]
+c00cbdc8 d11a0g1initvals5       [wl]
+c01667bc d11ucode_2w16_lpsz     [wl]
+c0093fbc wlc_phy_txpower_get_target_max [wl]
+c006d73c wlc_phy_preamble_override_set  [wl]
+c0028cb4 rijndaelKeySetupDec    [wl]
+c005cb94 wlc_bmac_btc_mode_get  [wl]
+c00ce108 d11a0g1initvals9       [wl]
+c00bec8c wlc_wmf_packets_handle [wl]
+c0027498 wf_channel2mhz [wl]
+c00653fc wlc_channel_set_txpower_limit  [wl]
+c0042288 wlc_process_brcm_ie    [wl]
+c0096be4 wlc_phy_radar_detect_run       [wl]
+c002b914 wl_reset       [wl]
+c0067ae0 wlc_cram_attach        [wl]
+c00d7040 d11sslpn2initvals17    [wl]
+c00f1754 d11ucode11sz   [wl]
+c00bf268 wl_sendup      [wl]
+c005c614 wlc_bmac_down_prep     [wl]
+c00d7e28 d11sslpn2initvals19    [wl]
+c0032e58 wlc_ioctl      [wl]
+c003abfc wlc_hwtimer_gptimer_set        [wl]
+c00617d4 wlc_bmac_iovars_dispatch       [wl]
+c0069888 wlc_scb_key_delete     [wl]
+c0027194 wf_chspec_aton [wl]
+c0027a90 qm_muls321616  [wl]
+c0148494 d11pcm5sz      [wl]
+c0031804 wlc_update_gbss_modes  [wl]
+c00b91ec wlc_ratesel_upd_txstatus_normalack     [wl]
+c0198850 dot11lpphytbl_A0_info_rev2     [wl]
+c003aa18 wlc_tx_suspend [wl]
+c0199d34 dot11lpphytbl_A0_info_rev3     [wl]
+c0058e68 wlc_apps_psq   [wl]
+c003e7e4 wlc_bss_list_free      [wl]
+c002ba4c wl_down        [wl]
+c00be8b8 wlc_wmf_start  [wl]
+c00cee30 d11n0initvals11        [wl]
+c0040594 wlc_erp_find   [wl]
+c00baaac wlc_scan_radar_clear   [wl]
+c00f88a8 d11ucode13sz   [wl]
+c003df98 wlc_write_ext_csa_ie   [wl]
+c0027374 wf_chspec_ctlchan      [wl]
+c00bb764 wlc_scb_iternext       [wl]
+c003ac08 wlc_hwtimer_gptimer_abort      [wl]
+c01b2840 wlc_802_1x_hdr [wl]
+c0047b64 wlc_channel2freq       [wl]
+c0062fb0 wlc_vndr_ie_free       [wl]
+c004eda8 wlc_antsel_upd_dflt    [wl]
+c01b2944 wl_msg_level2  [wl]
+c00d4478 d11n0initvals16        [wl]
+c00687e8 wlc_eventq_register_ind        [wl]
+c01d0af0 rxiqcomp       [wl]
+c0065318 wlc_channel_set_chanspec       [wl]
+c004ca48 wlc_amsdutx_cap        [wl]
+c002a3b0 tkip_mic_eom   [wl]
+c00bf6f0 wlc_sendpkt    [wl]
+c006334c wlc_vndr_ie_del        [wl]
+c00baf9c wlc_scan_pm_pending_complete   [wl]
+c002e8c8 wlc_macctrl_init       [wl]
+c0041068 wlc_write_info_elt     [wl]
+c004345c wlc_sendnulldata       [wl]
+c0064250 wlc_country_lookup     [wl]
+c0058bec wlc_apps_process_pend_ps       [wl]
+c0045470 wlc_set_nrate_override [wl]
+c00c86f4 wlc_intrson    [wl]
+c0059da0 wlc_apps_tim_create    [wl]
+c005e2c8 wlc_setxband   [wl]
+c01aea0c chanvec_all_2G [wl]
+c0044734 wlc_process_eventq     [wl]
+c002b890 wl_del_if      [wl]
+c00428b0 wlc_sendctl    [wl]
+c00bdfac wlc_wsec_tx_tkmic_offset       [wl]
+c0197708 dot11lpphytbl_info_rev0        [wl]
+c009f5b0 wlc_phy_superswitch_init_nphy  [wl]
+c01a9a98 dot11sslpnphytbl_info_rev0     [wl]
+c0047da8 wlc_write_template_ram [wl]
+c006169c wlc_bmac_led_blink_event       [wl]
+c01a0368 gainctrl_lut_core0_rev0        [wl]
+c01983d4 dot11lpphytbl_info_rev1        [wl]
+c01a9b9c dot11sslpnphytbl_info_rev2     [wl]
+c0199858 dot11lpphytbl_info_rev2        [wl]
+c0045fb8 wlc_txmod_unconfig     [wl]
+c01996d8 papd_mult_tbl_rev2     [wl]
+c019b0ac dot11lpphytbl_info_rev3        [wl]
+c005a544 wlc_apps_bss_ps_on_done        [wl]
+c019af2c papd_mult_tbl_rev3     [wl]
+c01a9ca0 dot11sslpnphytbl_info_rev3     [wl]
+c01a41a4 gainctrl_lut_core0_rev3        [wl]
+c002c948 wl_buf_to_pktcopy      [wl]
+c0063e30 wlc_set_countrycode    [wl]
+c002d450 wlc_switch_shortslot   [wl]
+c00bdfdc wlc_wsec_rx_tkmic_offset       [wl]
+c00280d8 qm_div163232   [wl]
+c004d11c wlc_amsdu_scb_agglimit_upd     [wl]
+c0061a80 wlc_bmac_radio_hw      [wl]
+c00c8b28 d11b0g0initvals4       [wl]
+c019f46c tdi_tbl40_ant0_rev0    [wl]
+c00262f0 aes_cbc_encrypt        [wl]
+c00ca888 d11b0g0initvals5       [wl]
+c004d1d0 wlc_amsdu_txpolicy_upd [wl]
+c00b36bc wlc_phy_bandtxpower_boardlimits        [wl]
+c016ded4 d11ucode_2w16_sslpn_nobt       [wl]
+c0027bc0 qm_sub16       [wl]
+c00631ac wlc_vndr_ie_add_elem   [wl]
+c00be0a0 wlc_dofrag_tkip        [wl]
+c019ab3c dot11lpphytbl_rx_gain_ext_lna_g_aci_info_rev3  [wl]
+c01a3afc tdi_tbl40_ant0_rev3    [wl]
+c0063104 wlc_vndr_ie_write      [wl]
+c00cca18 d11b0g0initvals9       [wl]
+c0061e08 wlc_spt_init   [wl]
+c01d09b8 bbpga_lut      [wl]
+c006614c wlc_japan      [wl]
+c01b21f0 mcs_table      [wl]
+c00bf3ac wlc_prec_enq   [wl]
+c0042548 wlc_frame_get_mgmt     [wl]
+c0196cc8 pll_frac_tbl_rev0      [wl]
+c00bec7c wmf_hooks_register     [wl]
+c005d4e8 wlc_ucode_wake_override_set    [wl]
+c0059c74 wlc_apps_send_psp_response     [wl]
+c005b038 wlc_bmac_watchdog      [wl]
+c0197994 pll_frac_tbl_rev1      [wl]
+c01d0afc txiqcomp       [wl]
+c00b70d4 wlc_ratesel_aci_change [wl]
+c0027ad8 qm_mulu16      [wl]
+c0048a30 wlc_ampdu_attach       [wl]
+c01994f0 pll_frac_tbl_rev2      [wl]
+c019ad44 pll_frac_tbl_rev3      [wl]
+c0062b60 wlc_bsscfg_init        [wl]
+c003104c wlc_ap_upd     [wl]
+c004ee68 wlc_antsel_antsel2id   [wl]
+c012ab98 d11ucode16_mimosz      [wl]
+c003e92c wlc_wsec       [wl]
+c00b3900 wlc_phy_iovar_detach   [wl]
+c01ae058 mimo_2x3_div_antselid_tbl      [wl]
+c006d730 wlc_phy_power_on_reset_inform  [wl]
+c0027688 bcm_is_wps_ie  [wl]
+c01acdb4 wlc_prio2prec_map      [wl]
+c00c1204 wlc_80211hdr   [wl]
+c0031164 wlc_radio_disable      [wl]
+c0196b14 dot11lpphytbl_ext_lna_info_rev0        [wl]
+c002c8c0 wl_set_pktlen  [wl]
+c0047f44 wlc_copyto_objaddr_mem [wl]
+c0060ddc wlc_bmac_copyfrom_shm  [wl]
+c00273cc wf_mhz2channel [wl]
+c004ae0c wlc_frameaction_ampdu  [wl]
+c004f970 wlc_wpa_set_cap        [wl]
+c00bc0e0 wlc_scb_ratesel_init_all       [wl]
+c00264a4 aes_ctr_crypt  [wl]
+c006a22c wlc_key_defkeyflag     [wl]
+c005cdcc wlc_bmac_set_hw_etheraddr      [wl]
+c006359c wlc_vndr_ie_mod_elem   [wl]
+c00bc0a4 wlc_scb_resetstate     [wl]
+c005c30c wlc_bmac_init  [wl]
+c0034e64 wlc_iovar_getint       [wl]
+c019bc18 dot11lpphy_5GHz_gaintable_rev0 [wl]
+c0069f3c wlc_key_lookup [wl]
+c019be98 dot11lpphy_5GHz_gaintable_rev1 [wl]
+c019c118 dot11lpphy_5GHz_gaintable_rev2 [wl]
+c019c398 dot11lpphy_5GHz_gaintable_rev3 [wl]
+c004c0f4 wlc_ampdu_shm_upd      [wl]
+c01a4ba4 papd_comp_rfpwr_tbl_core0_rev3 [wl]
+c01a7d00 sslpnphy_gain_idx_aci_tbl      [wl]
+c004fb2c wlc_wme_setup_req      [wl]
+c00baf40 wlc_scan_fifo_suspend_complete [wl]
+c00c99d8 d11a0g0initvals4       [wl]
+c00cb3b8 d11a0g0initvals5       [wl]
+c01a9334 sw_ctrl_tbl_rev0       [wl]
+c01a954c gain_tbl_40Mhz [wl]
+c019941c sw_ctrl_tbl_rev2       [wl]
+c00cd620 d11a0g0initvals9       [wl]
+c0027c00 qm_sub32       [wl]
+c0066670 wlc_get_regclass_list  [wl]
+c0196c14 fltr_ctrl_tbl_rev0     [wl]
+c019ac70 sw_ctrl_tbl_rev3       [wl]
+c01978e0 fltr_ctrl_tbl_rev1     [wl]
+c01a9e1c dot11sslpnphy_gain_tbl_cmrxaci [wl]
+c00b5740 wlc_rateset_mcs_clear  [wl]
+c01993a4 fltr_ctrl_tbl_rev2     [wl]
+c019abf8 fltr_ctrl_tbl_rev3     [wl]
+c005cdfc wlc_cur_phy    [wl]
+c004688c wlc_ht_update_scbstate [wl]
+c004ecc8 wlc_antsel_ratesel     [wl]
+c01b255c ofdm_40bw_mimo_rates   [wl]
+c0060c7c wlc_bmac_write_shm     [wl]
+c01a0968 iq_lut_core1_rev0      [wl]
+c00b3794 wlc_phychain_get       [wl]
+c00c878c wlc_intrsupd   [wl]
+c006d40c wlc_phy_detach [wl]
+c01a9ec0 dot11sslpnphytbl_no_aci_sz     [wl]
+c00687bc wlc_eventq_cnt [wl]
+c00606f0 wlc_bmac_validate_chip_access  [wl]
+c004df28 wlc_amsdu_deagg_hw     [wl]
+c004ec5c wlc_antsel_buildtxh    [wl]
+c01a47a4 iq_lut_core1_rev3      [wl]
+c0047d2c wlc_copyto_shm [wl]
+c0156ac4 d11ucode_2w13sz        [wl]
+c0068724 wlc_eventq_enq [wl]
+c0098ae4 wlc_phy_ioctl  [wl]
+c005d6ac wlc_bmac_set_addrmatch [wl]
+c0026470 aes_cbc_decrypt        [wl]
+c00c83a8 wlc_dpc        [wl]
+c0067058 wlc_valid_chanspec     [wl]
+c006381c wlc_channel_mgr_attach [wl]
+c00c8b20 d11ucode_bommajor      [wl]
+c00619d4 wlc_bmac_dump  [wl]
+c0037ffc wlc_print_txstatus     [wl]
+c0096b44 wlc_phy_radar_detect_init      [wl]
+c01a0d68 mimophytbl_info_rev0_volatile  [wl]
+c0063b18 wlc_channel_ccode      [wl]
+c0038ad0 wlc_rate_shm_offset    [wl]
+c00bbccc wlc_scbclear   [wl]
+c00c8708 wlc_intrsoff   [wl]
+c01b2584 cck_ofdm_rates [wl]
+c00bbf54 wlc_scb_setstatebit_bsscfg     [wl]
+c005dd4c wlc_bmac_core_phypll_reset     [wl]
+c005fdf4 wlc_bmac_mute  [wl]
+c014f970 d11ucode_2w11sz        [wl]
+c0063b4c wlc_channel_locale_flags_in_band       [wl]
+c01d8740 psr_info_array_index   [wl]
+c01b33d8 sslpnphy_gaincode_table        [wl]
+c01a988c unsup_mcs_tbl_rev0     [wl]
+c01aa3dc sslpnphy_papd_cal_ofdm_tbl     [wl]
+c00bdaf0 wlc_wsec_miccheck      [wl]
+c00c1080 wlc_8023_etherhdr      [wl]
+c008b294 wlc_phy_txpower_get    [wl]
+c00bf070 wl_isr [wl]
+c01b24e4 cck_ofdm_mimo_rates    [wl]
+c00c4224 wlc_recvdata_ordered   [wl]
+c0067c04 wlc_cram_detach        [wl]
+c0027e7c qm_norm32      [wl]
+c0047cfc wlc_set_shm    [wl]
+c005d630 wlc_bmac_set_rcmta     [wl]
+c0185e5c d11ucode_2w17sz        [wl]
+c006bba4 wlc_led_up     [wl]
+c002b0a8 wl_txflowcontrol       [wl]
+c00583e0 wlc_apps_attach        [wl]
+c002d410 wlc_set_bssid  [wl]
+c005fc64 wlc_bmac_fifoerrors    [wl]
+c0198fbc gain_ext_lna_g_tbl_rev2        [wl]
+c00bc328 wlc_scb_reinit [wl]
+c005b238 wlc_bmac_revinfo_get   [wl]
+c00b3724 wlc_phychain_init      [wl]
+c0060a54 wlc_bmac_xtal  [wl]
+c019a488 gain_ext_lna_g_tbl_rev3        [wl]
+c004204c wlc_assocscb_getcnt    [wl]
+c00bcb6c wlc_txmod_activate     [wl]
+c004d114 wlc_amsdu_txop_upd     [wl]
+c006adf0 wlc_led_set    [wl]
+c002b9cc wl_up  [wl]
+c0060690 wlc_bmac_band_stf_ss_set       [wl]
+c01755e8 d11ucode_2w16_mimo     [wl]
+c005dc84 wlc_bmac_core_phy_clk  [wl]
+c005a120 wlc_apps_apsd_prepare  [wl]
+c00bc53c wlc_scblookup  [wl]
+c015dee8 d11ucode_2w15sz        [wl]
+c002d078 wlc_mac_promisc        [wl]
+c00bc004 wlc_scb_clearstatebit_bsscfg   [wl]
+c006d74c wlc_phy_init   [wl]
+c01a53ec mimophytbl_info_sz_rev3_volatile       [wl]
+c006799c wlc_restricted_chanspec        [wl]
+c017dad8 d11ucode_2w16_mimosz   [wl]
+c00278e8 bcmwpa_akm2WPAauth     [wl]
+c00d6088 d11sslpn0bsinitvals16  [wl]
+c0043a74 wlc_pkt_callback       [wl]
+c00621b0 wlc_bsscfg_up  [wl]
+c0055424 wlc_ht_coex_update_permit      [wl]
+c0083e8c wlc_sslpnphy_pktengtx  [wl]
+c00947e8 wlc_phy_txpower_limit_set      [wl]
+c00586f0 wlc_apps_detach        [wl]
+c00d9968 d11sslpn1bsinitvals20  [wl]
+c005d558 wlc_ucode_wake_override_clear  [wl]
+c0027ec8 qm_div_s       [wl]
+c00c3938 wlc_recvdata   [wl]
+c0119d74 d11ucode16_sslpn_nobt  [wl]
+c0059e18 wlc_apps_suppr_frame_enq       [wl]
+c00515a0 wlc_process_assocreq   [wl]
+c0045018 wlc_noise_sample_request       [wl]
+c0046718 wlc_read_ht_add_ie     [wl]
+c003a890 wlc_phy_compute_rssi   [wl]
+c006112c wlc_bmac_led_hw_init   [wl]
+c01ae038 mimo_2x3_div_antselpat_tbl     [wl]
+c003e070 wlc_write_extch_ie     [wl]
+c0063b10 wlc_channel_country_abbrev     [wl]
+c002beb0 wl_ioctl       [wl]
+c0061738 wlc_bmac_led_blink     [wl]
+c006acf0 wlc_led_init   [wl]
+c018e314 d11ucode_2w20  [wl]
+c00837b0 wlc_phy_cal_init_sslpnphy      [wl]
+c01a88e8 fltr_ctrl_tbl_40Mhz    [wl]
+c002693c aes_ccm_encrypt        [wl]
+c0054e14 wlc_ap_upd_ucbcnprb_all        [wl]
+c0027b80 qm_add16       [wl]
+c019e6d0 tdtrn_tbl_rev0 [wl]
+c0047dcc wlc_write_hw_bcntemplates      [wl]
+c01b2624 wlc_lrs_rates  [wl]
+c00c031c wlc_prep_sdu   [wl]
+c003b0c8 wlc_txc_upd    [wl]
+c00b52c8 wlc_rate_legacy_phyctl [wl]
+c01a7c40 sslpnphy_gain_aci_tbl  [wl]
+c00441d4 wlc_parse_rates        [wl]
+c01a2544 tdtrn_tbl_rev3 [wl]
+c00de908 d11ucode4sz    [wl]
+c0027e20 qm_norm16      [wl]
+c0062ac0 wlc_ea_to_bsscfg       [wl]
+c01a7f50 sslpnphy_gain_cmrxaci_tbl      [wl]
+c01a9508 gain_val_tbl_rev02     [wl]
+c0198fb8 dot11lpphytbl_rx_gain_aci_info_sz_rev2 [wl]
+c019b218 dot11lpphy_2GHz_gaintable_rev0 [wl]
+c01b2940 wl_msg_level   [wl]
+c006377c wlc_get_locale_2g      [wl]
+c019a484 dot11lpphytbl_rx_gain_aci_info_sz_rev3 [wl]
+c004ece8 wlc_antsel_set_unicast [wl]
+c01aea28 chanvec_all_5G [wl]
+c019b498 dot11lpphy_2GHz_gaintable_rev1 [wl]
+c01b32b0 NPHY_IPA_REV4_txdigi_filtcoeffs        [wl]
+c0026ce8 aes_ccmp_decrypt       [wl]
+c019b718 dot11lpphy_2GHz_gaintable_rev2 [wl]
+c00b52fc wlc_dump_rateset       [wl]
+c006cc18 wlc_phy_attach [wl]
+c019b998 dot11lpphy_2GHz_gaintable_rev3 [wl]
+c00bca54 wlc_scblist_validaterates      [wl]
+c00260d0 aes_decrypt    [wl]
+c01992e8 dot11lpphytbl_rx_gain_ext_lna_g_info_rev2      [wl]
+c00420d4 wlc_bss_assocscb_getcnt        [wl]
+c00ea28c d11ucode11     [wl]
+c019a7c4 dot11lpphytbl_rx_gain_ext_lna_g_info_rev3      [wl]
+c01484a8 d11ucode_2w11  [wl]
+c00554c4 wlc_ht_ap_coex_ted_chk [wl]
+c00b540c wlc_dump_mcsset        [wl]
+c00f1758 d11ucode13     [wl]
+c014f974 d11ucode_2w13  [wl]
+c006adc0 wlc_led_deinit [wl]
+c019a8ec gain_idx_ext_lna_g_aci_tbl_rev3        [wl]
+c00f88ac d11ucode14     [wl]
+c00fed58 d11ucode15     [wl]
+c0156ac8 d11ucode_2w15  [wl]
+c012ab9c d11ucode17     [wl]
+c01ae008 mimo_2x4_div_antselpat_tbl     [wl]
+c002ca88 wlc_stay_awake [wl]
+c00bb700 wlc_scb_detach [wl]
+c017dadc d11ucode_2w17  [wl]
+c002fb68 wlc_wme_acp_get_all    [wl]
+c0060cbc wlc_bmac_set_shm       [wl]
+c005cc74 wlc_bmac_btc_gpio_disable      [wl]
+c0147a4c d11ucode20sz   [wl]
+c0134410 d11ucode19     [wl]
+c0185e60 d11ucode_2w19  [wl]
+c00667b0 wlc_get_regclass       [wl]
+c0111410 d11ucode16_sslpn       [wl]
+c01b0444 cntry_rev_locales      [wl]
+c0027a70 qm_mul16       [wl]
+c005cda8 wlc_bmac_hw_etheraddr  [wl]
+c0044f98 wlc_noise_cb   [wl]
+c0198bf8 dot11lpphytbl_rx_gain_info_rev2        [wl]
+c005de7c wlc_bmac_macphyclk_set [wl]
+c0038ff0 wlc_send_q     [wl]
+c0060020 wlc_bmac_tx_fifo_suspend       [wl]
+c0093e68 wlc_phy_txpower_sromlimit_max_get      [wl]
+c019a0c4 dot11lpphytbl_rx_gain_info_rev3        [wl]
+c0031f94 wlc_down       [wl]
+c005559c wlc_ap_ioctl   [wl]
+c0065078 wlc_valid_40chanspec_in_band   [wl]
+c002d5ec wlc_set_chanspec       [wl]
+c0027b38 qm_add32       [wl]
+c003baa4 wlc_qosinfo_update     [wl]
+c0046810 wlc_process_coex_mgmt_ie       [wl]
+c013ddb4 d11ucode20     [wl]
+c00c8b24 d11ucode_bomminor      [wl]
+c00bec84 wmf_hooks_unregister   [wl]
+c01d2028 lpphy_rev2_gaincode_table      [wl]
+c002d920 wlc_assoc_roam [wl]
+c00688b4 wlc_eventq_handle_ind  [wl]
+c0084070 wlc_sslpnphy_papd_recal        [wl]
+c004f424 wlc_ap_down    [wl]
+c005d7ec wlc_bmac_bw_set        [wl]
+c002fc68 wlc_timers_init        [wl]
+c00471a0 wlc_ht_coex_exclusion_range    [wl]
+c002e924 wlc_BSSinit    [wl]
+c0028810 rijndaelKeySetupEnc    [wl]
+c00baf34 wlc_scan_inprog        [wl]
+c006862c wlc_eventq_down        [wl]
+c00bb024 wlc_scan_get_current_chanspec  [wl]
+c002d360 wlc_set_mac    [wl]
+c0099ddc wlc_phy_noise_sample_request_external  [wl]
+c0035014 wlc_module_unregister  [wl]
+c01a0c68 loft_lut_core1_rev0    [wl]
+c002c484 wl_event       [wl]
+c003e008 wlc_write_csa_ie       [wl]
+c005681c wlc_switch_ab_11n      [wl]
+c019f2b4 tdi_tbl20_ant0_rev0    [wl]
+c005cba4 wlc_bmac_btc_wire_set  [wl]
+c0043c1c wlc_get_rspec_history  [wl]
+c0066d88 wlc_get_reg_max_power_for_channel      [wl]
+c01a4aa4 loft_lut_core1_rev3    [wl]
+c0098c50 wlc_phy_down   [wl]
+c01a3944 tdi_tbl20_ant0_rev3    [wl]
+c006869c wlc_event_alloc        [wl]
+c00625ac wlc_bsscfg_disablemulti        [wl]
+c00ca850 d11a0g0bsinitvals4     [wl]
+c0196b80 noise_scale_tbl_rev0   [wl]
+c01988b0 dot11lpphytbl_A0_info_sz_rev2  [wl]
+c00cc7d8 d11a0g0bsinitvals5     [wl]
+c019784c noise_scale_tbl_rev1   [wl]
+c0199d94 dot11lpphytbl_A0_info_sz_rev3  [wl]
+c003ac44 wlc_high_dpc   [wl]
+c0026a90 aes_ccm_decrypt        [wl]
+c0198c44 gain_aci_tbl_rev2      [wl]
+c0026060 aes_encrypt    [wl]
+c019936c noise_scale_tbl_rev2   [wl]
+c005a6d0 wlc_bmac_set_shortslot [wl]
+c019a37c gain_aci_tbl_rev3      [wl]
+c01a4da4 papd_comp_epsilon_tbl_core0_rev3       [wl]
+c019abc0 noise_scale_tbl_rev3   [wl]
+c00bc49c wlc_scbfind    [wl]
+c0030e10 wlc_detach     [wl]
+c005af60 wlc_bmac_txfifo        [wl]
+c00c7ce0 wlc_ampdu_recvdata     [wl]
+c00cebf0 d11a0g0bsinitvals9     [wl]
+c0068830 wlc_eventq_query_ind   [wl]
+c00be844 wlc_wmf_instance_del   [wl]
+c0198730 aux_gain_idx_tbl_A0_rev2       [wl]
+c0199c14 aux_gain_idx_tbl_A0_rev3       [wl]
+c004c980 wlc_amsdu_detach       [wl]
+c0047d84 wlc_xmtfifo_sz_get     [wl]
+c005d228 wlc_mhf        [wl]
+c00d1d40 d11a0g1initvals13      [wl]
+c0062f20 wlc_bsscfg_SSID_set    [wl]
+c0073430 wlc_nphy_has_ipa       [wl]
+c00355ec wlc_doiovar    [wl]
+c00282e8 qm_mul32       [wl]
+c00bb038 wlc_scan_ioctl [wl]
+c01a0f74 mimophytbl_info_sz_rev0_volatile       [wl]
+c0032df8 wlc_set        [wl]
+c0060850 wlc_bmac_core_phypll_ctl       [wl]
+c0026c18 aes_ccmp_encrypt       [wl]
+c0027830 wpa_array_cmp  [wl]
+c0196df4 gain_delta_tbl_rev0    [wl]
+c01b0ac0 ofdm_rate_lookup       [wl]
+c0197ac0 gain_delta_tbl_rev1    [wl]
+c00637a4 wlc_get_locale_5g      [wl]
+c00bcb10 wlc_scb_rssi   [wl]
+c00426e8 wlc_sendmgmt   [wl]
+c00473e4 wlc_ht_coex_filter_scanresult  [wl]
+c002e464 wlc_beacon_phytxctl    [wl]
+c003e0bc wlc_write_brcm_extch_ie        [wl]
+c004ca40 wlc_amsdu_mtu_get      [wl]
+c00393b8 wlc_sdu_data   [wl]
+c0027090 wf_chspec_ntoa [wl]
+c00cf9b0 d11n0bsinitvals11      [wl]
+c00622bc wlc_bsscfg_enable      [wl]
+c01a0f78 ant_swctrl_tbl_rev3    [wl]
+c00d28c8 d11a0g1bsinitvals13    [wl]
+c00c6810 wlc_sendampdu  [wl]
+c01995d8 papd_eps_tbl_rev2      [wl]
+c005fdd0 wlc_intrsrestore       [wl]
+c019ae2c papd_eps_tbl_rev3      [wl]
+c0040d70 wlc_update_probe_resp  [wl]
+c00d51f0 d11n0bsinitvals16      [wl]
+c002d3e4 wlc_clear_bssid        [wl]
+c0047640 wlc_ht_upd_coex_state  [wl]
+c0068790 wlc_eventq_deq [wl]
+c004e6e0 wlc_antsel_init        [wl]
+c00c4c3c wlc_recvdata_sendup    [wl]
+c0055438 wlc_ht_ap_coex_tea_chk [wl]
+c01211b8 d11ucode16_mimo        [wl]
+c0039f20 wlc_prb_resp_plcp_hdrs [wl]
+c003ebc0 wlc_calc_frame_time    [wl]
+c00d1c20 d11b0g0bsinitvals13    [wl]
+c0072f34 wlc_phy_bist_check_nphy        [wl]
+c019d018 dot11lpphy_noPA_gaintable_5354smic_rev0        [wl]
+c00be00c wlc_wsec_tkip_nextfrag_len     [wl]
+c0040030 wlc_parse_bcn_prb      [wl]
+c0059814 wlc_apps_tbtt_update   [wl]
+c0027a50 qm_mul321616   [wl]
+c00bef80 wl_intrson     [wl]
+c003a490 wlc_rspec_to_rts_rspec [wl]
+c00465b4 wlc_write_brcm_ht_add_ie       [wl]
+c0093774 wlc_phy_txpower_sromlimit      [wl]
+c019f9e8 noise_var_tbl0_rev0    [wl]
+c00bcb4c wlc_scb_rssi_init      [wl]
+c004666c wlc_read_ht_cap_ie     [wl]
+c01b2534 cck_ofdm_40bw_mimo_rates       [wl]
+c0047d58 wlc_copyfrom_shm       [wl]
+c0064b14 wlc_quiet_channels_reset       [wl]
+c01a3044 noise_var_tbl0_rev3    [wl]
+c002cc80 wlc_init       [wl]
+c002c668 wl_init_timer  [wl]
+c0044f30 wlc_channel_qa_sample_req      [wl]
+c004e684 wlc_antsel_detach      [wl]
+c009363c wlc_phy_band_first_chanspec    [wl]
+c005d468 wlc_mctrl      [wl]
+c00b4dec wlc_rate_hwrs_filter_sort_validate     [wl]
+c0092b44 wlc_phy_set_chanspec   [wl]
+c019907c aux_gain_idx_ext_lna_g_tbl_rev2        [wl]
+c00bb680 wlc_scb_attach [wl]
+c01a9e80 dot11lpphy_rx_gain_init_tbls_40Mhz     [wl]
+c00277ac bcm_find_wpsie [wl]
+c019a548 aux_gain_idx_ext_lna_g_tbl_rev3        [wl]
+c003a1c4 wlc_compute_rtscts_dur [wl]
+c016ded0 d11ucode_2w16_sslpnsz  [wl]
+c005e5a8 wlc_bmac_radio_read_hwdisabled [wl]
+c019f1ec pilot_tbl_rev0 [wl]
+c006824c wlc_cram_stop  [wl]
+c00599e8 wlc_apps_pspoll_resp_prepare   [wl]
+c0047c58 wlc_rcvfifo_limit_get  [wl]
+c0061ef8 wlc_spt_deinit [wl]
+c002e214 wlc_scb_disassoc_cleanup       [wl]
+c00bc690 wlc_scblookupband      [wl]
+c0060d44 wlc_bmac_copyto_shm    [wl]
+c0047bac wlc_wme_get_frame_medium_time  [wl]
+c00bea44 wlc_wmf_sta_del        [wl]
+c009799c wlc_phy_txpower_hw_ctrl_get    [wl]
+c0048914 wlc_stf_ss_update      [wl]
+c01a1d78 pilot_tbl_rev3 [wl]
+c0027590 wpa_cipher     [wl]
+c003f3f8 wlc_set_ratetable      [wl]
+c004d160 wlc_amsdu_dotxstatus   [wl]
+c01a8910 sslpnphy_ps_ctrl_tbl_rev0      [wl]
+c0032b1c wlc_bandlock   [wl]
+c006d6d4 wlc_phy_clk_bwbits     [wl]
+c004338c wlc_senddisassoc       [wl]
+c01a8960 sslpnphy_ps_ctrl_tbl_rev2      [wl]
+c002b94c wl_alloc_dma_resources [wl]
+c0040904 wlc_bss_update_beacon  [wl]
+c002d018 wlc_mac_bcn_promisc    [wl]
+c0044888 wlc_event_if   [wl]
+c00cfbf0 d11lp0initvals13       [wl]
+c00bc980 wlc_scb_wds_free       [wl]
+c006d744 wlc_phy_preamble_override_get  [wl]
+c01211b4 d11ucode16_sslpn_nobtsz        [wl]
+c002a504 wep_decrypt    [wl]
+c008a81c wlc_phy_mute_upd       [wl]
+c01a9ebc dot11sslpnphytbl_aci_sz        [wl]
+c00d29e8 d11lp0initvals14       [wl]
+c00d3630 d11lp0initvals15       [wl]
+c00d61a8 d11lp0initvals16       [wl]
+c0042464 wlc_frame_get_ctl      [wl]
+c00405f8 wlc_nonerp_find        [wl]
+c00353a8 wlc_iovar_check        [wl]
+c0059a8c wlc_apps_ps_prep_mpdu  [wl]
+c0065024 wlc_valid_channel20    [wl]
+c00d9a88 d11ucode4      [wl]
+c00de90c d11ucode5      [wl]
+c01a0b68 loft_lut_core0_rev0    [wl]
+c0047eb4 wlc_set_cwmax  [wl]
+c00694cc wlc_key_remove_all     [wl]
+c002d4bc wlc_cwmin_gphy_update  [wl]
+c0032e28 wlc_get        [wl]
+c01a49a4 loft_lut_core0_rev3    [wl]
+c00e4020 d11ucode9      [wl]
+c01b3348 LPPHY_REV2_txdigfiltcoeffs_ofdm        [wl]
+c01484a4 d11ucode_2w_bomminor   [wl]
+c005c0b4 wlc_bmac_detach        [wl]
+c0064fe0 wlc_valid_channel20_in_band    [wl]
+c0027728 bcm_find_wpaie [wl]
+c0050864 wlc_authresp_ap        [wl]
+c00b8720 wlc_ratesel_probe_ready        [wl]
+c0063adc wlc_channel_mgr_detach [wl]
+c01984e0 gain_idx_tbl_A0_rev2   [wl]
+c0045838 wlc_sta_info   [wl]
+c006786c wlc_radar_chanspec     [wl]
+c019ab84 dot11lpphytbl_rx_gain_ext_lna_g_aci_info_sz_rev3       [wl]
+c01999c4 gain_idx_tbl_A0_rev3   [wl]
+c0198790 gain_tbl_A0_rev2       [wl]
+c0061568 wlc_bmac_led_detach    [wl]
+c0199c74 gain_tbl_A0_rev3       [wl]
+c0044af0 wlc_link       [wl]
+c00bbef8 wlc_scb_setkey [wl]
+c01b264c rate_limit_1_2 [wl]
+c0040be0 wlc_shm_ssid_upd       [wl]
+c0047b24 wlc_freq2channel       [wl]
+c005a600 wlc_apps_bss_ps_off_done       [wl]
+c006ae74 wlc_led_event  [wl]
+c0063b64 wlc_default_chanspec   [wl]
+c002824c qm_mulsu321616 [wl]
+c003b914 wlc_do_chanswitch      [wl]
+c004e1c0 wlc_amsdu_deagg_sw     [wl]
+c019dfb0 frame_lut_rev0 [wl]
+c01b25fc cck_rates      [wl]
+c0064e40 wlc_clr_quiet_chanspec [wl]
+c002e334 wlc_bcn_rspec  [wl]
+c01a4004 frame_lut_rev3 [wl]
+c0147a50 d11pcm4        [wl]
+c00634dc wlc_vndr_ie_get        [wl]
+c00350a8 wlc_dump_register      [wl]
+c0047e84 wlc_set_cwmin  [wl]
+c00326cc wlc_set_nmode  [wl]
+c00bd76c wlc_wsec_sw_encrypt_data       [wl]
+c0047ee4 wlc_fifoerrors [wl]
+c0147f74 d11pcm5        [wl]
+c0060178 wlc_bmac_tx_fifo_resume        [wl]
+c00bc7d8 wlc_scbfindband        [wl]
+c01a4ca4 papd_comp_rfpwr_tbl_core1_rev3 [wl]
+c00627a0 wlc_bsscfg_alloc       [wl]
+c00bbf3c wlc_scb_clearstatebit  [wl]
+c002b70c wl_add_if      [wl]
+c00278b0 wpa_incr_array [wl]
+c01b204c phy_iovars     [wl]
+c0147f70 d11pcm4sz      [wl]
+c00437f8 wlc_find_vendor_ie     [wl]
+c008a7f4 wlc_phy_hold_upd       [wl]
+c0031a14 wlc_update_n_protection        [wl]
+c003b4c0 wlc_afterburner        [wl]
+c0026344 aes_cbc_decrypt_pad    [wl]
+c005891c wlc_apps_scb_ps_off    [wl]
+c0037b94 wlc_bssiovar_mkbuf     [wl]
+c00684d0 wlc_eventq_attach      [wl]
+c0073404 wlc_nphy_rxcore_getstate       [wl]
+c00bbf00 wlc_scb_setstatebit    [wl]
+c0028700 prepare_key    [wl]
+c006ac38 wlc_led_detach [wl]
+c01b3234 chan20_info    [wl]
+c0043b5c wlc_reprate_init       [wl]
+c00951a4 wlc_phy_ant_rxdiv_get  [wl]
+c0196b48 min_sig_sq_tbl_rev0    [wl]
+c0052960 wlc_bss_up     [wl]
+c01a9ec4 dot11sslpnphytbl_info_sz_rev0  [wl]
+c0197814 min_sig_sq_tbl_rev1    [wl]
+c0199334 min_sig_sq_tbl_rev2    [wl]
+c01b2984 nrssi_tbl_phy  [wl]
+c019ab88 min_sig_sq_tbl_rev3    [wl]
+c0063690 wlc_locale_add_channels        [wl]
+c003f970 wlc_compute_bcntsfoff  [wl]
+c01a9ed0 dot11sslpnphytbl_info_sz_rev2  [wl]
+c00fed54 d11ucode14sz   [wl]
+c019fde8 noise_var_tbl1_rev0    [wl]
+c01a9ed4 dot11sslpnphytbl_info_sz_rev3  [wl]
+c011140c d11ucode16_lpsz        [wl]
+c01484a0 d11ucode_2w_bommajor   [wl]
+c00bd604 wlc_wsec_recvdata      [wl]
+c00430c4 wlc_sendauth   [wl]
+c00550f0 wlc_mbss16_updssid     [wl]
+c0028ff4 rijndaelEncrypt        [wl]
+c01a3444 noise_var_tbl1_rev3    [wl]
+c005467c wlc_dfs_setchanspec    [wl]
+c003f764 wlc_mod_prb_rsp_rate_table     [wl]
+c0198c40 dot11lpphytbl_rx_gain_info_sz_rev2     [wl]
+c00b9670 wlc_ratesel_upd_txstatus_blockack      [wl]
+c019a10c dot11lpphytbl_rx_gain_info_sz_rev3     [wl]
+c002e2e4 wlc_rateset_isofdm     [wl]
+c00bc870 wlc_scb_set_auth       [wl]
+c005c938 wlc_bmac_btc_mode_set  [wl]
+c00598ac wlc_apps_process_ps_switch     [wl]
+c008a858 wlc_phy_clear_tssi     [wl]
+c004dbb8 wlc_recvamsdu  [wl]
+c005d9ec wlc_bmac_write_hw_bcntemplates [wl]
+c01a01e8 est_pwr_lut_core0_rev0 [wl]
+c01d2c4c radar_class    [wl]
+c0055284 wlc_ht_coex_switch_bw  [wl]
+c01a4024 est_pwr_lut_core0_rev3 [wl]
+c0061764 wlc_bmac_led   [wl]
+c01b25d4 ofdm_rates     [wl]
+c01d8680 wlc_acbitmap2precbitmap        [wl]
+c00480b4 wlc_update_phy_mode    [wl]
+c00279c8 bcmwpa_cipher2wsec     [wl]
+c00b38a0 wlc_phy_iovar_attach   [wl]
+c0060f84 wlc_bmac_set_clk       [wl]
+c019a810 gain_ext_lna_g_aci_tbl_rev3    [wl]
+c0198d04 aux_gain_idx_aci_tbl_rev2      [wl]
+c003e54c wlc_send_action_err    [wl]
+c019a360 aux_gain_idx_aci_tbl_rev3      [wl]
+c01a99c0 sslpnphy_iq_local_tbl_rev0     [wl]
+c0029cf0 tkhash_phase1  [wl]
+c01a0268 adj_pwr_lut_core0_rev0 [wl]
+c00b51a4 wlc_rateset_default    [wl]
+c01a9ec8 dot11sslpnphytbl_cmrxaci_sz    [wl]
+c0029ef0 tkhash_phase2  [wl]
+c008b4dc wlc_phy_switch_radio   [wl]
+c00be65c wlc_wmf_detach [wl]
+c01a40a4 adj_pwr_lut_core0_rev3 [wl]
+c00687dc wlc_eventq_avail       [wl]
+c0045e88 wlc_txmod_config       [wl]
+c00ea288 d11ucode9sz    [wl]
+c01a50a4 papd_cal_scalars_tbl_core1_rev3        [wl]
+c00bca18 wlc_scb_sortrates      [wl]
+c004c770 wlc_amsdu_attach       [wl]
+c006c598 wlc_phy_shared_detach  [wl]
+c00d5310 d11sslpn0initvals16    [wl]
+c00439ec wlc_pkt_callback_register      [wl]
+c0047998 wlc_tx_testframe       [wl]
+c019dfd0 tmap_tbl_rev0  [wl]
+c0052a84 wlc_roam_check [wl]
+c00388f8 wlc_ctrupd     [wl]
+c0062830 wlc_bsscfg_free        [wl]
+c01a9da4 dot11sslpnphy_gain_tbl_aci     [wl]
+c01a1e28 tmap_tbl_rev3  [wl]
+c00ba438 wlc_scantimer  [wl]
+c00bb9ec wlc_scbfree    [wl]
+c01a53f0 mimophytbl_info_sz_rev3_volatile1      [wl]
+c01a53f4 mimophytbl_info_sz_rev3_volatile2      [wl]
+c00d1098 d11b0g0initvals13      [wl]
+c002c41c wl_dump_ver    [wl]
+c01a53f8 mimophytbl_info_sz_rev3_volatile3      [wl]
+c0047e60 wlc_read_tsf   [wl]
+c01a94c4 gain_val_tbl_rev0      [wl]
+c0198f70 dot11lpphytbl_rx_gain_aci_info_rev2    [wl]
+c0097c0c wlc_phy_iovar_dispatch [wl]
+c019a43c dot11lpphytbl_rx_gain_aci_info_rev3    [wl]
+c01a87f0 sslpnphy_noise_scale_tbl_rev0  [wl]
+c002d0b0 wlc_set_ps_ctrl        [wl]
+c0060c28 wlc_bmac_read_shm      [wl]
+c004aecc wlc_ampdu_recv_ctl     [wl]
+c00b3930 wlc_pio_attach [wl]
+c01994ac gain_val_tbl_rev2      [wl]
+c004e400 wlc_antsel_attach      [wl]
+c0061020 wlc_bmac_led_hw_deinit [wl]
+c019ad00 gain_val_tbl_rev3      [wl]
+c01a8840 sslpnphy_noise_scale_tbl_rev2  [wl]
+c00979bc wlc_phy_txpower_hw_ctrl_set    [wl]
+c00c5238 wlc_dotxstatus [wl]
+c00285b4 qm_1byN        [wl]
+c005e894 wlc_corereset  [wl]
+c006bbfc wlc_led_down   [wl]
+c0026674 aes_ccm_mac    [wl]
+c0047cd4 wlc_write_shm  [wl]
+c01a51b8 mimophytbl_info_rev3_volatile1 [wl]
+c006324c wlc_vndr_ie_add        [wl]
+c0045d34 wlc_txq_scb_free_notify        [wl]
+c01d20b8 lpphy_rev2_gain_table  [wl]
+c01d2124 nphy_ipa_rxcal_gaintbl_2GHz    [wl]
+c01a51cc mimophytbl_info_rev3_volatile2 [wl]
+c002c79c wl_del_timer   [wl]
+c005d784 wlc_bmac_set_cwmin     [wl]
+c01a51e0 mimophytbl_info_rev3_volatile3 [wl]
+c002fd18 wlc_info_init  [wl]
+c005c440 wlc_bmac_up_prep       [wl]
+c0092b2c wlc_phy_bw_state_set   [wl]
+c01a9edc dot11sslpnphy_2GHz_gaintable_rev0      [wl]
+c0045668 wlc_set_rate_override  [wl]
+c0069528 wlc_key_remove [wl]
+c01b250c ofdm_mimo_rates        [wl]
+c01a90a0 gain_idx_tbl_40Mhz     [wl]
+c0062cbc wlc_write_mbss_basemac [wl]
+c00c02f0 wlc_sdu_etype  [wl]
+c003aa6c wlc_tx_resume  [wl]
+c019c618 dot11lpphy_noPA_gaintable_rev0 [wl]
+c019c898 dot11lpphy_noPA_gaintable_rev1 [wl]
+c019cb18 dot11lpphy_noPA_gaintable_rev2 [wl]
+c019d2b0 frame_struct_rev0      [wl]
+c0196ad0 ofdm_cck_gain_ext_lna_tbl_rev0 [wl]
+c019cd98 dot11lpphy_noPA_gaintable_rev3 [wl]
+c00606c8 wlc_bmac_read_tsf      [wl]
+c00b5058 wlc_rateset_copy       [wl]
+c01a1078 frame_struct_rev3      [wl]
+c0040b64 wlc_update_beacon      [wl]
+c002aadc wl_pci_probe   [wl]
+c0060bd4 wlc_rxfifo_setpio      [wl]
+c00bb420 wlc_scan_ssid_match    [wl]
+c0099ed4 wlc_phy_noise_sample_intr      [wl]
+c004f040 wlc_ap_attach  [wl]
+c00b54a0 wlc_get_highest_rate   [wl]
+c005d6f8 wlc_bmac_write_template_ram    [wl]
+c002b8c0 wl_ifname      [wl]
+c006a8f0 wlc_led_attach [wl]
+c00b9a70 wlc_scan_attach        [wl]
+c01d20dc nphy_ipa_rxcal_gaintbl_5GHz    [wl]
+c00272e8 wf_chspec_malformed    [wl]
+c0069bac wlc_key_iv_update      [wl]
+c0196c28 ps_ctrl_tbl_rev0       [wl]
+c0046ec4 wlc_ht_obss_scanparams_hostorder       [wl]
+c01a8010 sslpnphy_gain_idx_cmrxaci_tbl  [wl]
+c01978f4 ps_ctrl_tbl_rev1       [wl]
+c005c6e0 wlc_bmac_down_finish   [wl]
+c004cfd8 wlc_amsdu_agglimit_frag_upd    [wl]
+c01993cc ps_ctrl_tbl_rev2       [wl]
+c0026140 aes_cbc_encrypt_pad    [wl]
+c019ac20 ps_ctrl_tbl_rev3       [wl]
+c00b57b0 wlc_rateset_bw_mcs_filter      [wl]
+c003b434 wlc_abo        [wl]
+c0041108 wlc_bcn_prb_body       [wl]
+c006262c wlc_bsscfg_ap_init     [wl]
+c0061724 wlc_bmac_led_set       [wl]
+c005ff4c wlc_bmac_xmtfifo_sz_set        [wl]
+c003aae0 wlc_tbtt       [wl]
+c006136c wlc_bmac_led_attach    [wl]
+c00b37b0 wlc_nphy_get_stf_ss_ch [wl]
+c005c258 wlc_bmac_reset [wl]
+c0098cbc wlc_phy_watchdog       [wl]
+c005c850 wlc_bmac_wait_for_wake [wl]
+c0027fa0 qm_div16       [wl]
+c004bd78 wlc_ampdu_set  [wl]
+c002a250 tkip_mic       [wl]
+c01b25ac gphy_legacy_rates      [wl]
+c003a764 wlc_rssi_update_ma     [wl]
+c00be97c wlc_wmf_stop   [wl]
+c00b4be4 wlc_bss_membership_filter      [wl]
+c005c5c4 wlc_bmac_up_finish     [wl]
+c00ba214 wlc_scan_abort [wl]
+c0043e8c wlc_get_revision_info  [wl]
+c00beb64 wmf_igs_broadcast      [wl]
+c00bda90 wlc_wsec_rxiv_update   [wl]
+c00bcca8 wlc_txmod_deactivate   [wl]
+c00636cc wlc_locale_get_channels        [wl]
+c005b344 wlc_bmac_state_get     [wl]
+c006d554 wlc_phy_anacore        [wl]
+c004f214 wlc_ap_up      [wl]
+c0026db8 aes_ccmp_cal_params    [wl]
+c00b5cf8 wlc_ratesel_getmcsfbr  [wl]
+c0092c80 wlc_phy_set_channel_14_wide_filter     [wl]
+c0043754 wlc_deauth_sendcomplete        [wl]
+c0039ad0 wlc_compute_plcp       [wl]
+c0092b34 wlc_phy_chanspec_radio_set     [wl]
+c0069aa0 wlc_key_iv_init        [wl]
+c005d7b8 wlc_bmac_set_cwmax     [wl]
+c00463a8 wlc_write_ht_add_ie    [wl]
+c00be570 wlc_wmf_attach [wl]
+c005ff80 wlc_bmac_tx_fifo_suspended     [wl]
+c002f864 wlc_edcf_setparams     [wl]
+c019f390 tdi_tbl20_ant1_rev0    [wl]
+c00beff8 wl_intrsoff    [wl]
+c01a8260 sslpnphy_gain_extlna_cmrxaci_tbl       [wl]
+c006c500 wlc_phy_shared_attach  [wl]
+c004f9a0 wlc_read_pmq_ea        [wl]
+c01a96cc gain_tbl_rev03 [wl]
+c0062bf8 wlc_bsscfg_bcmcscbinit [wl]
+c01a9de0 dot11sslpnphy_gain_tbl_no_aci  [wl]
+c00beab4 wmf_forward    [wl]
+c0061bbc wlc_bmac_rate_shm_offset       [wl]
+c00696bc wlc_key_delete [wl]
+c00b592c wlc_ratesel_detach     [wl]
+c00c01b8 wlc_txfifo     [wl]
+c005cdf0 wlc_bmac_bandtype      [wl]
+c0028268 qm_muls323216  [wl]
+c0044c4c wlc_bss_eapol_event    [wl]
+c0097100 wlc_phy_freqtrack_start        [wl]
+c01a3a20 tdi_tbl20_ant1_rev3    [wl]
+c00bac00 wlc_scan_default_channels      [wl]
+c005353c wlc_dfs_timer_add      [wl]
+c00bb7e8 wlc_scballoc   [wl]
+c0054bc8 wlc_ap_sendbeacons     [wl]
+c0062ecc wlc_bsscfg_newaid      [wl]
+c006b91c wlc_led_radioset       [wl]
+c01a4fa4 papd_comp_epsilon_tbl_core1_rev3       [wl]
+c002c8b8 wl_netdev_get  [wl]
+c0093558 wlc_phy_band_channels  [wl]
+c0069f7c wlc_key_hw_init_all    [wl]
+c0034f44 wlc_iovar_getbool      [wl]
+c0060ef4 wlc_bmac_pllreq        [wl]
+c00681ac wlc_cram_close [wl]
+c004caa0 wlc_amsdu_set  [wl]
+c003b06c wlc_btc_stuck_war50943 [wl]
+c0092b24 wlc_phy_bw_state_get   [wl]
+c002ca90 wlc_reset      [wl]
+c00d0f78 d11lp0bsinitvals13     [wl]
+c0063c14 wlc_next_chanspec      [wl]
+c00a406c wlc_phy_perical_nphy   [wl]
+c004c190 wlc_ampdu_pkt_free     [wl]
+c00d3510 d11lp0bsinitvals14     [wl]
+c00d4358 d11lp0bsinitvals15     [wl]
+c00b4f48 wlc_compute_rspec      [wl]
+c0068e94 wlc_key_insert [wl]
+c00d6f20 d11lp0bsinitvals16     [wl]
+c01ae028 mimo_2x4_div_antselid_tbl      [wl]
+c002b8d8 wl_init        [wl]
+c01997d8 sw_ctrl_tbl_transfer_rev2      [wl]
+c005decc wlc_bmac_phy_reset     [wl]
+c00480dc wlc_reset_bmac_done    [wl]
+c019b02c sw_ctrl_tbl_transfer_rev3      [wl]
+c00cfad0 d11n0absinitvals11     [wl]
+c002b2bc wl_alloc_if    [wl]
+c0060458 wlc_enable_mac [wl]
+c0058160 wlc_cs_scan_start      [wl]
+c0034eec wlc_iovar_getint8      [wl]
+c0047cb0 wlc_read_shm   [wl]
+c0027df4 qm_shr16       [wl]
+c01a0f70 mimophytbl_info_sz_rev0        [wl]
+c019f29c pltlut_tbl_rev0        [wl]
+c019f7dc bdi_tbl_rev0   [wl]
+c00b9800 wlc_ratesel_gettxrate  [wl]
+c01a53e8 mimophytbl_info_sz_rev3        [wl]
+c002a410 wep_encrypt    [wl]
+c00d8c00 d11sslpn1initvals20    [wl]
+c00e401c d11ucode5sz    [wl]
+c01a8320 sslpnphy_gain_idx_extlna_cmrxaci_tbl   [wl]
+c01a3e6c pltlut_tbl_rev3        [wl]
+c0065480 wlc_channel_reg_limits [wl]
+c00be6f4 wlc_wmf_instance_add   [wl]
+c0067080 wlc_valid_chanspec_db  [wl]
+c004f160 wlc_ap_detach  [wl]
+c0055468 wlc_ht_ap_coex_tebc_proc       [wl]
+c002e3b4 wlc_beacon_phytxctl_txant_upd  [wl]
+c00b3b5c wlc_pio_register_fn    [wl]
+c00bb734 wlc_scb_getnext        [wl]
+c00b3750 wlc_phychain_set       [wl]
+c00b9c88 wlc_scan_detach        [wl]
+c01a0768 iq_lut_core0_rev0      [wl]
+c001b144 et_dump        [et]
+c0019ca4 et_init        [et]
+c001b350 etc_chipmatch  [et]
+c001b9ec etc_watchdog   [et]
+c0021a60 bcmgmac_et_chops       [et]
+c001b5b0 etc_up [et]
+c0019d28 et_up  [et]
+c0021984 up2tc  [et]
+c001b1ac et_phyfind     [et]
+c002194c wan_debug      [et]
+c0019cf0 et_reset       [et]
+c001df40 adm_detach     [et]
+c0019dac et_down        [et]
+c001e3f0 adm_config_vlan        [et]
+c001bcd8 etc_promisc    [et]
+c001de20 adm_attach     [et]
+c001b4c8 etc_detach     [et]
+c001b3c4 etc_attach     [et]
+c001e7e0 adm_enable_device      [et]
+c001b5e4 etc_down       [et]
+c001bf84 etc_totlen     [et]
+c00219f0 bcm47xx_et_chops       [et]
+c0021980 et_msg_level   [et]
+c001b19c et_link_up     [et]
+c001b58c etc_init       [et]
+c00219a4 priq_selector  [et]
+c001a050 et_intrson     [et]
+c001b2cc et_phywr       [et]
+c001bd08 etc_qos        [et]
+c001b23c et_phyrd       [et]
+c001b674 etc_ioctl      [et]
+c001b1a4 et_link_down   [et]
+c001b52c etc_reset      [et]
+c001bd38 etc_bcm53115_war       [et]
+c0016024 osl_timer_init [igs]
+c0013c58 igsc_init      [igs]
+c0013f58 igsc_exit      [igs]
+c0015b38 igs_cfg_request_process        [igs]
+c00160d4 osl_timer_add  [igs]
+c0014538 igsc_sdb_member_add    [igs]
+c0013238 igsc_rtlist_add        [igs]
+c0014100 igsc_sdb_init  [igs]
+c0014fc0 igs_broadcast  [igs]
+c0013b1c igsc_cfg_request_process       [igs]
+c0014d90 igsc_sdb_interface_del [igs]
+c0013fe8 igsc_interface_rtport_del      [igs]
+c0014ab0 igsc_sdb_clear [igs]
+c0014c98 igsc_sdb_list  [igs]
+c001613c osl_timer_update       [igs]
+c00130b0 igsc_rtlist_timer      [igs]
+c00139d8 igsc_stats_get [igs]
+c00161a4 osl_timer_del  [igs]
+c0014994 igsc_sdb_member_del    [igs]
+c000e75c emfc_iflist_add        [emf]
+c000f0a4 emfc_init      [emf]
+c000eb78 emfc_rtport_add        [emf]
+c000f37c emfc_exit      [emf]
+c000df6c emfc_mfdb_membership_del       [emf]
+c000fb64 emf_sendup     [emf]
+c001024c emf_hooks_unregister   [emf]
+c000d54c emfc_input     [emf]
+c000dab0 emfc_mfdb_mhif_add     [emf]
+c000d198 emfc_igmp_snooper_register     [emf]
+c000eda4 emfc_cfg_request_process       [emf]
+c000e578 emfc_mfdb_list [emf]
+c000d240 emfc_igmp_snooper_unregister   [emf]
+c0010790 emf_cfg_request_process        [emf]
+c000ec34 emfc_rtport_del        [emf]
+c000e870 emfc_iflist_del        [emf]
+c000f4fc emfc_module_init       [emf]
+c000dcbc emfc_mfdb_membership_add       [emf]
+c0010174 emf_hooks_register     [emf]
+c000fb9c emf_forward    [emf]
+c00106ec emf_iflist_list        [emf]
+c000e4b0 emfc_stats_get [emf]
+c000f5b0 emfc_module_exit       [emf]
+c000dbf8 emfc_mfdb_membership_find      [emf]
+c000e130 emfc_mfdb_clear        [emf]
+80003058 disable_irq_nosync
+8000224c disable_irq
+80002324 enable_irq
+800029ec probe_irq_mask
+80149a30 mips_io_port_base
+80199394 isa_slot_offset
+80188810 mips_machtype
+8013cfac memcmp
+8013c180 memset
+8013be40 memcpy
+8013c100 memmove
+8013cc40 strcat
+8013ccd8 strchr
+8013cd7c strlen
+8013ce4c strpbrk
+8013cc78 strncat
+8013cda0 strnlen
+8013cd1c strrchr
+8013cfe0 strstr
+8013ceac strtok
+80199810 _clear_page
+800033b4 kernel_thread
+8013be44 __copy_user
+8013c19c __bzero
+8013c320 __strncpy_from_user_nocheck_asm
+8013c310 __strncpy_from_user_asm
+8013c2f0 __strlen_user_nocheck_asm
+8013c2e0 __strlen_user_asm
+8013c380 __strnlen_user_nocheck_asm
+8013c370 __strnlen_user_asm
+8013bce0 csum_partial_copy
+8019982c _flush_page_to_ram
+80199818 _flush_cache_all
+80181000 invalid_pte_table
+8000752c __down
+800075e0 __down_interruptible
+8000770c __down_trylock
+800074f0 __up
+80003424 get_wchan
+800f9fa4 insert_func_to_BR_PRE_ROUTE
+800fea54 insert_func_to_BR_POST_ROUTE
+800fea60 remove_func_from_BR_POST_ROUTE
+800f9fb0 remove_func_from_BR_PRE_ROUTE
+80188850 rtc_lock
+80009d70 pci_alloc_consistent
+80009e08 pci_free_consistent
+8000a504 __ioremap
+8000a698 iounmap
+80199840 _dma_cache_wback_inv
+80199844 _dma_cache_wback
+80199848 _dma_cache_inv
+80010448 register_exec_domain
+800104a0 unregister_exec_domain
+800104e8 __set_personality
+80188b00 abi_defhandler_coff
+80188b04 abi_defhandler_elf
+80188b08 abi_defhandler_lcall7
+80188b0c abi_defhandler_libcso
+8019bed4 abi_traceflg
+8019bed0 abi_fake_utsname
+8001181c printk
+80011abc acquire_console_sem
+80011d28 console_print
+80011d50 console_unblank
+80011dc4 register_console
+80012044 unregister_console
+8001bfd4 dequeue_signal
+8001ba7c flush_signals
+8001cc68 force_sig
+8001c7bc force_sig_info
+8001cc88 kill_pg
+8001c900 kill_pg_info
+8001cce0 kill_proc
+8001dea4 kill_proc_info
+8001ccb4 kill_sl
+8001c9bc kill_sl_info
+8001cec0 notify_parent
+8001e0ac recalc_sigpending
+8001cc40 send_sig
+8001c688 send_sig_info
+8001bcc8 block_all_signals
+8001bd28 unblock_all_signals
+8001e110 notifier_chain_register
+8001e154 notifier_chain_unregister
+8001e18c notifier_call_chain
+8001e200 register_reboot_notifier
+8001e228 unregister_reboot_notifier
+8001f564 in_group_p
+8001f594 in_egroup_p
+801899b0 hotplug_path
+8001ff40 exec_usermodehelper
+800201e8 call_usermodehelper
+80020764 schedule_task
+80020b08 flush_scheduled_tasks
+80012150 inter_module_register
+80012294 inter_module_unregister
+80012374 inter_module_get
+80012410 inter_module_get_request
+8001244c inter_module_put
+80012f7c try_inc_mod_count
+80023ac0 do_mmap_pgoff
+800246b0 do_munmap
+80024a28 do_brk
+80014d30 exit_mm
+800149b0 exit_files
+80014b0c exit_fs
+8001baa0 exit_sighand
+8003090c _alloc_pages
+80030ca8 __alloc_pages
+80033d40 alloc_pages_node
+80030ebc __get_free_pages
+80030f50 get_zeroed_page
+80030ff4 __free_pages
+8003104c free_pages
+801be054 num_physpages
+8002d9dc kmem_find_general_cachep
+8002cb8c kmem_cache_create
+8002d260 kmem_cache_destroy
+8002d1b4 kmem_cache_shrink
+8002d83c kmem_cache_alloc
+8002d8c0 kmem_cache_free
+8002d9d4 kmem_cache_size
+8002d858 kmalloc
+8002d930 kfree
+8002c120 vfree
+8002c1b4 __vmalloc
+80023378 vmalloc_to_page
+801be060 mem_map
+80021dac remap_page_range
+801be050 max_mapnr
+801be05c high_memory
+8002262c vmtruncate
+80024164 find_vma
+800240b4 get_unmapped_area
+801831c0 init_mm
+8018a434 def_blk_fops
+80051110 update_atime
+8003dbe8 get_fs_type
+8003e1a0 get_super
+8003df48 drop_super
+80043550 getname
+801bfd10 names_cachep
+800384a4 fput
+8003864c fget
+80050b54 igrab
+80050a94 iunique
+80050c00 iget4
+80050df0 iput
+800510bc force_delete
+80043acc follow_up
+80043bc0 follow_down
+80052838 lookup_mnt
+80044624 path_init
+800443f0 path_walk
+80043850 path_release
+80044940 __user_walk
+800448a4 lookup_one_len
+800447b0 lookup_hash
+80036aac sys_close
+8018a7f0 dcache_lock
+8004ec60 d_alloc_root
+8004ef64 d_delete
+8004e2bc dget_locked
+8004ee60 d_validate
+8004f000 d_rehash
+8004e214 d_invalidate
+8004f0b0 d_move
+8004ebdc d_instantiate
+8004ea34 d_alloc
+8004ece0 d_lookup
+8004f224 __d_path
+80039fc0 mark_buffer_dirty
+8003d770 set_buffer_async_io
+80039f68 __mark_buffer_dirty
+8004f920 __mark_inode_dirty
+8003590c fd_install
+80038290 get_empty_filp
+80038410 init_private_file
+80036524 filp_open
+80036a10 filp_close
+80038698 put_filp
+8018a31c files_lock
+8003fc6c check_disk_change
+800397f4 __invalidate_buffers
+800395e0 invalidate_bdev
+80050394 invalidate_inodes
+80050434 invalidate_device
+80025248 invalidate_inode_pages
+8002562c truncate_inode_pages
+80038ea4 fsync_dev
+80038e6c fsync_no_super
+80043798 permission
+80043634 vfs_permission
+8005151c inode_setattr
+80051340 inode_change_ok
+8004fe2c write_inode_now
+800516c0 notify_change
+8003f088 set_blocksize
+8003f1e8 sb_set_blocksize
+8003f24c sb_min_blocksize
+80039dac getblk
+80040400 cdget
+800404e0 cdput
+8003f758 bdget
+8003f8b8 bdput
+8003a190 bread
+8003a0e4 __brelse
+8003a134 __bforget
+80091a6c ll_rw_block
+80091974 submit_bh
+800387b0 unlock_buffer
+80038838 __wait_on_buffer
+8002615c ___wait_on_page
+8003c0b4 generic_direct_IO
+8003a770 discard_bh_page
+8003bde0 block_write_full_page
+8003b218 block_read_full_page
+8003b9e8 block_prepare_write
+8003d274 block_sync_page
+8003b55c generic_cont_expand
+8003b6c4 cont_prepare_write
+8003ba84 generic_commit_write
+8003bb30 block_truncate_page
+8003c080 generic_block_bmap
+800274b0 generic_file_read
+80026bbc do_generic_file_read
+80029280 generic_file_write
+80028138 generic_file_mmap
+8018a220 generic_ro_fops
+80025974 generic_buffer_fdatasync
+801be080 page_hash_bits
+801be084 page_hash_table
+8018a7d8 file_lock_list
+8004ae48 locks_init_lock
+8004aee8 locks_copy_lock
+8004bfb0 posix_lock_file
+8004ba1c posix_test_lock
+8004d8b4 posix_block_lock
+8004d8d0 posix_unblock_lock
+8004ba90 posix_locks_deadlock
+8004bb64 locks_mandatory_area
+8004e020 dput
+8004e894 have_submounts
+8004e320 d_find_alias
+8004e3b4 d_prune_aliases
+8004e47c prune_dcache
+8004e688 shrink_dcache_sb
+8004e99c shrink_dcache_parent
+8004f6b0 find_inode_number
+8004f604 is_subdir
+800367d0 get_unused_fd
+800449c0 vfs_create
+800455ec vfs_mkdir
+80045280 vfs_mknod
+800460c4 vfs_symlink
+80046358 vfs_link
+800458fc vfs_rmdir
+80045d44 vfs_unlink
+80046fe4 vfs_rename
+80035740 vfs_statfs
+800370f0 generic_read_dir
+800370f8 generic_file_llseek
+800371e0 no_llseek
+80049c3c __pollwait
+80049bc0 poll_freewait
+80199020 ROOT_DEV
+800264e8 __find_get_page
+800266ac __find_lock_page
+800266c8 find_or_create_page
+80026824 grab_cache_page_nowait
+80029178 read_cache_page
+800251bc set_page_dirty
+80047160 vfs_readlink
+80047208 vfs_follow_link
+800474f8 page_readlink
+80047578 page_follow_link
+8018a6b0 page_symlink_inode_operations
+8003c924 block_symlink
+80048ff0 vfs_readdir
+8004c6dc __get_lease
+8004c9c4 lease_get_mtime
+8004dde0 lock_may_read
+8004deac lock_may_write
+80049164 dcache_dir_open
+800491a8 dcache_dir_close
+800491cc dcache_dir_lseek
+80049408 dcache_dir_fsync
+80049410 dcache_readdir
+8018a72c dcache_dir_ops
+800371ec default_llseek
+80036588 dentry_open
+80027d0c filemap_nopage
+80028028 filemap_sync
+80025adc filemap_fdatasync
+80025c24 filemap_fdatawait
+800264a4 lock_page
+8002627c unlock_page
+80037f74 register_chrdev
+80038014 unregister_chrdev
+8003fb5c register_blkdev
+8003fbfc unregister_blkdev
+80080f90 tty_register_driver
+8008109c tty_unregister_driver
+801c0204 tty_std_termios
+801cf238 blksize_size
+801cf634 hardsect_size
+801cee3c blk_size
+801c62c8 blk_dev
+80090e08 is_read_only
+80090e54 set_device_ro
+800510d4 bmap
+80038eec sync_dev
+8005ee54 devfs_register_partitions
+8004008c blkdev_open
+8003fff8 blkdev_get
+800400d8 blkdev_put
+8003fd74 ioctl_by_bdev
+8005efbc grok_partitions
+8005ef8c register_disk
+80190500 tq_disk
+8003989c init_buffer
+8003a0c8 refile_buffer
+801cfe2c max_sectors
+801cfa30 max_readahead
+8007e4f8 tty_hangup
+80084150 tty_wait_until_sent
+8007e06c tty_check_change
+8007e530 tty_hung_up_p
+80080bf4 tty_flip_buffer_push
+80080b34 tty_get_baud_rate
+80080978 do_SAK
+8003d8a0 register_filesystem
+8003d914 unregister_filesystem
+8003ee04 kern_mount
+80052b18 __mntput
+80053008 may_umount
+80040c90 register_binfmt
+80040ce4 unregister_binfmt
+80041d64 search_binary_handler
+80041a14 prepare_binprm
+80041b20 compute_creds
+80041ca0 remove_arg_zero
+80042144 set_binfmt
+80017f1c register_sysctl_table
+80017fc4 unregister_sysctl_table
+80019568 sysctl_string
+80019748 sysctl_intvec
+80019820 sysctl_jiffies
+80018394 proc_dostring
+80018b3c proc_dointvec
+8001953c proc_dointvec_jiffies
+80018bd8 proc_dointvec_minmax
+8001950c proc_doulongvec_ms_jiffies_minmax
+800194e0 proc_doulongvec_minmax
+8001a60c add_timer
+8001a770 del_timer
+80002538 request_irq
+80002624 free_irq
+801bc800 irq_stat
+8000ecc0 add_wait_queue
+8000ed3c add_wait_queue_exclusive
+8000edb4 remove_wait_queue
+8000d8b4 wait_for_completion
+8000d7b0 complete
+80002748 probe_irq_on
+80002b18 probe_irq_off
+8001a6cc mod_timer
+80189908 tq_timer
+80189910 tq_immediate
+80052048 alloc_kiovec
+80052110 free_kiovec
+8005219c expand_kiobuf
+800215a0 map_user_kiobuf
+800217bc unmap_kiobuf
+80021860 lock_kiovec
+80021a04 unlock_kiovec
+8003c3c8 brw_kiovec
+80052250 kiobuf_wait_for_io
+8000ebe0 request_dma
+8000ec38 free_dma
+80188a00 dma_spin_lock
+80017594 request_resource
+800175c4 release_resource
+80017768 allocate_resource
+800175e0 check_resource
+800177e4 __request_region
+800178b0 __check_region
+800178fc __release_region
+80188db0 ioport_resource
+80188dcc iomem_resource
+80015428 complete_and_exit
+8000d5a0 __wake_up
+8000d6a8 __wake_up_sync
+8000e9c4 wake_up_process
+8000dbb0 sleep_on
+8000dc90 sleep_on_timeout
+8000d9e8 interruptible_sleep_on
+8000dac8 interruptible_sleep_on_timeout
+8000d0e0 schedule
+8000cfd4 schedule_timeout
+8000e28c yield
+8000e2c0 __cond_resched
+801bcbc4 jiffies
+801bcbd0 xtime
+80009294 do_gettimeofday
+80009388 do_settimeofday
+80183294 loops_per_jiffy
+80199880 kstat
+8019aea0 nr_running
+80010700 panic
+80010900 __out_of_line_bug
+8013de14 sprintf
+8013ddcc snprintf
+8013e444 sscanf
+8013ddf0 vsprintf
+8013d7e8 vsnprintf
+8013de3c vsscanf
+80038100 kdevname
+800402e8 bdevname
+80038148 cdevname
+8013d1b0 simple_strtol
+8013d0c0 simple_strtoul
+8013d1ec simple_strtoull
+801832a0 system_utsname
+8018999c uts_sem
+80007480 machine_restart
+800074a4 machine_halt
+800074c8 machine_power_off
+801957d0 _ctype
+80088ae4 secure_tcp_sequence_number
+80087970 get_random_bytes
+801889d0 securebits
+801898f0 cap_bset
+8000e7dc reparent_to_init
+8000e924 daemonize
+8013b7c0 csum_partial
+80055134 seq_escape
+80055254 seq_printf
+80054890 seq_open
+80055100 seq_release
+80054914 seq_read
+80054f58 seq_lseek
+80183290 disable_all_usb
+800412cc setup_arg_pages
+80041148 copy_strings_kernel
+80041f20 do_execve
+80041700 flush_old_exec
+80041518 kernel_read
+80041428 open_exec
+8000a2e0 si_meminfo
+801bc7d8 sys_tz
+80038f28 file_fsync
+80039a50 fsync_buffers_list
+80050090 clear_inode
+801d5ce0 ___strtok
+800381b8 init_special_inode
+801c5ec4 read_ahead
+8003944c get_hash_table
+800507d0 get_empty_inode
+80050d70 insert_inode_hash
+80050dd4 remove_inode_hash
+800394f8 buffer_insert_inode_queue
+80039544 buffer_insert_inode_data_queue
+80051888 make_bad_inode
+800518c0 is_bad_inode
+801bcba0 event
+8003c7d8 brw_page
+8005255c __inode_dir_notify
+80189978 fs_overflowuid
+8018997c fs_overflowgid
+800488e4 fasync_helper
+80048ad4 kill_fasync
+8005e5e0 disk_name
+800437e4 get_write_access
+8013cbb0 strnicmp
+8013cde0 strspn
+8013cf58 strsep
+8017c040 tasklet_hi_vec
+8017c020 tasklet_vec
+801bc820 bh_task_vec
+80017150 init_bh
+8001716c remove_bh
+80016fe8 tasklet_init
+80017000 tasklet_kill
+800171b4 __run_task_queue
+80016920 do_softirq
+80016ab4 raise_softirq
+8001733c cpu_raise_softirq
+80016b90 __tasklet_schedule
+80016c5c __tasklet_hi_schedule
+8016a000 init_task_union
+8017c000 tasklist_lock
+8019aeb0 pidhash
+8013eb70 dump_stack
+800212ec get_user_pages
+80189b44 vm_max_readahead
+80189b48 vm_min_readahead
+80025a68 fail_writepage
+801be0f0 zone_table
+800352fc shmem_file_setup
+80036bb0 generic_file_open
+8003a020 set_buffer_flushtime
+8003a2e0 put_unused_buffer_head
+8003a2fc get_unused_buffer_head
+8003a3c8 set_bh_page
+8003a850 create_empty_buffers
+8003bf5c writeout_one_page
+8003bffc waitfor_one_page
+8003d018 try_to_free_buffers
+801bfd1c bh_cachep
+801bfe50 nfsd_linkage
+801bfea0 proc_sys_root
+8005b218 proc_symlink
+8005b2c0 proc_mknod
+8005b324 proc_mkdir
+8005b388 create_proc_entry
+8005b4a4 remove_proc_entry
+8018aa84 proc_root
+801bfe90 proc_root_fs
+801bfe94 proc_net
+801bfe98 proc_bus
+801bfe9c proc_root_driver
+800600c8 devfs_put
+800610a8 devfs_register
+80061570 devfs_unregister
+8006176c devfs_mk_symlink
+800617f4 devfs_mk_dir
+80061964 devfs_get_handle
+800619a0 devfs_find_handle
+800619e0 devfs_get_flags
+80061a68 devfs_set_flags
+80061af8 devfs_get_maj_min
+80061b58 devfs_get_handle_from_inode
+80061ba4 devfs_generate_path
+80061ca8 devfs_get_ops
+80061dec devfs_set_file_size
+80061e44 devfs_get_info
+80061e58 devfs_set_info
+80061e70 devfs_get_parent
+80061e84 devfs_get_first_child
+80061ea8 devfs_get_next_sibling
+80061ebc devfs_auto_unregister
+80061f6c devfs_get_unregister_slave
+80061f80 devfs_get_name
+80061fa4 devfs_register_chrdev
+80061fe0 devfs_register_blkdev
+8006201c devfs_unregister_chrdev
+80062058 devfs_unregister_blkdev
+80064010 devfs_register_tape
+80064118 devfs_register_series
+800641f0 devfs_alloc_major
+80064270 devfs_dealloc_major
+80064300 devfs_alloc_devnum
+800645ac devfs_dealloc_devnum
+80064768 devfs_alloc_unique_number
+80064940 devfs_dealloc_unique_number
+8007dcc8 tty_register_ldisc
+80080e14 tty_register_devfs
+80080f24 tty_unregister_devfs
+80084d94 n_tty_ioctl
+800868ec misc_register
+80086b60 misc_deregister
+80087318 add_keyboard_randomness
+80087358 add_mouse_randomness
+80087380 add_interrupt_randomness
+800873c8 add_blkdev_randomness
+80086fb8 batch_entropy_store
+8008826c generate_random_uuid
+8008f218 register_serial
+8008f54c unregister_serial
+8008ec54 pci_siig10x_fn
+8008ecd4 pci_siig20x_fn
+800901bc handle_sysrq
+80090238 __handle_sysrq_nolock
+80090120 __sysrq_lock_table
+80090128 __sysrq_unlock_table
+80090130 __sysrq_get_key_op
+80090178 __sysrq_put_key_op
+80190508 io_request_lock
+80091d18 end_that_request_first
+80091e20 end_that_request_last
+800909a0 blk_grow_request_list
+80090b84 blk_init_queue
+80091e64 blk_get_queue
+8009043c blk_cleanup_queue
+800904ac blk_queue_headactive
+800904b4 blk_queue_make_request
+8009177c generic_make_request
+80090ec4 blkdev_release_request
+8009090c generic_unplug_device
+800904bc blk_queue_bounce_limit
+801c62c0 blk_max_low_pfn
+801c62c4 blk_max_pfn
+80091ebc blk_seg_merge_ok
+80190508 blk_nohighio
+800924e0 blk_ioctl
+801d2210 gendisk_head
+800929f0 add_gendisk
+80092a3c del_gendisk
+80092a98 get_gendisk
+80093358 init_etherdev
+80093384 alloc_etherdev
+80093414 ether_setup
+800934c8 register_netdev
+80093570 unregister_netdev
+800967d8 ppp_register_channel
+80096990 ppp_unregister_channel
+800968f0 ppp_channel_index
+80096908 ppp_unit_number
+80095a90 ppp_input
+80095da0 ppp_input_error
+80096ad0 ppp_output_wakeup
+80097080 ppp_register_compressor
+800970fc ppp_unregister_compressor
+800983dc ppp_export_info
+800983fc ppp_import_sock_info
+801d2620 all_ppp_units
+80191158 all_channels
+80098590 slhc_init
+80098734 slhc_free
+800996e8 slhc_remember
+8009883c slhc_compress
+80098fd4 slhc_uncompress
+80099964 slhc_toss
+8019120c ppp_crc16_table
+8009b2a0 register_pppox_proto
+8009b2d8 unregister_pppox_proto
+8009b2fc pppox_unbind_sock
+8009f9d0 autoirq_setup
+8009f9f4 autoirq_report
+800a0174 ai_addrspace
+800a01ac ai_addrspacesize
+800a0678 ai_core_cflags
+800a0600 ai_core_cflags_wo
+800a051c ai_core_disable
+800a02c0 ai_corereg
+800a0588 ai_core_reset
+800a0260 ai_corerev
+800a0700 ai_core_sflags
+800a0248 ai_corevendor
+800a01e4 ai_flag
+800a0274 ai_iscoreup
+800a016c ai_numaddrspaces
+8009fbe0 ai_scan
+800a0068 ai_setcoreidx
+800a0240 ai_setint
+800a0cbc otp_init
+800a0c44 otp_read_bit
+800a0d30 otp_read_region
+800a15c4 srom_parsecis
+800a1044 srom_read
+800a0fa0 srom_var_init
+800a1180 srom_write
+800a4570 bcm_atoi
+800a5840 bcm_binit
+800a57fc bcm_bitcount
+800a5854 bcm_bprintf
+800a5450 bcm_brev_str
+800a5400 bcm_chipname
+80154360 bcm_ctype
+800a5570 bcmdumpfields
+800a4e0c bcmerrorstr
+800a4700 bcm_ether_atoe
+800a477c bcm_ether_ntoa
+800a5084 bcm_iovar_lencheck
+800a4fe8 bcm_iovar_lookup
+800a47e0 bcm_ip_ntoa
+800a4834 bcm_mdelay
+800a5644 bcm_mkiovar
+800a5764 bcm_mw_to_qdbm
+800a52e4 bcm_next_tlv
+800a4f64 bcm_nvram_cache
+800a4f08 bcm_nvram_vars
+800a53a0 bcm_parse_ordered_tlvs
+800a5348 bcm_parse_tlvs
+800a56f4 bcm_qdbm_to_mw
+800a4650 bcmstrcat
+800a469c bcmstrncat
+800a4590 bcmstrstr
+800a43b8 bcm_strtoul
+800a4a48 getgpiopin
+800a4940 getintvar
+800a4884 getvar
+800a512c hndcrc16
+800a517c hndcrc32
+800a50f0 hndcrc8
+800a3990 pktcopy
+800a3a98 pktfrombuf
+800a3bb0 pktlast
+800a3f54 pktq_deq
+800a4014 pktq_deq_tail
+800a41b8 pktq_flush
+800a3ed8 pktq_init
+800a4278 pktq_mdeq
+800a4234 pktq_mlen
+800a3e28 pktq_pdel
+800a3cc0 pktq_pdeq
+800a3d18 pktq_pdeq_tail
+800a40cc pktq_peek
+800a4154 pktq_peek_tail
+800a3bf0 pktq_penq
+800a3c5c pktq_penq_head
+800a3d88 pktq_pflush
+800a3bd4 pktsegcnt
+800a4b38 pktsetprio
+800a3b90 pkttotlen
+800a54d8 printbig
+800a84bc dma_addrwidth
+800a58e0 dma_attach
+800a688c dma_txpioloopback
+800a99a4 si_pmu_alp_clock
+800a86e0 si_pmu_chipcontrol
+800aab00 si_pmu_chip_init
+800a9db0 si_pmu_cpu_clock
+800a8a4c si_pmu_fast_pwrup_delay
+800a8b8c si_pmu_force_ilp
+800a9f38 si_pmu_ilp_clock
+800aa14c si_pmu_init
+800aaa4c si_pmu_is_otp_powered
+800a9e7c si_pmu_mem_clock
+800aa3c4 si_pmu_otp_power
+800a89d4 si_pmu_paref_ldo_enable
+800a8748 si_pmu_pllcontrol
+800a9864 si_pmu_pll_init
+800a87b0 si_pmu_pllupd
+800aa5c0 si_pmu_rcal
+800a8e70 si_pmu_res_init
+800a8860 si_pmu_set_ldo_voltage
+800a87dc si_pmu_set_switcher_voltage
+800a9c40 si_pmu_si_clock
+800aa7c4 si_pmu_spuravoid
+800aab08 si_pmu_swreg_init
+800a9ff4 si_sdiod_drive_strength_init
+800ab2c0 insert_func_to_IP_PRE_ROUTE
+800aabc4 osl_attach
+800ab1f0 osl_delay
+800aac6c osl_detach
+800ab138 osl_dma_alloc_consistent
+800ab130 osl_dma_consistent_align
+800ab154 osl_dma_free_consistent
+800ab17c osl_dma_map
+800ab1dc osl_dma_unmap
+800aab90 osl_error
+800ab078 osl_malloc
+800ab120 osl_malloced
+800ab128 osl_malloc_failed
+800ab0ec osl_mfree
+800ab014 osl_pci_bus
+800aaf04 osl_pci_read_config
+800ab024 osl_pci_slot
+800aaf70 osl_pci_write_config
+800ab03c osl_pcmcia_read_attr
+800ab058 osl_pcmcia_write_attr
+800ab248 osl_pktdup
+800aad58 osl_pktfree
+800aac8c osl_pktget
+800ab320 remove_func_to_IP_PRE_ROUTE
+800abffc pcicore_attach
+800ab428 pcicore_deinit
+800ac25c pcicore_down
+800ab450 pcicore_find_pci_capability
+800ac0e4 pcicore_hwup
+800ab380 pcicore_init
+800ac52c pcicore_pcieserdesreg
+800ac2bc pcicore_pmecap_fast
+800ac43c pcicore_pmeclr
+800ac38c pcicore_pmeen
+800ac3ec pcicore_pmestat
+800ac1d4 pcicore_sleep
+800ac168 pcicore_up
+800ab8d0 pcie_clkreq
+800ab62c pcie_readreg
+800abfdc pcie_war_ovr_aspm_disable
+800ab694 pcie_writereg
+800ad398 sb_addrspace
+800ad3d0 sb_addrspacesize
+800adb34 sb_base
+800ad408 sb_commit
+800acac8 sb_core_cflags
+800aca54 sb_core_cflags_wo
+800ad500 sb_core_disable
+800ac85c sb_coreid
+800acc40 sb_corereg
+800ad754 sb_core_reset
+800aca20 sb_corerev
+800acb68 sb_core_sflags
+800ad8c4 sb_core_tofixup
+800ac9fc sb_corevendor
+800ac884 sb_flag
+800acc08 sb_iscoreup
+800ad36c sb_numaddrspaces
+800ad158 sb_scan
+800ad1cc sb_setcoreidx
+800ad9a8 sb_set_initiator_to
+800ac8a8 sb_setint
+800adb6c sb_size
+800b1fc0 si_4329_pmu_voltage
+800b1f44 si_4329_tweak
+800b2054 si_4329_vbatmeas_off
+800b2048 si_4329_vbatmeas_on
+800aef3c si_addrspace
+800aef8c si_addrspacesize
+800af7dc si_alp_clock
+800adbd0 si_attach
+800aeba0 si_backplane64
+800b1be0 si_btcgpiowar
+800b1ec8 si_cis_source
+800b0390 si_clkctl_cc
+800affe8 si_clkctl_fast_pwrup_delay
+800afef8 si_clkctl_init
+800b01e8 si_clkctl_xtal
+800af65c si_clock
+800af34c si_clock_rate
+800af220 si_corebist
+800aefdc si_core_cflags
+800af02c si_core_cflags_wo
+800af164 si_core_disable
+800aeacc si_coreid
+800aeae0 si_coreidx
+800aec50 si_corelist
+800afa18 si_corepciid
+800af114 si_corereg
+800aec88 si_coreregs
+800af1ac si_core_reset
+800aebb0 si_corerev
+800af074 si_core_sflags
+800af1f4 si_core_tofixup
+800aeae8 si_coreunit
+800aeb50 si_corevendor
+800af944 si_d11_devid
+800aea2c si_deregister_intr_callback
+800ae930 si_detach
+800b1cd0 si_deviceremoved
+800b07f0 si_devpath
+800aec00 si_findcoreidx
+800aea34 si_flag
+800b0940 si_getdevpathintvar
+800b0910 si_getdevpathvar
+800b11b4 si_gpiocontrol
+800b1780 si_gpioevent
+800b191c si_gpio_handler_process
+800b17e8 si_gpio_handler_register
+800b1898 si_gpio_handler_unregister
+800b1584 si_gpioin
+800b19d4 si_gpio_int_enable
+800b1628 si_gpiointmask
+800b15ac si_gpiointpolarity
+800b16a4 si_gpioled
+800b1400 si_gpioout
+800b1238 si_gpioouten
+800b172c si_gpiopull
+800b1524 si_gpiorelease
+800b14c8 si_gpioreserve
+800b1198 si_gpiosetcore
+800b16e8 si_gpiotimerval
+800af834 si_ilp_clock
+800af0c4 si_iscoreup
+800b1d18 si_is_otp_disabled
+800b1e10 si_is_otp_powered
+800b1d74 si_is_sprom_available
+800adcb8 si_kattach
+800ade00 si_ldo_war
+800aeeec si_numaddrspaces
+800ae9f0 si_osh
+800b1e64 si_otp_power
+800b0d68 si_pci_down
+800b1010 si_pcieclkreq
+800b1058 si_pcie_readreg
+800b0a30 si_pcieserdesreg
+800b0bb0 si_pcie_war_ovr_disable
+800b108c si_pci_fixcfg
+800b0afc si_pci_pmeclr
+800b0ac4 si_pci_pmeen
+800b0ae0 si_pci_pmestat
+800b0e54 si_pci_setup
+800b0d4c si_pci_sleep
+800b0bf0 si_pci_up
+800b0b70 si_pci_war16165
+800b0b18 si_pcmcia_init
+800aea00 si_register_intr_callback
+800aee3c si_restore_core
+800aec90 si_setcore
+800aed08 si_setcoreidx
+800aea84 si_setint
+800ae9f8 si_setosh
+800b1a1c si_socram_size
+800aed58 si_switch_core
+800af888 si_watchdog
+800af914 si_watchdog_ms
+800b293c bcm_robo_attach
+800b2e00 bcm_robo_config_vlan
+800b2c5c bcm_robo_detach
+800b2c94 bcm_robo_enable_device
+800b3770 bcm_robo_enable_switch
+80191e78 pdesc25
+80191e0c pdesc97
+800b38f4 robo_read_link_status
+800b4c24 pci_read_config_byte
+800b4ca0 pci_read_config_word
+800b4d34 pci_read_config_dword
+800b4dc8 pci_write_config_byte
+800b4e48 pci_write_config_word
+800b4ee0 pci_write_config_dword
+80191ec8 pci_devices
+80191ec0 pci_root_buses
+800b4038 pci_enable_device_bars
+800b4088 pci_enable_device
+800b40a4 pci_disable_device
+800b3bbc pci_find_capability
+800b44b8 pci_release_regions
+800b4500 pci_request_regions
+800b4290 pci_release_region
+800b4344 pci_request_region
+800b3b6c pci_find_class
+800b3b44 pci_find_device
+800b3a50 pci_find_slot
+800b3aa4 pci_find_subsys
+800b4f74 pci_set_master
+800b507c pci_set_mwi
+800b50f0 pci_clear_mwi
+800b4fcc pdev_set_mwi
+800b5148 pci_set_dma_mask
+800b5158 pci_dac_set_dma_mask
+800b7d2c pci_assign_resource
+800b478c pci_register_driver
+800b482c pci_unregister_driver
+800b4bd4 pci_dev_driver
+800b4614 pci_match_device
+800b3cf8 pci_find_parent_resource
+800b5aa0 pci_setup_device
+800b4a80 pci_insert_device
+800b4b3c pci_remove_device
+800b49fc pci_announce_device_to_drivers
+800b576c pci_add_new_bus
+800b5ebc pci_do_scan_bus
+800b5d80 pci_scan_slot
+800b60ac pci_scan_bus
+800b7674 pci_proc_attach_device
+800b7748 pci_proc_detach_device
+800b779c pci_proc_attach_bus
+800b7804 pci_proc_detach_bus
+801d2ac0 proc_bus_pci_dir
+800b3d9c pci_set_power_state
+800b3f28 pci_save_state
+800b3f88 pci_restore_state
+800b40fc pci_enable_wake
+800b6c10 pcibios_present
+800b6d5c pcibios_read_config_byte
+800b6db4 pcibios_read_config_word
+800b6e0c pcibios_read_config_dword
+800b6e64 pcibios_write_config_byte
+800b6ebc pcibios_write_config_word
+800b6f14 pcibios_write_config_dword
+800b6c28 pcibios_find_class
+800b6cbc pcibios_find_device
+801d2ab4 isa_dma_bridge_buggy
+801d2ab0 pci_pci_problems
+800b6104 pci_pool_create
+800b63a4 pci_pool_destroy
+800b64cc pci_pool_alloc
+800b67ac pci_pool_free
+800b8200 register_mtd_chip_driver
+800b8224 unregister_mtd_chip_driver
+800b82e0 do_map_probe
+800c29b0 mtd_do_chip_probe
+800c35e0 add_mtd_device
+800c3724 del_mtd_device
+800c3adc __get_mtd_device
+800c3878 register_mtd_user
+800c3970 unregister_mtd_user
+800c4498 add_mtd_partitions
+800c43f4 del_mtd_partitions
+800c9d30 skb_over_panic
+800c9d90 skb_under_panic
+800c8084 sock_register
+800c80f0 sock_unregister
+800c9424 __lock_sock
+800c94fc __release_sock
+800cc21c memcpy_fromiovec
+800cc188 memcpy_tokerneliovec
+800c6fcc sock_create
+800c6508 sock_alloc
+800c65b4 sock_release
+800c828c sock_setsockopt
+800c8898 sock_getsockopt
+800c6644 sock_sendmsg
+800c6720 sock_recvmsg
+800c8d20 sk_alloc
+800c8da4 sk_free
+800c6f08 sock_wake_async
+800c93fc sock_alloc_send_skb
+800c91c0 sock_alloc_send_pskb
+800c9c24 sock_init_data
+800c9854 sock_no_release
+800c985c sock_no_bind
+800c9864 sock_no_connect
+800c986c sock_no_socketpair
+800c9874 sock_no_accept
+800c987c sock_no_getname
+800c9884 sock_no_poll
+800c988c sock_no_ioctl
+800c9894 sock_no_listen
+800c989c sock_no_shutdown
+800c98ac sock_no_getsockopt
+800c98a4 sock_no_setsockopt
+800c992c sock_no_sendmsg
+800c9934 sock_no_recvmsg
+800c993c sock_no_mmap
+800c9944 sock_no_sendpage
+800c8e9c sock_rfree
+800c8e10 sock_wfree
+800c8ec0 sock_wmalloc
+800c8f5c sock_rmalloc
+800ca900 skb_linearize
+800cb88c skb_checksum
+800ce620 skb_checksum_help
+800cc7b8 skb_recv_datagram
+800cc984 skb_free_datagram
+800cc9d0 skb_copy_datagram
+800cc9f8 skb_copy_datagram_iovec
+800ccf88 skb_copy_and_csum_datagram_iovec
+800cb630 skb_copy_bits
+800cbb6c skb_copy_and_csum_bits
+800cbe78 skb_copy_and_csum_dev
+800caf78 skb_copy_expand
+800cb084 ___pskb_trim
+800cb274 __pskb_pull_tail
+800cac48 pskb_expand_head
+800caaa4 pskb_copy
+800caeb0 skb_realloc_headroom
+800cd0d0 datagram_poll
+800cd674 put_cmsg
+800c8fe0 sock_kmalloc
+800c907c sock_kfree_s
+800d4940 neigh_table_init
+800d4a40 neigh_table_clear
+800d4078 neigh_resolve_output
+800d42d8 neigh_connected_output
+800d399c neigh_update
+800d27c4 neigh_create
+800d26b4 neigh_lookup
+800d3670 __neigh_event_send
+800d3d8c neigh_event_ns
+800d2300 neigh_ifdown
+800d54e0 neigh_sysctl_register
+800d2a6c pneigh_lookup
+800d45b8 pneigh_enqueue
+800d2e70 neigh_destroy
+800d471c neigh_parms_alloc
+800d4848 neigh_parms_release
+800d1fa0 neigh_rand_reach_time
+800d3fac neigh_compat_output
+800d1a3c dst_alloc
+800d1b0c __dst_free
+800d1c24 dst_destroy
+800d69f8 net_ratelimit
+800d6980 net_random
+800d69cc net_srandom
+800cd3a0 __scm_destroy
+800cd414 __scm_send
+800cd9d4 scm_fp_dup
+8018a300 files_stat
+800cc0d8 memcpy_toiovec
+800d018c dev_change_flags
+801d5164 vlan_ioctl_hook
+800c96c0 sklist_destroy_socket
+800c9624 sklist_insert_socket
+800cd784 scm_detach_fds
+801925f0 br_handle_frame_hook
+801d5160 br_ioctl_hook
+80194228 inetdev_lock
+800f97a0 inet_add_protocol
+800f9864 inet_del_protocol
+801255b8 inet_register_protosw
+801256c8 inet_unregister_protosw
+800f7aa0 ip_route_output_key
+800f6f64 ip_route_input
+801204f8 icmp_send
+800fc020 ip_options_compile
+800fc620 ip_options_undo
+8011e72c arp_send
+80193e00 arp_broken_ops
+800f533c __ip_select_ident
+800fea6c ip_send_check
+800fe2a8 ip_fragment
+801947b8 inet_family_ops
+800f4060 in_aton
+80126344 ip_mc_inc_group
+80126514 ip_mc_dec_group
+800feaf4 ip_finish_output
+80194730 inet_stream_ops
+80194774 inet_dgram_ops
+800ff23c ip_cmsg_recv
+801274e4 inet_addr_type
+80122f10 inet_select_addr
+801273fc ip_dev_find
+80122008 inetdev_by_index
+8012139c in_dev_finish_destroy
+800fb3a0 ip_defrag
+80127890 ip_rt_ioctl
+80122600 devinet_ioctl
+8012301c register_inetaddr_notifier
+80123044 unregister_inetaddr_notifier
+801d3d60 ip_statistics
+801043d0 tcp_read_sock
+800f3218 netlink_set_err
+800f2eb0 netlink_broadcast
+800f2acc netlink_unicast
+800f37f0 netlink_kernel_create
+800f3be8 netlink_dump_start
+800f3d58 netlink_ack
+800f38a8 netlink_set_nonroot
+800f4008 netlink_register_notifier
+800f4030 netlink_unregister_notifier
+800d5854 rtattr_parse
+801d3064 rtnetlink_links
+800d5938 __rta_fill
+800d6030 rtnetlink_dump_ifinfo
+800d5aa0 rtnetlink_put_metrics
+801d3060 rtnl
+800d4aec neigh_delete
+800d4ca4 neigh_add
+800d5404 neigh_dump_info
+800c6040 move_addr_to_kernel
+800c60b0 move_addr_to_user
+801d5180 ipv4_config
+80120150 xrlim_allow
+800f9c2c ip_rcv
+8011f050 arp_rcv
+80193e20 arp_tbl
+8011e434 arp_find
+800ce288 dev_open
+800d0138 dev_set_allmulti
+800d00ac dev_set_promiscuity
+800c9558 sklist_remove_socket
+80192a80 rtnl_sem
+800d5780 rtnl_lock
+800d57d0 rtnl_unlock
+800ce4bc register_netdevice_notifier
+800ce4e4 unregister_netdevice_notifier
+80190fe0 loopback_dev
+800d0b3c register_netdevice
+800d0de0 unregister_netdevice
+800ce1b0 netdev_state_change
+800d0aec dev_new_index
+800cdf0c dev_get_by_index
+800cded8 __dev_get_by_index
+800cde80 dev_get_by_name
+800cde1c __dev_get_by_name
+800d0cf4 netdev_finish_unregister
+800cff0c netdev_set_master
+800d7ee8 eth_type_trans
+800c9df0 alloc_skb
+800ca2e4 __kfree_skb
+800ca438 skb_clone
+800ca7d8 skb_copy
+800ceb64 netif_rx
+800cf140 netif_receive_skb
+800cda90 dev_add_pack
+800cdb54 dev_remove_pack
+800cdeb8 dev_get
+800ce114 dev_alloc
+800ce04c dev_alloc_name
+800d8430 __netdev_watchdog_up
+800d07a4 dev_ioctl
+800ce740 dev_queue_xmit
+80191138 dev_base
+8019113c dev_base_lock
+800ce3a8 dev_close
+800d13e8 dev_mc_add
+800d1268 dev_mc_delete
+800d1200 dev_mc_upload
+80048a1c __kill_fasync
+801925b0 if_port_text
+801922e0 sysctl_wmem_max
+801922e4 sysctl_rmem_max
+80193aa4 sysctl_ip_default_ttl
+800d8a60 qdisc_destroy
+800d8a2c qdisc_reset
+800d8170 qdisc_restart
+800d8954 qdisc_create_dflt
+80192c70 noop_qdisc
+80192c30 qdisc_tree_lock
+801d3a10 psched_time_base
+801d3a18 psched_time_mark
+80192de0 pfifo_qdisc_ops
+800d8e80 register_qdisc
+800d8f38 unregister_qdisc
+800d90ec qdisc_get_rtab
+800d9280 qdisc_put_rtab
+800d9fc4 qdisc_copy_stats
+800db4bc qdisc_new_estimator
+800db6c0 qdisc_kill_estimator
+800dc864 tcf_police
+800dc534 tcf_police_locate
+800dc430 tcf_police_destroy
+800dca10 tcf_police_dump
+800db898 register_tcf_proto_ops
+800db908 unregister_tcf_proto_ops
+800d6b40 nf_register_hook
+800d6c08 nf_unregister_hook
+800d6c78 nf_register_sockopt
+800d6dc8 nf_unregister_sockopt
+800d7850 nf_reinject
+800d72d0 nf_register_queue_handler
+800d7368 nf_unregister_queue_handler
+800d7638 nf_hook_slow
+801d3100 nf_hooks
+800d7184 nf_setsockopt
+800d71a8 nf_getsockopt
+801d3900 ip_ct_attach
+800d7a94 ip_route_me_harder
+800cf9f4 register_gifconf
+8017c180 softnet_data
+8013e594 memparse
+8013e470 get_option
+8013e504 get_options
+8013e6c0 rb_insert_color
+8013ea38 rb_erase
+8013eba0 init_rwsem
+8013ebb4 __down_read
+8013ec8c __down_write
+8013ed5c __up_read
+8013edc0 __up_write
+801405b0 zlib_inflate_workspacesize
+801407e8 zlib_inflate
+801407c4 zlib_inflateInit_
+80140690 zlib_inflateInit2_
+80140624 zlib_inflateEnd
+80140d8c zlib_inflateSync
+801405b8 zlib_inflateReset
+80140eb8 zlib_inflateSyncPoint
+80141050 zlib_inflateIncomp
+80196a30 bcm947xx_sih
+80196a34 bcm947xx_sih_lock
+801781e0 init_mtd_partitions
+801460a0 nvram_get
+80146670 nvram_getall
+80145f3c nvram_set
+801460d8 nvram_unset
+8014616c nvram_commit
+# 
+</nowiki>
+</WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>bcm47xx BCM4718 4Flash 32RAM 5port gigabitethernet 802.11bgn MIPS}}

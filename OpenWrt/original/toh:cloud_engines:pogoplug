@@ -1,0 +1,161 @@
+====== CloudEngines Pogoplug ======
+
+<WRAP center round important 60%>
+**WARNING:** the information in this page is old and may or may not still work correctly with the latest OpenWrt images. As of 20 Aug 2019, I've not been able to actually boot a firmware image, It can boot an initramfs image (runs from RAM) fine, and the second-stage uboot also works fine.
+</WRAP>
+
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "Pogoplug", "version": "E02"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "Pogoplug", "version": "E02"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "Pogoplug", "version": "E02"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+Note that using this guide will replace the original firmware found on the Dockstar. If you ever plan to restore the original firmware please take a [[docs:guide-user:installation:generic.backup|backup]]. One OpenWrt install procedure will place a 2nd stage bootloader. The original U-Boot in mtd0 will be retained and will chainload the 2nd one. The Ethernet address of your device is set by the original U-Boot. The 2nd stage bootloader shows a bogus ethaddr. OpenWrt will use a different flash layout than the original one.
+==== Flash Layout ====
+->[[docs:techref:flash.layout]] for explanations!
+
+^           Original FlashLayout                           ^^^^^
+^ mtd#          |mtd0        |mtd1        |mtd2         |mtd3        |
+^ start         | 0x000000   | 0x100000   | 0x0500000   | 0x2500000  |
+^ size          | 0x100000   | 0x400000   | 0x2000000   | 0x5b00000  |
+^ in Bytes      | 1 MiB      | 4 MiB      | 32 MiB      | 91 MiB     |
+^ name          | u-boot     | uimage     | pogoplug    | root       |
+^ file system   |  //none//  |  //none//  |  JFFS2      |  //none//  |
+^           OpenWrt FlashLayout                                         ^^^^^
+^ mtd#         |mtd0        |mtd1        |mtd2                  |mtd3       |
+^ start        | 0x000000   | 0x0e0000   | 0x100000             | 0x0200000 |
+^ size         | 0x0e0000   | 0x100000   | 0x100000             | 0x7e00000 |
+^ in Bytes     | 896 KiB    | 128 KiB    | 1 MiB                | 126 MiB   |
+^ name         | u-boot     | u-boot env | second_stage_u-boot  | rootfs    |
+^ file system  |  //none//  |  //none//  |  //none//            |  ubifs    |
+
+==== Installing with console access via serial connection ====
+
+Here we describe howto install OpenWrt on the Pogoplug with the help of a [[#Serial|serial connection]] to access the console.
+
+You'll also need a TFTP server on your host computer. Make sure that the following files from the bin/kirkwood folder are accessible through the tftpserver.
+  * If you intend replacing the existing bootloader: ''openwrt-kirkwood-pogo_e02-u-boot.kwb''
+  * If you intend to install a second stage bootloader: ''openwrt-kirkwood-pogo_e02_second_stage-u-boot.img''
+  * ''openwrt-kirkwood-pogoe02-rootfs.ubifs''
+
+The Pogoplug expects the TFTP server to have the IP address 169.254.254.252. You can modify this using setenv or blparam, just set 'serverip' to your TFTP server IP address. Remember to then also set 'ipaddr' to an IP adress within that range.
+
+As mentioned above, you can install the 2-stage bootloader or the single stage one. The process is pretty much the same; the only thing that changes are the locations (addresses) in the Pogoplug NVRAM; we will point out when we are dealing with the single or the 2-stage booloader.
+
+=== Installing bootloader ===
+Connect your Pogoplug and reset the device
+
+Now execute the following commands to retrieve and install the bootloader:
+
+== second-stage bootloader ==
+This is generally pretty safe as it doesn't touch the original bootloader
+<code>
+mw 0x800000 0xffff 0x80000
+tftpboot 0x800000 openwrt-kirkwood-pogo_e02_second_stage-u-boot.img
+nand erase 0x100000 0x80000
+nand write.e 0x800000 0x100000 0x80000
+</code>
+
+== single-stage bootloader ==
+| {{:meta:icons:tango:48px-dialog-warning.svg.png?nolink }} | This guide has been tested on a real Pogoplug E02. However if you mess this step up you might well brick your device. You will then have to use JTAG to recover it. So double check every command that you enter, every single letter is important! Do this at your own risk! |
+
+To safely upgrade the first stage bootloader it is important to understand what you're actually doing. So we will go through each step with explanations.
+
+First we need to understand how the bootloader partition on the Pogoplug is structured to avoid overwriting stuff we might not want to overwrite.
+Basically there are three significant start adresses within the NAND which should be noted:
+  * ''0x0    '': Start of the bootloader
+  * ''0xa5000'': Start of the factory u-boot environment
+  * ''0xc0000'': Start of third-party u-boot environments (e.g. Jeff Doozan's u-boot)
+
+Before you start here are some things to consider:
+  * You need to align the bootloader binary to the 128k blocksize. You can use the following command to achieve this:
+    <code>dd bs=128k conv=sync if=openwrt-kirkwood-pogo_e02-u-boot.kwb of=openwrt-kirkwood-pogo_e02-u-boot.aligned.kwb</code>
+  * If the resulting file is >= 660 KiB it will overwrite the factory u-boot env. Make sure you have a backup of that because in case of the Pogoplug it contains your device's MAC and unique Pogoplug ID. If you lose this you will never be able to restore the device to it's original state!
+  * If the resulting file is >= 768 KiB it will overwrite any u-boot env created by Jeff Doozan's second stage u-boot setup. This is not dramatic as long as you have a backup of the original u-boot env.
+  * The file **must** always be smaller than 896 KiB for the actual u-boot env to fit.
+
+Currently the u-boot image generated by the OpenWrt build process are smaller than 512KiB. So we can be sure that we don't overwrite any of the existing u-boot environments.<br>
+**Note** that this might change anytime (i.e. the bootloader might become larger than 512KiB at some point). So do your checks before proceeding)
+
+These are the commands to install the Bootloader from the u-boot console using TFTP:
+<code>
+# Initialize 512 KiB of memory at address 0x800000 with FF
+# Memory that isn't initialized might contain random garbage
+# because we will later write the content of this memory section to the NAND Flash
+# we don't want to be writing that garbage to flash
+mw 0x800000 0xffff 0x80000
+
+# Copy the bootloader file from the TFTP server to memory adress 0x800000
+tftpboot 0x800000 openwrt-kirkwood-pogo_e02-u-boot.aligned.kwb
+
+# Erase the NAND flash beginning from position 0x0 up to 0xa4fff (that's one byte before the start of the factory u-boot env)
+# This essentially erases the old bootloader
+# If you lose power now you're in trouble ;)
+nand erase 0x0 0xa4fff
+
+# Write the contents of memory beginning at adress 0x800000 (the adress we copied the bootloader from TFTP to)
+# To position 0x0 of the NAND
+# Write 0x80000 bytes (512 KiB)
+nand write.e 0x800000 0x0 0x80000
+</code>
+
+Now you can reset your board using either the reset button or using the ''reset'' command on the u-boot console.
+
+=== Installing rootfs (including kernel and devicetree) ===
+**Note:** This needs to be done from the OpenWrt first or second-stage u-boot's console as it relies on the partitioning scheme that it defines. Also you will need to include the kernel and DTB file in the rootfs (config options ''CONFIG_TARGET_ROOTFS_INCLUDE_KERNEL=y'' and ''CONFIG_TARGET_ROOTFS_INCLUDE_DTB=y'')
+
+In case you're trying this from the second stage u-boot console you might need to set the ''serverip'', ''ipaddr'' and ''ethaddr'' env variables.
+
+These are the commands to flash the ubifs image to the NAND flash:
+<code>
+nand erase 0x200000 0x7e00000
+ubi part root ; ubi remove rootfs ; ubi create rootfs
+tftpboot 0x800000 openwrt-kirkwood-pogoe02-rootfs.ubifs ; ubi write 0x800000 rootfs ${filesize}
+</code>
+
+
+===== Hardware =====
+==== Serial ====
+
+{{page>meta:infobox:high_voltage&noheader&nofooter&noeditbtn}}
+
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+
+{{media:pogoplug:pogoplug-e02_serialport.jpg?direct&400|}}
+
+^ Serial connection parameters\\ for CloudEngines Pogoplug | 115200, 8N1 |
+
+===== Tags =====
+{{tag>kirkwood gt32Flash 256RAM GigabitEthernet 1NIC 0WNIC no_switch USB 4USB JTAG ARM ARMv5 ARM926EJ-S crypto mains_powered}}

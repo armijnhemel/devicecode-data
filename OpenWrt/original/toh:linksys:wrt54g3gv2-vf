@@ -1,0 +1,223 @@
+====== Linksys WRT54G3GV2-VF ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+The Linksys [[http://www.linksysbycisco.com/DE/de/support/WRT54G3GV2-VF|WRT54G3GV2-VF]] is a 3G Router consisting of a Broadcom board with a PC-Card slot for 3G-Modems.
+
+Compared to its predecessor WRT54G3G it has additional USB slots and much more flash and RAM.
+
+You can ask Linksys for a link to the original firmware tarball using the mailaddress in their [[http://www.linksysbycisco.com/gpl|GPL-Codecenter]].
+
+{{media:linksys:wrt54:wrt54g3gv2-vf.jpg|}}
+
+===== Supported Versions =====
+
+^ Version/Model   ^ S/N   ^ OpenWrt Version Supported   ^ Model Specific Notes   ^
+| v1              | N/A   | 10.03                       |                        |
+| v2              | N/A   | 10.03                       | with Kernel-Patch      |
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "WRT54G3GV2"}
+} -->
+
+**NOTE:** You should not try it without a serial console because you cannot reflash it via TFTP while booting like the old one.
+
+**NOTE:** I successfully reflashed a Linksys WRT54G3GV2-VF with a [[http://www.dd-wrt.com/wiki/index.php/Hard_reset_or_30/30/30|30/30/30 hard reset]]. One more user has [[https://forum.openwrt.org/viewtopic.php?id=37778|confirmed this method to work]]. --- //mforkel 2012/10/24//
+
+CFE tries to verify if the started image is working by writing to the special bin-header at the end of the image. There is a structure of 8 byte with the following "meaning":
+  *2 byte "stable"
+  *2 byte "try1"
+  *2 byte "try2"
+  *2 byte "try3"
+
+The CFE sets "try1" to 0x0074 == 't' when it executes the image for the first time. If everything works fine the running system sets the value for "stable" to 0x0073 == 's'.
+When CFE does not find the 's' it continues with setting 't' to 'try2' and so on.
+
+Finally when try1 to try3 are set and stable is still unset CFE assumes that the image is broken and won't start anymore. It now starts listening on TFTP for a new firmware image. Nevertheless you can still force the CFE to load the current image with the followin command: "boot -raw -z -addr=0x80001000 -max=0xf40000 flash0.os:".
+
+When I try to set 'stable' manually it will accept it but check if there is a valid second image as fallback. If not CFE simply copies the first 8MB over the second 8MB destroying any jffs2 data the former running system might have written there.
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "WRT54G3GV2"}
+} -->
+
+===== Installation =====
+
+**NOTE:** If you need an image for one of the other WRT54G3GV2 variants besides the -VF one (such as -ST), download the image builder, and copy the line for the -VF model in the image makefile (target/linux/brcm47xx/image/Makefile) and change 3G2V for the correct "magic" string for your model (3G2S for the -ST), and firmware file name, then make the image. Simply editing the header at the top of the .bin file with a hex editor isn't enough. The header at the top will allow you to flash the file, but it won't boot - the 'magic' string is at the end of the file too, and used by the bootloader to make sure it's the right image. To change that one, you have to recalculate the CRC, and thus the easiest way is to just build the image with the correct 'magic' string in it with the proper tool. --- //hwgasdfasdf 2012/05/01 15:45//
+
+The new CFE expects the flash to be split in two 8MB chunks containing a valid firmware image each.
+To manage those Broadcom/Linksys introduced an new TRX header format (v2) containing an additional offset where the CFE expects a modified bin-header.
+
+Thus you have two choices to get a running firmware on the device:
+  * run the original web-interface and select openwrt-wrt54g3gv2-vf-squashfs.bin for firmware upgrade (see [[#OEM easy installation]])
+  * ctrl-c in CFE and run "upgrade linux.trx". This starts a TFTP server and you can copy openwrt-brcm47xx-squashfs.noheader.bin to 192.168.1.1 (see [[#OEM installation using the TFTP method]])
+
+Trouble so far is: the jffs2 is not aware of the 2x8MB layout and completely grabs all the space available. While it is nice to have all 16MB you won't be able to boot the second fallback-firmware any more.
+
+boot_wait=yes as it is known by other Linksys routers is still available but behaves differently. It copies a raw firmware image to a RAM area and tries to execute it afterwards.
+Maybe we can use this to provide a kind of rescue system over TFTP from within which you can flash a new firmware.
+
+==== OEM easy installation ====
+
+This section deals with how you install OpenWrt from a device freshly opened.  Plus the steps required such as reset to factory defaults if the device has already been configured
+
+**Note:** Reset router to factory defaults if it has been previously configured.
+  *Browse to http://192.168.1.1/Upgrade.asp
+  *Upload openwrt-wrt54g3gv2-vf-squashfs.bin file to router
+  *Wait for it to reboot
+  *Telnet to 192.168.1.1 and set a root password, or browse to http://192.168.1.1 if LuCI is installed.
+
+==== OEM installation using the TFTP method ====
+
+  *power-on
+  *ctrl-c in CFE
+  *execute "upgrade linux.trx"
+  *send "openwrt-brcm47xx-squashfs.noheader.bin" using TFTP to 192.168.1.1
+  *execute "go" or powercycle
+
+An alternative to use a .bin file:
+  *power-on
+  *ctrl-c in CFE
+  *execute "flash -ctheader : flash1.trx"
+  *send "openwrt-wrt54g3gv2-vf-squashfs.bin" via TFTP
+
+===== Hardware =====
+
+==== Info ====
+
+^ Architecture   | MIPS          | 
+^ Vendor         | Broadcom      | 
+^ Bootloader     | CFE (1.0.37) Boot version: 5.5 | 
+^ System-On-Chip | Broadcom ???? | 
+^ CPU Speed      | 260 MHz       | 
+^ Flash-Chip     | S29GL128N10TFI010 8Mx16 | 
+^ Flash size     | 16 MiB | 
+^ RAM            | 32 MiB | 
+^ Wireless       | Broadcom BCM4318 802.11b/g (integrated) | 
+^ Ethernet       | Switch in CPU |
+^ USB            | Yes | 
+^ Serial         | [[#Serial|Yes]] | 
+^ JTAG           | [[#JTAG|??]]    |
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+  *To remove the cover simply flap over half of the rubber feet and unscrew (torx T10 TR)
+  *everything else is plastics...
+
+//Main PCB//\\
+{{media:linksys:wrt54:wrt54g3gv2-vf-board.jpg?600|}}
+
+==== Serial ====
+
+The 5 PIN in the upper left circle are connected as following:
+^ PIN   ^ Usage    ^
+| 1*    | +3.3V    |
+| 2     | TXD      |
+| 3     | RXD      |
+| 4     | unused   |
+| 5     | GND      |
+* (closest to the reset button)
+
+The connectors in the other circle may be for JTAG use but I don't know.
+
+==== JTAG ====
+
+FIXME: find out???
+
+See [[docs:techref:hardware:port.jtag]] for more JTAG details.
+
+===== Specific Configuration =====
+
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name ^ Description ^ Default configuration ^
+| br-lan | LAN & WiFi | 192.168.1.1/24 | 
+| eth0 | LAN ports (1 to 4) | None | 
+| eth1 | WAN port | DHCP | 
+| wlan0 | WiFi, only available if enabled | Disabled | 
+
+==== Switch Ports (for VLANs) ====
+FIXME: make sure this is correct
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | 4             |
+| LAN 1            | 3             |
+| LAN 2            | 2             |
+| LAN 3            | 1             |
+| LAN 4            | 0             |
+
+==== Failsafe mode ====
+If you forgot your password, broken one of the startup scripts, firewalled yourself or corrupted the JFFS2 partition, you can get back in by using OpenWrt's failsafe mode.
+
+=== Boot into failsafe mode ===
+
+  * Unplug the router's power cord.
+  * Connect the router's LAN1 port directly to your PC.
+  * Configure your PC with a static IP address between 192.168.1.2 and 192.168.1.254. E. g. 192.168.1.2 (gateway and DNS is not required).
+  * Plug the power on and wait for the DMZ LED to light up.
+  * While the DMZ LED is on immediately press any button (Reset and Secure Easy Setup will work) a few times .
+  * If done right the DMZ LED will quickly flash 3 times every second.
+  * You should be able to telnet to the router at 192.168.1.1 now (no username and password)
+
+=== What to do in failsafe mode? ===
+
+**NOTE:** The root file system in failsafe mode is the SquashFS partition mounted in readonly mode. To switch to the normal writable root file system run mount_root and make any changes. Run mount_root now.
+
+  - Forgot/lost your password and you like to set a new one
+ passwd
+  - Forgot the routers IP address
+ uci get network.lan.ipaddr
+  - You accidentally run 'ipkg upgrade' or filled up the flash by installing to big packages (clean the JFFS2 partition and start over)
+ mtd -r erase rootfs_data
+If you are done with failsafe mode power cycle the router and boot in normal mode.
+
+==== Buttons ====
+
+The Linksys WRT54G3GV2-VF has two buttons. They are Reset and 3G/UMTS. The buttons can be used with hotplug events. E. g. [#wifitoggle WiFi toggle].
+
+^ BUTTON    ^ Event           ^
+| Reset     | reset           |
+| 3G/UMTS   | FIXME:unknown   |
+
+
+==== Basic configuration ====
+
+Since this part is identical for all devices, see [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]].
+
+==== Connect stuff to the USB port ====
+
+
+
+To connect stuff to the USB port, please see [[docs:guide-user:hardware:usb.overview|Connect stuff to the USB port]].
+
+
+The router has 3 USB 2.0 ports which are connected via PCI. Therefore it is important to install the following 2 USB kernel modules :
+
+''kmod-usb2-pci
+kmod-usb-ohci-pci''
+
+
+This fixes the "No Power issue" which was reported here:
+See also LEDE forum: [[https://forum.lede-project.org/t/lede-17-01-4-on-wrt54g3gv2-vf-usb-ports-have-no-power/12571/8|No power on USB ports with LEDE 17.01.4]]
+
+
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>16flash 32ram}}

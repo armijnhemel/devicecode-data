@@ -1,0 +1,165 @@
+====== MikroTik RouterBoard RB951Ui-2HnD ======
+
+===== Supported Versions =====
+
+Warning - Mikrotik has made some changes on the board and recently ordered units are no longer supported. Note: https://forum.openwrt.org/t/mikrotik-rb951ui-2hnd-unsupported-nand/72052
+
+
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^RB951Ui-2HnD$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^RB951Ui-2HnD$"}
+} -->
+
+
+FIXME Conflicting with ToH dataentry -> to be checked
+^ CPU ^ CPU Speed ^ RAM (MB) ^ NAND (MB) ^ Serial Flash ^ Ethernet Switch ^ PoE port ^ Wireless ^ USB ^ UART ^ JTAG ^
+| AR9334 | 600 MHz | 128 (2x W9751G6KB-25) | 128 (1x TC58DVG02D5TA00-ND) | MX25L512E | AR7240 (10M/100M) | 1-in 5-out (500mA) | AR9344-DC3A | 1x 2.0 | 1x onboard | 1x onboard |
+
+
+Sister product: [[http://routerboard.com/RB951G-2HnD]] 
+
+Please refer to the sister board wiki page [[rb951g_2hnd]] for a description of differences.
+
+Warning! As of 04/02/2020 WiFi is *not* working on rev2 hardware. Check this post for updates: [[https://forum.openwrt.org/t/support-for-mikrotik-rb951ui-2hnd-r2/46923]]
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^RB951Ui-2HnD$"}
+} -->
+
+Please refer to [[toh:mikrotik:common|Common Procedures for Mikrotik RouterBoard Products]].
+
+===== Initial setup =====
+
+=== Leds ===
+
+Instructions for setting up LEDs are from 12/2014, but as for v15.05 it seems to be still neccessary to do this.
+Anyway, please check first if the LEDs are working as desired (plug devices into ethernet ports, check WLAN activity... etc).
+
+Add these lines to /etc/config/system
+
+  config led 'act'
+        option trigger 'netdev'
+        option mode 'link tx rx'
+        option sysfs 'rb:green:act'
+        option name 'ACT'
+        option dev 'eth1'
+        option brightness '0'
+        option default '0'
+  config led 'p1'
+        option trigger 'netdev'
+        option name 'Port_1'
+        option sysfs 'rb:green:port1'
+        option dev 'eth0'
+        option mode 'link tx rx'
+        option default '0'
+  config led 'p2'
+        option trigger 'switch0'
+        option name 'Port_2'
+        option sysfs 'rb:green:port2'
+        option port_mask '0x10'
+        option default '0'
+  config led 'p3'
+        option name 'Port_3'
+        option sysfs 'rb:green:port3'
+        option trigger 'switch0'
+        option port_mask '0x8'
+        option default '0'
+  config led 'p4'
+        option name 'Port_4'
+        option trigger 'switch0'
+        option sysfs 'rb:green:port4'
+        option port_mask '0x4'
+        option default '0'
+  config led 'p5'
+        option name 'Port_5'
+        option sysfs 'rb:green:port5'
+        option trigger 'switch0'
+        option port_mask '0x2'
+        option default '0'
+  config led 'wlan'
+        option sysfs 'rb:green:wlan'
+        option name 'WLAN'
+        option trigger 'phy0tpt'
+        option default '0'
+
+There is a red LED on port 5, which seems to be some indication of PoE (same voltage as input [[https://mikrotik.com/product/RB951Ui-2HnD]], so 24 Volts, 0.5 Amp, apparently enabled by default). You can (tested working for v18 and v19 [[https://forum.openwrt.org/t/mikrotik-routerboard-rb951ui-2hnd-frozen-red-led-5th-port/19667/2|in the forum]] ) turn the LED off by editing /etc/config/system:
+
+  # Disable PoE on port 5
+  config gpio_switch 'poe'
+       option name 'POE'
+       option value '0'
+       option gpio_pin '2'
+
+Or temporarily with the following command (PoE will continue supplying power over port 5, even without the red LED on **[However, see Note below]** ) . You can put it in /etc/rc.local
+
+  echo 0 > /sys/class/gpio/gpio2/value
+** Note 2018-10-10 **
+Using OpenWRT 18.06.1, after the above command is issued the red LED turns off //and// PoE power is turned off.
+
+=== Built in ethernet switch ===
+
+In /etc/config/network, add these lines to enable the built-in ethernet switch between ports 2..5.
+
+  config switch 'eth1'
+        option enable '1'
+        
+
+==== Example VLAN configuration for switch ports ====
+
+In /etc/config/network, add these lines to enable the switch, and create 2 vlan interfaces (eth1.11 and eth1.12). The first for ports 5 and 4, and the later for ports 3 and 2. Port 1 on the router is eth0.
+
+  config switch 'eth1'
+        option enable '1'
+        option enable_vlan '1'
+  config switch_vlan
+        option device 'eth1'
+        option vlan '11'
+        option vid '11'
+        option ports '0t 1 2'
+  config switch_vlan
+        option device 'eth1'
+        option vlan '12'
+        option vid '12'
+        option ports '0t 3 4'
+        
+
+===== References =====
+
+Helpfull info:
+
+  * [[http://www.lan23.ru/forum/showthread.php?t=10780]] (HowTo on Russian)
+  * [[http://www.ericconrad.com/2012/05/installing-openwrt-on-routerboard-750gl.html]]
+  * [[http://ayufan.eu/projects/openwrt-rb951g/]]
+  * [[http://openwrt.ayufan.eu/rb951g/]]
+
+patchworks.openwrt.org is not working since ~2015, the following URL will not work anymore, but you may be interested in URLs pointing to it for the history of dev. on this routerboard.
+
+http://patchwork.openwrt.org/patch/3976/
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR9334 128flash 128ram}}

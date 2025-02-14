@@ -1,0 +1,210 @@
+====== Open-Mesh.com OM2P ======
+High Power 802.11n Mini Router including hardware watchdog, passive 12-18v (NON 802.3af) POE support, dual Ethernet Ports
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^OM2P$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "cpu", "cpumhz", "flashmb", "rammb", "wlan24ghz", "ethernet100mports", "modem", "usbports", "serial"],
+  "filterColumns": {"model": "^OM2P$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^OM2P$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+==== Flash Layout ====
+For now I only have the mtd layout:
+    dev:    size   erasesize  name
+    mtd0: 00040000 00040000 "u-boot"
+    mtd1: 00040000 00040000 "u-boot-env"
+    mtd2: 00140000 00040000 "custom"
+    mtd3: 00100000 00040000 "kernel"
+    mtd4: 00600000 00040000 "rootfs"
+    mtd5: 003c0000 00040000 "rootfs_data"
+    mtd6: 00700000 00040000 "inactive"
+    mtd7: 00040000 00040000 "ART"
+
+==== OEM installation using the TFTP method ====
+
+After building your firmware your firmware will be the following:
+    trunk/bin/ar71xx/openwrt-ar71xx-generic-om2p-squashfs-factory.bin
+Use the ap51-flash utility built in step 9 above and run:
+    ./ap51-flash eth0 trunk/bin/ar71xx/openwrt-ar71xx-generic-om2p-squashfs-factory.bin
+Then plugin the OM2P in eth0 and power it up.
+
+The output of the flash tool should look like this:
+
+    [MA:C-:AD:DR:ES:S ]: type 'OM2P router' detected
+    [MA:C-:AD:DR:ES:S ]: OM2P router: tftp client asks for 'fwupgrade.cfg', serving fwupgrade.cfg portion of: openwrt-ar71xx-generic-om2p-squashfs-factory.bin (1 blocks) ...
+    [MA:C-:AD:DR:ES:S ]: OM2P router: tftp client asks for 'kernel', serving kernel portion of: openwrt-ar71xx-generic-om2p-squashfs-factory.bin (1993 blocks) ...
+    [MA:C-:AD:DR:ES:S ]: OM2P router: tftp client asks for 'rootfs', serving rootfs portion of: openwrt-ar71xx-generic-om2p-squashfs-factory.bin (4609 blocks) ...
+    [MA:C-:AD:DR:ES:S ]: OM2P router: image successfully transmitted - writing image to flash ...
+    [MA:C-:AD:DR:ES:S ]: OM2P router: flash complete. Device ready to unplug.
+
+==== Upgrading OpenWrt ====
+The recommended way to upgrade is via the "sysupgrade" script. Just copy the factory image (openwrt-ar71xx-generic-om2p-squashfs-factory.bin) to the /tmp folder and run:
+
+    sysupgrade /tmp/openwrt-ar71xx-generic-om2p-squashfs-factory.bin
+
+=== Manually ===
+In order to manually flash a new version of the firmware and kernel from within the device itself, you can download the following files to the device /tmp folder:
+OM2P:
+    trunk/build_dir/linux-ar71xx_generic/vmlinux-om2p.uImage
+    trunk/build_dir/linux-ar71xx_generic/root.squashfs
+
+Then ssh to the device to update and perform the following:
+    cd /tmp
+    mtd -e kernel write vmlinux-om2p.uImage kernel
+    mtd -e rootfs write root.squashfs rootfs
+    reboot ; exit
+Again, the recommended way is to use the sysupgrade script.
+
+=== LuCI Web Upgrade Process ===
+
+There is a bug in LuCI which currently prevents us to upgrade via the web interface, but a fix is on its way.
+
+===== Debricking =====
+TODO
+
+===== Basic configuration =====
+
+Plug a lan cable to the left connector, telnet 192.168.1.1 and set new password. For more details
+follow instructions on [[:docs:guide-quick-start:walkthrough_login|first login]].
+Afterwards you can use the web interface at ''%%http://192.168.1.1%%'' for further configuration.
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+By default, the lan interface is mapped to eth0 and the wan interface to eth1, which works but doesn't match the labelling on the case. Switching them can easily be done in the web interface.
+
+==== Switch Ports (for VLANs) ====
+TODO
+
+==== Failsafe mode ====
+
+Pushing the button for factory reset does not switch the device to failsafe mode.
+
+==== Buttons ====
+
+There is only one tiny button for factory reset, but it doesn't seem to be supported by OpenWrt.
+
+===== Build Image =====
+The following are the steps required to build an OM2P build environment. Fortunately openmesh.com/cloudtrax provides a networking flash tool which makes flashing new versions quite foolproof. Also the original OEM firmware can be reflashed with that tool in case of problems.
+
+1. Install and update CentOS (optional)
+
+2. Create openwrt user (optional)
+    useradd -m openwrt
+3. Add password for user openwrt (optional)
+    passwd openwrt
+4. Install any missing packages: (optional)
+    yum -y install minicom lrzsz gawk flex ncurses-devel subversion expect git zlib-devel gcc-c++ gmp gmp-devel unzip wget
+5. Switch to the openwrt user (optional)
+    su -l openwrt
+6. Checkout OpenWRT (trunk):
+    svn co svn://svn.openwrt.org/openwrt/trunk
+7. Updated feeds
+    cd trunk ; scripts/feeds update
+8. Install required feeds:
+    scripts/feeds install luci
+9. Downloading and building the ap51-flash flashing utility
+    git clone https://dev.cloudtrax.com/git/ap51-flash.git ap51-flash
+    (which currently redirects to)
+    (https://github.com/ap51-flash/ap51-flash)
+    cd ap51-flash
+    make
+10. Make the config for the required device: make menuconfig
+    Target System -> Atheros AR71xx/AT7240/AR913x/AT934x
+    Target Profile -> OpenMesh OM2P
+    Base system -> <*> om-watchdog
+    LuCI -> Collections -> <*> luci
+    Server Interfaces -> <*> luci-sgi-uhttpd
+11. Start the make process and enjoy a few coffee...
+    make
+
+
+===== Hardware =====
+==== Info ====
+
+    CPU: MIPS 24Kc V7.4
+    Memory: 61272k/65536k available
+    eth0/eth1: Atheros AG71xx
+    AR7240/AR9330 built-in switch
+    ieee80211 phy0: Atheros AR9285 Rev:2
+    m25p80 spi0.0: s25sl12800 (16384 Kbytes)
+    serial8250.0: ttyS0 is a 16550A
+
+==== Photos ====
+Model Number: OM2P 802.11g/n 150mbps Access Point with External Antenna
+
+{{:media:openmesh:openmesh-om2p-top.jpg?0x300|OM2P top side}}
+{{:media:openmesh:openmesh-om2p-bottom.jpg?0x300|OM2P bottom side}}
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+1. Gently remove the front 2 rubber feet (farthest from the rear ports).
+
+2. Remove the 2 screws.
+
+3. Carefully lift the front of the lid (not more than about 5 mm), then slide forward (away from the rear ports).
+
+==== Serial ====
+This is a 3.3v serial port
+
+    baudrate is    : 115200
+    flowcontrol    : none
+    parity is      : none
+    databits are   : 8
+
+With the ethernet jacks in front of you, the pinout should look like this:
+
+                        +---+
+                        |RXD|
+                        +---+
+                        |TXD|
+                        +---+
+                        |GND|
+                        +---+
+                        |VCC|
+                        +---+
+    +-----+ +----+----+ +---+
+    |Power| |LAN1|LAN2| |Ant|
+    +-----+ +----+----+ +---+
+
+==== JTAG ====
+TODO
+
+
+===== Hardware mods =====
+It is possible to add an iBeacon bluetooth low energy module to add iBeacon functionality
+to the OM2P, as is demonstrated  [[https://nonokunono.wordpress.com/2015/01/24/t/|Here]]
+
+===== Notes =====
+OM2Pv2 is also supported via these above install instructions, however upon sysupgrade without preserving configuration to 21, from 19.07 the wan and lan ports are swapped.
+
+For OM2P V2, flash using the ethernet port closest to the power input and after flash use the other port to access the Web GUI. This may also apply to other variants.
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR7240 16flash 64ram}}

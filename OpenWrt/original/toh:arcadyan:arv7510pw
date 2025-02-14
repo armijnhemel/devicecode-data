@@ -1,0 +1,776 @@
+====== Arcadyan ARV7510PW ======
+
+The ARV7510PW is an ADSL2+ router with 802.11n wireless commonly obtained via the Finnish ISP Elisa (Elisa kotiboksi / Elisa kotiboxi). It is a rebranded Bewan Ibox. There is also another similar device based on Arcadyan [[toh:arcadyan:arv4510pw|ARV4510PW]]. The only difference seems to be the wireless mini-PCI card, which in ARV4510PW is only 802.11bg capable (Atheros AR241x). From outside these can be distinguished by the antenna color: ARV7510PW has a black antenna, ARV4510PW white. There exists also an all-black ARV4510PW, the Wippies Homebox. Finally, there are also ARV4510PW models where the wireless chip is not on a mini-PCI card, but rather soldered directly on the main board. The wireless in these models is not (yet) supported due to the missing EEPROM.
+
+FIXME Please explain the differences / similarities of ARV7510PW and [[toh:astoria:arv7510pw22|ARV7510PW22]].
+
+===== OpenWrt Status =====
+
+OpenWrt runs almost perfectly with some additional patches below. 
+WiFi works, but has been reported to crash randomly depending on mostly unknown factors, your mileage may vary. 
+ADSL also works, but may have unspecified problems (such as high memory usage).
+
+
+SSH_root connection to Elisa box is available using this tool: http://valtzu.kapsi.fi/kotiboksiTelnetEnabler.exe (Use cable, dhcp to perform).
+Installation may require a JTAG serial connection. The router is practically unbrickable by virtue of the UART boot capability, if bootloader is on state.
+
+
+**Missing features**
+  * Third USB port working as USB ethernet is not functional due to missing drivers.
+
+
+===== Hardware =====
+| **Architecture:**   | MIPS                                 |
+| **Target:**         | lantiq                               |
+| **Vendor:**         | [[toh:arcadyan:|Arcadyan]]           |
+| **Bootloader:**     | [[docs:techref:bootloader:brnboot]]   |
+| **System-On-Chip:** | Infineon/[[docs:techref:hardware:soc:soc.lantiq|Lantiq]] Xway Danube (PSB 50702 E V1.3 or V1.4)|
+| **CPU Speed:**      | 333 MHz                |
+| **Flash chip:**     | Intel JS28F128J3D-75   |
+| **Flash size:**     | 16 MiB                 |
+| **RAM chip:**       | PSC A3S56D40ETP        |
+| **RAM size:**       | 32 MiB                 |
+| **USB:**            | 2x USB 2.0 standard A + 1x USB 2.0 standard B                    |
+| **ADSL:**           | ADSL (G.992.1 & T1.413, V2), ADSL2 (G.992.3), ADSL2+ (G.992.5)   |
+| **Ethernet:**       | Infineon ADM6996I, 4x LAN 100 Mbps                               |
+| **Wireless:**       | Ralink RT2860T, 802.11n 300 Mbps, 2.4 GHz, 2 antennas            |
+| **Phone:**          | 2x RJ11                                   |
+| **Serial:**         | yes (with header)                         |
+| **JTAG:**           | yes (no header)                           |
+| **Buttons:**        | power switch, WiFi button, reset button   |
+
+===== Building OpenWrt =====
+
+Suitable U-Boot can be found under Boot Loaders -> uboot-lantiq-arv7510pw_nor/ram (works also with ARV4510PW). NOR-version will be installed to flash, RAM-version can be used with the UART boot option.
+
+Following patches for Barrier Breaker (14.07) are needed:
+   * [[http://www.elisanet.fi/malaakso/misc/lantiq_mei.patch|Improve memory usage of ADSL driver]] Prevent out-of-memory errors when loading ADSL firmware.
+   * [[http://www.elisanet.fi/malaakso/misc/disable_jffs2_lzma.patch|Disable LZMA compression in JFFS2]] Workaround bug [[https://dev.openwrt.org/ticket/14839|#14839]].
+   * [[http://www.elisanet.fi/malaakso/misc/disable-buffered.patch|Disable buffered writes to flash]] Prevent jffs2 corruption.
+
+Pre-built Barrier Breaker (14.07) image (includes luci and kmod-ath5k):
+   * [[http://www.elisanet.fi/malaakso/misc/openwrt-lantiq-xway-ARV4510PW-squashfs.image|OpenWrt image]]
+Pre-built U-Boot:
+   * [[http://www.elisanet.fi/malaakso/misc/openwrt-lantiq-arv7510pw_nor-u-boot.img|NOR-version]]
+   * [[http://www.elisanet.fi/malaakso/misc/openwrt-lantiq-arv7510pw_ram-u-boot.asc|RAM-version]]
+
+Official OpenWrt 14.07 images for [[https://downloads.openwrt.org/barrier_breaker/14.07/lantiq/xway/|lantiq xway]] do not work due to missing patch for disabling buffered writes. Trunk and Chaos Calmer (15.05) should work without extra patches since r44451.
+
+On the official build of [[https://downloads.openwrt.org/chaos_calmer/15.05/lantiq/xway/openwrt-15.05-lantiq-xway-ARV4510PW-squashfs.image| Chaos Calmer (15.05)]] network does not work by default:
+<code>
+root@OpenWrt:/# /etc/init.d/network restart
+[  226.056000] br-lan: port 1(eth0.1) entered disabled state
+[  226.072000] device eth0.1 left promiscuous mode
+[  226.076000] device eth0 left promiscuous mode
+[  226.080000] br-lan: port 1(eth0.1) entered disabled state
+[  226.088000] IPv6: ADDRCONF(NETDEV_UP): eth0.1: link is not ready
+Failed to connect to the switch. Use the "list" command to see which switches are available.
+root@OpenWrt:/# [  231.800000] device eth0.1 entered promiscuous mode
+[  231.804000] device eth0 entered promiscuous mode
+[  231.812000] br-lan: port 1(eth0.1) entered forwarding state
+[  231.816000] br-lan: port 1(eth0.1) entered forwarding state
+[  233.820000] br-lan: port 1(eth0.1) entered forwarding state
+</code>
+
+To get network and USB to work you need to apply the following patches:
+  * https://dev.openwrt.org/attachment/ticket/20997/0400-fix-IO_SPACE_LIMIT-constant.patch
+  * https://dev.openwrt.org/attachment/ticket/21318/0401-fix-irq-chip-for-exins.patch
+
+The latest trunk **(Designated Driver r49395)** compiles with the two patches listed above (with a minor adjustment to the irq patch). It seems to work rather well, although wifi on rare occasions resets briefly and firmware updates via LuCi crash. Otherwise, it is quite stable. The kernel is now from the 4.4 series. Here is a compiled image:
+  * [[https://drive.google.com/open?id=0B6rOhpp_vxW8RUhpMU9ISFducVk|openwrt-lantiq-xway-ARV4510PW-squashfs.image]]
+  * [[https://drive.google.com/open?id=0B6rOhpp_vxW8R052UHgyV0QwNGs|RAM uBoot version]]
+  * [[https://drive.google.com/open?id=0B6rOhpp_vxW8MGpCOTlhS1M1aFE|NOR uBoot version]]
+
+Follow the installation procedure below on this webpage to install the firmware. You will need the latest uBoot to install this firmware.
+
+To compile r49395 correctly, you will need the 0400-fix-IO_SPACE_LIMIT-constant.patch provided above, plus a slightly modified version of 0401-fix-irq-chip-for-exins.patch, which is provided here:
+  * [[https://drive.google.com/open?id=0B6rOhpp_vxW8bUxnenNQYUhweVE|Modified irq patch - 0401-fix-irq-chip-for-exins.patch]]
+  * **NOTE:** The patch is outdated for the [[https://github.com/openwrt/openwrt/tree/cabb0c506526fe468e4aa985086e50c440192122|latest trunk]] version. An **EXPERIMENTAL untested** version for [[https://github.com/openwrt/openwrt/tree/28664a3e9029b68a0f11299825c73457a658f170|latest OpenWrt]] [[https://gist.githubusercontent.com/Python1320/833fcfa62fc386c7e37a/raw/fc5823ad969dc5dfda7351fa10ee5fcde997a730/0401-fix-irq-chip-for-exins.patch|here]]. It applies, but does not seem to fix the WiFi. //Can someone take a look?//
+
+Many thanks to the author of these patches who originally provided them above!
+
+To compile your own firmware, set up an OpenWrt compile system as described elsewhere on the site for trunk and place the two patches into the directory **target/linux/lantiq/patches-4.4/**. Compile per instructions for building a firmware image. The resulting firmware will be found in the directory **bin/lantiq/** (with the name openwrt-lantiq-xway-ARV4510PW-squashfs-sysupgrade.bin). It can be installed in the same manner as the squashfs.image as outlined below.
+
+**UPDATE:** The **LEDE** project at https://www.lede-project.org/ has improved support for this device. The latest patches are already included and the firmware compiles without error. All functions of the device appear to work well and the latest 4.4 kernels are tracked quite promptly.
+
+
+===== Installation =====
+
+==== Exploit method ====
+
+Older versions of the original firmware have a security exploit, which gives access to a flat text version of the router settings.
+
+Run this python3 script to check if the router is vulnerable
+<code>
+import urllib.request
+req = urllib.request.Request('http://192.168.1.1/cgi-bin/export.cgi?Save=%3E+Back+up+your+parameterss&sExportMode=text&iExpert=3&sSuccessPage=backup.htm&sErrorPage=backup.htm')
+req.add_header('Referer', 'http://192.168.1.1/en_US/admin/backup.htm')
+r = urllib.request.urlopen(req)
+f = open('router.txt', 'wb')
+f.write(r.read())
+f.close()
+</code>
+If it doesn't produce any errors:
+  - Open the produced router.txt with your favourite editor.
+  - Set UserTable_1_Unix_Enable to 1
+  - Set UserTable_1_Unix_Password to $1$xopJA6FB$fJnqEswAbH0SDg.sPLUKf.
+  - Set Services_Telnet_Enable to 1
+  - Save the file and upload as you would with a standard backup
+
+Do not continue if you aren't willing or able to use UART method:
+  - Copy ''openwrt-lantiq-arv7510pw_nor-u-boot.img'' and ''openwrt-lantiq-xway-ARV4510PW-squashfs.image'' onto a fat32 usb drive
+  - Plug the usb drive into the router
+  - telnet into the router as root with password as password
+  - cd into the usb drive (can be found with mount)
+  - umount /dev/rd/0
+  - dd if=/dev/mtd/0 bs=1 of=routerBackup.bin
+  - dd if=openwrt-lantiq-arv7510pw_nor-u-boot.img bs=1 of=/dev/mtdblock/0
+  - dd if=openwrt-lantiq-xway-ARV4510PW-squashfs.image bs=1 seek=393216 of=/dev/mtdblock/0
+  - wait a while
+  - reboot
+
+After installation you should set your MAC-addresses with the commands
+<code>
+uci set network.lan.macaddr=xx:xx:xx:xx:xx:xx
+uci set network.wan.macaddr=xx:xx:xx:xx:xx:xx
+uci commit
+</code>
+and reboot.
+
+
+==== UART method ====
+
+The installation procedure in short:
+  - Short the UART boot pins and power on the router
+  - Upload a special U-Boot RAM image using a serial cable
+  - Use U-Boot to erase the flash and install U-Boot to flash
+  - Power off the router, unshort the UART boot pins, and power on again
+  - Use the installed U-Boot to install OpenWrt to flash
+
+=== Preparation ===
+
+You need a RS232-to-TTL cable connected to the serial header shown in the picture below. Short the UART boot pins with two jumper caps. If the router misbehaves, remove the Vcc-cable, but leave ground attached. 
+
+{{media:arcadyan:arv7510:arv7510pw_top.jpg?400|}}
+
+Start TFTP server on your computer and copy ''openwrt-lantiq-arv7510pw_nor-u-boot.img'' and ''openwrt-lantiq-xway-ARV4510PW-squashfs.image'' to the TFTP server root. Connect your computer to the router with an ethernet cable and configure the IP address to 192.168.1.2, netmask 255.255.255.0.
+
+=== Loading U-Boot ===
+
+Use baud rate 115200, 8-N-1, no flow control as the serial connection parameters.
+
+Power on the router. You should see the following on the serial output.
+<code>
+ROM VER: 1.0.3
+CFG 04
+Read EEPROMX
+ X
+UART
+</code>
+The router now waits for bootloader code. Send ''openwrt-lantiq-arv7510pw_ram-u-boot.asc'' as raw ascii to the router. U-Boot should start. Press any key to stop autoboot when prompted.
+
+At this point you can make a backup of the original firmware using ''md.l 0xb0000000 0x1000000'' and logging the output (takes roughly 2 hours). 
+
+To flash u-boot now, run the following in the bootloader's shell
+<code>
+# remove flash protection
+protect off all
+# erase all flash (also the bootloader)
+erase all
+# set bootloader ip-address to connect from
+setenv ipaddr 192.168.1.1
+# Set the ip-address to load the bootloader from
+setenv serverip 192.168.1.2
+# Ethernet address can be found from the sticker on top of the switch ports
+setenv ethaddr 00:01:02:03:04:05
+# Download bootloader to ram
+tftp 0x80700000 openwrt-lantiq-arv7510pw_nor-u-boot.img
+# Write bootloader to permanent flash memory
+cp.b 0x80700000 0xb0000000 ${filesize}
+</code>
+
+=== Loading OpenWrt ===
+
+Power on the router. The U-Boot installed in the previous step should start. Press any key to stop autoboot. 
+Run the following to now load openwrt firmware:
+<code>
+setenv ipaddr 192.168.1.1
+setenv serverip 192.168.1.2
+setenv ethaddr 00:01:02:03:04:05
+# Save environment settings to the bootloader's memory
+saveenv
+# Download openwrt to ram
+tftp 0x80700000 openwrt-lantiq-xway-ARV4510PW-squashfs.image
+# Write openwrt to permanent flash memory
+cp.b 0x80700000 0xb0060000 ${filesize}
+# reboot router to boot to openwrt
+reset
+</code>
+Watch as U-Boot loads OpenWrt and proceed to configure it to your liking! 
+
+The router is usable after it finishes cleanup:
+<code>
+[  127.012000] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[  127.020000] jffs2_build_filesystem(): unlocking the mtd device... done.
+[  157.432000] jffs2_build_filesystem(): erasing all blocks after the end marker... done.
+[  206.468000] jffs2: notice: (1273) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+procd: - init complete -
+</code>
+
+To reflash a new version without erasing bootloader or bootloader settings (this is only for subsequent debricking of the router):<code>
+tftp 0x80700000 openwrt-lantiq-xway-ARV4510PW-squashfs.image
+erase 0xb0060000 +${filesize}
+cp.b 0x80700000 0xb0060000 ${filesize}
+bootm 0xb0060000
+</code>
+
+===== Hardware notes =====
+
+==== Switch ====
+The internal switch port numbering is opposite from the one printed on the box. Port 0 corresponds to the port labeled as "Port 4/Uplink". Port 5 is connected to the CPU. If you wish to use the uplink port as WAN with IP address obtained by DHCP, you need to modify the network configuration as follows
+<code>
+uci set network.@switch_vlan[0].ports="1 2 3 5t"
+uci add network switch_vlan
+uci set network.@switch_vlan[1].device=switch0
+uci set network.@switch_vlan[1].vlan=2
+uci set network.@switch_vlan[1].ports="0 5t"
+uci set network.wan.ifname=eth0.2
+uci set network.wan.proto=dhcp
+uci delete network.wan.username
+uci delete network.wan.password
+uci delete network.wan.ipv6
+uci commit
+reboot
+</code>
+
+==== USB ====
+The power supply of the USB ports may be inadequate for LTE sticks or other USB devices demanding high currents. Replacing the 47 µF electrolytic capacitors connected to pin 1 of the USB ports with 1000 µF/10 V low-ESR models will allow the router to handle high current pulses. Another option is to use a powered USB hub.
+
+The usb-ethernet port (standard B type USB, USB2) is unpowered and not usable at the moment. It requires usb-gadget support to function as the usb-ethernet port.
+You would at least need to enable the following in kernel configuration and then ''modprobe g_ether''
+<code>
+<M> Support for USB Gadgets 
+<M>   Ethernet Gadget (with CDC Ethernet support)
+[*]     RNDIS support (EXPERIMENTAL)
+</code>
+
+==== GPIO ====
+Some units generate spurious button presses, which lead to reboots or other problems. Enabling the Schmitt-trigger may help. This can be achieved by modifying the U-Boot boot command and saving the modification to flash:
+<code>
+setenv bootcmd 'mw.l 0xbe100b28 0x4008; bootm ${kernel_addr}'
+saveenv
+</code>
+
+==== ADSL ====
+Units with V1.4 of the Danube SoC may become unstable when the ADSL status is queried. In this case it is recommended to edit the file /usr/lib/lua/luci/view/admin_status/index.htm and change the reference to /etc/init.d/dsl_control to point to a non-existent file.
+
+==== VoIP ====
+The VoIP ports seem to be working in the latest OpenWrt release.
+Interesting packages for potential VoIP support include:
+  * kmod-ltq-tapi
+  * kmod-ltq-vmmc
+  * kmod-ltq-ifxos
+  * asterisk18-chan-lantiq
+  * https://code.google.com/p/danube-voip/
+
+
+===== Original firmware =====
+
+The original bootloader (brnboot) is completely locked. There is no access to the administration menu typically found on other brnboot devices.
+
+By default the device runs Linux 2.6.16. The serial console does not accept any input, and there is no telnet or ssh available. The web interface of the original firmware is extremely limited, and the configuration is done remotely by ISP via TR-069. There is a local firmware update page, but it doesn't accept third party firmwares.
+
+The original firmware is not encrypted or obfuscated in any way, contrary to many other Arcadyan devices. Therefore it might be easy to produce acceptably packaged firmwares. Adding a header like in the original firmware might be enough. For people with MIPS (dis)assembly skills, here is the [[http://www.elisanet.fi/malaakso/misc/firmware.cgi|cgi script]] and the [[http://www.elisanet.fi/malaakso/misc/fwburn|firmware flash tool]] extracted from the original firmware.
+
+The ''ART'' partition contains the squashfs file system of the actual firmware. Partition ''Config'' contains a writable ext2 file system, where configuration is kept. During firmware update ''OldFirmware'' is replaced and marked ''Firmware'', and ''Firmware'' becomes ''OldFirmware''.
+
+^   Original flash layout                                                                                                                               ^^^^^^^^^
+^ Layer 0    | **Flash** 16384 KiB                                                                                                                       ||||||||
+^ Layer 1    | **Loader** 128KiB | **Config** 128 KiB | **OldFirmware** 8064 KiB                                      ||| **Firmware** 8064 KiB                                   |||
+^ Layer 2    |                   |                    | Header + old kernel 880 KiB | Old ART 6808 KiB | Footer 376 KiB | Header + kernel 880 KiB | **ART** 6808 KiB | Footer 376 KiB |
+^ File system |                   | ext2               |                             | squashfs         |                |                         | squashfs         |                |
+
+===== Original bootlog =====
+
+Serial output from booting original firmware:
+<WRAP bootlog>
+<nowiki>ROM VER: 1.0.3
+CFG 01
+Read EEPROMX
+ X
+
+ROM VER: 1.0.3
+CFG 01
+Read EEPROMX
+ X
+
+
+
+
+
+   _                              
+  | |__   _____      ____ _ _ __  
+  | '_ \ / _ \ \ /\ / / _` | '_ \ 
+  | |_) |  __/\ V  V / (_| | | | |
+  |_.__/ \___| \_/\_/ \__,_|_| |_|
+
+Portions Copyright (c) 2005-2008 bewan systems
+   www.bewan.com
+
+
+Parameters:
+  Product         : A50804
+  Product family  : A50800
+  Flash size      : 1000000
+  DRAM size       : 2000000
+  Ethernet        : MII
+  LAN MAC address : xx:xx:xx:xx:xx:xx
+  WAN MAC address : xx:xx:xx:xx:xx:xx
+  Dual bank boot  : yes
+  Reset           : no
+  Pairing         : no
+  Serial number   : xxxxxxxxxxxxxxx
+  WEP key         : xxxxxxxxxxxxx
+  Loader version  : 23085
+  Capabilities    : 80000001
+
+
+Found valid bootable partition 0:
+  Copyright (c) 2006-2008 BeWAN Systems
+  Arcadyan ARV4510PW-A-LF-L3 - Elisa
+  A50804
+  2009-05-07-14:11:30
+  A50804-Elisa11-23085.bin
+
+Found valid bootable partition 1:
+  Copyright (c) 2006-2008 BeWAN Systems
+  Arcadyan ARV4510PW-A-LF-L3 - Elisa
+  A50804
+  2009-08-28-16:19:08
+  A50804-Elisa12-25535.bin
+
+Booting from partition 1 in flash.
+
+Loading: Linux Kernel Image
+
+Load address = 80000000
+Uncompressing Linux.....................
+done, booting the kernel.
+
+start addr = 802F1000
+memsize=31
+TODO: chip version
+Linux version 2.6.16bewan (build@bewan.com) (gcc version 3.3.4) #1
+Reserving memory for CP1 @0xa1f00000
+memsize=31
+CPU revision is: 00019641
+PCI: Probing PCI hardware on host bus 0.
+Board with an external oscillator
+Determined physical RAM map:
+ memory: 01f00000 @ 00000000 (usable)
+User-defined physical RAM map:
+ memory: 01f00000 @ 00000000 (usable)
+Built 1 zonelists
+Kernel command line: nofpu console=ttyS0,115200n1 bewan_boot=flash1 bewan_fs_addr=0x8fc000 bewan_fs_size=0x6a6000 mem=31M 
+Primary instruction cache 16kB, physically tagged, 4-way, linesize 32 bytes.
+Primary data cache 16kB, 4-way, linesize 32 bytes.
+Synthesized TLB refill handler (20 instructions).
+Synthesized TLB load handler fastpath (32 instructions).
+Synthesized TLB store handler fastpath (32 instructions).
+Synthesized TLB modify handler fastpath (31 instructions).
+Cache parity protection disabled
+PID hash table entries: 128 (order: 7, 2048 bytes)
+mips_hpt_frequency:166666667
+r4k_offset: 00196e6a(1666666)
+Using 166.667 MHz high precision timer.
+Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+Memory: 27648k/31744k available (2517k kernel code, 4096k reserved, 491k data, 160k init, 0k highmem)
+Mount-cache hash table entries: 512
+Checking for 'wait' instruction...  available.
+NET: Registered protocol family 16
+TC classifier action (bugs to netdev@vger.kernel.org cc hadi@cyberus.ca)
+DANUBE MIPS24KEc MPS mailbox driver, Version 1.1.0
+(c) Copyright 2006, Infineon Technologies AG
+IFX_MPS: using proc fs
+squashfs: version 3.0 (2006/03/15) Phillip Lougher
+Squashfs 2.2 with LZMA support
+devfs: 2004-01-31 Richard Gooch (rgooch@atnf.csiro.au)
+devfs: boot_options: 0x1
+Initializing Cryptographic API
+io scheduler noop registered (default)
+Danube MEI version:1.00.09
+Danube MEI MIB version:0.90.04
+Danube Port Settings
+
+Danube Port Initialization
+cgu: misc_register on minor = 63
+gptu: totally 6 16-bit timers/counters
+gptu: misc_register on minor 62
+gptu: succeeded to request irq 118
+gptu: succeeded to request irq 119
+gptu: succeeded to request irq 120
+gptu: succeeded to request irq 121
+gptu: succeeded to request irq 122
+gptu: succeeded to request irq 123
+ttyS0 at MMIO 0xbe100c00 (irq = 9) is a DANUBEASC
+ttyS1 at MMIO 0xbe100400 (irq = 2) is a DANUBEASC
+RAMDISK driver initialized: 16 RAM disks of 8192K size 1024 blocksize
+loop: loaded (max 8 devices)
+PPP generic driver version 2.4.2
+NET: Registered protocol family 24
+danube ETOP driver loaded!
+ppe: ATM init succeeded (firmware version 1.1.0.2.1.13
+Danube IAD flash device: 0x1000000 at 0xb0000000
+Danube IAD FLASH: Found 1 x16 devices at 0x0 in 16-bit bank
+ Intel/Sharp Extended Query Table at 0x0031
+cfi_cmdset_0001: Erase suspend on write enabled
+Creating 5 MTD partitions on "Danube IAD FLASH":
+0x00000000-0x01000000 : "Flash"
+0x00000000-0x00020000 : "Loader"
+0x00020000-0x00040000 : "Config"
+0x00820000-0x01000000 : "Firmware"
+0x00040000-0x00820000 : "OldFirmware"
+bootpart=2
+Creating 1 MTD partitions on "Danube IAD FLASH":
+0x008fc000-0x00fa2000 : "ART"
+rootdev = 31,5
+dwc_otg: version 2.40a 10-APR-2006
+usb0: Ethernet Gadget, version: Equinox 2004
+usb0: using dwc_otg_pcd, OUT ep2 IN ep1 STATUS ep3
+usb0: MAC 76:c1:d0:35:08:a9
+usb0: HOST MAC 46:67:b2:31:f5:5c
+usb0: RNDIS ready
+LED and Buttons driver: v2.6.0
+GACT probability on
+Mirror/redirect action on
+netem: version 1.2
+u32 classifier
+    Perfomance counters on
+    input device check on 
+    Actions configured 
+Netfilter messages via NETLINK v0.30.
+NET: Registered protocol family 2
+IP route cache hash table entries: 256 (order: -2, 1024 bytes)
+TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+TCP: Hash tables configured (established 1024 bind 1024)
+TCP reno registered
+ip_conntrack version 2.4 (248 buckets, 1984 max) - 232 bytes per conntrack
+
+DS max rate = 0 kbps
+US max rate = 0 kbps
+DS payload rate = 0 kbps
+US payload rate = 0 kbps
+Local CRC = 0
+Remote CRC = 0
+ip_tables: (C) 2000-2006 Netfilter Core Team
+arp_tables: (C) 2002 David S. Miller
+TCP bic registered
+Initializing IPsec netlink socket
+NET: Registered protocol family 1
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+Ebtables v2.0 registered
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+Ethernet Multiplexer Support v1.0 Christophe Piel (c) 2006 BeWAN systems
+VFS: Mounted root (squashfs filesystem) readonly.
+Mounted devfs on /dev
+Freeing unused kernel memoryinit started:  BusyBox v1.00 multi-call binary
+Starting pid 130, console /dev/tts/0: '/etc/rc'
+Algorithmics/MIPS FPU Emulator v1.5
+Software Watchdog Timer: 0.05, timer margin: 120 sec.
+Mon Jan  1 00:00:00 UTC 2007
+ _                              
+| |__   _____      ____ _ _ __  
+| '_ \ / _ \ \ /\ / / _` | '_ \ 
+| |_) |  __/\ V  V / (_| | | | |
+|_.__/ \___| \_/\_/ \__,_|_| |_|
+IFX TAPI, version 3.5.2.5, (c) 2007 Infineon Technologies
+
+IFX VMMC device driver, version 1.1.6.5, (c) 2007 Infineon Technologies AG
+
+<6>usbcore: registered new driver usbfs
+usbcore: registered new driver hub
+SCSI subsystem initialized
+Initializing USB Mass Storage driver...
+usbcore: registered new driver usb-storage
+USB Mass Storage support registered.
+PCI: Enabling device 0000:00:0f.2 (0000 -> 0002)
+plat_dev_init(803e8400)
+ehci_hcd 0000:00:0f.2: EHCI Host Controller
+ehci_hcd 0000:00:0f.2: new USB bus registered, assigned bus number 1
+ehci_hcd 0000:00:0f.2: irq 26, io mem 0x18010000
+ehci_hcd 0000:00:0f.2: USB 2.0 started, EHCI 1.00, driver 10 Dec 2004
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 4 ports detected
+USB Universal Host Controller Interface driver v2.3
+PCI: Enabling device 0000:00:0f.0 (0000 -> 0001)
+plat_dev_init(803e8c00)
+uhci_hcd 0000:00:0f.0: UHCI Host Controller
+uhci_hcd 0000:00:0f.0: new USB bus registered, assigned bus number 2
+uhci_hcd 0000:00:0f.0: irq 26, io base 0x1ae00000
+usb usb2: configuration #1 chosen from 1 choice
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 2 ports detected
+PCI: Enabling device 0000:00:0f.1 (0000 -> 0001)
+plat_dev_init(803e8800)
+uhci_hcd 0000:00:0f.1: UHCI Host Controller
+uhci_hcd 0000:00:0f.1: new USB bus registered, assigned bus number 3
+uhci_hcd 0000:00:0f.1: irq 26, io base 0x1ae00020
+usb usb3: configuration #1 chosen from 1 choice
+hub 3-0:1.0: USB hub found
+hub 3-0:1.0: 2 ports detected
+Linux video capture interface: v1.00
+pwc: Philips webcam module version 10.0.12-rc1 loaded.
+pwc: Supports Philips PCA645/646, PCVC675/680/690, PCVC720[40]/730/740/750 & PCVC830/840.
+pwc: Also supports the Askey VC010, various Logitech Quickcams, Samsung MPC-C10 and MPC-C30,
+pwc: the Creative WebCam 5 & Pro Ex, SOTEC Afina Eye and Visionite VCS-UC300 and VCS-UM100.
+usbcore: registered new driver Philips webcam
+usbcore: registered new driver gspca
+../user/gspca/gspca_core.c: gspca driver 01.00.20 registered
+build router.conf from /etc/flash/router.diff
+/etc/init.d/syslog start
+/etc/eom.d/update-config
+/etc/init.d/dsl start
+modprobe: module ctlmeth not found.
+modprobe: failed to load module ctlmeth
+/etc/init.d/interface start LANEthernetInterface 1
+/etc/init.d/switch start 1
+/etc/init.d/phy stop 1 1
+using the specified MII index 19.
+power down...
+/etc/init.d/phy stop 1 2
+using the specified MII index 18.
+power down...
+/etc/init.d/phy stop 1 3
+using the specified MII index 17.
+power down...
+/etc/init.d/phy stop 1 4
+using the specified MII index 16.
+power down...
+/etc/init.d/switchvlan start 1
+vlanTAGctl : disabling all hardware VLANs
+vlanTAGctl : creating vlan VID=0x1 with UNTAGGED=0xE TAGGED=0x30 INDEX=0
+vlanTAGctl : creating vlan VID=0x2 with UNTAGGED=0x1 TAGGED=0x30 INDEX=1
+modprobe: module ctlmusb not found.
+modprobe: failed to load module ctlmusb
+/etc/init.d/interface start LANUSBInterface 1
+wireless config : ralink
+0060	18140601	5f	18000000	00000000	00000000	00000000	00000000	00000000	00000000	00010000	00000000	00000000	00000000	00000000	00000000	00000000	
+/etc/init.d/wifi.d/wifi start 1
+There is no MACADDR for ra0
+WiFi card MAC address rewritter
+Not in the good Hi range address
+Exit
+rt2860ap: module license 'unspecified' taints kernel.
+PCI: Enabling device 0000:00:0c.0 (0000 -> 0002)
+plat_dev_init(81055000)
+
+
+=== pAd = c0223000, size = 485664 ===
+
+<-- RTMPAllocAdapterBlock, Status=0
+/etc/init.d/wifi.d/easyp nothing
+RX DESC a1ba1000  size = 2048
+<-- RTMPAllocTxRxRingMemory, Status=0
+1. Phy Mode = 9
+2. Phy Mode = 9
+3. Phy Mode = 9
+MCS Set = ff ff 00 00 01
+SYNC - BBP R4 to 20MHz.l
+Main bssid = xx:xx:xx:xx:xx:xx
+The UUID Hex string is:bc329e001dd811b28601000cc37aac58
+The UUID ASCII string is:bc329e00-1dd8-11b2-8601-000cc37aac58!
+<==== RTMPInitialize, Status=0
+0x1300 = 00064380
+expr: syntax error
+0060	18140601	5f	18000000	00000000	00000000	00000000	00000000	00000000	00000000	00010000	00000000	00000000	00000000	00000000	00000000	00000000	rt2860
+/etc/init.d/wifi.d/wifi nothing 2
+0060	18140601	5f	18000000	00000000	00000000	00000000	00000000	00000000	00000000	00010000	00000000	00000000	00000000	00000000	00000000	00000000	rt2860
+/etc/init.d/wifi.d/wifi nothing 3
+modprobe: module ctlmatm not found.
+modprobe: failed to load module ctlmatm
+/etc/init.d/interface nothing ATMEthernetInterface 1
+/etc/init.d/interface nothing ATMEthernetInterface 2
+/etc/init.d/interface nothing ATMEthernetInterface 3
+/etc/init.d/interface nothing ATMEthernetInterface 4
+/etc/init.d/interface nothing ATMEthernetInterface 5
+/etc/init.d/autodslam start auto-stop
+/etc/init.d/lan start 1
+expr: syntax error
+expr: syntax error
+/etc/init.d/lanif start 1 all
+/etc/init.d/lanintf start lan1 eth0.1
+eth0.1: dev_set_promiscuity(master, 1)
+device eth0 entered promiscuous mode
+device eth0.1 entered promiscuous mode
+/etc/init.d/lanintf start lan1 usb0
+device usb0 entered promiscuous mode
+/etc/init.d/lanintf start lan1 ra0
+device ra0 entered promiscuous mode
+/etc/init.d/shaping nothing
+/etc/init.d/lanip start 1
+/etc/config.default/ip-up-dhcp lan1 192.168.100.1
+lan1: port 3(ra0) entering listening state
+lan1: port 1(eth0.1) entering listening state
+/etc/init.d/host start
+/etc/init.d/igmp start
+expr: syntax error
+expr: syntax error
+/etc/init.d/inittab
+/etc/init.d/ipsec restart all
+/etc/init.d/landhcp start 1
+/etc/init.d/ipsec nothing 1
+/etc/init.d/wifi.d/lanacl start 1
+/etc/init.d/passthrough start 1
+/etc/init.d/lan start 2
+/etc/init.d/lanif start 2 all
+/etc/init.d/racoon stop
+/etc/init.d/lanintf nothing lan2 ra1
+/etc/init.d/shaping nothing
+/etc/init.d/lanip start 2
+/etc/config.default/ip-up-dhcp lan2 192.168.101.1
+/etc/init.d/host start
+/etc/init.d/igmp start
+/etc/init.d/inittab
+/etc/init.d/ipsec restart all
+/etc/init.d/ipsec nothing 1
+/etc/init.d/landhcp start 2
+/etc/init.d/racoon stop
+/etc/init.d/wifi.d/lanacl start 2
+/etc/init.d/passthrough nothing 2
+/etc/init.d/lan start 3
+/etc/init.d/lanif start 3 all
+/etc/init.d/lanintf nothing lan3 ra2
+/etc/init.d/shaping nothing
+/etc/init.d/lanip start 3
+/etc/config.default/ip-up-dhcp lan3 10.0.1.17
+/etc/init.d/host start
+/etc/init.d/igmp start
+/etc/init.d/inittab
+/etc/init.d/ipsec restart all
+/etc/init.d/ipsec nothing 1
+/etc/init.d/landhcp start 3
+/etc/init.d/wifi.d/lanacl start 3
+lan1: port 3(ra0) entering learning state
+lan1: port 1(eth0.1) entering learning state
+/etc/init.d/racoon stop
+/etc/init.d/passthrough nothing 3
+/etc/init.d/lan nothing 4
+/etc/init.d/users start
+/etc/init.d/unix start
+/etc/init.d/unixusers start 1
+/etc/init.d/unixusers start 2
+/etc/init.d/samba start
+/etc/init.d/pureftpd start
+/etc/init.d/webusers nothing
+/etc/init.d/unixadmin start
+/etc/init.d/time start
+/etc/init.d/mdns nothing
+/etc/init.d/rmthttp start
+/etc/init.d/wan start 1
+/etc/init.d/interface start WANConnectionDevice 1
+eth0.2: dev_set_promiscuity(master, 1)
+device eth0.2 entered promiscuous mode
+/etc/init.d/wannet start 1
+/etc/init.d/wanbr nothing 1
+/etc/init.d/wanip start 1
+/etc/init.d/wanppp nothing 1
+/etc/init.d/firewall start 1
+/etc/init.d/ports start 1
+/etc/init.d/wan nothing 2
+/etc/init.d/wan nothing 3
+/etc/init.d/wan nothing 4
+/etc/init.d/qos start all
+/etc/init.d/shaping nothing
+/etc/init.d/dhcp start all
+/etc/init.d/dhcpd nothing all
+/etc/init.d/dhcrelay nothing all
+/etc/init.d/hbrdhcp start all
+/etc/init.d/dnsmasq start all
+/etc/init.d/dnsmasq start all
+/etc/init.d/pppd start all
+/etc/init.d/dhclient start all
+/etc/init.d/pptp stop
+/etc/init.d/openl2tp stop
+/etc/init.d/ipsec all
+/etc/init.d/fwrules start
+lan1: topology change detected, propagating
+lan1: port 3(ra0) entering forwarding state
+lan1: topology change detected, propagating
+lan1: port 1(eth0.1) entering forwarding state
+/etc/init.d/iptables start
+/etc/init.d/ebtables start
+/etc/init.d/routes start
+/etc/init.d/upnp start
+/etc/init.d/dyndns nothing
+/etc/init.d/inittab
+expr: syntax error
+/etc/init.d/stunnel start
+expr: syntax error
+/etc/init.d/phy start 1 1
+using the specified MII index 19.
+resetting the transceiver...
+restarting autonegotiation...
+/etc/init.d/phy start 1 2
+using the specified MII index 18.
+resetting the transceiver...
+restarting autonegotiation...
+/etc/init.d/phy start 1 3
+using the specified MII index 17.
+resetting the transceiver...
+restarting autonegotiation...
+/etc/init.d/phy start 1 4
+using the specified MII index 16.
+resetting the transceiver...
+restarting autonegotiation...
+/etc/init.d/inittab
+rc completed
+Starting pid 2050, console /dev/null: '/sbin/syslogd'
+Starting pid 2051, console /dev/null: '/sbin/klogd'
+Starting pid 2052, console /dev/null: '/bin/dhclient'
+Starting pid 2053, console /dev/null: '/bin/dnsmasq-2'
+Starting pid 2054, console /dev/null: '/sbin/igmpproxyd'
+Starting pid 2055, console /dev/console: '/bin/resetd'
+Starting pid 2056, console /dev/null: '/bin/upnpd'
+Starting pid 2057, console /dev/console: '/bin/wdgd'
+Software Watchdog Timer: set margin to 40 sec.
+/etc/init.d/upgd nothing
+/etc/init.d/inetd start
+/etc/init.d/http start
+/etc/init.d/htpwd start
+/etc/init.d/tr069 start
+/etc/init.d/usbdevices
+usbcore: registered new driver usbserial
+drivers/usb/serial/usb-serial.c: USB Serial support registered for generic
+usbcore: registered new driver usbserial_generic
+drivers/usb/serial/usb-serial.c: USB Serial Driver core
+drivers/usb/serial/usb-serial.c: USB Serial support registered for airprime
+usbcore: registered new driver airprime
+/etc/init.d/voip-asterisk nothing
+/etc/init.d/bluetooth nothing
+/etc/init.d/host start
+/etc/init.d/userscreatedir start
+/etc/init.d/usersdir start 1
+/etc/init.d/usersdir start 2
+/etc/init.d/sambaserver refresh
+/etc/init.d/upnpav nothing
+/etc/init.d/pureftpdserver start
+/etc/init.d/obexpush nothing4
+/etc/init.d/web nothing
+/etc/init.d/printer start
+/etc/init.d/webcam start
+usbcore: registered new driver usblp
+drivers/usb/class/usblp.c: v0.13: USB Printer Device Class driver
+/etc/init.d/inittab
+Reloading /etc/inittab
+Starting pid 2381, console /dev/console: '/bin/thttpd'
+Starting pid 2382, console /dev/console: '/bin/tr069'
+Starting pid 2383, console /dev/null: '/bin/lighttpd'</nowiki>
+</WRAP>\\
+
+===== Tags =====
+{{tag>lantiq danube ADSL2+ 16flash 32ram}}

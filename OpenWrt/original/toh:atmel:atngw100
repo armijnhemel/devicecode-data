@@ -1,0 +1,180 @@
+====== Atmel ATNGW100 ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+The [[http://www.atmel.com/tools/maturengw100networkgatewaykit.aspx|NGW100 Network Gateway Kit]] is a development board for the [[http://www.atmel.com/images/32003s.pdf|AT32AP7000]] microcontroller, a member of the [[http://www.atmel.com/products/AVR32/|AVR32]] family. The NGW100 has two Ethernet ports, a SD/MMC card reader, and connectors for USB (device mode only), serial console, and JTAG.
+
+===== Supported Versions =====
+^ Version/Model ^ S/N ^ OpenWrt Version Supported ^ Model Specific Notes ^
+| - | N/A | 7.09 |  |
+| - | N/A | 8.09.1 | Issues installing Squashfs. Alternate method described here |
+
+===== Hardware Highlights =====
+^ CPU          ^ Ram    ^ Flash   ^ Network   ^ USB               ^ Serial   ^ JTag   ^
+| AT32AP7000   | 32MB   | 8+8MB   | 2x 100M   | 1x 2.0 (device)   | Yes      | Yes    |
+
+===== Installation =====
+==== Prerequisites ====
+The following description assumes that you have
+  * a working TFTP server
+  * a [[docs:guide-developer:toolchain:start|build environment]] (you will have to build parts of OpenWRT yourself)
+  * a serial cable to connect the serial port
+
+==== Upgrade UBoot ====
+Since 8.09, the gzip compressed kernel is by far too large: it is about 3MB, and the flash section dedicated to it (0x20000 - 0x120000) is only 1MB.
+
+Therefore, the lzma compressed kernel //must// be used for OpenWRT 8.09. Unfortunately, the preinstalled U-Boot does not support lzma compression (at least not on my board, which I bought around December 2008).
+
+A version of U-Boot patched for lzma support can be built together with OpenWRT: in ''make menuconfig'', choose ''Build U-Boot bootloader'' in the section ''Target Images''. While you are at it, check also the entry ''jffs2'' (see below). Save the configuraton and ''make''. This should now build U-Boot along with OpenWRT.
+
+U-Boot can then be installed with [[http://www.avr32linux.org/twiki/bin/view/Main/FlashUpgrade|FlashUpgrade]] as follows: Download the Source Code of the FlashUpgrade tool (the pre-built binaries don't include the lzma patch).
+
+  git clone git://www.atmel.no/~hcegtvedt/flash-upgrade.git flash-upgrade 
+
+Copy ''bin/u-boot-atngw100.bin'' from your OpenWRT tree into the unpacked source directory. Rename the copy to u-boot.bin. Make and install following the instructions from [[http://mirror.egtvedt.no/avr32linux.org/twiki/bin/view/Main/FlashUpgradeUsage|FlashUpgrade]].
+
+You should now have U-Boot 1.3.3 with lzma support.
+
+==== Installing the Kernel and the Root Image ====
+Besides the boot loader, you need two more items in the flash
+  * the compressed Linux image (''openwrt-avr32-uImage-lzma'')
+  * the root file system (''openwrt-avr32-jffs2-64k.img'')
+
+On the NGW100, you need to flash them separately. The jffs filesystem ''openwrt-avr32-jffs2-64k.img'' is not available for download from http://downloads.openwrt.org/kamikaze/8.09.1/avr32/, so you will have to build it yourself. If you have not yet done so, go back to menuconfig, open the entry "Target Images". Make sure "jffs2" is selected. Save the confguration and **make**. Copy ''openwrt-avr32-uImage-lzma'' and  ''openwrt-avr32-jffs2-64k.img'' to your TFTP server.
+
+In Uboot: (**bold** means that this is something you have to enter, //italic// means that you have to put your actual value here)
+
+=== Erase the flash ===
+Before we can flash anything, first erase the flash:\\
+Uboot> **erase 20000 7effff**\\
+............................................................................... done\\
+Erased 125 sectors
+
+=== Flashing the images ===
+Flashing is a two step process
+  * first load the file to RAM via TFTP
+  * then copy the loaded contents to the flash
+
+This must be done for both the kernel and the root file system.
+
+**Details:**
+
+Give your board an IP address\\
+Uboot> **set ipaddr //someaddressinyournet//**
+
+Load the kernel into RAM at address 0x10000000:\\
+Uboot> **tftpboot 0x10000000 //yourTftpServerAddress//:openwrt-avr32-uImage-lzma**
+
+note the message:\\
+Bytes transferred = 659998 (a121e hex)
+
+The length in hex must be included in the next command
+
+Copy to flash:
+
+Uboot> **cp.b 10000000 20000 //a121e//**   replace a121e with the number of bytes transferred above!
+
+You can check whether U-Boot agrees with you:
+
+Uboot> **imls**\\
+should give something like:
+<code>Legacy Image at 00020000:
+   Image Name:   OpenWrt Linux-2.6.25.20
+   Image Type:   AVR32 Linux Kernel Image (lzma compressed)
+   Data Size:    659934 Bytes = 644.5 kB
+   Load Address: 10000000
+   Entry Point:  90000000
+   Verifying Checksum ... OK</code>
+Verify that the image type is "lzma compressed" and the data size is less than 1MB.
+
+Now load the root file system into RAM at address 0x10000000:\\
+Uboot> **tftpboot 0x10000000 //yourTftpServerAddress//:openwrt-avr32-jffs2-64k.img**
+
+note the message:\\
+Bytes transferred = 4390912 (430000 hex)
+
+Copy to flash:
+
+Uboot> **cp.b 10000000 120000 //430000//**   replace 430000 with the number of bytes transferred above!
+
+=== Setting boot parameters ===
+**__IMPORTANT__**\\
+Uboot> **set bootargs console=ttyS0,115200 root=/dev/mtdblock2 rootfstype=jffs2 init=/etc/preinit**\\
+Uboot> **set bootcmd bootm 0x20000**\\
+Uboot> **saveenv**
+
+You may now boot the board.
+
+=== First boot ===
+On the first boot (and only then), you will see messages like these:
+<code>jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00000000: 0x3000 id
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00000004: 0x0061 id
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x0000000c: 0xe3b2 id
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00000010: 0x3001 id
+
+Empty flash at 0x000115fc ends at 0x00011600</code>
+(Many more messages like these)
+
+I don't know whether this is a bug or a feature ;-)
+
+You should finally see:
+<code>jffs2_scan_eraseblock(): End of filesystem marker found at 0x420000
+jffs2_build_filesystem(): unlocking the mtd device... done.
+jffs2_build_filesystem(): erasing all blocks after the end marker... done.
+VFS: Mounted root (jffs2 filesystem).</code>
+
+=== Result ===
+You should now have a working OpenWRT on AVR32
+<code>BusyBox v1.11.2 (2009-09-04 18:20:59 CEST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ KAMIKAZE (8.09.1, unknown) ----------------------------
+  * 10 oz Vodka       Shake well with ice and strain
+  * 10 oz Triple sec  mixture into 10 shot glasses.
+  * 10 oz lime juice  Salute!
+ ---------------------------------------------------
+root@OpenWrt:/# df
+Filesystem           1k-blocks      Used Available Use% Mounted on
+rootfs                    6976      1468      5508  21% /
+/dev/root                 6976      1468      5508  21% /
+tmpfs                    15584        28     15556   0% /tmp
+tmpfs                      512         0       512   0% /dev
+root@OpenWrt:/#</code>
+
+===== Hardware =====
+
+==== Info ====
+
+^ Architecture     | AVR32                          |
+^ Vendor           | Atmel                          |
+^ Bootloader       | UBoot                          |
+^ System-On-Chip   | AT32AP7000                     |
+^ CPU Speed        | 210 MHz                        |
+^ Flash-Chip       | AT49BV642D-70TU + AT45DB642D   |
+^ Flash size       | 8 MB parallel + 8 MB serial    |
+^ RAM              | 32 MB                          |
+^ Wireless         | No                             |
+^ Ethernet         | 2                              |
+^ USB              | Yes (device)                   |
+^ Serial           | Yes                            |
+^ JTAG             | Yes                            |
+
+==== Photos ====
+
+See [[http://avr32linux.org/twiki/bin/view/Main/ModifyTheNGW100|here]] for a photo.\\
+Note: The expansion headers are not present on the board, but it is possible to add them.
+
+===== Basic configuration =====
+Since this part is identical for all devices, see [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]].
+
+===== Connect stuff to the USB port =====
+To connect stuff to the USB port, please see [[docs:guide-user:hardware:usb.overview|Connect stuff to the USB port]].
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>devboard 8flash 32ram}}

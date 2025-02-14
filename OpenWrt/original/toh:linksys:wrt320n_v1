@@ -1,0 +1,136 @@
+====== Linksys WRT320N/E2000 ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+^ Version/Model ^ SoC ^ RAM ^ Flash ^ WAN ^ LAN ^ USB ^ Serial ^ JTAG ^ OpenWrt Version Supported ^
+| v1 | Broadcom BCM4717A1 (354 MHz) | 32 MiB | 8 MiB | 1x1 | 4x1 | No | Yes | Yes | Chaos Calmer 15.05 WiFi (abgn) with closed source WiFi driver -OK- |
+
+===== Installation =====
+
+Get the ''brcm47xx'' firmware image ''openwrt-15.05-brcm47xx-mips74k-linksys-wrt320n-v1-squashfs.bin'' from https://downloads.openwrt.org/chaos_calmer/15.05/brcm47xx/mips74k/
+
+Upgrade that via factory firmware's Administration -> Firmware Upgrade selection.
+
+==== Custom image Installation past v22.03.7 ====
+
+  * **Note 1:** In any case, be sure to start with the installation instruction, as mentioned at the top of this page. After that procedure, you should be able to use sysupgrade to the latest OpenWRT v22.03.7.
+  * **Note 2:** Set a static IP on the device and make sure you can connect to it. Resetting the device configuration will result in no IP, after which you should theoretically be able to set a static IP from recovery mode: [[:docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+Due to limited ram and flash (32/8), OpenWRT isn't officially supported anymore on this device. Therefore it is wise limit the amount of packages in a custom image.
+
+=== Make sure your system is up to date ===
+<code>
+sudo apt-get update && sudo apt-get upgrade
+sudo apt-get install build-essential libncurses-dev zlib1g-dev gawk git sudo apt install build-essential libncurses-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils
+</code>
+=== Setting up the environment ===
+<code>
+mkdir ~/openwrt && cd ~/openwrt
+VERSION="23.05.5"
+wget https://downloads.openwrt.org/releases/$VERSION/targets/bcm47xx/mips74k/openwrt-imagebuilder-$VERSION-bcm47xx-mips74k.Linux-x86_64.tar.xz
+tar -J -x -f openwrt-imagebuilder-*.tar.xz
+cd openwrt-imagebuilder-*/
+</code>
+=== Always be sure to have a clean working environment, by resetting the environment to zero ===
+<code>
+make clean
+</code>
+
+=== Examples ===
+
+Tweaking the device so it acts like a switch with VLAN support, without ''dnsmasq'' and ''firewall'' (it still needs improvement, as the firewall is still installed).
+
+<code>
+make image PROFILE="linksys_wrt320n-v1" PACKAGES="base-files busybox ca-bundle -dnsmasq dropbear -firewall4 fstools kmod-gpio-button-hotplug kmod-leds-gpio -kmod-nft-offload libc libgcc -libustream-wolfssl logd mtd netifd -nftables nvram -odhcp6c -odhcpd-ipv6only opkg otrx -ppp -ppp-mod-pppoe procd procd-seccomp procd-ujail swconfig uci uclient-fetch urandom-seed urngd -wpad-basic-wolfssl kmod-b43 luci -kmod-nf-conntrack -kmod-nf-conntrack6 -kmod-nf-flow -kmod-nf-log -kmod-nf-log6 -kmod-nf-nat -kmod-nf-reject -kmod-nf-reject6 -kmod-nfnetlink -kmod-nft-core -kmod-nft-fib -kmod-nft-nat -kmod-nft-offload -libnftnl11 -nftables-json -luci-app-firewall" DISABLED_SERVICES="firewall dnsmasq"
+</code>
+
+<code>
+make image PROFILE="linksys_wrt320n-v1" PACKAGES="base-files busybox ca-bundle -dnsmasq dropbear firewall4 fstools kmod-gpio-button-hotplug kmod-leds-gpio kmod-nft-offload libc libgcc -libustream-wolfssl logd mtd netifd nftables nvram -odhcp6c -odhcpd-ipv6only opkg otrx -ppp -ppp-mod-pppoe procd procd-seccomp procd-ujail swconfig uci uclient-fetch urandom-seed urngd -wpad-basic-wolfssl kmod-b43 luci micrond" DISABLED_SERVICES="firewall dnsmasq"
+</code>
+
+===== WiFi =====
+
+I needed 2,4ghz wireless "n" so i went for the propertary driver (kmod-brcm-wl) from start, \\ 
+i didn't have time to play around with the open source drivers in CC (final).
+
+I have tested this one driver (kmod-brcm-wl) now in CC (final), and it works fine on my WRT320N (bought in sweden).
+
+I have earlier tested all the available broadcom drivers including kmod-brcm-wl for this router, and all have failed to work in various ways with CC develop release (unknown revision, was a few months ago..)
+
+After that i went to fallback on BB as this wikipage told it was untested WiFi-wise.
+B43 driver works in 54mbit mode, and the link drops randomly, **alot!** if lucky, it worked 5mins without dropping.
+kmod-brcm-wl driver did not work at 'N' speed (300mbit) if i remeber correctly it worked at 54mbit mode but i dont remeber at what extent as i continued to use b43 even though it dropped connection.
+
+i'm sure someone will get the open source drivers to work sometime.. then update the wiki with more subcategorys for the other drivers..
+==== Modifications for use kmod-brcm-wl driver ====
+ 
+With CC (final) it works and whats needed as post-install on a vanilla installation (installation part above).
+  * install packages.. "opkg install kmod-brcm-wl wl wlc nas"
+  
+  * Disable B43 modules from loading at boot. 
+    * remove file "/etc/modules.d/b43" (or remove b43 kmod package)
+    * or modify that file so it says "#b43" instead.
+
+  * New/reconfigured "/etc/config/wireless". 
+    * back it up on your desktop if you want or just overwrite as i did. 
+
+  config wifi-device 'wl0'
+    option type 'broadcom'
+    option disabled '0'
+    option channel '4'
+    option txpower '16'
+  
+  config wifi-iface
+    option device 'wl0'
+    option network 'lan'
+    option ssid 'OpenWrt'
+    option key 'passphrase'
+    option mode 'ap'
+    option encryption 'psk2'
+
+  * reboot and wireless should be up and running after the reboot (or init the modules and run the commands in the post below
+
+
+tnx goes to this [[https://forum.openwrt.org/viewtopic.php?pid=278354#p278354|post]] where i found how to do it..
+
+
+===== How to mod Cisco/Linksys WRT320N to E2000 =====
+
+[[https://dmach.net/blog/2010/08/22/upgrade-your-linksys-router-literally/|This guide on dmach.net]] can be used too. It's actually a better guide.
+
+Mirrored from: 
+http://www.jiggy.ca/2011/03/how-to-mod-ciscolinksys-wrt320n-to-e2000/ Which is no longer present (checked 2013/06/24) 
+
+Posted on March 3, 2011 by Dave Kincade
+
+
+
+This is a companion piece to my article explaining how to powerfully network your house. While setting up two Cisco/Linksys WRT320Ns to use DD-WRT, I saw in the DD-WRT wiki page that upgrading the firmware to the E2000 model can solve some problems.
+
+I’d just gotten the routers so I never got a chance to see what those problems are, but I’m a sucker for new firmware so I had to upgrade. buddee’s guide is great and includes everything you need to do the upgrade, but I had a bit of a headache after reading his post so I’m going to lay it out here.
+  - You need DD-WRT on your router already. If you’re entering from my networking article, then you’ve just put on an older trailed build which is just fine.
+  - Download a [[https://dmach.net/blog/?wpdmact=process&did=OS5ob3RsaW5r|cfe_e2k.bin]] file which contains the actual configuration for the E2000 and another trailed DD-WRT build, but for E2000. Note: you may need to go to the guide to download the files.
+  - Open the cfe_e2k.bin in a hex edior. As per buddee’s recommendation, HxD is a good choice. I just grabbed the portable version since I don’t see much more hex editing in the near future.
+  - You need to modify three values that are right next to each other. I found it easiest to just search for “mac=” and let HxD find it. buddee lists the offsets as starting at 0x3E098.
+  - The MAC address, serial number (SN), and PIN are all found underneath the router. Replace the values in the file with the values on your router. Make sure you leave the colons where they are, and I used capital values for the alphabetical hex characters, if it matters. Make sure you work in the “text” area (i.e. the part you can actually read). Just save when you’re done.
+  - Backup your WRT320N CFE by going to http://192.168.1.1/backup/cfe.bin. It’ll take a minute so be patient. I’m honestly not sure how you’d get the chance to restore it if something goes wrong, bit it’s better to have it.
+  - You need to get the CFE to the router. I haven’t found a better way that buddee’s suggestion to use winSCP. Enable sshd by going to DD-WRT via http://192.168.1.1 and going to “Services” and scrolling down to sshd. The defaults (password login, no SSH TCP forwarding) should be fine. Apply the settings.
+  - Open winSCP and set up a new connection to 192.168.1.1 with username as “root” and whatever password you’ve set up for the router. Make sure you set the protocol to “SCP” since it will fail even with the SFTP fallback to SCP.
+  - Transfer your cfe_e2k.bin file into the /tmp folder. You can close winSCP now.
+  - Open up a telnet session to the router. Windows comes with a telnet client, which you can enable by typing “Turn Windows Features on or off” into the start menu or find the option in the control panel.
+  - Once telnet is enabled, open a command prompt and enter “telnet 192.168.1.1″ and enter the same credentials as before (root / password that you know).
+  - In the telnet session, enter the following commands:
+  - “cd /tmp” – navigate to the /tmp folder where the cfe_e2k.bin file was stored.
+  - “mfe unlock cfe” < --note that this may now be "mtd"
+  - “mfe write -f cfe_e2k.bin cfe” – actually write the new CFE. This is the only really sensitive part of this process, so make sure you don’t disrupt the process. After it’s finished, you’re done with telnet, winSCP, and HxD.
+  - Now you want to update the firmware to a E2000 version. It’s probably a bad idea to reboot the router before updating the firmware. Go to http://192.168.1.1/Upgrade.asp and select the trailed E2000 build downloaded earlier, and make sure you select “reset to default settings”. You may be able to go right to a new DD-WRT build rather than this older trailed build but I didn’t want to risk it.
+  - After the firmware update has happened, you can go ahead and update to a newer firmware. If you go to http://192.168.1.1/Status_Router.asp, you should see something like this:
+
+Congrats!
+
+===== Notes =====
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>GigabitEthernet 1NIC 1WNIC 5Port 32RAM 8Flash MIPS MIPS32 bcm47xx}}

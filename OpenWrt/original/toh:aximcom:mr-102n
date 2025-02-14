@@ -1,0 +1,1420 @@
+====== AXIMCom MR-102N ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+The device is a mobile 150Mbit wireless N router with 1700mAh Li-ion rechargeable battery.
+
+**Note:** Though this device is marketed as a "3G/4G Travel Mobile Router," it does not actually contains a 3G modem - the marketing term rather means that the OEM firmware supports USB 3G modems because it contains drivers for USB modems! Ignore that as with OpenWrt installed, ANY router with USB supports 3G hardware… ;-)
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^MR-102N$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^MR-102N$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^MR-102N$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Flash Layout ====
+Please check out the article [[docs:techref:flash.layout]]. It contains an example and a couple of explanations.
+
+=== AXIMCom MR-102N  Flash Layout stock firmware ===
+<code># cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00030000 00010000 "Bootloader"
+mtd1: 00010000 00010000 "Config"
+mtd2: 00010000 00010000 "Factory"
+mtd3: 00790000 00010000 "linux"
+mtd4: 00640000 00010000 "rootfs"
+mtd5: 00040000 00010000 "rootfs_data"
+mtd6: 00010000 00010000 "nvram"
+mtd7: 00010000 00010000 "nvram_backup"
+</code>
+
+=== AXIMCom MR-102N  Flash Layout OpenWrt ===
+<code># cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00030000 00010000 "u-boot"
+mtd1: 00010000 00010000 "u-boot-env"
+mtd2: 00010000 00010000 "factory"
+mtd3: 00790000 00010000 "firmware"
+mtd4: 001089bf 00010000 "kernel"
+mtd5: 00687641 00010000 "rootfs"
+mtd6: 001d0000 00010000 "rootfs_data"
+mtd7: 00010000 00010000 "nvram"
+mtd8: 00010000 00002000 "nvram_backup"
+</code>
+
+==== OEM easy installation ====
+
+OpenWrt sysupgrade image must be patched and encrypted before passing to vendor's web firmware upgrade interface. Following Python script can be used to patch ''openwrt-ramips-rt305x-mr-102n-squashfs-sysupgrade.bin''.
+
+<code>
+#!/usr/bin/env python
+#
+# Converting OpenWRT sysupgrade firmware to AXIMCom MR-102N OEM firmware
+# upgradable image.
+#
+import binascii
+import struct
+import sys
+
+image_magic = 0x27051956
+mr102n_product_id = 0x50312080
+mr105nl_product_id = 0x55302080
+pg108n_product_id = 0x423217c0
+x116nx_product_id = 0x58332080
+
+product_id = mr102n_product_id
+crc = 0
+
+for i in sys.argv[1:]:
+    f = open(i, 'rb+')
+    v = struct.unpack('>I', f.read(4))
+    if v[0] != image_magic:
+        print 'unexpected firmware magic: 0x%x' % (v[0])
+        sys.exit(-1)
+    f.seek(8, 0)
+    # write the fixed product category, subcategory, major & minor number
+    f.write(struct.pack('>I', product_id))
+    hdr = f.read(64 - 12)
+    v = struct.pack('>3I', image_magic, 0, product_id)
+    crc = binascii.crc32(v, crc) & 0xffffffff
+    crc = binascii.crc32(hdr, crc) & 0xffffffff
+    # write the updated header CRC back
+    f.seek(4, 0)
+    f.write(struct.pack('>I', crc))
+    print '%s: 0x%08x' % (i, crc)
+    f.close()
+</code>
+
+Steps to patch OpenWrt sysupgrade image:
+  - save the above script as ''openwrt_to_mr102n.py''
+  - run ''python openwrt_to_mr102n.py openwrt-ramips-rt305x-mr-102n-squashfs-sysupgrade.bin''
+
+You will then need to encrypt the patched OpenWrt sysupgrade image with ezpenc.sh found in [[https://github.com/choushane/MaRa-a1a0a5aNaL/tree/master/package/ezpup]]:
+<code>
+  $ git clone https://github.com/choushane/MaRa-a1a0a5aNaL
+  $ cd MaRa-a1a0a5aNaL/package/ezpup/src && make KEY=AXIM
+  $ ./ezpenc.sh AXIM /path/to/patched/openwrt-ramips-rt305x-mr-102n-squashfs-sysupgrade.bin encrypted-fw.bin
+</code>
+
+**Note:** Reset router to factory defaults if it has been previously configured.
+  * Browse to ''%%http://192.168.1.1/ad_basic.asp%%''
+  * Upload the patched/encrypted image (encrypted-fw.bin in the above example) file to router
+  * Wait for it to reboot
+  * Telnet to 192.168.1.1 and set a root password, or browse to ''%%http://192.168.1.1%%'' if LuCI is installed.
+
+==== OEM installation using the TFTP method ====
+
+The boot loader will activate the internal TFTP client in recovery mode.  Refer to [[docs:guide-user:installation:generic.flashing.tftp]] to setup a TFTP server with following values to 'upload' OpenWrt to the device.
+
+=== Specific values you need ===
+
+| Bootloader tftp server IPv4 address (the device) | 123.123.78.178 |
+| Bootloader MAC address (special) | 00:aa:bb:cc:dd:10 |
+| Firmware tftp image | [[:downloads|Latest OpenWrt release]] (**''NOTE:''** The firmware file stored on your TFTP server must be renamed from //openwrt-ramips-rt305x-mr-102n-squashfs-sysupgrade.bin// to //aximcom-kernel-fw.bin//) |
+| TFTP Transfer Window | 15 seconds |
+| TFTP Window Start    | approximately 3 seconds after power on (hold the RESET button whilst powering on) |
+| TFTP Client Required IP Address (your TFTP server with aximcom-kernel-fw.bin) | 123.123.78.78 |
+
+=== OEM TFTP Upgrade Logs ===
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.3 (Sep  2 2010 - 14:35:15)
+
+Board: Ralink APSoC DRAM:  32 MB
+relocate_code Pointer at: 81fa8000
+config usb..
+
+ The Flash ID =000022C9 
+get flash MX_ID_29LV640DT sector:135 size:800000
+flash bank 0 size:8388608
+flash_protect ON: from 0xBF000000 to 0xBF022D57
+flash_protect ON: from 0xBF030000 to 0xBF030FFF
+*** Warning - bad CRC, using default environment
+
+============================================ 
+Ralink UBoot Version: 3.4.0.0
+-------------------------------------------- 
+ASIC 3052_MP2 (Port5<->None)
+DRAM component: 256 Mbits SDR
+DRAM bus: 16 bit
+Total memory: 32 MBytes
+Flash component: NOR Flash
+Date:Sep  2 2010  Time:14:35:15
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:128, ways:4, linesz:32 ,total:16384 
+
+ ##### The CPU freq = 320 MHZ #### 
+
+SDRAM bus set to 16 bit 
+ SDRAM size =32 Mbytes
+
+ RT3052 ASIC Setting switch. 
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   6: To emergency. 
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. 
+
+You choosed b by press a button
+
+0 
+
+   
+2: System Load Linux Kernel then write to Flash via TFTP. 
+ Warning!! Erase Linux in Flash then burn new one.
+ Please Input new ones /or Ctrl-C to discard
+	Device IP (123.123.78.178)
+	Server IP (123.123.78.78)
+	Input Linux Kernel filename (aximcom-kernel-fw.bin) 
+	Load address 0x80100000
+
+ netboot_common, argc= 3 
+ *************buf = 0x81fcb4a0
+ **********NexTxPacket = 81fe3580
+
+ NetTxPacket = 0x81FE3580 
+
+ NetRxPackets[0] = 0x81FE3B80
+
+ NetRxPackets[1] = 0x81FE4180
+
+ NetRxPackets[2] = 0x81FE4780
+
+ NetRxPackets[3] = 0x81FE4D80
+
+ NetRxPackets[4] = 0x81FE5380
+
+ NetRxPackets[5] = 0x81FE5980
+
+ NetRxPackets[6] = 0x81FE5F80
+
+ NetRxPackets[7] = 0x81FE6580
+
+ NetRxPackets[8] = 0x81FE6B80
+
+ NetRxPackets[9] = 0x81FE7180
+
+ NetRxPackets[10] = 0x81FE7780
+
+ NetRxPackets[11] = 0x81FE7D80
+
+ NetRxPackets[12] = 0x81FE8380
+
+ NetRxPackets[13] = 0x81FE8980
+
+ NetRxPackets[14] = 0x81FE8F80
+
+ NetRxPackets[15] = 0x81FE9580
+
+ NetRxPackets[16] = 0x81FE9B80
+
+ NetRxPackets[17] = 0x81FEA180
+
+ NetRxPackets[18] = 0x81FEA780
+
+ NetRxPackets[19] = 0x81FEAD80
+
+ KSEG1ADDR(NetTxPacket) = 0xA1FE3580 
+
+ NetLoop,call eth_halt ! 
+
+ NetLoop,call eth_init ! 
+Trying Eth0 (10/100-M)
+
+ Waitting for RX_DMA_BUSY status Start... done
+
+ RT3052 ASIC Setting switch. 
+
+ Header Payload scatter function is Disable !! 
+
+ ETH_STATE_ACTIVE!! 
+Using Eth0 (10/100-M) device
+TFTP from server 123.123.78.78; our IP address is 123.123.78.178
+Filename 'aximcom-kernel-fw.bin'.
+
+ TIMEOUT=2 secs TIMEOUT_COUNT=3,Load address: 0x80100000
+Loading:
+Got ARP REPLY, set server/gtwy eth addr (a6:f7:45:e0:20:15)
+Got it
+#################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 ########
+done
+Bytes transferred = 6029316 (5c0004 hex)
+NetBootFileXferSize= 005c0004
+Erase linux kernel block !!
+From 0xBF050000 To 0xBF61FFFF
+
+ b_end =BF7FFFFF
+Erase Flash from 0xbf050000 to 0xbf61ffff in Bank # 1 
+
+ erase sector  = 5 
+sect = 5,s_last = 97,erase poll = 831963
+
+ erase sector  = 6 
+sect = 6,s_last = 97,erase poll = 843678
+
+ erase sector  = 7 
+*sect = 7,s_last = 97,erase poll = 869629
+
+ erase sector  = 8 
+sect = 8,s_last = 97,erase poll = 838989
+
+ erase sector  = 9 
+*sect = 9,s_last = 97,erase poll = 845839
+
+ erase sector  = 10 
+sect = 10,s_last = 97,erase poll = 846767
+
+ erase sector  = 11 
+sect = 11,s_last = 97,erase poll = 854305
+
+ erase sector  = 12 
+*sect = 12,s_last = 97,erase poll = 853357
+
+ erase sector  = 13 
+sect = 13,s_last = 97,erase poll = 839914
+
+ erase sector  = 14 
+*sect = 14,s_last = 97,erase poll = 871603
+
+ erase sector  = 15 
+sect = 15,s_last = 97,erase poll = 846677
+
+ erase sector  = 16 
+sect = 16,s_last = 97,erase poll = 837394
+
+ erase sector  = 17 
+*sect = 17,s_last = 97,erase poll = 807239
+
+ erase sector  = 18 
+sect = 18,s_last = 97,erase poll = 706586
+
+ erase sector  = 19 
+*sect = 19,s_last = 97,erase poll = 834316
+
+ erase sector  = 20 
+sect = 20,s_last = 97,erase poll = 839622
+
+ erase sector  = 21 
+sect = 21,s_last = 97,erase poll = 867223
+
+ erase sector  = 22 
+*sect = 22,s_last = 97,erase poll = 834095
+
+ erase sector  = 23 
+sect = 23,s_last = 97,erase poll = 847000
+
+ erase sector  = 24 
+*sect = 24,s_last = 97,erase poll = 844180
+
+ erase sector  = 25 
+sect = 25,s_last = 97,erase poll = 846773
+
+ erase sector  = 26 
+sect = 26,s_last = 97,erase poll = 863385
+
+ erase sector  = 27 
+*sect = 27,s_last = 97,erase poll = 834580
+
+ erase sector  = 28 
+sect = 28,s_last = 97,erase poll = 824670
+
+ erase sector  = 29 
+*sect = 29,s_last = 97,erase poll = 860501
+
+ erase sector  = 30 
+sect = 30,s_last = 97,erase poll = 850071
+
+ erase sector  = 31 
+sect = 31,s_last = 97,erase poll = 835340
+
+ erase sector  = 32 
+*sect = 32,s_last = 97,erase poll = 842082
+
+ erase sector  = 33 
+sect = 33,s_last = 97,erase poll = 839943
+
+ erase sector  = 34 
+*sect = 34,s_last = 97,erase poll = 833636
+
+ erase sector  = 35 
+sect = 35,s_last = 97,erase poll = 823948
+
+ erase sector  = 36 
+sect = 36,s_last = 97,erase poll = 846149
+
+ erase sector  = 37 
+*sect = 37,s_last = 97,erase poll = 842909
+
+ erase sector  = 38 
+sect = 38,s_last = 97,erase poll = 863061
+
+ erase sector  = 39 
+*sect = 39,s_last = 97,erase poll = 849198
+
+ erase sector  = 40 
+sect = 40,s_last = 97,erase poll = 858902
+
+ erase sector  = 41 
+sect = 41,s_last = 97,erase poll = 842387
+
+ erase sector  = 42 
+*sect = 42,s_last = 97,erase poll = 861825
+
+ erase sector  = 43 
+sect = 43,s_last = 97,erase poll = 842993
+
+ erase sector  = 44 
+*sect = 44,s_last = 97,erase poll = 850155
+
+ erase sector  = 45 
+sect = 45,s_last = 97,erase poll = 835945
+
+ erase sector  = 46 
+*sect = 46,s_last = 97,erase poll = 846110
+
+ erase sector  = 47 
+sect = 47,s_last = 97,erase poll = 870478
+
+ erase sector  = 48 
+sect = 48,s_last = 97,erase poll = 836258
+
+ erase sector  = 49 
+*sect = 49,s_last = 97,erase poll = 865258
+
+ erase sector  = 50 
+sect = 50,s_last = 97,erase poll = 846262
+
+ erase sector  = 51 
+*sect = 51,s_last = 97,erase poll = 861495
+
+ erase sector  = 52 
+sect = 52,s_last = 97,erase poll = 845405
+
+ erase sector  = 53 
+sect = 53,s_last = 97,erase poll = 833806
+
+ erase sector  = 54 
+*sect = 54,s_last = 97,erase poll = 823789
+
+ erase sector  = 55 
+sect = 55,s_last = 97,erase poll = 850718
+
+ erase sector  = 56 
+*sect = 56,s_last = 97,erase poll = 835339
+
+ erase sector  = 57 
+sect = 57,s_last = 97,erase poll = 823893
+
+ erase sector  = 58 
+sect = 58,s_last = 97,erase poll = 826554
+
+ erase sector  = 59 
+*sect = 59,s_last = 97,erase poll = 840492
+
+ erase sector  = 60 
+sect = 60,s_last = 97,erase poll = 838813
+
+ erase sector  = 61 
+*sect = 61,s_last = 97,erase poll = 850027
+
+ erase sector  = 62 
+sect = 62,s_last = 97,erase poll = 846629
+
+ erase sector  = 63 
+sect = 63,s_last = 97,erase poll = 846051
+
+ erase sector  = 64 
+*sect = 64,s_last = 97,erase poll = 843929
+
+ erase sector  = 65 
+sect = 65,s_last = 97,erase poll = 849323
+
+ erase sector  = 66 
+*sect = 66,s_last = 97,erase poll = 827861
+
+ erase sector  = 67 
+sect = 67,s_last = 97,erase poll = 703023
+
+ erase sector  = 68 
+sect = 68,s_last = 97,erase poll = 833753
+
+ erase sector  = 69 
+*sect = 69,s_last = 97,erase poll = 833785
+
+ erase sector  = 70 
+sect = 70,s_last = 97,erase poll = 838484
+
+ erase sector  = 71 
+*sect = 71,s_last = 97,erase poll = 855367
+
+ erase sector  = 72 
+sect = 72,s_last = 97,erase poll = 878183
+
+ erase sector  = 73 
+sect = 73,s_last = 97,erase poll = 856603
+
+ erase sector  = 74 
+*sect = 74,s_last = 97,erase poll = 856610
+
+ erase sector  = 75 
+sect = 75,s_last = 97,erase poll = 839453
+
+ erase sector  = 76 
+*sect = 76,s_last = 97,erase poll = 840380
+
+ erase sector  = 77 
+sect = 77,s_last = 97,erase poll = 846925
+
+ erase sector  = 78 
+sect = 78,s_last = 97,erase poll = 857001
+
+ erase sector  = 79 
+*sect = 79,s_last = 97,erase poll = 844045
+
+ erase sector  = 80 
+sect = 80,s_last = 97,erase poll = 855727
+
+ erase sector  = 81 
+*sect = 81,s_last = 97,erase poll = 836652
+
+ erase sector  = 82 
+sect = 82,s_last = 97,erase poll = 874585
+
+ erase sector  = 83 
+*sect = 83,s_last = 97,erase poll = 854954
+
+ erase sector  = 84 
+sect = 84,s_last = 97,erase poll = 842691
+
+ erase sector  = 85 
+sect = 85,s_last = 97,erase poll = 866275
+
+ erase sector  = 86 
+*sect = 86,s_last = 97,erase poll = 823873
+
+ erase sector  = 87 
+sect = 87,s_last = 97,erase poll = 839468
+
+ erase sector  = 88 
+*sect = 88,s_last = 97,erase poll = 837511
+
+ erase sector  = 89 
+sect = 89,s_last = 97,erase poll = 833855
+
+ erase sector  = 90 
+sect = 90,s_last = 97,erase poll = 834691
+
+ erase sector  = 91 
+*sect = 91,s_last = 97,erase poll = 854197
+
+ erase sector  = 92 
+sect = 92,s_last = 97,erase poll = 836252
+
+ erase sector  = 93 
+*sect = 93,s_last = 97,erase poll = 868052
+
+ erase sector  = 94 
+sect = 94,s_last = 97,erase poll = 841153
+
+ erase sector  = 95 
+sect = 95,s_last = 97,erase poll = 837521
+
+ erase sector  = 96 
+*sect = 96,s_last = 97,erase poll = 859966
+
+ erase sector  = 97 
+sect = 97,s_last = 97,erase poll = 837408
+ done
+Erased 93 sectors
+cmd_mem.c:do command cp.linux
+
+ Copy linux image[6029316 byte] to Flash[0xBF050000].... 
+Copy to Flash... 
+ Copy 6029316 byte to Flash... 
+ addr = 0xBF0B28A4 ,cnt=5625696 
+ addr = 0xBF11514A ,cnt=5222074 
+ addr = 0xBF1779F0 ,cnt=4818452 
+ addr = 0xBF1DA296 ,cnt=4414830 
+ addr = 0xBF23CB3C ,cnt=4011208 
+ addr = 0xBF29F3E2 ,cnt=3607586 
+ addr = 0xBF301C88 ,cnt=3203964 
+ addr = 0xBF36452E ,cnt=2800342 
+ addr = 0xBF3C6DD4 ,cnt=2396720 
+ addr = 0xBF42967A ,cnt=1993098 
+ addr = 0xBF48BF20 ,cnt=1589476 
+ addr = 0xBF4EE7C6 ,cnt=1185854 
+ addr = 0xBF55106C ,cnt=782232 
+ addr = 0xBF5B3912 ,cnt=378610 done
+## Booting image at bf050000 ...
+   Image Name:   MIPS OpenWrt Linux-3.18.14
+   Created:      2015-06-09   3:50:20 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1084335 Bytes =  1 MB
+   Load Address: 80000000
+   Entry Point:  80000000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+ ************* 80000000 ***************
+No initrd
+## Transferring control to Linux (at address 80000000) ...
+## Giving linux memsize in MB, 32
+
+Starting kernel ...</nowiki>
+</WRAP>\\
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the mtd command line tool. It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== LuCI Web Upgrade Process ===
+
+  * Browse to http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/ LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+=== Terminal Upgrade Process ===
+
+  * Login as root via SSH on 192.168.1.1
+  * Use the following commands to upgrade.
+
+<code>
+cd /tmp/
+wget http://downloads.openwrt.org/snapshots/trunk/ramips/rt305x/openwrt-ramips-rt305x-mr-102n-squashfs-sysupgrade.bin
+sysupgrade /tmp/openwrt-ramips-rt305x-mr-102n-squashfs-sysupgrade.bin
+</code>
+
+  * If sysupgrade does not support this router, use the following commands.
+
+<code>
+cd /tmp/
+wget http://downloads.openwrt.org/snapshots/trunk/ramips/rt305x/openwrt-ramips-rt305x-mr-102n-squashfs-sysupgrade.bin
+mtd write /tmp/openwrt-ramips-rt305x-mr-102n-squashfs-sysupgrade.bin firmware && reboot</code>
+
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description   ^ Default configuration   ^
+| br-lan           | LAN & WiFi    | 192.168.1.1/24          |
+| wlan0            | WiFi          | Disabled                |
+
+==== Switch Ports (for VLANs) ====
+The device got only one Ethernet port. The built-in embedded switch can be used to perform hardware VLAN.
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The AXIMCom MR-102N has two buttons. They are Reset and WPS. Here, we merely name the buttons, so we can use them in the above Howto:
+^ BUTTON ^ Event ^ Remarks ^
+| Reset | reset | Hold it for more than 10 seconds to restore the factory defaults or use it to trigger u-boot recovery/failsafe mode. |
+| WPS | wps | |
+
+
+===== Hardware =====
+==== Info ====
+| **[[wp>Instruction set|Architecture]]:**  | [[wp>MIPS architecture|MIPS]] |
+| **Vendor:**                               | [[wp>Ralink]] |
+| **[[docs:techref:bootloader]]:**           | [[docs:techref:bootloader:uboot|U-Boot]] |
+| **[[docs:techref:hardware:soc|System-On-Chip]]:**  | RT3050 (MIPS 24KEc)      |
+| **[[docs:techref:hardware:cpu|CPU]]/Speed**        | MIPS 24KEc V4.12 320 Mhz |
+| **Flash-Chip:**      | Macronix MX29LV640DT |
+| **Flash size:**      | 8192 KiB |
+| **RAM:**             | 32 MiB Etron EM63A165TS-6G |
+| **Wireless:**        | RT3050 1x1 802.11n 2.4GHz  |
+| **Ethernet:**        | 1x 10/100MiBit/s |
+| **USB:**             | Yes 1 x 2.0      |
+| **PSU:**             | 5V DC 2A AMIGO AMS9-0502000FU2 |
+| **[[docs:techref:hardware:port.serial|Serial]]:**  | [[#Serial|Yes]] |
+
+==== Photos ====
+AXIMCom MR-102N
+
+//Front://
+
+{{:media:aximcom:mr102n-front1.png?400|}}
+{{:media:aximcom:mr102n-front2.png?400|}}
+
+//Back://
+
+{{:media:aximcom:mr102n-back.png?400|}}
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+  - Open the battery cover and remove the battery.
+  - Unscrew 2 screws.
+  - Use a guitar pic or similar device and snap open carefully the underside.
+
+//Main PCB (battery side)//\\
+{{:media:aximcom:mr102n-pcb-front.png?400|}}
+
+//Main PCB//\\
+{{:media:aximcom:mr102n-pcb-back.png?400|}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+== Pinout ==
+
+4 pins are available on the board as a header marked //J3//.
+
+^ Pin number     ^ 1            ^ 2    ^ 3    ^ 4     ^
+| **Function**   | Vcc (3.3V)   | Rx   | Tx   | GND   |
+
+Host settings for getting access to the serial console:
+
+| Bits per second   | **57600**   |
+| Data bits         | **8**       |
+| Stop bits         | **1**       |
+| Parity            | **None**    |
+| Flow control      | **None**    |
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.3 (Sep  2 2010 - 14:35:15)
+
+Board: Ralink APSoC DRAM:  32 MB
+relocate_code Pointer at: 81fa8000
+config usb..
+
+ The Flash ID =000022C9 
+get flash MX_ID_29LV640DT sector:135 size:800000
+flash bank 0 size:8388608
+flash_protect ON: from 0xBF000000 to 0xBF022D57
+flash_protect ON: from 0xBF030000 to 0xBF030FFF
+*** Warning - bad CRC, using default environment
+
+============================================ 
+Ralink UBoot Version: 3.4.0.0
+-------------------------------------------- 
+ASIC 3052_MP2 (Port5<->None)
+DRAM component: 256 Mbits SDR
+DRAM bus: 16 bit
+Total memory: 32 MBytes
+Flash component: NOR Flash
+Date:Sep  2 2010  Time:14:35:15
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:128, ways:4, linesz:32 ,total:16384 
+
+ ##### The CPU freq = 320 MHZ #### 
+
+SDRAM bus set to 16 bit 
+ SDRAM size =32 Mbytes
+
+ RT3052 ASIC Setting switch. 
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   6: To emergency. 
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. 
+ choosed 4
+
+   4: System Enter Boot Command Line Interface.
+
+RT3052 # help
+?       - alias for 'help'
+bootm   - boot application image from memory
+cp      - memory copy
+erase   - erase FLASH memory
+go      - start application at address 'addr'
+help    - print online help
+tftpboot- boot image via network using TFTP protocol
+loadb   - load binary file over serial line (kermit mode)
+md      - memory display
+mdio   - Ralink PHY register R/W command !!
+mm      - memory modify (auto-incrementing)
+mw      - memory write (fill)
+nm      - memory modify (constant address)
+printenv- print environment variables
+protect - enable or disable FLASH write protection
+reset   - Perform RESET of the CPU
+rf      - read/write rf register
+saveenv - save environment variables to persistent storage
+setenv  - set environment variables
+spicmd  - read/write data from/to eeprom or vtss
+tftpboot- boot image via network using TFTP protocol
+version - print monitor version
+RT3052 # printenv
+bootcmd=tftp
+bootdelay=5
+baudrate=57600
+ethaddr="00:AA:BB:CC:DD:10"
+ipaddr=123.123.78.178
+serverip=123.123.78.78
+ramargs=setenv bootargs root=/dev/ram rw
+addip=setenv bootargs $(bootargs) ip=$(ipaddr):$(serverip):$(gatewayip):$(netmask):$(hostname):$(netdev):off
+addmisc=setenv bootargs $(bootargs) console=ttyS0,$(baudrate) ethaddr=$(ethaddr) panic=1
+flash_self=run ramargs addip addmisc;bootm $(kernel_addr) $(ramdisk_addr)
+kernel_addr=BFC40000
+u-boot=u-boot.bin
+load=tftp 8A100000 $(u-boot)
+u_b=protect off 1:0-1;era 1:0-1;cp.b 8A100000 BC400000 $(filesize)
+loadfs=tftp 8A100000 root.cramfs
+u_fs=era bc540000 bc83ffff;cp.b 8A100000 BC540000 $(filesize)
+test_tftp=tftp 8A100000 root.cramfs;run test_tftp
+stdin=serial
+stdout=serial
+stderr=serial
+ethact=Eth0 (10/100-M)
+
+Environment size: 770/4092 bytes
+RT3052 # boot
+## Booting image at bf050000 ...
+   Image Name:   EZPacket MIPS Linux-2.6.26&AMA
+   Created:      2012-08-19  17:21:04 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    7667648 Bytes =  7.3 MB
+   Load Address: 80000000
+   Entry Point:  80000000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+ ************* 80000000 ***************
+No initrd
+# Transferring control to Linux (at address 80000000) ...
+## Giving linux memsize in MB, 32
+
+Starting kernel ...
+
+
+LINUX started...
+
+ THIS IS ASIC
+Linux version 2.6.26 (kchsu@dev1) (gcc version 4.2.4) #1 Thu Jan 3 17:54:18 CST 2013
+
+ The CPU feqenuce set to 320 MHz
+CPU revision is: 0001964c (MIPS 24K)
+Determined physical RAM map:
+ memory: 02000000 @ 00000000 (usable)
+Zone PFN ranges:
+  DMA             0 ->     4096
+  Normal       4096 ->     8192
+Movable zone start PFN for each node
+early_node_map[1] active PFN ranges
+    0:        0 ->     8192
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 8128
+Kernel command line: console=ttyS1,57600n8 root=/dev/mtdblock4 init=/etc/preinit noinitrd
+Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 16kB, 4-way, VIPT, no aliases, linesize 32 bytes
+Writing ErrCtl register=0005fe61
+Readback ErrCtl register=0005fe61
+cause = 800000, status = 1100ff00
+PID hash table entries: 128 (order: 7, 512 bytes)
+calculating r4koff... 00138800(1280000)
+CPU frequency 320.00 MHz
+console [ttyS1] enabled
+Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+Memory: 29656k/32768k available (2153k kernel code, 3112k reserved, 407k data, 116k init, 0k highmem)
+Mount-cache hash table entries: 512
+net_namespace: 484 bytes
+NET: Registered protocol family 16
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+TCP: Hash tables configured (established 1024 bind 1024)
+TCP reno registered
+NET: Registered protocol family 1
+squashfs: version 3.0 (2006/03/15) Phillip Lougher
+JFFS2 version 2.2. (NAND) (SUMMARY)  © 2001-2006 Red Hat, Inc.
+msgmni has been set to 57
+Block layer SCSI generic (bsg) driver version 0.4 loaded (major 254)
+io scheduler noop registered
+io scheduler anticipatory registered (default)
+ralink flash device: 0x1000000 at 0x1f000000
+Ralink SoC physically mapped flash: Found 1 x16 devices at 0x0 in 16-bit bank
+ Amd/Fujitsu Extended Query Table at 0x0040
+Ralink SoC physically mapped flash: Swapping erase regions for broken CFI table.
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+Creating 7 MTD partitions on "Ralink SoC physically mapped flash":
+0x00000000-0x00030000 : "Bootloader"
+0x00030000-0x00040000 : "Config"
+0x00040000-0x00050000 : "Factory"
+0x00050000-0x007e0000 : "linux"
+0x001a0000-0x007e0000 : "rootfs"
+mtd: partition "rootfs" set to be root filesystem
+mtd: partition "rootfs_data" created automatically, ofs=7A0000, len=40000 
+0x007a0000-0x007e0000 : "rootfs_data"
+0x007e0000-0x007f0000 : "nvram"
+0x007f0000-0x00800000 : "nvram_backup"
+block2mtd: version $Revision: 1.30 $
+HDLC line discipline: version $Revision: 4.8 $, maxframe=4096
+N_HDLC line discipline registered.
+dev_nvram_init: access nvram_mtd
+Ralink gpio driver initialized
+Serial: 8250/16550 driver $Revision: 1.90 $ 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at I/O 0xb0000500 (irq = 37) is a 16550A
+serial8250: ttyS1 at I/O 0xb0000c00 (irq = 12) is a 16550A
+loop: module loaded
+nf_conntrack version 0.5.0 (1024 buckets, 4096 max)
+GRE over IPv4 tunneling driver
+ip_tables: (C) 2000-2006 Netfilter Core Team
+ipt_time loading
+TCP cubic registered
+NET: Registered protocol family 17
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted EZ Packet rootfs.
+Freeing unused kernel memory: 116k freed
+EZ Packet system is loading...
+Algorithmics/MIPS FPU Emulator v1.5
+Registering mini_fo version $Id$
+mini_fo: using base directory: /
+mini_fo: using storage directory: /tmp/root
+GDMA1_MAC_ADRH -- : 0x00000000
+GDMA1_MAC_ADRL -- : 0x00000000
+Ralink APSoC Ethernet Driver Initilization. v2.0  256 rx/tx descriptors allocated, mtu = 1500!
+GDMA1_MAC_ADRH -- : 0x00000050
+GDMA1_MAC_ADRL -- : 0x18aabbcc
+PROC INIT OK!
+SCSI subsystem initialized
+PPP generic driver version 2.4.2
+PPP MPPE Compression module registered
+Driver 'sd' needs updating - please use bus_type methods
+IPP2P v0.8.1_rc1 loading
+IMQ driver loaded successfully.
+Hooking IMQ before NAT on PREROUTING.
+Hooking IMQ after NAT on POSTROUTING.
+nf_nat_amanda: Unknown symbol nf_nat_amanda_hook
+nf_conntrack_rtsp v0.6.21 loading
+nf_nat_rtsp v0.6.21 loading
+ipt_webstr: module license 'unspecified' taints kernel.
+Software Watchdog Timer: 0.07 initialized. soft_noboot=0 soft_margin=60 sec (nowayout= 0)
+usbcore: registered new interface driver cdc_acm
+cdc_acm: v0.26:USB Abstract Control Model driver for USB modems and ISDN adapters
+usbcore: registered new interface driver usbserial
+usbserial: USB Serial support registered for generic
+usbcore: registered new interface driver usbserial_generic
+usbserial: USB Serial Driver core
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+usbcore: registered new interface driver cdc_ether
+hso: drivers/net/usb/hso.c: 1.2 Option Wireless
+usbcore: registered new interface driver hso
+usbcore: registered new interface driver iburst
+usbcore: registered new interface driver ezp_iphone
+usbcore: registered new interface driver sierra_net
+usbcore: registered new interface driver rndis_host
+usbserial: USB Serial support registered for GSM modem (1-port)
+usbcore: registered new interface driver option
+option: USB Driver for GSM modems: v0.7.2
+usbserial: USB Serial support registered for Sierra USB modem
+usbcore: registered new interface driver sierra
+sierra: USB Driver for Sierra Wireless USB modems: v.1.7.40
+dwc_otg: version 2.72a 24-JUN-2008
+DWC_otg: Core Release: 2.66a
+DWC_otg: Periodic Transfer Interrupt Enhancement - disabled
+DWC_otg: Multiprocessor Interrupt Enhancement - disabled
+DWC_otg: Using DMA mode
+DWC_otg: Device using Buffer DMA mode
+dwc_otg lm0: DWC OTG Controller
+dwc_otg lm0: new USB bus registered, assigned bus number 1
+dwc_otg lm0: irq 18, io mem 0x00000000
+DWC_otg: Init: Port Power? op_state=1
+DWC_otg: Init: Power Port (0)
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+usb usb1: New USB device found, idVendor=1d6b, idProduct=0002
+usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+usb usb1: Product: DWC OTG Controller
+usb usb1: Manufacturer: Linux 2.6.26 dwc_otg_hcd
+usb usb1: SerialNumber: lm0
+EZP USB Host: accelerated
+fuse init (API version 7.9)
+device eth2 entered promiscuous mode
+ei_open: eth2 ei_interrupt irq 3 OK
+
+phy_tx_ring = 0x00c00000, tx_ring = 0xa0c00000
+
+phy_rx_ring = 0x00c01000, rx_ring = 0xa0c01000
+ei_open: eth2 esw_interrupt irq 11 OK
+RT305x_ESW: Link Status Changed
+CDMA_CSG_CFG = 81000007
+GDMA1_FWD_CFG = 710000
+AP Driver version-2.3.0.0
+br0: Dropping NETIF_F_UFO since no NETIF_F_HW_CSUM feature.
+device vlan1 entered promiscuous mode
+RX DESC a0d18000  size = 2048
+<-- RTMPAllocTxRxRingMemory, Status=0
+Key1Str is Invalid key length(0) or Type(0)
+Key1Str is Invalid key length(0) or Type(0)
+Key2Str is Invalid key length(0) or Type(0)
+Key2Str is Invalid key length(0) or Type(0)
+Key3Str is Invalid key length(0) or Type(0)
+Key3Str is Invalid key length(0) or Type(0)
+Key4Str is Invalid key length(0) or Type(0)
+Key4Str is Invalid key length(0) or Type(0)
+8f:bc:61:4a:4b:65:ad:b3:11:12:9e:3f:ec:e7:57:6d:
+64:0a:fa:97:09:78:99:9e:cd:d0:af:06:c5:68:26:50:
+
+1. Phy Mode = 9
+2. Phy Mode = 9
+3. Phy Mode = 9
+MCS Set = ff 00 00 00 01
+Main bssid = 00:50:18:aa:bb:cc
+<==== rt28xx_init, Status=0
+<==== rt28xx_init, Status111=0
+<==== rt28xx_init, proc=81d34300 pread=c03e5c40 pwrite=c03e59e8 pdata=c026b000
+0x1300 = 00064380
+device ra0 entered promiscuous mode
+device ra1 entered promiscuous mode
+device wds0 entered promiscuous mode
+device wds1 entered promiscuous mode
+device wds2 entered promiscuous mode
+device wds3 entered promiscuous mode
+br0: port 7(wds3) entering learning state
+br0: port 6(wds2) entering learning state
+br0: port 5(wds1) entering learning state
+br0: port 4(wds0) entering learning state
+br0: port 3(ra1) entering learning state
+br0: port 2(ra0) entering learning state
+br0: port 1(vlan1) entering learning state
+br0: topology change detected, propagating
+br0: port 7(wds3) entering forwarding state
+br0: topology change detected, propagating
+br0: port 6(wds2) entering forwarding state
+br0: topology change detected, propagating
+br0: port 5(wds1) entering forwarding state
+br0: topology change detected, propagating
+br0: port 4(wds0) entering forwarding state
+br0: topology change detected, propagating
+br0: port 3(ra1) entering forwarding state
+br0: topology change detected, propagating
+br0: port 2(ra0) entering forwarding state
+br0: topology change detected, propagating
+br0: port 1(vlan1) entering forwarding state
+br0: port 4(wds0) entering disabled state
+br0: port 2(ra0) entering disabled state
+br0: port 5(wds1) entering disabled state
+br0: port 6(wds2) entering disabled state
+br0: port 7(wds3) entering disabled state
+br0: port 2(ra0) entering disabled state
+Terminate the task(RtmpCmdQTask) with pid(1134)!
+Terminate the task(RtmpWscTask) with pid(1135)!
+br0: port 3(ra1) entering disabled state
+device wds0 left promiscuous mode
+br0: port 4(wds0) entering disabled state
+device wds1 left promiscuous mode
+br0: port 5(wds1) entering disabled state
+device wds2 left promiscuous mode
+br0: port 6(wds2) entering disabled state
+device wds3 left promiscuous mode
+br0: port 7(wds3) entering disabled state
+device ra1 left promiscuous mode
+br0: port 3(ra1) entering disabled state
+RtmpOSNetDevDetach(): RtmpOSNetDeviceDetach(), dev->name=ra0!
+device ra0 left promiscuous mode
+br0: port 2(ra0) entering disabled state
+AP Driver version-2.3.0.0
+RX DESC a0d15000  size = 2048
+<-- RTMPAllocTxRxRingMemory, Status=0
+Key1Str is Invalid key length(0) or Type(0)
+Key1Str is Invalid key length(0) or Type(0)
+Key2Str is Invalid key length(0) or Type(0)
+Key2Str is Invalid key length(0) or Type(0)
+Key3Str is Invalid key length(0) or Type(0)
+Key3Str is Invalid key length(0) or Type(0)
+Key4Str is Invalid key length(0) or Type(0)
+Key4Str is Invalid key length(0) or Type(0)
+8f:bc:61:4a:4b:65:ad:b3:11:12:9e:3f:ec:e7:57:6d:
+64:0a:fa:97:09:78:99:9e:cd:d0:af:06:c5:68:26:50:
+
+
+1. Phy Mode = 9
+2. Phy Mode = 9
+3. Phy Mode = 9
+MCS Set = ff 00 00 00 01
+Main bssid = 00:50:18:aa:bb:cc
+<==== rt28xx_init, Status=0
+<==== rt28xx_init, Status111=0
+<==== rt28xx_init, proc=81d34300 pread=c03e5c40 pwrite=c03e59e8 pdata=c026b000
+0x1300 = 00064380
+device ra0 entered promiscuous mode
+br0: port 2(ra0) entering learning state
+br0: topology change detected, propagating
+br0: port 2(ra0) entering forwarding state
+device apcli0 entered promiscuous mode
+br0: port 3(apcli0) entering learning state
+br0: topology change detected, propagating
+br0: port 3(apcli0) entering forwarding state
+device apcli0 left promiscuous mode
+br0: port 3(apcli0) entering disabled state
+EZ Packet turboNAT proc created.
+EZ Packet turboNAT registered.
+ezp_nat_proc_write
+ezp_nat_proc_write
+nf_conntrack_rtsp v0.6.21 loading
+nf_nat_rtsp v0.6.21 loading
+ezp_nat_proc_write
+ezp_nat_proc_write
+ezp_nat_proc_write
+ezp_nat_proc_write
+EZ Packet turboNAT deregistered.
+EZ Packet turboNAT proc removed.
+Terminate the task(RtmpCmdQTask) with pid(1662)!
+Terminate the task(RtmpWscTask) with pid(1664)!
+br0: port 2(ra0) entering disabled state
+RtmpOSNetDevDetach(): RtmpOSNetDeviceDetach(), dev->name=ra0!
+device ra0 left promiscuous mode
+br0: port 2(ra0) entering disabled state
+AP Driver version-2.3.0.0
+RX DESC a0d24000  size = 2048
+<-- RTMPAllocTxRxRingMemory, Status=0
+Key1Str is Invalid key length(0) or Type(0)
+Key1Str is Invalid key length(0) or Type(0)
+Key2Str is Invalid key length(0) or Type(0)
+Key2Str is Invalid key length(0) or Type(0)
+Key3Str is Invalid key length(0) or Type(0)
+Key3Str is Invalid key length(0) or Type(0)
+Key4Str is Invalid key length(0) or Type(0)
+Key4Str is Invalid key length(0) or Type(0)
+8f:bc:61:4a:4b:65:ad:b3:11:12:9e:3f:ec:e7:57:6d:
+64:0a:fa:97:09:78:99:9e:cd:d0:af:06:c5:68:26:50:
+
+1. Phy Mode = 9
+2. Phy Mode = 9
+3. Phy Mode = 9
+MCS Set = ff 00 00 00 01
+Main bssid = 00:50:18:aa:bb:cc
+<==== rt28xx_init, Status=0
+<==== rt28xx_init, Status111=0
+<==== rt28xx_init, proc=81d34300 pread=c03e5c40 pwrite=c03e59e8 pdata=c026b000
+0x1300 = 00064380
+device ra0 entered promiscuous mode
+br0: port 2(ra0) entering learning state
+br0: topology change detected, propagating
+br0: port 2(ra0) entering forwarding state
+device apcli0 entered promiscuous mode
+br0: port 3(apcli0) entering learning state
+br0: topology change detected, propagating
+br0: port 3(apcli0) entering forwarding state
+device apcli0 left promiscuous mode
+br0: port 3(apcli0) entering disabled state
+EZ Packet turboNAT proc created.
+EZ Packet turboNAT registered.
+ezp_nat_proc_write
+ezp_nat_proc_write
+
+Please press Enter to activate this console. </nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.3 (Sep  2 2010 - 14:35:15)
+
+Board: Ralink APSoC DRAM:  32 MB
+relocate_code Pointer at: 81fa8000
+config usb..
+
+ The Flash ID =000022C9 
+get flash MX_ID_29LV640DT sector:135 size:800000
+flash bank 0 size:8388608
+flash_protect ON: from 0xBF000000 to 0xBF022D57
+flash_protect ON: from 0xBF030000 to 0xBF030FFF
+*** Warning - bad CRC, using default environment
+
+============================================ 
+Ralink UBoot Version: 3.4.0.0
+-------------------------------------------- 
+ASIC 3052_MP2 (Port5<->None)
+DRAM component: 256 Mbits SDR
+DRAM bus: 16 bit
+Total memory: 32 MBytes
+Flash component: NOR Flash
+Date:Sep  2 2010  Time:14:35:15
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:128, ways:4, linesz:32 ,total:16384 
+
+ ##### The CPU freq = 320 MHZ #### 
+
+SDRAM bus set to 16 bit 
+ SDRAM size =32 Mbytes
+
+ RT3052 ASIC Setting switch. 
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP.
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   6: To emergency. 
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. 
+0 
+   
+3: System Boot system code via Flash.
+## Booting image at bf050000 ...
+   Image Name:   MIPS OpenWrt Linux-3.18.14
+   Created:      2015-06-09   3:50:20 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1084335 Bytes =  1 MB
+   Load Address: 80000000
+   Entry Point:  80000000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+ ************* 80000000 ***************
+No initrd
+## Transferring control to Linux (at address 80000000) ...
+## Giving linux memsize in MB, 32
+
+Starting kernel ...
+
+[    0.000000] Linux version 3.18.14 (avatar@freebsd) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r45001) ) #1 Tue Jun 9 11:49:19 CST 2015
+[    0.000000] SoC Type: Ralink RT3350 id:1 rev:2
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001964c (MIPS 24KEc)
+[    0.000000] MIPS: machine is AXIMCom MR-102N
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 02000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x01ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x01ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x00000000-0x01ffffff]
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 16kB, 4-way, VIPT, no aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 8128
+[    0.000000] Kernel command line: console=ttyS0,57600 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 128 (order: -3, 512 bytes)
+[    0.000000] Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.000000] Writing ErrCtl register=0005ea70
+[    0.000000] Readback ErrCtl register=0005ea70
+[    0.000000] Memory: 29084K/32768K available (2400K kernel code, 115K rwdata, 480K rodata, 132K init, 181K bss, 3684K reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:256
+[    0.000000] CPU Clock: 320MHz
+[    0.000000] clocksource_of_init: no matching clocksources found
+[    0.000000] Calibrating delay loop... 212.58 BogoMIPS (lpj=1062912)
+[    0.080000] pid_max: default: 32768 minimum: 301
+[    0.080000] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.090000] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.100000] pinctrl core: initialized pinctrl subsystem
+[    0.110000] NET: Registered protocol family 16
+[    0.160000] rt2880_gpio 10000600.gpio: registering 24 gpios
+[    0.170000] rt2880_gpio 10000600.gpio: registering 24 irq handlers
+[    0.180000] Switched to clocksource MIPS
+[    0.190000] NET: Registered protocol family 2
+[    0.200000] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.210000] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.220000] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.240000] TCP: reno registered
+[    0.240000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.250000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.270000] NET: Registered protocol family 1
+[    0.280000] rt-timer 10000100.timer: maximum frequency is 6510Hz
+[    0.290000] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.320000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.330000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.350000] msgmni has been set to 56
+[    0.360000] io scheduler noop registered
+[    0.370000] io scheduler deadline registered (default)
+[    0.380000] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    0.400000] console [ttyS0] disabled
+[    0.400000] 10000c00.uartlite: ttyS0 at MMIO 0x10000c00 (irq = 20, base_baud = 6666666) is a 16550A
+[    0.420000] console [ttyS0] enabled
+[    0.420000] console [ttyS0] enabled
+[    0.440000] bootconsole [early0] disabled
+[    0.440000] bootconsole [early0] disabled
+[    0.450000] 1f000000.cfi: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x0000c2 Chip ID 0x0022c9
+[    0.470000] Amd/Fujitsu Extended Query Table at 0x0040
+[    0.490000]   Amd/Fujitsu Extended Query version 1.1.
+[    0.500000] 1f000000.cfi: Swapping erase regions for top-boot CFI table.
+[    0.510000] number of CFI chips: 1
+[    0.560000] 6 ofpart partitions found on MTD device 1f000000.cfi
+[    0.570000] Creating 6 MTD partitions on "1f000000.cfi":
+[    0.590000] 0x000000000000-0x000000030000 : "u-boot"
+[    0.600000] 0x000000030000-0x000000040000 : "u-boot-env"
+[    0.610000] 0x000000040000-0x000000050000 : "factory"
+[    0.620000] 0x000000050000-0x0000007e0000 : "firmware"
+[    0.640000] 2 uimage-fw partitions found on MTD device firmware
+[    0.660000] 0x000000050000-0x000000158bef : "kernel"
+[    0.670000] 0x000000158bef-0x0000007e0000 : "rootfs"
+[    0.680000] mtd: device 5 (rootfs) set to be root filesystem
+[    0.690000] 1 squashfs-split partitions found on MTD device rootfs
+[    0.710000] 0x000000600000-0x0000007e0000 : "rootfs_data"
+[    0.720000] 0x0000007e0000-0x0000007f0000 : "nvram"
+[    0.730000] 0x0000007f0000-0x000000800000 : "nvram_backup"
+[    0.750000] ralink_soc_eth 10100000.ethernet eth0: ralink at 0xb0100000, irq 5
+[    0.770000] rt2880_wdt 10000120.watchdog: Initialized
+[    0.780000] TCP: cubic registered
+[    0.780000] NET: Registered protocol family 17
+[    0.790000] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    0.820000] 8021q: 802.1Q VLAN Support v1.8
+[    0.850000] VFS: Mounted root (squashfs filesystem) readonly on device 31:5.
+[    0.870000] Freeing unused kernel memory: 132K (802ef000 - 80310000)
+[    2.500000] init: Console is alive
+[    2.510000] init: - watchdog -
+[    5.250000] usbcore: registered new interface driver usbfs
+[    5.260000] usbcore: registered new interface driver hub
+[    5.270000] usbcore: registered new device driver usb
+[    5.370000] SCSI subsystem initialized
+[    6.250000] dwc2 101c0000.otg: DWC OTG Controller
+[    6.260000] dwc2 101c0000.otg: new USB bus registered, assigned bus number 1
+[    6.270000] dwc2 101c0000.otg: irq 26, io mem 0x00000000
+[    6.280000] hub 1-0:1.0: USB hub found
+[    6.290000] hub 1-0:1.0: 1 port detected
+[    6.310000] usbcore: registered new interface driver usb-storage
+[    6.640000] init: - preinit -
+[    7.830000] 8021q: adding VLAN 0 to HW filter on device eth0
+[    8.010000] random: procd urandom read with 12 bits of entropy available
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   11.560000] mount_root: jffs2 not ready yet, using temporary tmpfs overlay
+[   11.630000] procd: - early -
+[   11.630000] procd: - watchdog -
+[   12.610000] procd: - ubus -
+[   13.630000] procd: - init -
+Please press Enter to activate this console.
+[   15.920000] NET: Registered protocol family 10
+[   15.980000] RPC: Registered named UNIX socket transport module.
+[   15.990000] RPC: Registered udp transport module.
+[   16.000000] RPC: Registered tcp transport module.
+[   16.010000] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[   16.050000] tun: Universal TUN/TAP device driver, 1.6
+[   16.060000] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[   16.130000] Installing knfsd (copyright (C) 1996 okir@monad.swb.de).
+[   16.150000] Loading modules backported from Linux version master-2015-03-09-0-g141f155
+[   16.170000] Backport generated by backports.git backports-20150129-0-gdd4a670
+[   16.210000] nf_conntrack version 0.5.0 (456 buckets, 1824 max)
+[   16.310000] xt_time: kernel timezone is -0000
+[   16.370000] cfg80211: Calling CRDA to update world regulatory domain
+[   16.400000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   16.460000] cfg80211: World regulatory domain updated:
+[   16.470000] cfg80211:  DFS Master region: unset
+[   16.470000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   16.490000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   16.510000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   16.530000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   16.540000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   16.560000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[   16.580000] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   16.590000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   16.610000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   16.730000] PPP generic driver version 2.4.2
+[   16.750000] NET: Registered protocol family 24
+[   16.810000] usbcore: registered new interface driver carl9170
+[   16.860000] ieee80211 phy0: rt2x00_set_rt: Info - RT chipset 2872, rev 0200 detected
+[   16.880000] ieee80211 phy0: rt2x00_set_rf: Info - RF chipset 0005 detected
+[   30.970000] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   31.030000] jffs2_build_filesystem(): unlocking the mtd device... done.
+[   31.040000] jffs2_build_filesystem(): erasing all blocks after the end marker... 
+[   33.310000] 8021q: adding VLAN 0 to HW filter on device eth0
+[   33.340000] device eth0.1 entered promiscuous mode
+[   33.350000] device eth0 entered promiscuous mode
+[   33.380000] br-lan: port 1(eth0.1) entered forwarding state
+[   33.390000] br-lan: port 1(eth0.1) entered forwarding state
+[   35.390000] br-lan: port 1(eth0.1) entered forwarding state
+[   47.060000] done.
+[   47.070000] jffs2: notice: (1023) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[   80.460000] random: nonblocking pool is initialized
+
+
+
+
+BusyBox v1.23.2 (2015-04-28 16:41:06 CST) built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ CHAOS CALMER (Bleeding Edge, r45932)
+ -----------------------------------------------------
+  * 1 1/2 oz Gin            Shake with a glassful
+  * 1/4 oz Triple Sec       of broken ice and pour
+  * 3/4 oz Lime Juice       unstrained into a goblet.
+  * 1 1/2 oz Orange Juice
+  * 1 tsp. Grenadine Syrup
+ -----------------------------------------------------
+root@OpenWrt:/# </nowiki>
+</WRAP>\\
+
+
+===== Notes =====
+==== OEM firmware ====
+The GPL code for MR-102N is not available publicly; however, one can still use https://github.com/choushane/MaRa-a1a0a5aNaL as a reference, which 'seems' to be GPL code for MR-105NL.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>1NIC 32RAM 8Flash FastEthernet InternalAntenna MIPS MIPS32 no_switch portable_router ramips rechargeable_battery rt3050 USB}}

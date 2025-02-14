@@ -1,0 +1,589 @@
+====== Olimex IMX233 (OLinuXino) ======
+
+The Olinuxino is a low-cost development board for applications like point-of-sale terminals. It comes in different buildouts, all include a microSD slot to boot the OS from.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "iMX233-OLinuXino"}
+} -->
+
+===== Hardware Highlights =====
+^ SoC ^ Ram ^ Flash ^ Network ^ USB ^ Serial ^ JTag ^ [[wp>UEXT]] ^
+| [[wp>I.MX#i.MX23_family|Freescale i.MX233]] | 64 MiB | None | 1x FE, depends on model | yes | Yes | No | Depends on model |
+
+UEXT is an open standard port to provide serial, I2C and SPI expansion ports.
+
+  * IMX233-MAXI: Ethernet, 2 USB, UEXT, TV-out
+  * IMX233-MICRO: 1 USB, TV-out
+  * IMX233-MINI: 3 USB, UEXT, TV-out
+  * IMX233-MINI-WIFI : Optional RTL8188 WIFI, 3 USB, UEXT, TV-out
+
+
+===== Status =====
+
+=== Working ===
+  * USB
+  * LAN
+  * RTC
+  * watchdog
+  * Audio (considered as staging)  [last worked with 3.18, driver needs to be fwdported]
+  * crypto (DCP, data co-processor) [doesn't work with 4.4]
+  * SPI (working, but keep in mind that it is half-duplex and so you need to modify other drivers to work with it, see [[https://github.com/mkschreder/hack-enc28j60-imx233|example]])
+
+=== Being worked on ===
+  * I2C
+  * LRADC (done but needs testing / integration)
+
+=== Not being worked on ===
+  * TV-out
+
+===== Installation =====
+This section details what is required to install and upgrade OpenWrt. The generic procedure is described here: [[docs:guide-user:installation:generic.flashing]]; this devices don't have a flash chip soldered to the PCB but an SD-Card slot.
+
+==== Installation process for image built from trunk ====
+
+We assume /dev/sdc is the SD card.
+
+  * Check out trunk - https://dev.openwrt.org/wiki/GetSource
+  * Run make menuconfig
+  * Select device profile - f.e. Olinuxino-mini
+  * Start the build
+  * The built SD card images will be in bin/mxs
+  * dd if=bin/sunxi/openwrt-mxs-olinuxino-maxi-sdcard.img of=/dev/sdc
+
+
+==== Manual installation process with assembling the SD card manually ====
+
+  * Partition the SD card
+
+We assume /dev/sdc is the SD card.
+
+<code>
+# fdisk /dev/sdc
+Command (m for help): n
+Partition type:
+  p   primary (0 primary, 0 extended, 4 free)
+  e   extended
+Select (default p): p
+Partition number (1-4, default 1): 1
+First sector (2048-7626751, default 2048):
+Using default value 2048
+Last sector, +sectors or +size{K,M,G} (2048-7626751, default 7626751): +16MB
+Partition 1 of type Linux and of size 15.3 MiB is set
+
+Command (m for help): t
+Selected partition 1
+Hex code (type L to list codes): 53
+Changed system type of partition 1 to 53 (OnTrack DM6 Aux3)
+
+Command (m for help): n
+Partition type:
+  p   primary (1 primary, 0 extended, 3 free)
+  e   extended
+Select (default p):
+Using default response p
+Partition number (1-4, default 2):
+Using default value 2
+First sector (33298-7626751, default 33298):
+Using default value 33298
+Last sector, +sectors or +size{K,M,G} (33298-7626751, default 7626751):
+Using default value 7626751
+Partition 2 of type Linux and of size 3.6 GiB is set
+
+Command (m for help): w
+The partition table has been altered!
+
+Calling ioctl() to re-read partition table.
+Syncing disks.
+</code>
+
+  * Copy the kernel and the rootfs to the SD card
+
+<code>
+# dd if=openwrt-imx23-uImage of=/dev/sdc1
+[...]
+
+# dd if=openwrt-imx23-root.ext4 of=/dev/sdc2
+[...]
+
+#
+
+</code>
+
+
+==== Installation process for U-boot ====
+
+   * Assume /dev/sdc is the sdcard
+
+<code>
+root@voyager:/# fdisk /dev/sdc
+
+Command (m for help): n
+Command action
+   e   extended
+   p   primary partition (1-4)
+p
+Partition number (1-4): 1
+First cylinder (1-957, default 1):
+Using default value 1
+Last cylinder, +cylinders or +size{K,M,G} (1-957, default 957): +1M
+
+Command (m for help): t
+Selected partition 1
+Hex code (type L to list codes): 53
+Changed system type of partition 1 to 53 (OnTrack DM6 Aux3)
+
+Command (m for help): n
+Command action
+   e   extended
+   p   primary partition (1-4)
+p
+Partition number (1-4): 2
+First cylinder (3-957, default 3):
+Using default value 3
+Last cylinder, +cylinders or +size{K,M,G} (3-957, default 957): +32M
+
+Command (m for help): t
+Partition number (1-4): 2
+Hex code (type L to list codes): 6
+Changed system type of partition 2 to 6 (FAT16)
+
+Command (m for help): n
+Command action
+   e   extended
+   p   primary partition (1-4)
+p
+Partition number (1-4): 3
+First cylinder (20-957, default 20):
+Using default value 20
+Last cylinder, +cylinders or +size{K,M,G} (20-957, default 957): +48M
+
+Command (m for help): p
+
+Disk /dev/sdc: 1977 MB, 1977614336 bytes
+64 heads, 63 sectors/track, 957 cylinders
+Units = cylinders of 4032 * 512 = 2064384 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x00000000
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sdc1               1           2        4000+  53  OnTrack DM6 Aux3
+/dev/sdc2               3          19       34272    6  FAT16
+/dev/sdc3              20          44       50400   83  Linux
+
+root@voyager:/# mkfs.vfat /dev/sdc2
+mkfs.vfat 3.0.7 (24 Dec 2009)
+
+
+</code>
+
+  * Copy bin/mxs/openwrt-mxs-uImage onto sdc2/uImage
+  * Copy bin/mxs/imx23-olinuxino.dtb onto sdc2/
+  * dd if=openwrt-mxs-root.ext4 of=/dev/sdc3
+
+
+===== Hardware =====
+
+==== Serial for IMX-233-MAXI ====
+
+You can use your usual serial levelshifter. Pinout is:
+
+<code>
+[UEXT]
+
+RX TX GND
+ o  o  o  o 
+
+[USB/ethernet]
+
+</code>
+
+==== Further notes ====
+
+The board uses a special boot image called bootstream / safeboot. The file includes a zImage, a compiled devicetree, and various preparation bootlets (power_, sdram_, linux_)- these are contained in package/imx-bootlets. The image is created by the elftosb tool.
+
+A U-boot is being prepared by various people to replace the bootlets to enable easier debugging and further functions in the boot process.
+
+==== Sound ====
+
+Please note that this driver is considered staging, report any issues via the bugtracker. **The driver last worked with 3.18, it's not compiling with later kernels.**
+
+<code>
+root@OpenWrt:/# cat /proc/asound/devices
+  0: [ 0]   : control
+ 16: [ 0- 0]: digital audio playback
+ 24: [ 0- 0]: digital audio capture
+ 33:        : timer
+</code>
+
+==== crypto ====
+
+  * to make it (at least slightly) more comparable: [[docs:guide-user:perf_and_log:benchmark.openssl]]; also have a look at [[docs:techref:hardware:cryptographic.hardware.accelerators]]
+
+Speed comparison:
+
+=== openssl speed test - without DCP ===
+<code>
+root@OpenWrt:/# openssl speed
+[..]
+OpenSSL 1.0.1e 11 Feb 2013
+built on: Sat Aug  3 11:43:46 CEST 2013
+options:bn(64,32) rc4(ptr,char) des(idx,cisc,2,long) aes(partial) blowfish(ptr)
+compiler: arm-openwrt-linux-uclibcgnueabi-gcc -fPIC -DOPENSSL_PIC -DZLIB_SHAREDl
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes
+md2                  0.00         0.00         0.00         0.00         0.00
+mdc2                 0.00         0.00         0.00         0.00         0.00
+md4               1221.34k     4409.45k    13695.06k    28755.72k    42207.91k
+md5                770.62k     2825.05k     9062.14k    20410.71k    31790.42k
+hmac(md5)         1291.85k     4533.70k    13017.43k    24584.87k    32867.63k
+sha1               830.18k     2426.79k     5366.78k     7693.19k     8754.52k
+rmd160               0.00         0.00         0.00         0.00         0.00
+rc4              15884.10k    18503.87k    19388.33k    19536.61k    19502.42k
+des cbc           2924.68k     3029.40k     3050.64k     3064.49k     3039.59k
+des ede3          1040.07k     1055.76k     1058.47k     1057.21k     1056.77k
+idea cbc             0.00         0.00         0.00         0.00         0.00
+seed cbc          3346.20k     3659.71k     3742.18k     3770.03k     3750.05k
+rc2 cbc           3970.83k     4179.16k     4244.74k     4252.37k     4237.52k
+rc5-32/12 cbc        0.00         0.00         0.00         0.00         0.00
+blowfish cbc      5666.74k     6133.76k     6247.70k     6287.36k     6270.35k
+cast cbc          5020.75k     5623.05k     5814.36k     5853.41k     5846.36k
+aes-128 cbc       4151.66k     4676.59k     4801.77k     4867.41k     4840.48k
+aes-192 cbc       3734.17k     4136.76k     4245.25k     4265.51k     4259.84k
+aes-256 cbc       3363.81k     3693.61k     3775.83k     3807.23k     3786.03k
+camellia-128 cbc        0.00         0.00         0.00         0.00         0.0
+camellia-192 cbc        0.00         0.00         0.00         0.00         0.0
+camellia-256 cbc        0.00         0.00         0.00         0.00         0.0
+sha256             926.62k     2333.77k     4427.94k     5680.13k     6179.98k
+sha512             283.36k     1131.29k     1686.27k     2334.10k     2629.63k
+whirlpool          222.14k      427.61k      672.86k      797.35k      844.11k
+aes-128 ige       4320.98k     5158.07k     5415.59k     5471.14k     5073.58k
+aes-192 ige       3860.77k     4503.74k     4697.64k     4739.41k     4422.57k
+aes-256 ige       3479.71k     3977.30k     4133.97k     4174.45k     3923.97k
+ghash             3208.61k     3327.17k     3351.19k     3362.76k     3361.45k
+                  sign    verify    sign/s verify/s
+rsa  512 bits 0.006620s 0.000542s    151.1   1843.8
+rsa 1024 bits 0.029410s 0.001474s     34.0    678.5
+rsa 2048 bits 0.172069s 0.004892s      5.8    204.4
+rsa 4096 bits 1.177778s 0.017939s      0.8     55.7
+                  sign    verify    sign/s verify/s
+dsa  512 bits 0.005467s 0.005797s    182.9    172.5
+dsa 1024 bits 0.014552s 0.017232s     68.7     58.0
+dsa 2048 bits 0.048341s 0.060182s     20.7     16.6
+</code>
+
+=== openssl speed test - with DCP ===
+
+<code>
+root@OpenWrt:/# insmod dcp
+[  525.100000] fsl-dcp 80028000.dcp: DCP crypto enabled.!
+root@OpenWrt:/# openssl speed
+[...]
+OpenSSL 1.0.1e 11 Feb 2013
+built on: Sat Aug  3 11:43:46 CEST 2013
+options:bn(64,32) rc4(ptr,char) des(idx,cisc,2,long) aes(partial) blowfish(ptr)
+compiler: arm-openwrt-linux-uclibcgnueabi-gcc -fPIC -DOPENSSL_PIC -DZLIB_SHAREDl
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes
+md2                  0.00         0.00         0.00         0.00         0.00
+mdc2                 0.00         0.00         0.00         0.00         0.00
+md4               1358.63k     5335.25k    15765.97k    30980.78k    42292.94k
+md5                871.15k     3376.38k    10442.15k    22012.88k    32022.53k
+hmac(md5)         1227.54k     4241.75k    12183.86k    23785.13k    32593.64k
+sha1               902.14k     2575.65k     5544.11k     7757.15k     8759.98k
+rmd160               0.00         0.00         0.00         0.00         0.00
+rc4              15880.56k    18517.80k    19216.95k    19459.07k    19447.70k
+des cbc           2920.79k     3023.81k     3055.62k     3056.78k     3055.62k
+des ede3          1038.14k     1054.17k     1051.84k     1058.13k     1054.44k
+idea cbc             0.00         0.00         0.00         0.00         0.00
+seed cbc          3334.82k     3661.16k     3740.80k     3770.71k     3750.05k
+rc2 cbc           3973.51k     4180.35k     4241.75k     4251.33k     4254.38k
+rc5-32/12 cbc        0.00         0.00         0.00         0.00         0.00
+blowfish cbc      5666.39k     6135.62k     6246.05k     6287.70k     6249.17k
+cast cbc          5021.43k     5640.57k     5815.72k     5871.51k     5846.36k
+aes-128 cbc       4160.09k     4666.64k     4826.03k     4856.74k     4849.66k
+aes-192 cbc       3726.74k     4131.73k     4248.73k     4272.13k     4250.98k
+aes-256 cbc       3370.31k     3685.62k     3782.57k     3798.14k     3792.90k
+camellia-128 cbc        0.00         0.00         0.00         0.00         0.0
+camellia-192 cbc        0.00         0.00         0.00         0.00         0.0
+camellia-256 cbc        0.00         0.00         0.00         0.00         0.0
+sha256             987.86k     2427.37k     4503.52k     5727.57k     6161.93k
+sha512             283.40k     1131.39k     1686.61k     2334.44k     2629.63k
+whirlpool          221.40k      425.86k      674.13k      795.15k      840.97k
+aes-128 ige       4312.87k     5152.62k     5403.59k     5480.79k     5059.11k
+aes-192 ige       3868.01k     4509.20k     4692.05k     4743.72k     4426.41k
+aes-256 ige       3472.76k     3984.94k     4124.37k     4167.68k     3913.34k
+ghash             3214.30k     3321.15k     3355.82k     3357.41k     3364.18k
+                  sign    verify    sign/s verify/s
+rsa  512 bits 0.006644s 0.000542s    150.5   1846.5
+rsa 1024 bits 0.029466s 0.001477s     33.9    677.1
+rsa 2048 bits 0.172414s 0.004894s      5.8    204.3
+rsa 4096 bits 1.177778s 0.017957s      0.8     55.7
+                  sign    verify    sign/s verify/s
+dsa  512 bits 0.005482s 0.005941s    182.4    168.3
+dsa 1024 bits 0.014617s 0.017055s     68.4     58.6
+dsa 2048 bits 0.048439s 0.058421s     20.6     17.1
+</code>
+
+
+
+===== Hardware =====
+==== Info ====
+^                                           ^ MAXI ^ MINI ^ MICRO ^ MINI-WIFI ^
+^ [[wp>Instruction set]]               | [[wp>ARM architecture|ARM]]  ||||
+^ Vendor                               | [[wp>Freescale]]   ||||
+^ [[docs:techref:bootloader]]          | ? [[docs:techref:bootloader:uboot|U-Boot]] ||||
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | i.MX233 ||||
+^ [[docs:techref:hardware:cpu|CPU]] @Frq        | ARM9 @?MHz |
+^ Flash size                 | //n/a//, SD-Card slot ||||
+^ Flash Chip                 |   ||||
+^ RAM size                   |   ||||
+^ RAM Chip                   |   ||||
+^ Wireless No1               | | | | distinct Chip: RealTek ??? w/ 3x3 MIMO for 2.4GHz 802.11b/g/n   |
+^ Wireless No2               | //n/a//  ||||
+^ [[docs:techref:hardware:switch]]    | //n/a//  ||||
+^ Modem                      | //n/a//  ||||
+^ USB                        | Yes 1 x 2.0 / 3.0  |
+^ [[docs:techref:hardware:port.serial|Serial]]  | [[#Serial|Yes]] |
+^ [[docs:techref:hardware:port.jtag|JTAG]]      | [[#JTAG|Yes]]   |
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+**Insert photo of PCB with markings for serial port**
+
+<WRAP BOX>
+FIXME //Replace EXAMPLE by real values.//
+</WRAP>
+
+^ Serial connection parameters\\ for Olimex IMX233 (OLinuXino) | EXAMPLE 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+===== Bootlogs =====
+
+==== dmesg ====
+
+<WRAP bootlog>
+<nowiki>U-Boot 2016.01-rc3 (Jan 11 2016 - 21:23:43 +0100)
+
+CPU:   Freescale i.MX23 rev1.4 at 454 MHz
+BOOT:  SSP SD/MMC #0                    
+DRAM:  64 MiB                           
+MMC:   MXS MMC: 0                       
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   Net Initialization Skipped
+No ethernet found.
+Hit any key to stop autoboot:  0
+switch to partitions #0, OK
+mmc0 is current device
+reading boot.scr
+** Unable to read file boot.scr **
+reading uImage
+1547184 bytes read in 525 ms (2.8 MiB/s)
+Booting from mmc ...
+reading imx23-olinuxino.dtb
+10068 bytes read in 28 ms (350.6 KiB/s)
+## Booting kernel from Legacy Image at 42000000 ...
+   Image Name:   ARM OpenWrt Linux-4.4
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    1547120 Bytes = 1.5 MiB
+   Load Address: 40008000                                                       
+   Entry Point:  40008000                                                       
+   Verifying Checksum ... OK                                                    
+## Flattened Device Tree blob at 41000000                                       
+   Booting using the fdt blob at 0x41000000                                     
+   Loading Kernel Image ... OK                                                  
+   Loading Device Tree to 43b5e000, end 43b63753 ... OK                         
+                                                                                
+Starting kernel ...                                                             
+                                                                                
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 4.4.0 (wigyori@trabant) (gcc version 5.2.0 (OpenWrt GCC 5.2.0 r48138) ) #1 Mon Jan 11 21:32:51 CET 2016
+[    0.000000] CPU: ARM926EJ-S [41069265] revision 5 (ARMv5TEJ), cr=0005317f
+[    0.000000] CPU: VIVT data cache, VIVT instruction cache
+[    0.000000] Machine model: i.MX23 Olinuxino Low Cost Board
+[    0.000000] Memory policy: Data cache writeback
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyAMA0,115200 root=/dev/mmcblk0p3 rw rootwait
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)              
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)    
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)     
+[    0.000000] Memory: 60292K/65536K available (3250K kernel code, 92K rwdata, 880K rodata, 148K init, 187K bss, 5244K reserved, 0K cma-reserved)               
+[    0.000000] Virtual kernel memory layout:
+[    0.000000]     vector  : 0xffff0000 - 0xffff1000   (   4 kB)                
+[    0.000000]     fixmap  : 0xffc00000 - 0xfff00000   (3072 kB)                
+[    0.000000]     vmalloc : 0xc4800000 - 0xff800000   ( 944 MB)                
+[    0.000000]     lowmem  : 0xc0000000 - 0xc4000000   (  64 MB)                
+[    0.000000]     modules : 0xbf000000 - 0xc0000000   (  16 MB)                
+[    0.000000]       .text : 0xc0008000 - 0xc0410d6c   (4132 kB)                
+[    0.000000]       .init : 0xc0411000 - 0xc0436000   ( 148 kB)                
+[    0.000000]       .data : 0xc0436000 - 0xc044d354   (  93 kB)                
+[    0.000000]        .bss : 0xc044d354 - 0xc047c344   ( 188 kB)                
+[    0.000000] NR_IRQS:16 nr_irqs:16 16                                         
+[    0.000000] clocksource: mxs_timer: mask: 0xffff max_cycles: 0xffff, max_idle_ns: 911346093 ns                                                               
+[    0.000000] sched_clock: 32 bits at 100 Hz, resolution 10000000ns, wraps every 21474836475000000ns                                                           
+[    0.070000] Calibrating delay loop... 227.32 BogoMIPS (lpj=1136640)          
+[    0.080000] pid_max: default: 32768 minimum: 301                             
+[    0.080000] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)      
+[    0.080000] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes) 
+[    0.080000] CPU: Testing write buffer coherency: ok                          
+[    0.080000] Setting up static identity map for 0x40008400 - 0x40008458       
+[    0.100000] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns                                                 
+[    0.100000] pinctrl core: initialized pinctrl subsystem                      
+[    0.110000] NET: Registered protocol family 16                               
+[    0.110000] DMA: preallocated 256 KiB pool for atomic coherent allocations   
+[    0.120000] cpuidle: using governor ladder                                   
+[    0.130000] cpuidle: using governor menu                                     
+[    0.160000] Serial: AMBA PL011 UART driver                                   
+[    0.160000] 80070000.serial: ttyAMA0 at MMIO 0x80070000 (irq = 17, base_baud = 0) is a PL011 rev2                                                            
+[    0.310000] console [ttyAMA0] enabled                                        
+[    0.390000] mxs-dma 80004000.dma-apbh: initialized                           
+[    0.410000] mxs-dma 80024000.dma-apbx: initialized                           
+[    0.420000] usbcore: registered new interface driver usbfs                   
+[    0.420000] usbcore: registered new interface driver hub                     
+[    0.430000] usbcore: registered new device driver usb                        
+[    0.430000] pps_core: LinuxPPS API ver. 1 registered                         
+[    0.440000] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>                                                         
+[    0.440000] PTP clock support registered                                     
+[    0.450000] clocksource: Switched to clocksource mxs_timer                   
+[    0.460000] NET: Registered protocol family 2                                
+[    0.460000] TCP established hash table entries: 1024 (order: 0, 4096 bytes)  
+[    0.470000] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)         
+[    0.480000] TCP: Hash tables configured (established 1024 bind 1024)         
+[    0.490000] UDP hash table entries: 256 (order: 0, 4096 bytes)               
+[    0.490000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)          
+[    0.500000] NET: Registered protocol family 1                                
+[    0.510000] futex hash table entries: 256 (order: -1, 3072 bytes)            
+[    0.560000] squashfs: version 4.0 (2009/01/31) Phillip Lougher               
+[    0.560000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.                                                  
+[    0.580000] io scheduler noop registered                                     
+[    0.580000] io scheduler deadline registered (default)                       
+[    0.590000] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled         
+[    0.600000] Serial: AMBA driver                                              
+[    0.600000] 8006c000.serial: ttyAPP0 at MMIO 0x8006c000 (irq = 147, base_baud = 1500000) is a 8006c000.serial                                                
+[    0.610000] mxs-auart 8006c000.serial: Found APPUART 3.0.0                   
+[    0.620000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver       
+[    0.630000] ehci-platform: EHCI generic platform driver                      
+[    0.640000] i2c /dev entries driver                                          
+[    0.640000] 80010000.ssp supply vmmc not found, using dummy regulator        
+[    0.690000] mxs-mmc 80010000.ssp: initialized                                
+[    0.690000] NET: Registered protocol family 10                               
+[    0.710000] NET: Registered protocol family 17                               
+[    0.710000] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.                 
+[    0.720000] 8021q: 802.1Q VLAN Support v1.8                                  
+[    0.740000] hctosys: unable to open rtc device (rtc0)                        
+[    0.750000] usb0_vbus: disabling                                             
+[    0.760000] uart-pl011 80070000.serial: no DMA platform data                 
+[    0.760000] Waiting for root device /dev/mmcblk0p3...                        
+[    0.790000] mmc0: host does not support reading read-only switch, assuming write-enable                                                                      
+[    0.800000] mmc0: new high speed SDHC card at address 0001                   
+[    0.810000] mmcblk0: mmc0:0001 00000 7.41 GiB                                
+[    0.820000]  mmcblk0: p1 p2 p3                                               
+[    0.880000] EXT4-fs (mmcblk0p3): couldn't mount as ext3 due to feature incompatibilities                                                                     
+[    0.890000] EXT4-fs (mmcblk0p3): couldn't mount as ext2 due to feature incompatibilities                                                                     
+[    1.650000] EXT4-fs (mmcblk0p3): mounted filesystem without journal. Opts: (null)                                                                            
+[    1.660000] VFS: Mounted root (ext4 filesystem) on device 179:3.             
+[    1.670000] Freeing unused kernel memory: 148K (c0411000 - c0436000)         
+[    1.870000] init: Console is alive                                           
+[    2.200000] ci_hdrc ci_hdrc.0: EHCI Host Controller                          
+[    2.200000] ci_hdrc ci_hdrc.0: new USB bus registered, assigned bus number 1 
+[    2.230000] ci_hdrc ci_hdrc.0: USB 2.0 started, EHCI 1.00                    
+[    2.230000] hub 1-0:1.0: USB hub found                                       
+[    2.240000] hub 1-0:1.0: 1 port detected                                     
+[    2.570000] usb 1-1: new high-speed USB device number 2 using ci_hdrc        
+[    2.720000] hub 1-1:1.0: USB hub found                                       
+[    2.720000] hub 1-1:1.0: 3 ports detected                                    
+[    2.870000] init: - preinit -                                                
+[    3.010000] usb 1-1.1: new high-speed USB device number 3 using ci_hdrc      
+[    3.120000] random: procd urandom read with 12 bits of entropy available     
+Press the [f] key and hit [enter] to enter failsafe mode                        
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level    
+[    6.410000] mount_root: mounting /dev/root                                   
+[    6.420000] EXT4-fs (mmcblk0p3): re-mounted. Opts: (null)                    
+[    6.460000] procd: - early -                                                 
+[    7.170000] procd: - ubus -                                                  
+[    8.180000] procd: - init -                                                  
+Please press Enter to activate this console.                                    
+[   10.080000] ip6_tables: (C) 2000-2006 Netfilter Core Team                    
+[   10.130000] stmp3xxx-rtc 8005c000.rtc: rtc core: registered 8005c000.rtc as rtc0                                                                             
+[   10.170000] stmp3xxx_rtc_wdt stmp3xxx_rtc_wdt: initialized watchdog with heartbeat 19s                                                                       
+[   10.240000] mxs-dcp 80028000.dcp: Failed to register sha1 hash!              
+[   10.250000] mxs-dcp: probe of 80028000.dcp failed with error -22             
+[   10.290000] ip_tables: (C) 2000-2006 Netfilter Core Team                     
+[   10.330000] nf_conntrack version 0.5.0 (944 buckets, 3776 max)               
+[   10.460000] xt_time: kernel timezone is -0000                                
+[   10.510000] PPP generic driver version 2.4.2                                 
+[   10.520000] NET: Registered protocol family 24                               
+[   10.530000] smsc95xx v1.0.4                                                  
+[   10.610000] smsc95xx 1-1.1:1.0 eth0: register 'smsc95xx' at usb-ci_hdrc.0-1.1, smsc95xx USB 2.0 Ethernet, 12:44:ec:27:d2:3b                                  
+[   10.620000] usbcore: registered new interface driver smsc95xx                
+
+
+
+BusyBox v1.24.1 (2016-01-06 14:38:27 CET) built-in shell (ash)                  
+
+  _______                     ________        __                                
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_                              
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|                             
+ |_______||   __|_____|__|__||________||__|  |____|                             
+          |__| W I R E L E S S   F R E E D O M                                  
+ -----------------------------------------------------                          
+ DESIGNATED DRIVER (Bleeding Edge, r48203)                                      
+ -----------------------------------------------------                          
+  * 2 oz. Orange Juice         Combine all juices in a                          
+  * 2 oz. Pineapple Juice      tall glass filled with                           
+  * 2 oz. Grapefruit Juice     ice, stir well.                                  
+  * 2 oz. Cranberry Juice                                                       
+ -----------------------------------------------------                          
+root@OpenWrt:/# [   19.430000] smsc95xx 1-1.1:1.0 eth0: hardware isn't capable o
+f remote wakeup                                                                 
+[   19.480000] device eth0 entered promiscuous mode                             
+[   19.540000] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready             
+
+root@OpenWrt:/#                                                                 
+root@OpenWrt:/# [   63.640000] random: nonblocking pool is initialized          
+
+root@OpenWrt:/#                                                                 
+root@OpenWrt:/# cat /proc/cpuinfo                                               
+processor       : 0                                                             
+model name      : ARM926EJ-S rev 5 (v5l)                                        
+BogoMIPS        : 227.32                                                        
+Features        : swp half thumb fastmult edsp java                             
+CPU implementer : 0x41                                                          
+CPU architecture: 5TEJ                                                          
+CPU variant     : 0x0                                                           
+CPU part        : 0x926                                                         
+CPU revision    : 5                                                             
+
+Hardware        : Freescale MXS (Device Tree)                                   
+Revision        : 0000                                                          
+Serial          : 0000000000000000                                              
+root@OpenWrt:/# </nowiki>
+</WRAP>\\
+
+
+===== Links =====
+
+  * [[http://trabant.uid0.hu/openwrt/IMX23_ROM_Error_Codes.pdf|i.MX23 ROM error codes]]
+  * [[https://github.com/mkschreder/hack-enc28j60-imx233|enc28j60 ethernet module patch for imx233 target]]
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>mxs microsd 64RAM FastEthernet 0NIC 1NIC 0WNIC 1WNIC Serial ARM devboard ARM9 ARMv5}}

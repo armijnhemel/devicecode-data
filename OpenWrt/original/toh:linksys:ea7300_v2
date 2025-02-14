@@ -1,0 +1,625 @@
+====== Linksys EA7300 v2======
+
+Gigabit Ethernet switch based device, USB 3.0 port, 2.4GHz and 5GHz WiFi-5 support.  Four total antennas, one internal, with three external. The three antennas are fixed and cannot be removed.  Dual-firmware support allows you to switch back to the stock firmware.
+
+
+/*****/
+/* How to add images ========> http://openwrt.org/meta/adding_images_to_openwrt_wiki */
+/*****/
+
+{{media:linksys:xyfwntt.png|Linksys EA7300}}
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^Linksys$", "model": "^EA7300$", "version": "^v2$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^Linksys$", "model": "^EA7300$", "version": "^v2$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Linksys$", "model": "^EA7300$", "version": "^v2$"}
+} -->
+
+<WRAP center round alert 60%>
+Some devices are reported to have difficulty to install OpenWrt. It seems to be related to a bad block wrongly detected. It is unclear about which devices are involved in this bug. A workaround exists but is not already commited. Please found info here : [[https://forum.openwrt.org/t/is-ea7300-v2-no-longer-supported/166376/22]].
+</WRAP>
+
+This device has a dual partition layout (1/2). One partition is set as active and boots. If boot fails three times, than the "other" partition is set as active and booted, assuming it is still safe. A bootcounter (stored in the partiton ''S_ENV'') is used for this purpose. The bootcounter has a flaw that prevents direct install of OpenWrt. In order to work, OpenWrt must be flashed on partition 1 using a factory image, from a Linksys OEM in partition 2. Than a tweak must be applied in order to erase the partition ''S_ENV'' after each boot and prevent a switch to partition 2.
+
+First you need to know on which partition Linksys OEM boots.
+Log into the router (user: admin, password:admin) and go to this page : [[http://192.168.1.1/sysinfo.cgi]]
+This page will display technical informations : 
+
+<code>
+7/31/24, 7:59 AM
+192.168.1.1/sysinfo.cgi
+page generated on Thu Oct 11 06:25:46 UTC 2012
+UpTime:
+06:25:46 up 26 min, load average: 0.17, 0.11, 0.17
+Firmware Version: 2.0.4.208179
+Firmware Builddate: 2021-08-26 05:00
+Product.type: production
+Linux: Linux version 2.6.36 (root@build-vm) (gcc version 4.6.3 (Buildroot 2012.11.1) ) #81 SMP Wed
+Aug 25 21:20:44 PDT 2021
+Board: focus
+-----U-Boot Data-----
+fw_printenv bootdelay: bootdelay=5
+fw_printenv mtdparts:
+fw_printenv bootcmd: bootcmd=tftp
+fw_printenv boot_part: boot_part=2
+</code>
+
+The last line means that Linksys boots from partition 2. If 1 than flash Linksys OEM over itself and wait for reboot. Log in and browse again the page [[http://192.168.1.1/sysinfo.cgi]]. You should now see 2.
+Linksys boots from partition 2, you are now ready to install OpenWrt. Just flash a factory image within Linksys, it will be on partition 1. You may have to refresh the browser cache, or use a private session.
+Last, you need to tweak the bootcounter by adding this code to ''etc/rc.local''
+
+<code>
+/rom/sbin/mtd unlock s_env
+/rom/sbin/mtd erase s_env
+exit 0
+</code>
+
+Information from these forum threads [[https://forum.openwrt.org/t/can-not-install-openwrt-on-linksys-ea7300-v2/85421/11]] and [[https://forum.openwrt.org/t/is-ea7300-v2-no-longer-supported/166376/23]]
+
+Last, in order to ease the upgrade to a further version, consider installing the package ''luci-app-advanced-reboot'' (see [[:toh:linksys:ea7300_v2#upgrading_openwrt]]). Best way is to flash a custom factory image which already includes this package.
+===== Reverting to factory firmware =====
+
+You must revert back to partition 2 where is still Linksys OEM. You have two possibilities :
+  - use ''luci-app-advanced-reboot'', click on Linksys and reboot.
+  - use the power button trick. Power on the router and wait 8s. Power off. Repeat this 3 times.
+In both cases it will force the switch to boot partition 2 where is Linksys OEM. To remove any traces of OpenWrt from your router simply flash Linksys OEM at this point.
+
+
+==== Flash Layout ====
+
+See also [[docs:techref:flash.layout|Flash layout]]
+
+<code>
+root@OpenWrt:~# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00080000 00020000 "boot"
+mtd1: 00040000 00020000 "u_env"
+mtd2: 00040000 00020000 "factory"
+mtd3: 00040000 00020000 "s_env"
+mtd4: 00040000 00020000 "devinfo"
+mtd5: 00400000 00020000 "kernel"
+mtd6: 02400000 00020000 "ubi"
+mtd7: 00400000 00020000 "alt_kernel"
+mtd8: 02400000 00020000 "alt_rootfs"
+mtd9: 00100000 00020000 "sysdiag"
+mtd10: 02d00000 00020000 "syscfg"
+
+</code>
+
+
+==== OEM easy installation ====
+
+<WRAP BOX>
+FIXME //The instructions below are for Broadcom devices and only serve as an example.//\\
+**//Remove / modify them if they do not apply to this particular device!//**
+
+This section deals with
+  * How you install OpenWrt from a device freshly opened
+  * The steps required such as reset to factory defaults if the device has already been configured
+
+**Note:** Reset router to factory defaults if it has been previously configured.
+  * Browse to ''<nowiki>http://192.168.1.1/Upgrade.asp</nowiki>''
+  * Upload .bin file to router
+  * Wait for it to reboot
+  * Telnet to 192.168.1.1 and set a root password, or browse to ''<nowiki>http://192.168.1.1</nowiki>'' if LuCI is installed.
+</WRAP>
+
+==== OEM installation using the TFTP method ====
+
+->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+=== Specific values needed for tftp ===
+
+<WRAP BOX>
+
+FIXME Enter values for "FILL-IN" below
+
+^ Bootloader tftp server IPv4 address  | FILL-IN   |
+^ Bootloader MAC address (special)     | FILL-IN   |
+^ Firmware tftp image                  | [[:downloads|Latest OpenWrt release]] (**''NOTE:''** Name must contain //"tftp"//) |
+^ TFTP transfer window                 | FILL-IN seconds                                |
+^ TFTP window start                    | approximately FILL-IN seconds after power on   |
+^ TFTP client required IP address      | FILL-IN                                        |
+
+</WRAP>
+
+==== Upgrading OpenWrt ====
+<WRAP center round alert 60%>
+**YOU CAN'T upgrade using a sysupgrade image on this device**. You must revert back to Linksys and flash a **newer OpenWrt factory image**. It's not such a big deal, it takes about three minutes.
+</WRAP>
+
+  - Backup the settings
+  - Revert to Linksys on partition 2 (see [[:toh:linksys:ea7300_v2#reverting_to_factory_firmware]])
+  - Flash the newer OpenWrt factory image within Linksys.
+  - At reboot, restore the previous settings (it will also restore the tweak for ''/etc/rc.local'')
+
+In order to easily revert ot Linksys, consider installing ''luci-app-advanced-reboot'' in each OpenWrt factory image you will use.
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+
+</WRAP>
+
+==== Switch Ports (for VLANs) ====
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | EXAMPLE 4     |
+| LAN 1            | EXAMPLE 3     |
+| LAN 2            | EXAMPLE 2     |
+| LAN 3            | EXAMPLE 1     |
+| LAN 4            | EXAMPLE 0     |
+
+</WRAP>
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+The Linksys EA7300 has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+
+</WRAP>
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Linksys$", "model": "^EA7300$", "version": "^v2$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+//Front://\\
+{{media:linksys:linksys_ea7300_v2_housing_front.jpg?400|}}
+
+//Back://\\
+{{:media:linksys:linksys_ea7300_v2_housing_back.jpg?400|}}
+
+//Backside label://\\
+**Insert photo of backside label**
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+<WRAP BOX>
+FIXME //Describe what needs to be done to open the device, e.g. remove rubber feet, adhesive labels, screws, ...//
+  * To remove the cover and open the device, do a/b/c
+</WRAP>
+
+//Main PCB://\\
+{{:media:linksys:linksys_ea7300_v2_pcb_top.jpg?400|}}
+{{:media:linksys:linksys_ea7300_v2_pcb_zoom.jpg?400|}}
+{{:media:linksys:linksys_ea7300_v2_pcb_back.jpg?400|}}
+
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+**Insert photo of PCB with markings for serial port**
+
+<WRAP BOX>
+FIXME //Replace EXAMPLE by real values.//
+</WRAP>
+
+^ Serial connection parameters\\ for Linksys EA7300 v2 | EXAMPLE 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+===== Bootloader mods =====
+-> [[docs:techref:bootloader]]
+
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>COPY HERE THE BOOTLOG WITH THE ORIGINAL FIRMWARE</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+[    0.000000] Linux version 5.4.179 (builder@buildhost) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r16495-bf0c965af0)) #0 SMP Wed Feb 16 20:29:10 2022
+[    0.000000] SoC Type: MediaTek MT7621 ver:1 eco:3
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] MIPS: machine is Linksys EA7300 v2
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] VPE topology {2,2} total 4
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000]   HighMem  empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] On node 0 totalpages: 65536
+[    0.000000]   Normal zone: 576 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 65536 pages, LIFO batch:15
+[    0.000000] percpu: Embedded 14 pages/cpu s26768 r8192 d22384 u57344
+[    0.000000] pcpu-alloc: s26768 r8192 d22384 u57344 alloc=14*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 [0] 2 [0] 3 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 64960
+[    0.000000] Kernel command line: console=ttyS0,115200 rootfstype=squashfs,jffs2
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Writing ErrCtl register=00063400
+[    0.000000] Readback ErrCtl register=00063400
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 250788K/262144K available (6095K kernel code, 204K rwdata, 748K rodata, 1260K init, 238K bss, 11356K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[    0.000000] NR_IRQS: 256
+[    0.000000] random: get_random_bytes called from 0x806e5a3c with crng_init=0
+[    0.000000] CPU Clock: 880MHz
+[    0.000000] clocksource: GIC: mask: 0xffffffffffffffff max_cycles: 0xcaf478abb4, max_idle_ns: 440795247997 ns
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 4343773742 ns
+[    0.000008] sched_clock: 32 bits at 440MHz, resolution 2ns, wraps every 4880645118ns
+[    0.007805] Calibrating delay loop... 583.68 BogoMIPS (lpj=1167360)
+[    0.041993] pid_max: default: 32768 minimum: 301
+[    0.046761] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.053985] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.064276] rcu: Hierarchical SRCU implementation.
+[    0.069675] smp: Bringing up secondary CPUs ...
+[    6.624962] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    6.624972] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    6.624984] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    6.625082] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.102391] Synchronize counters for CPU 1: done.
+[    6.686007] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    6.686016] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    6.686023] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    6.686082] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.167030] Synchronize counters for CPU 2: done.
+[    6.747580] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    6.747588] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    6.747596] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    6.747658] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.224883] Synchronize counters for CPU 3: done.
+[    0.254759] smp: Brought up 1 node, 4 CPUs
+[    0.263347] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.273028] futex hash table entries: 1024 (order: 3, 32768 bytes, linear)
+[    0.280099] pinctrl core: initialized pinctrl subsystem
+[    0.286917] NET: Registered protocol family 16
+[    0.298003] FPU Affinity set after 4688 emulations
+[    0.315920] clocksource: Switched to clocksource GIC
+[    0.322436] thermal_sys: Registered thermal governor 'step_wise'
+[    0.322891] NET: Registered protocol family 2
+[    0.333621] IP idents hash table entries: 4096 (order: 3, 32768 bytes, linear)
+[    0.342538] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
+[    0.350970] TCP established hash table entries: 2048 (order: 1, 8192 bytes, linear)
+[    0.358567] TCP bind hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.365650] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.372090] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.378560] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.385730] NET: Registered protocol family 1
+[    0.390047] PCI: CLS 0 bytes, default 32
+[    0.483860] 4 CPUs re-calibrate udelay(lpj = 1167360)
+[    0.490482] random: fast init done
+[    0.490880] workingset: timestamp_bits=14 max_order=16 bucket_order=2
+[    0.510350] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.516136] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.527767] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 251)
+[    0.537100] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.542894] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.548719] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.555073] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.565173] printk: console [ttyS0] disabled
+[    0.569457] 1e000c00.uartlite: ttyS0 at MMIO 0x1e000c00 (irq = 19, base_baud = 3125000) is a 16550A
+[    0.578437] printk: console [ttyS0] enabled
+[    0.586694] printk: bootconsole [early0] disabled
+[    0.598656] mt7621-nand 1e003000.nand: Using programmed access timing: 31c07388
+[    0.606224] nand: device found, Manufacturer ID: 0xef, Chip ID: 0xf1
+[    0.612564] nand: Winbond W29N01HV
+[    0.615964] nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+[    0.623514] mt7621-nand 1e003000.nand: ECC strength adjusted to 4 bits
+[    0.630055] mt7621-nand 1e003000.nand: Using programmed access timing: 21005134
+[    0.637350] mt7621-nand 1e003000.nand: Using programmed access timing: 21005134
+[    0.644642] Scanning device for bad blocks
+[    1.296688] 11 fixed-partitions partitions found on MTD device mt7621-nand
+[    1.303544] Creating 11 MTD partitions on "mt7621-nand":
+[    1.308863] 0x000000000000-0x000000080000 : "boot"
+[    1.314946] 0x000000080000-0x0000000c0000 : "u_env"
+[    1.321284] 0x0000000c0000-0x000000100000 : "factory"
+[    1.327619] 0x000000100000-0x000000140000 : "s_env"
+[    1.333974] 0x000000140000-0x000000180000 : "devinfo"
+[    1.340409] 0x000000180000-0x000000580000 : "kernel"
+[    1.346784] 0x000000580000-0x000002980000 : "ubi"
+[    1.353000] 0x000002980000-0x000002d80000 : "alt_kernel"
+[    1.359776] 0x000002d80000-0x000005180000 : "alt_rootfs"
+[    1.366584] 0x000005180000-0x000005280000 : "sysdiag"
+[    1.373151] 0x000005280000-0x000007f80000 : "syscfg"
+[    1.406586] mt7530 mdio-bus:1f: MT7530 adapts as multi-chip module
+[    1.415257] mtk_soc_eth 1e100000.ethernet: generated random MAC address 7a:16:5a:9c:8a:9f
+[    1.424367] mtk_soc_eth 1e100000.ethernet eth0: mediatek frame engine at 0xbe100000, irq 21
+[    1.434678] mt7621-pci 1e140000.pcie: Parsing DT failed
+[    1.442328] NET: Registered protocol family 10
+[    1.448269] Segment Routing with IPv6
+[    1.452049] NET: Registered protocol family 17
+[    1.456570] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.469723] 8021q: 802.1Q VLAN Support v1.8
+[    1.475827] mt7530 mdio-bus:1f: MT7530 adapts as multi-chip module
+[    1.492439] mt7530 mdio-bus:1f wan (uninitialized): PHY [dsa-0.0:00] driver [Generic PHY]
+[    1.502078] mt7530 mdio-bus:1f lan1 (uninitialized): PHY [dsa-0.0:01] driver [Generic PHY]
+[    1.511732] mt7530 mdio-bus:1f lan2 (uninitialized): PHY [dsa-0.0:02] driver [Generic PHY]
+[    1.521403] mt7530 mdio-bus:1f lan3 (uninitialized): PHY [dsa-0.0:03] driver [Generic PHY]
+[    1.531043] mt7530 mdio-bus:1f lan4 (uninitialized): PHY [dsa-0.0:04] driver [Generic PHY]
+[    1.540860] mt7530 mdio-bus:1f: configuring for fixed/rgmii link mode
+[    1.552067] DSA: tree 0 setup
+[    1.555330] rt2880-pinmux pinctrl: pcie is already enabled
+[    1.560967] mt7621-pci-phy 1e149000.pcie-phy: PHY for 0xbe149000 (dual port = 1)
+[    1.568547] mt7621-pci-phy 1e14a000.pcie-phy: PHY for 0xbe14a000 (dual port = 0)
+[    1.675940] mt7621-pci-phy 1e149000.pcie-phy: Xtal is 40MHz
+[    1.681515] mt7621-pci-phy 1e14a000.pcie-phy: Xtal is 40MHz
+[    1.787007] mt7621-pci 1e140000.pcie: pcie2 no card, disable it (RST & CLK)
+[    1.793963] mt7621-pci 1e140000.pcie: PCIE0 enabled
+[    1.798830] mt7621-pci 1e140000.pcie: PCIE1 enabled
+[    1.803702] mt7621-pci 1e140000.pcie: PCI coherence region base: 0x60000000, mask/settings: 0xf0000002
+[    1.813161] mt7621-pci 1e140000.pcie: PCI host bridge to bus 0000:00
+[    1.819511] pci_bus 0000:00: root bus resource [io  0x1e160000-0x1e16ffff]
+[    1.826374] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff]
+[    1.833237] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    1.838750] pci 0000:00:00.0: [0e8d:0801] type 01 class 0x060400
+[    1.844779] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    1.851036] pci 0000:00:00.0: reg 0x14: [mem 0x60200000-0x6020ffff]
+[    1.857363] pci 0000:00:00.0: supports D1
+[    1.861369] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    1.867457] pci 0000:00:01.0: [0e8d:0801] type 01 class 0x060400
+[    1.873490] pci 0000:00:01.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    1.879748] pci 0000:00:01.0: reg 0x14: [mem 0x60210000-0x6021ffff]
+[    1.886065] pci 0000:00:01.0: supports D1
+[    1.890070] pci 0000:00:01.0: PME# supported from D0 D1 D3hot
+[    1.897392] pci 0000:01:00.0: [14c3:7603] type 00 class 0x028000
+[    1.903439] pci 0000:01:00.0: reg 0x10: [mem 0x00000000-0x000fffff]
+[    1.909836] pci 0000:01:00.0: PME# supported from D0 D3hot D3cold
+[    1.917320] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[    1.922557] pci 0000:00:00.0:   bridge window [io  0x0000-0x0fff]
+[    1.928642] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    1.935421] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    1.942233] pci 0000:02:00.0: [14c3:7615] type 00 class 0x000280
+[    1.948282] pci 0000:02:00.0: reg 0x10: [mem 0x00000000-0x000fffff 64bit]
+[    1.955219] pci 0000:02:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s x1 link at 0000:00:01.0 (capable of 4.000 Gb/s with 5 GT/s x1 link)
+[    1.970368] pci 0000:00:01.0: PCI bridge to [bus 02-ff]
+[    1.975600] pci 0000:00:01.0:   bridge window [io  0x0000-0x0fff]
+[    1.981691] pci 0000:00:01.0:   bridge window [mem 0x60100000-0x601fffff]
+[    1.988471] pci_bus 0000:02: busn_res: [bus 02-ff] end is updated to 02
+[    1.995111] pci 0000:00:00.0: BAR 0: no space for [mem size 0x80000000]
+[    2.001713] pci 0000:00:00.0: BAR 0: failed to assign [mem size 0x80000000]
+[    2.008662] pci 0000:00:01.0: BAR 0: no space for [mem size 0x80000000]
+[    2.015259] pci 0000:00:01.0: BAR 0: failed to assign [mem size 0x80000000]
+[    2.022209] pci 0000:00:00.0: BAR 8: assigned [mem 0x60000000-0x600fffff]
+[    2.028988] pci 0000:00:01.0: BAR 8: assigned [mem 0x60100000-0x601fffff]
+[    2.035761] pci 0000:00:00.0: BAR 1: assigned [mem 0x60200000-0x6020ffff]
+[    2.042542] pci 0000:00:01.0: BAR 1: assigned [mem 0x60210000-0x6021ffff]
+[    2.049328] pci 0000:00:00.0: BAR 7: assigned [io  0x1e160000-0x1e160fff]
+[    2.056105] pci 0000:00:01.0: BAR 7: assigned [io  0x1e161000-0x1e161fff]
+[    2.062884] pci 0000:01:00.0: BAR 0: assigned [mem 0x60000000-0x600fffff]
+[    2.069664] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    2.074621] pci 0000:00:00.0:   bridge window [io  0x1e160000-0x1e160fff]
+[    2.081396] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    2.088182] pci 0000:02:00.0: BAR 0: assigned [mem 0x60100000-0x601fffff 64bit]
+[    2.095482] pci 0000:00:01.0: PCI bridge to [bus 02]
+[    2.100442] pci 0000:00:01.0:   bridge window [io  0x1e161000-0x1e161fff]
+[    2.107213] pci 0000:00:01.0:   bridge window [mem 0x60100000-0x601fffff]
+[    2.114518] mt7530 mdio-bus:1f: Link is Up - 1Gbps/Full - flow control off
+[    2.115623] UBI: auto-attach mtd6
+[    2.124753] ubi0: attaching mtd6
+[    2.493370] ubi0: scanning is finished
+[    2.513444] ubi0: attached mtd6 (name "ubi", size 36 MiB)
+[    2.518856] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    2.525732] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    2.532505] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    2.539446] ubi0: good PEBs: 288, bad PEBs: 0, corrupted PEBs: 0
+[    2.545440] ubi0: user volume: 2, internal volumes: 1, max. volumes count: 128
+[    2.552645] ubi0: max/mean erase counter: 2/1, WL threshold: 4096, image sequence number: 1645043350
+[    2.561750] ubi0: available PEBs: 0, total reserved PEBs: 288, PEBs reserved for bad PEB handling: 20
+[    2.570969] ubi0: background thread "ubi_bgt0d" started, PID 503
+[    2.573431] block ubiblock0_0: created from ubi0:0(rootfs)
+[    2.582480] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[    2.589432] hctosys: unable to open rtc device (rtc0)
+[    2.602439] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    2.614018] Freeing unused kernel memory: 1260K
+[    2.618573] This architecture does not have kernel memory protection.
+[    2.624998] Run /sbin/init as init process
+[    3.193601] init: Console is alive
+[    3.197261] init: - watchdog -
+[    3.971004] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    4.065765] usbcore: registered new interface driver usbfs
+[    4.071390] usbcore: registered new interface driver hub
+[    4.076842] usbcore: registered new device driver usb
+[    4.091394] xhci-mtk 1e1c0000.xhci: 1e1c0000.xhci supply vbus not found, using dummy regulator
+[    4.100157] xhci-mtk 1e1c0000.xhci: 1e1c0000.xhci supply vusb33 not found, using dummy regulator
+[    4.109133] xhci-mtk 1e1c0000.xhci: xHCI Host Controller
+[    4.114493] xhci-mtk 1e1c0000.xhci: new USB bus registered, assigned bus number 1
+[    4.128047] xhci-mtk 1e1c0000.xhci: hcc params 0x01401198 hci version 0x96 quirks 0x0000000000290010
+[    4.137247] xhci-mtk 1e1c0000.xhci: irq 20, io mem 0x1e1c0000
+[    4.144262] hub 1-0:1.0: USB hub found
+[    4.148134] hub 1-0:1.0: 2 ports detected
+[    4.152789] xhci-mtk 1e1c0000.xhci: xHCI Host Controller
+[    4.158143] xhci-mtk 1e1c0000.xhci: new USB bus registered, assigned bus number 2
+[    4.165630] xhci-mtk 1e1c0000.xhci: Host supports USB 3.0 SuperSpeed
+[    4.172171] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    4.181126] hub 2-0:1.0: USB hub found
+[    4.185017] hub 2-0:1.0: 1 port detected
+[    4.194858] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    4.208241] init: - preinit -
+[    4.881463] mtk_soc_eth 1e100000.ethernet eth0: configuring for fixed/rgmii link mode
+[    4.889756] mtk_soc_eth 1e100000.ethernet eth0: Link is Up - 1Gbps/Full - flow control rx/tx
+[    4.898255] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    5.045688] random: jshn: uninitialized urandom read (4 bytes read)
+[    5.111363] random: jshn: uninitialized urandom read (4 bytes read)
+[    5.326707] random: jshn: uninitialized urandom read (4 bytes read)
+[    5.638325] mt7530 mdio-bus:1f lan1: configuring for phy/gmii link mode
+[    5.645357] 8021q: adding VLAN 0 to HW filter on device lan1
+[    9.756604] mt7530 mdio-bus:1f lan1: Link is Up - 1Gbps/Full - flow control rx/tx
+[    9.764261] IPv6: ADDRCONF(NETDEV_CHANGE): lan1: link becomes ready
+[    9.828403] UBIFS (ubi0:1): Mounting in unauthenticated mode
+[    9.834279] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 654
+[   10.034566] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[   10.042422] UBIFS (ubi0:1): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   10.052320] UBIFS (ubi0:1): FS size: 28188672 bytes (26 MiB, 222 LEBs), journal size 1396736 bytes (1 MiB, 11 LEBs)
+[   10.062719] UBIFS (ubi0:1): reserved for root: 1331420 bytes (1300 KiB)
+[   10.069322] UBIFS (ubi0:1): media format: w5/r0 (latest is w5/r0), UUID F07A2846-CCF6-4B99-8CE7-6241CE64D09D, small LPT model
+[   10.082777] mount_root: overlay filesystem has not been fully initialized yet
+[   10.090521] mount_root: switching to ubifs overlay
+[   10.489554] urandom-seed: Seed file not found (/etc/urandom.seed)
+[   10.607148] mt7530 mdio-bus:1f lan1: Link is Down
+[   10.621678] procd: - early -
+[   10.624692] procd: - watchdog -
+[   11.224090] procd: - watchdog -
+[   11.227639] procd: - ubus -
+[   11.387490] procd: - init -
+[   12.006408] kmodloader: loading kernel modules from /etc/modules.d/*
+[   12.024763] Loading modules backported from Linux version v5.10.85-0-ge4f2aee6612e
+[   12.032467] Backport generated by backports.git v5.10.85-1-0-gf988973f
+[   12.055855] xt_time: kernel timezone is -0000
+[   12.123605] mt7621-pci 1e140000.pcie: bus=1 slot=0 irq=23
+[   12.128770] urngd: v1.0.2 started.
+[   12.129076] pci 0000:00:00.0: enabling device (0006 -> 0007)
+[   12.138077] mt7603e 0000:01:00.0: enabling device (0000 -> 0002)
+[   12.144350] mt7603e 0000:01:00.0: ASIC revision: 76030010
+[   12.264340] crng init done
+[   12.267055] random: 7 urandom warning(s) missed due to ratelimiting
+[   12.769217] mt7603e 0000:01:00.0: Firmware Version: ap_pcie
+[   12.774835] mt7603e 0000:01:00.0: Build Time: 20160107100755
+[   12.807905] mt7603e 0000:01:00.0: firmware init done
+[   12.986997] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[   12.999847] mt7621-pci 1e140000.pcie: bus=2 slot=1 irq=24
+[   13.005407] pci 0000:00:01.0: enabling device (0006 -> 0007)
+[   13.011171] mt7615e 0000:02:00.0: enabling device (0000 -> 0002)
+[   13.033847] ieee80211 phy1: Selected rate control algorithm 'minstrel_ht'
+[   13.057170] PPP generic driver version 2.4.2
+[   13.063120] NET: Registered protocol family 24
+[   13.084525] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   13.151199] mt7615e 0000:02:00.0: HW/SW Version: 0x8a108a10, Build Time: 20180518100604a
+[   13.151199] 
+[   13.457114] mt7615e 0000:02:00.0: N9 Firmware Version: _reserved_, Build Time: 20200814163649
+[   13.474235] mt7615e 0000:02:00.0: CR4 Firmware Version: _reserved_, Build Time: 20190121161307
+[   20.636366] mtk_soc_eth 1e100000.ethernet eth0: Link is Down
+[   20.653222] mtk_soc_eth 1e100000.ethernet eth0: configuring for fixed/rgmii link mode
+[   20.661470] mtk_soc_eth 1e100000.ethernet eth0: Link is Up - 1Gbps/Full - flow control rx/tx
+[   20.664842] device eth0 entered promiscuous mode
+[   20.675234] mt7530 mdio-bus:1f lan1: configuring for phy/gmii link mode
+[   20.682940] 8021q: adding VLAN 0 to HW filter on device lan1
+[   20.691969] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   20.699206] br-lan: port 1(lan1) entered blocking state
+[   20.704599] br-lan: port 1(lan1) entered disabled state
+[   20.711060] device lan1 entered promiscuous mode
+[   20.735570] mt7530 mdio-bus:1f lan2: configuring for phy/gmii link mode
+[   20.742954] 8021q: adding VLAN 0 to HW filter on device lan2
+[   20.752469] br-lan: port 2(lan2) entered blocking state
+[   20.757835] br-lan: port 2(lan2) entered disabled state
+[   20.764826] device lan2 entered promiscuous mode
+[   20.778958] mt7530 mdio-bus:1f lan3: configuring for phy/gmii link mode
+[   20.786501] 8021q: adding VLAN 0 to HW filter on device lan3
+[   20.795693] br-lan: port 3(lan3) entered blocking state
+[   20.801030] br-lan: port 3(lan3) entered disabled state
+[   20.807864] device lan3 entered promiscuous mode
+[   20.828229] mt7530 mdio-bus:1f lan4: configuring for phy/gmii link mode
+[   20.835477] 8021q: adding VLAN 0 to HW filter on device lan4
+[   20.844562] br-lan: port 4(lan4) entered blocking state
+[   20.849925] br-lan: port 4(lan4) entered disabled state
+[   20.856941] device lan4 entered promiscuous mode
+[   20.881917] mt7530 mdio-bus:1f wan: configuring for phy/gmii link mode
+[   20.889186] 8021q: adding VLAN 0 to HW filter on device wan
+[   23.740400] mt7530 mdio-bus:1f lan1: Link is Up - 1Gbps/Full - flow control rx/tx
+[   23.747954] br-lan: port 1(lan1) entered blocking state
+[   23.753191] br-lan: port 1(lan1) entered forwarding state
+[   23.759549] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   23.964438] mt7530 mdio-bus:1f wan: Link is Up - 1Gbps/Full - flow control off
+[   23.971708] IPv6: ADDRCONF(NETDEV_CHANGE): wan: link becomes ready
+
+</WRAP>\\
+
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * This device will boot occasionally back to the stock firmware after install.  Reports of this are e.g. https://forum.openwrt.org/t/can-not-install-openwrt-on-linksys-ea7300-v2/85421/9.  Reason for this is that the bootcounter cannot be reset properly.  This is manifested by messages in dmesg about uncorrectable ECC errors, such as `mt7621-nand 1e003000.nand: Uncorrectable ECC error at page 522.1`.  The bootcount record is appended/written, but the hardware seems to overwrite this with the last bootcount instead of 0.  A workaround for this is mentioned in https://forum.openwrt.org/t/uncorrectable-ecc-error/88736/5 by simply issuing `mtd erase s_env`.  This is somewhat crude, but seems to prevent the bootloader from switching the active partition.  One could add it as local entry post-boot in `/etc/rc.local`
+
+  * USB is disconnected when WAN port is up (https://forum.openwrt.org/t/usb-is-disconnected-when-wan-is-up/117886). If you need to use USB port and WAN port at the same time, a workaround is to use one of the LAN ports as a WAN port (https://forum.openwrt.org/t/usb-not-working-on-linksys-ea7300/130090).
+
+  * Package cryptsetup does not work at all with OpenWrt 21.02 (https://forum.openwrt.org/t/unable-to-create-an-encrypted-disk-on-openwrt-21-02/130982). If you need it you have to upgrade to OpenWrt 22.03 (currently at RC4). 
+===== Tags =====
+<WRAP BOX>
+FIXME //Add tags below, then remove this fixme.//
+</WRAP>
+
+[[meta:tags|How to add tags]]
+{{tag>ramips mt7621 128NAND 256RAM 5port Gigabitethernet 1USB USB3.0 802.11abgnac dual_firmware}}

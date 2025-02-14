@@ -1,0 +1,573 @@
+====== Aruba AP-105 ======
+
+The Aruba AP-105 is a small Atheros based AP that has 2x wireless chips for 2.4GHz and 5GHz operation. It is a PoE AP that normally requires the use of a wireless controller device. Surprisingly, this device packs a 16MiB SPI flash chip as well as 128MiB of RAM.
+
+/*****/
+/* How to add images ========> http://openwrt.org/meta/adding_images_to_openwrt_wiki */
+/*****/
+
+{{:media:aruba:aruba_ap105.png?200|}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^AP-105$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^AP-105$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^AP-105$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+  - → Install OpenWrt >22.03.5 
+  - → [[https://github.com/chunkeey/u-boot-ap105/releases|Obtain U-Boot]] <22.03.5 
+  - → Install U-Boot <22.03.5 
+  - → Install OpenWrt <22.03.5 
+
+==== Installing Openwrt >22.03.5 ====
+
+Since the release of Openwrt 22.03.5 isn't required anymore to replace the bootloader with U-boot. The following installation instructions
+
+1. Attach to the serial console of the AP-105. Interrupt autoboot and change the U-Boot env.
+<code>
+    setenv apb_rb_openwrt "setenv ipaddr 192.168.1.1;setenv serverip 192.168.1.66; netget 0x84000000 ap105.bin; go 0x84000040"
+    setenv apb_fb_openwrt "cp.b 0xbf040000 0x84000000 0x10000;go 0x84000040"
+    setenv bootcmd "run apb_fb_openwrt"
+    saveenv
+</code>
+
+2. Load the OpenWrt initramfs image on the device using TFTP.
+Place the initramfs image as "ap105.bin" in the TFTP server
+root directory, connect it to the AP and make the server reachable
+at 192.168.1.66/24.
+
+  $ run apb_rb_openwrt
+
+3. Once OpenWrt booted, transfer the sysupgrade image to the device
+using scp and use sysupgrade to install the firmware.
+
+
+The other steps below are not needed anymore
+
+==== Installing U-Boot ====
+
+Note that the stock bootloader on this device does not allow for unsigned kernels to boot, so replacing the bootloader is required for OpenWrt support on this device. Sadly at this time the only way to do this is via directly writing to the SPI Flash. The custom U-Boot for this device can be downloaded from [[https://github.com/chunkeey/u-boot-ap105/releases]] and extracted from the latest release .tar.gz file.
+
+It is **HIGHLY** recommend that before doing anything, you take a full backup of the SPI Flash.
+
+To flash the SPI NOR, a 16 pin Test Clip is recommended. One such example is the [[https://www.digikey.com/product-detail/en/pomona-electronics/5252/501-2059-ND/745103 | Pomona Electronics 5252]]. Note you will need to manually wire up said test clip to a flashing tool or device, such as a [[https://www.raspberrypi.org/documentation/hardware/raspberrypi/spi/README.md | Raspberry Pi]]. 
+
+=== Generic Process ===
+
+If you are not using flashrom, then you will need to do the following with whatever tool you are using:
+  - Create a full dump of the SPI Flash, and store it in a safe place
+  - Erase and Clear 0x0-0x3ffff on the SPI Flash 
+  - Flash U-Boot to 0x0
+  - Proceed to the OpenWrt Install Procedure
+
+=== Flashrom Process ===
+
+If you prefer to have a walkthrough guide of doing this with flashrom, please follow the below steps:
+
+Note that the below install steps assumes a few things:
+  * That you are using flashrom to read/write to the SPI flash
+  * That your SPI reader is a linux SPI Dev (ex, a Raspberry Pi wired to the SPI Flash)
+
+1. Create a full dump of the SPI Flash, and store it in a safe place
+<code>
+flashrom -r AP105-stock-SPI-dump.rom -p linux_spi:dev=/dev/spidev0.0,spispeed=16500 -c MX25L12835F/MX25L12845E/MX25L12865E
+</code>
+
+2. Create a copy of your SPI Flash dump for us to modify
+<code>
+cp ./AP105-stock-SPI-dump.rom ./custom-dump.rom
+</code>
+
+3. Erase the stock bootloader from the start of the image
+<code>
+dd if=/dev/zero bs=256K count=1 | tr "\000" "\377" | dd of=custom-dump.rom conv=notrunc
+</code>
+
+4. Apply u-Boot to the image
+<code>
+dd if=u-boot.bin of=custom-dump.rom conv=notrunc
+</code>
+
+5. Flash the new modified image back to the device
+<code>
+flashrom -w custom-dump.rom -p linux_spi:dev=/dev/spidev0.0,spispeed=16500 -c MX25L12835F/MX25L12845E/MX25L12865E
+</code>
+
+==== Installing OpenWrt ====
+
+Note that installing OpenWrt requires that you have installed the custom U-Boot first.
+
+  - Wire up the Aruba AP-105 to an Ethernet port on your computer, and set that port to a static IP of **192.168.1.101**
+  - Start a TFTP server on your computer, and in your tftp root copy your OpenWrt sysupgrade.bin file to **firmware.bin**
+  - Power on the AP-105, and hold the reset button on the back. Continue to hold it until you see both wireless LEDs blink red.
+  - At this point, the AP will download and install OpenWrt. Watch the console to confirm OpenWrt has been flashed then reboot. If you do not have console access, wait 5 minutes before power cycling the device.
+  - You should now have OpenWrt installed on the device!
+
+
+===== Failsafe mode =====
+
+Thanks to the custom U-Boot, the reset button can be used to tftpload a new firmware to the device at anytime. To do so, set your computer to a static IP of 192.168.1.101 and wire it directly to the access point. While the access point powers on, hold the reset button until you see the WLAN LEDs both flash red. At this point, U-Boot will attempt to tftpload a file named firmware.bin and flash it to the device. This can be useful for recovering a corrupt upgrade/install.
+
+===== Reverting to the Stock Firmware =====
+
+As long as you have a full SPI Flash backup available, you can install it back to your device at anytime through U-Boot. To do this, setup your local computer with a Static IP of 192.168.1.101 and a tftpserver. Next, place a copy of your SPI backup in the root of your tftp server and rename it ap-105-stock.bin. Now power on your AP-105 and with a console cable, interrupt boot to access the u-boot shell. Once here, run the following command to revert back to the Stock Firmware:
+<code>
+run loadStock; reset;
+</code>
+
+===== Specific configuration =====
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description   ^ Default configuration   ^
+| br-lan           | LAN           | 192.168.1.1/24          |
+| wl0              | WiFi          | Disabled                |
+| wl1              | WiFi          | Disabled                |
+
+Note that to configure this device as an AP, you will want to configure br-lan to be either static, or a DHCP client. You may also want to consider using a VLAN for WAN connectivity if you plan to run NAT/DHCP.
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The Aruba AP-105 has the following buttons:
+
+^ BUTTON                       ^ OpenWrt Event   ^ U-Boot Event ^
+| Reset                |  Reboot/Reset Config  | Flash firmware.bin from TFTP server at 192.168.1.101 |
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                            |
+^ Vendor           | Aruba                           |
+^ Bootloader       | Custom U-Boot                   |
+^ System-On-Chip   | Atheros AR7161-8C1A             |
+^ CPU/Speed        | 680 MHz                         |
+^ Flash-Chip       | MXIC MX25L12845EMI-10G          |
+^ Flash size       | 16 MiB                          |
+^ RAM              | 128MiB - 2x Etron Technology EM6AB160TSA-5G  |
+^ Wireless         | Atheros AR9220-AC1A, Atheros AR9223-AC1A    |
+^ Ethernet         | Atheros AR8021-BL1E 10/100/1000 PoE         |
+^ USB              | No                              |
+^ Serial           | [[#Serial|Yes]]                 |
+^ JTAG             | [[#JTAG|Not populated]]         |
+
+
+==== Flash Layout ====
+
+^   Aruba AP-105 Flash Layout           ^^^^^^^
+^ Layer0       | raw NOR flash memory chip (MXIC MX25L12845EMI-10G [[wp>Serial Peripheral Interface Bus|spi]]0.0) 16384 KiB ||||||
+^ Layer1       |  mtd0 **//u-boot//** 256 KiB  |  mtd1 **//firmware//** 16000 KiB  |||  mtd5 **//hwinfo//** 64 KiB  | mtd6 **//u-boot-env//** 64 KiB  |
+^ Layer2       |                               |  mtd2 **//kernel//** 1600 KiB  |  mtd3 **//rootfs//** 14400 KiB                           ||          |
+^ <color magenta>mountpoint</color>   |                              |                               |  <color magenta>''/''</color>                          ||          |
+^ filesystem   |                              |                               |  [[docs:techref:filesystems#overlayfs|OverlayFS]]           ||          |
+^ Layer3       |                              |                               |                 |  mtd4 **//rootfs_data//** 11136 KiB     |          ||
+^ Size in KiB  |  128 KiB                     |  1600 KiB                      |  3264 KiB        |  11136 KiB                              |   64 KiB  | 64 KiB  |
+^ Name         |  **//u-boot//**              |  **//kernel//**               |                 |  **//rootfs_data//**             |  **//hwinfo//**  | **//u-boot-env//** |
+^ <color magenta>mountpoint</color>   |  //none//                    |  //none//                     |  <color magenta>''/rom''</color>  |  <color magenta>''/overlay''</color>   |  //none//  | //none// |
+^ filesystem   |  //none//                    |  //none//                     |  [[docs:techref:filesystems#SquashFS]]  |  [[docs:techref:filesystems#JFFS2]]  |  //none//  | //none// |
+
+==== Photos ====
+{{:media:aruba:ap-105_front.jpg?400|}} {{:media:aruba:ap-105_back.jpg?400|}}
+
+{{:media:aruba:ap-105_board_front.jpg?400|}} {{:media:aruba:ap-105_board_back.jpg?400|}}
+
+==== Opening the case ====
+
+To Open the AP-105, just remove the 4x T6 screws from the back and the case splits in two.
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+Note that the AP-105 has a Cisco Console Cable style Console port on the back of the device. To use, just connect a Cisco console cable and use the configuration mentioned below.
+
+^ Serial connection parameters for Aruba AP-105 | 9600, 8N1 |
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>
+APBoot 1.2.4.4 (build 26618)
+Built: 2011-01-07 at 13:42:04
+
+Model: AP-10x 
+CPU:   AR7161 revision: A2
+Clock: 680 MHz, DDR clock: 340 MHz, Bus clock: 170 MHz
+DRAM:  128 MB 
+POST1: passed 
+Copy:  done   
+Flash: 16 MB  
+PCI:   scanning bus 0 ...
+       dev fn venID devID class  rev    MBAR0    MBAR1    MBAR2    MBAR3
+       00  00  168c  0029 00002   01 10000000 00000000 00000000 00000000
+       01  00  168c  0029 00002   01 10010000 00000000 00000000 00000000
+Net:   eth0   
+Radio: ar922x#0, ar922x#1
+
+Hit <Enter> to stop autoboot:  0
+Checking image @ 0xbf100000
+Invalid image format version: 0xffffffff
+Checking image @ 0xbf800000
+
+Image is signed; verifying checksum... passed
+Signer Cert OK
+Policy Cert OK
+RSA signature verified.
+ELF file is 32 bit
+Loading .text @ 0x80e00000 (5034552 bytes)
+Loading .data @ 0x812cd240 (32 bytes)
+Clearing .bss @ 0x812cd260 (16 bytes)
+## Starting application at 0x80e00000 ...
+Uncompressing...............................................
+
+
+Aruba Networks
+ArubaOS Version 6.5.3.3 (build 61785 / label #61785)
+Built by p4build@chios on 2017-10-06 at 03:44:12 PDT (gcc version 4.3.3)
+CPU Rev: aa   
+71x CPU
+Flash variant: default
+Cache parity protection disabled
+Using 340.000 MHz high precision timer. cycles_per_jiffy=680000
+Memory: 121344k/131072k available (1720k kernel code, 9656k reserved, 791k data, 4252k init, 0k highmem)
+ available.   
+detected lzma initramfs
+initramfs: LZMA lc=3,lp=0,pb=2,dictSize=8388608,origSize=20537344
+LZMA initramfs by Ming-Ching Tiew <mctiew@yahoo.com> ..........................................................................................................................................................................................................................................................................................................................
+AR7100 GPIOC major 0
+wdt: registered with refresh
+Enabling Watchdog
+Talisker RSSI LED initialization
+Creating 1 MTD partitions on "ar7100-nor0":
+0x00000000-0x01000000 : "flash"
+i2c /dev entries driver
+i2c-talisker: using default base 0x18040000
+AD7416 driver probing for devices on AR7100 I2C
+.<6>lo: Disabled Privacy Extensions
+IPv6 over IPv4 tunneling driver
+
+Starting Kernel SHA1 KAT ...Completed Kernel SHA1 KAT
+Starting Kernel HMAC-SHA1 KAT ...Completed Kernel HMAC-SHA1 KAT
+Starting Kernel DES KAT ...Completed Kernel DES KAT
+Starting Kernel AES KAT ...Completed Kernel AES KAT
+
+Starting Kernel AESGCM KAT ...Completed Kernel AESGCM KAT
+
+Domain Name: arubanetworks.com
+No panic info available
+apfcutil: sector CACHE: Cache uninitialized
+apfcutil: sector FAT: Cache uninitialized
+Testing TPM... Passed
+apfcutil: sector RAP: Cache uninitialized
+apfcutil -c RAP: Uninitialized. Initializing.........
+apfcutil: sector MESH Prov: Cache uninitialized
+ag7100_mod: module license 'unspecified' taints kernel.
+AG7100: Length per segment 512
+AG7100: Max segments per packet 4
+AG7100: Max tx descriptor count    400
+AG7100: Max rx descriptor count    252
+AG7100: fifo cfg 3 018001ff
+AG7100CHH: Mac address for unit 0
+AG7100CHH: d8:c7:c8:c9:6d:2a
+AG7100: cfg1 0xf cfg2 0x7014
+ATHRF1: Port 0, Neg Success
+ATHRF1: unit 0 phy addr 0 ATHRF1: reg0 3100
+AP xml model 39, num_radios 2 (jiffies 13187)
+apType 39 hw_opmode 0
+radio 0: band 1 ant 0 max_ssid 8
+radio 1: band 0 ant 0 max_ssid 8
+init_asap_mod: installation:0
+firewall cpu: core-0
+Starting watchdog process...
+Getting an IP address...
+ag7100_ring_alloc Allocated 4800 at 0x81238000
+ag7100_ring_alloc Allocated 3024 at 0x87b82000
+AG7100: cfg1 0xf cfg2 0x7014
+ATHRF1: Port 0, Neg Success
+ATHRF1: unit 0 phy addr 0 ATHRF1: reg0 3100
+AG7100: unit 0 phy is up...RGMii 1000Mbps full duplex
+AG7100: pll reg 0x18050010: 0x110000  AG7100: cfg_1: 0x1ff0000
+AG7100: cfg_2: 0x3ff
+AG7100: cfg_3: 0x18001ff
+AG7100: cfg_4: 0xffff
+AG7100: cfg_5: 0xfffef
+AG7100: done cfg2 0x7215 ifctl 0x0 miictrl 0x22
+Writing 4
+10.27.XXX.XXX 255.255.255.0 10.27.XXX.XXX
+Running ADP...
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+U-Boot 1.1.4-g62c452c1 (May 11 2019 - 21:29:36)
+
+AP-10x (ar7100) U-boot 0.0.1
+DRAM:  128 MB
+Flash: 16 MB
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ag7100_enet_initialize...
+ATHRF1E: Port 0, Neg Success
+ATHRF1E: unit 0 phy addr 0 ATHRF1E: reg0 1000
+eth0: 6c:f3:7f:ca:00:ba
+eth0 up
+eth0
+RESET is un-pushed
+Hit any key to stop autoboot:  0
+## Booting image at bf040000 ...
+   Image Name:   MIPS OpenWrt Linux-5.10.176
+   Created:      2023-04-27  20:28:15 UTC
+   Image Type:   MIPS Linux Kernel Image (uncompressed)
+   Data Size:    2264867 Bytes =  2.2 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum ... OK
+OK
+
+Starting kernel ...
+
+
+
+OpenWrt kernel loader for AR7XXX/AR9XXX
+Copyright (C) 2011 Gabor Juhos <juhosg@openwrt.org>
+Looking for OpenWrt image... found at 0xbf042000
+Decompressing kernel... done!
+Starting kernel at 80060000...
+
+[    0.000000] Linux version 5.10.176 (builder@buildhost) (mips-openwrt-linux-musl-gcc (OpenWrt GCC 11.2.0 r20134-5f15225c1e) 11.2.0, GNU ld (GNU Binutils) 2.37) #0 Thu Apr 27 20:28:15 2023
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019374 (MIPS 24Kc)
+[    0.000000] MIPS: machine is Aruba AP-105
+[    0.000000] SoC: Atheros AR7161 rev 2
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: console=ttyS0,9600 rootfstype=squashfs,jffs2
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 121096K/131072K available (5884K kernel code, 605K rwdata, 748K rodata, 1200K init, 210K bss, 9976K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 51
+[    0.000000] CPU clock: 680.000 MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 5621354254 ns
+[    0.000008] sched_clock: 32 bits at 340MHz, resolution 2ns, wraps every 6316128254ns
+[    0.092878] Calibrating delay loop... 452.19 BogoMIPS (lpj=2260992)
+[    0.227858] pid_max: default: 32768 minimum: 301
+[    0.283296] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.370795] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.465484] dyndbg: Ignore empty _ddebug table in a CONFIG_DYNAMIC_DEBUG_CORE build
+[    0.559739] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.677490] futex hash table entries: 256 (order: -1, 3072 bytes, linear)
+[    0.758857] pinctrl core: initialized pinctrl subsystem
+[    0.825496] NET: Registered protocol family 16
+[    0.879396] thermal_sys: Registered thermal governor 'step_wise'
+[    1.182737] PCI host bridge /ahb/apb/pcie-controller@17010000 ranges:
+[    1.331810]  MEM 0x0000000010000000..0x0000000016ffffff
+[    1.394347]   IO 0x0000000000000000..0x0000000000000000
+[    1.493043] gpio-5 (sda): enforced open drain please flag it properly in DT/ACPI DSDT/board file
+[    1.598342] gpio-4 (scl): enforced open drain please flag it properly in DT/ACPI DSDT/board file
+[    1.704645] i2c-gpio i2c: using lines 5 (SDA) and 4 (SCL)
+[    1.770628] PCI host bridge to bus 0000:00
+[    1.819721] pci_bus 0000:00: root bus resource [mem 0x10000000-0x16ffffff]
+[    1.902010] pci_bus 0000:00: root bus resource [io  0x0000]
+[    1.968734] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    2.050030] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    2.145304] pci 0000:00:11.0: [168c:0029] type 00 class 0x028000
+[    2.217225] pci 0000:00:11.0: reg 0x10: [mem 0x00000000-0x0000ffff]
+[    2.292305] pci 0000:00:11.0: PME# supported from D0 D3hot
+[    2.358992] pci 0000:00:12.0: [168c:0029] type 00 class 0x028000
+[    2.430950] pci 0000:00:12.0: reg 0x10: [mem 0x00000000-0x0000ffff]
+[    2.506006] pci 0000:00:12.0: PME# supported from D0 D3hot
+[    2.572980] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[    2.652261] pci 0000:00:11.0: BAR 0: assigned [mem 0x10000000-0x1000ffff]
+[    2.733522] pci 0000:00:12.0: BAR 0: assigned [mem 0x10010000-0x1001ffff]
+[    2.822637] clocksource: Switched to clocksource MIPS
+[    2.884249] NET: Registered protocol family 2
+[    2.936701] IP idents hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    3.024001] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    3.124068] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    3.215823] TCP bind hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    3.300217] TCP: Hash tables configured (established 1024 bind 1024)
+[    3.376452] UDP hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    3.454623] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    3.538240] NET: Registered protocol family 1
+[    3.590399] PCI: CLS 0 bytes, default 32
+[    3.643022] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    3.724595] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    3.794489] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    3.913093] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 251)
+[    4.003624] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    4.081837] printk: console [ttyS0] disabled
+[    4.133082] 18020000.uart: ttyS0 at MMIO 0x18020000 (irq = 10, base_baud = 10625000) is a 16550A
+[    4.238356] printk: console [ttyS0] enabled
+[    4.238356] printk: console [ttyS0] enabled
+[    4.338433] printk: bootconsole [early0] disabled
+[    4.338433] printk: bootconsole [early0] disabled
+[    4.466646] spi-nor spi0.0: mx25l12805d (16384 Kbytes)
+[    4.528277] 4 fixed-partitions partitions found on MTD device spi0.0
+[    4.604479] OF: Bad cell count for /spi@1f000000/flash@0/partitions
+[    4.679566] OF: Bad cell count for /spi@1f000000/flash@0/partitions
+[    4.755780] OF: Bad cell count for /spi@1f000000/flash@0/partitions
+[    4.830868] OF: Bad cell count for /spi@1f000000/flash@0/partitions
+[    4.907458] Creating 4 MTD partitions on "spi0.0":
+[    4.964864] 0x000000000000-0x000000040000 : "u-boot"
+[    5.029624] 0x000000040000-0x000000fe0000 : "firmware"
+[    5.092514] 2 uimage-fw partitions found on MTD device firmware
+[    5.163552] Creating 2 MTD partitions on "firmware":
+[    5.223003] 0x000000000000-0x000000230000 : "kernel"
+[    5.284808] 0x000000230000-0x000000fa0000 : "rootfs"
+[    5.345184] mtd: setting mtd3 (rootfs) as root device
+[    5.406677] 1 squashfs-split partitions found on MTD device rootfs
+[    5.480810] 0x0000005c0000-0x000000fa0000 : "rootfs_data"
+[    5.547161] 0x000000fe0000-0x000000ff0000 : "hwinfo"
+[    5.607679] 0x000000ff0000-0x000001000000 : "u-boot-env"
+[    6.056533] ag71xx 19000000.eth: connected to PHY at mdio.0:00 [uid=004dd04e, driver=Generic PHY]
+[    6.163534] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode: rgmii
+[    6.237990] i2c /dev entries driver
+[    6.281778] NET: Registered protocol family 10
+[    6.344014] Segment Routing with IPv6
+[    6.387980] NET: Registered protocol family 17
+[    6.441245] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    6.596626] 8021q: 802.1Q VLAN Support v1.8
+[    6.666445] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    6.754581] Freeing unused kernel memory: 1200K
+[    6.808850] This architecture does not have kernel memory protection.
+[    6.886056] Run /sbin/init as init process
+[    8.031877] init: Console is alive
+[    8.073191] init: - watchdog -
+[    9.806766] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    9.952083] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[   10.049200] init: - preinit -
+[   12.454090] random: jshn: uninitialized urandom read (4 bytes read)
+[   13.093486] random: jshn: uninitialized urandom read (4 bytes read)
+[   13.199150] random: jshn: uninitialized urandom read (4 bytes read)
+[   13.472822] eth0: link up (1000Mbps/Full duplex)
+[   13.542850] random: procd: uninitialized urandom read (4 bytes read)
+Press the [f] key and hit [enter[   13.668729] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   18.123772] mount_root: jffs2 not ready yet, using temporary tmpfs overlay
+[   18.210345] urandom-seed: Seed file not found (/etc/urandom.seed)
+[   18.666488] eth0: link down
+[   18.712294] procd: - early -
+[   18.747835] procd: - watchdog -
+[   19.579180] procd: - watchdog -
+[   19.667503] procd: - ubus -
+[   20.004416] random: ubusd: uninitialized urandom read (4 bytes read)
+[   20.083750] random: ubusd: uninitialized urandom read (4 bytes read)
+[   20.160564] random: ubusd: uninitialized urandom read (4 bytes read)
+[   20.240358] procd: - init -
+Please press Enter to activate this console.
+[   21.183947] random: ubusd: uninitialized urandom read (4 bytes read)
+[   21.260434] random: ubus: uninitialized urandom read (4 bytes read)
+[   21.831849] random: jshn: uninitialized urandom read (4 bytes read)
+[   22.166647] kmodloader: loading kernel modules from /etc/modules.d/*
+[   22.880119] urngd: v1.0.2 started.
+[   22.938253] Loading modules backported from Linux version v5.15.92-0-ge515b9902f5f
+[   23.029032] Backport generated by backports.git v5.15.92-1-0-gdfe0f60c
+[   23.665340] random: crng init done
+[   23.706137] random: 24 urandom warning(s) missed due to ratelimiting
+[   23.824743] PPP generic driver version 2.4.2
+[   23.879473] NET: Registered protocol family 24
+[   23.972021] ath9k 0000:00:11.0: enabling device (0000 -> 0002)
+[   24.849351] ieee80211 phy0: Atheros AR9280 Rev:2 mem=0xb0000000, irq=15
+[   24.929018] ath9k 0000:00:12.0: enabling device (0000 -> 0002)
+[   25.817947] ieee80211 phy1: Atheros AR9280 Rev:2 mem=0xb0010000, irq=16
+[   27.393194] kmodloader: done loading kernel modules from /etc/modules.d/*
+
+
+
+BusyBox v1.35.0 (2023-04-27 20:28:15 UTC) built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt 22.03.5, r20134-5f15225c1e
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@OpenWrt:/# [   71.155176] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   71.402742] jffs2_build_filesystem(): unlocking the mtd device...
+[   71.402814] done.
+[   71.499941] jffs2_build_filesystem(): erasing all blocks after the end marker...
+[   73.053735] br-lan: port 1(eth0) entered blocking state
+[   73.206031] br-lan: port 1(eth0) entered disabled state
+[   73.268969] device eth0 entered promiscuous mode
+[   77.248430] eth0: link up (1000Mbps/Full duplex)
+[   77.517628] br-lan: port 1(eth0) entered blocking state
+[   77.580280] br-lan: port 1(eth0) entered forwarding state
+[   77.819257] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+
+root@OpenWrt:/#
+
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+While the device does have an i2c TPM, there is currently no mainline linux driver for this specific model. (Atmel AT97SC3203S TPM)
+
+If you want to have the serial number of the device as part of the hostname, i.e. for a large deployment, an example to put in your uci-defaults:
+<code>
+serial="-$(dd if=/dev/mtd5ro skip=36 count=9 bs=1)"
+model="-AP105"
+prefix="OpenWrt"
+hostname=$prefix$model$serial
+uci set system.@system[0].hostname=$hostname
+uci commit
+echo $hostname > /proc/sys/kernel/hostname
+
+</code>
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ath79 ar7161 16flash 128RAM 1port gigabitethernet 2WNIC mips ceiling}}

@@ -1,0 +1,571 @@
+====== MikroTik Routerboard RB493G ======
+
+The RB493G has 9 Gigabit Ethernet ports and 3 mini-PCI slots: add a mini-PCI card for 802.11 a/b/g/n 2.4GHz/5GHz WiFi.\\ 
+You have to pretty much build-your-own (buy the board, snap in the WiFi, screw it all into a sturdy metal case), but it's worth this small effort to end up with such a highly capable OpenWrt-compatible 2.4/5GHz WiFi router.\\ 
+There are vendors that will sell you an RB493G fully assembled with WiFi, then all you need to do is install OpenWrt to have a powerhouse router.
+
+**VLANs on the RB493G**\\ 
+There is a lot of confusion/mis-information about this router's VLAN support.  It DOES support 802.1Q Trunking with OpenWrt version 18 in spite of outdated Internet assertions that it does not.\\ 
+This device uses two Atheros AR8316 switch chips.  AR8316 VLAN capabilities: 
+  * Supports 802.1Q 'Trunk' switching which allows you to put one untagged VLAN (the 'native' VLAN1) and any number of tagged VLANs on the same port.
+  * Does NOT support 'hybrid' or 'general' VLAN switching which allows you to map any VLAN, tagged or untagged, to/from any port.
+In order to set up a segregated guest network using VLANs, an 802.1Q Trunk is sufficient: the lack of 'hybrid' VLAN switching on the RB493G is of minimal consequence, unless you are attempting to use it as a managed switch rather than a router/firewall.
+
+See the Mikrotik documentation: [[https://wiki.mikrotik.com/wiki/Manual:Switch_Chip_Features]] for an explanation of trunk, access and hybrid port capabilities for the switch chips.\\ 
+The biggest fault of the Mikrotik switch documentation is that it does not clearly state that an 802.1Q Trunk DOES allow tagged and untagged traffic on the same port when the RB493G is used as a router.
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^RB493G$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^RB493G$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^RB493G$"}
+} -->
+
+
+==== Getting Started: Refer to the Common Mikrotik Procedures for Installing OpenWrt ====
+See [[toh:mikrotik:common|Common Procedures for Mikrotik Router Boards]] for a general discussion of the procedures to install OpenWrt on Mikrotik RouterBoards.\\ 
+The Common Procedures apply directly to the RB493G and are generally kept more up-to-date than these product-specific wiki pages, so it is a good idea to initially refer to the Common Procedures.\\ 
+For example, the Common Procedures have been fully updated to reflect the considerably simplified Version 18 procedures to install OpenWrt, whereas many of these product-specific wiki's have yet to be updated.
+
+==== First Things First: Don't Lose Your RouterOS License ====
+Before you start installing OpenWrt, save your RouterOS License .key file.  This will allow you to use Mikrotik's NetInstall to re-install RouterOS if something goes wrong installing OpenWrt.\\   
+Save your license by using Mikrotik WinBox: it's under System->License->Export Key. The Mikrotik WebFig web interface does not export license files, you must use WinBox.
+
+==== Flash Layout ====
+Please check out the article [[docs:techref:flash.layout]]. It contains an example and a couple of explanations.
+<code>root@OpenWrt:/# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 0000b000 00001000 "routerboot"
+mtd1: 00001000 00001000 "hard_config"
+mtd2: 00002000 00001000 "bios"
+mtd3: 00001000 00001000 "soft_config"
+mtd4: 00040000 00020000 "booter"
+mtd5: 003c0000 00020000 "kernel"
+mtd6: 07c00000 00020000 "ubi"</code>
+The two partitions used to install OpenWrt are kernel and ubi. Their sizes are in bytes with hex, which translates to 3840KiB for kernel and 126976KiB for ubi.
+
+==== Netboot via DHCP/BOOTP/TFTP ====
+
+The Mikrotik RouterBoot bootloader will use DHCP/BOOTP/TFTP to load an LZMA compressed image in ELF format and execute it.
+
+Select one of the following approaches to set up a DHCP/BOOTP/TFTP Server:
+
+=== Use Tiny PXE as the netboot server ===
+
+The freeware Tiny PXE project is a standalone portable Windows application that implements a DHCP server, BOOTP server, and TFTP server.  This is possibly the easiest way to netboot a RB493G since Tiny PXE implements rfc951 BOOTP.
+
+With rfc951 BOOTP, there is no need to enter the RouterBoot console and change the boot protocol from BOOTP to DHCP.  Tiny PXE will directly respond to the BOOTP request of the RouterBoard.
+
+To enable rfc951 BOOTP in Tiny PXE, the option 'rfc951=1' must be set in the [dhcp] section of config.ini file of Tiny PXE.
+
+Download the initramfs-lzma.elf file to your PC, enter it as the Boot file name in Tiny PXE, select your 192.168.88.X connection as the Option 54 DHCP server (be sure your PC is set to a static IP in the 192.168.88.2-192.168.88.254 range), and put Tiny PXE online.
+
+If you power up the RouterBoard and continue holding the reset button, it will automatically search for a BOOTP server: no need to change any of the RouterBoot settings from their default settings with this approach.
+
+When using BOOTP as the boot protocol, be sure to disconnect from any other network devices (routers) since BOOTP has no provisions for Proxy DHCP or authoritative DHCP across multiple simultaneous BOOTP servers: there must be only one DHCP/BOOTP/TFTP server running on the network.
+
+=== Use another (existing) OpenWrt router as the netboot server ===
+
+This is an easy way to achieve a live boot of your RB493G, but it requires that you already have an OpenWrt router with net-access available. You will need to obtain an elf image for the RB493G and make it available to the other router. If you have enough memory available on the other router, you can put the image on the /tmp folder there, e.g., like this:
+<code>ssh root@192.168.1.1
+wget --directory-prefix=/srv/tftp http://downloads.openwrt.org/releases/18.06.1/targets/ar71xx/mikrotik/openwrt-18.06.1-ar71xx-mikrotik-vmlinux-initramfs-lzma.elf</code>
+Now enable dnsmasq's built in tftp server, and point it to the correct locations, e.g., like this:
+{{ media:mikrotik:tftpnetbootconfig.png?630 |Setting up netboot in Luci, note the full path for the filename. }}
+That's it, Save and apply, connect the Eth1/WAN port of RB493G (the Ethernet port near the serial connector) to one of the other routers LAN ports, and continue to [[#setup_the_routerboard_to_boot_from_the_network|Setup the Routerboard]].
+
+Make sure you assigned a static lease for the MAC address of the Routerboards eth1 port, otherwise bootp wont work.
+
+=== Use a Debian computer as the netboot server ===
+
+You need a DHCP/BOOTP and TFTP server on your host machine. We use ''dnsmasq'' here since it can provide both services. Install dnsmasq with:
+<code>sudo apt-get install dnsmasq</code>
+
+
+Changes in /etc/dnsmasq.d/rb493g.conf:
+
+  - make sure the LAN has internet access: <code>ping openwrt.org</code>
+  - only listen on the interface which is directly connected to the same LAN like the WAN-port (Eth1/PoE) of the RouterBoard via a layer2 switch, e.g. <code>interface=eth0</code>
+  - set default gateway, e.g. <code>dhcp-option=option:router,192.168.177.1</code>
+  - allow a DHCP range which is within netmask of your LAN but does not conflict with other DHCP-service, e.g. <code>dhcp-range=192.168.177.2,192.168.177.5,2m</code>
+  - allocate an IP address to the board, e.g. (replace the XX with the MAC address of your board!) <code>dhcp-host=00:0C:42:XX:XX:XX,192.168.177.2</code>
+  - make dnsmasq authoritative to overrule the DHCP server of your router<code>dhcp-authoritative</code>
+  - enable dnsmasq's built-in TFTP-server <code>enable-tftp</code>
+  - set the root directory-for files available via TFTP. <code>tftp-root=/srv/tftp</code>
+  - set filename of kernel image for tftp-server/BOOTP:<code>dhcp-boot=/srv/tftp/openwrt-18.06.1-ar71xx-mikrotik-vmlinux-initramfs-lzma.elf</code>
+
+Download 18.06.1 initramfs-lzma.elf kernel image into the root-directory of the TFTP-server: <code>sudo wget --directory-prefix=/srv/tftp http://downloads.openwrt.org/releases/18.06.1/targets/ar71xx/mikrotik/openwrt-18.06.1-ar71xx-mikrotik-vmlinux-initramfs-lzma.elf</code>
+
+Finally restart dnsmasq:
+<code>sudo /etc/init.d/dnsmasq restart</code>
+
+
+==== Setup the RouterBoard to boot from the network ====
+
+=== Option 1 - Use the serial console terminal to force a netboot ===
+
+  - Connect to the serial COM port of the RB493G with a null modem adapter (Baud 115200, 8 bits, no parity, 1 stop bit, no flow control)
+  - Open a console terminal window on the COM port using software such as PuTTY (or a Linux terminal window)
+  - Press a key in the console terminal window within two seconds after powering up the board (you will see a prompt)
+  - Press **o** to change the boot device
+  - Press **1** to boot from ethernet once
+  - Press **p** to change the boot protocol.  Skip this step and next step if using an rfc951 DHCP/BOOTP/TFTP netboot server such as Tiny PXE (with rfc951=1 in the [dhcp] section of config.ini file)
+  - Press **2** to boot using DHCP (instead of the default BOOTP)  
+  - Press **x** to leave setup
+
+=== Option 2 - Use the Reset button to force a netboot  ===
+
+You can force the RouterBoard to attempt a netboot by simply pressing and holding the Reset button when powering up:
+
+  - Power down the RouterBoard
+  - Press and hold the Reset button
+  - Power up the RouterBoard
+  - Once the RouterBoard beeps, there is no need to continue holding the Reset button (the beep indicates it is now performing a netboot or loading from flash)
+
+If the attempted ethernet netboot fails, it will then boot from flash (just like the 'boot from ethernet once' option chosen above in Option 1).
+Note this method will use the boot protocol already set in Option 1 above.  The default boot protocol is BOOTP, not DHCP, so the RouterBoard will attempt a BOOTP netboot if the Reset button is held without performing the boot protocol change described in Option 1 ('p', then '2').
+If your DHCP/BOOTP/TFTP netboot server is rfc951 BOOTP-capable, using the Reset button is a very easy way to force the RouterBoard to netboot right out of the package.
+
+If everything is setup correctly it should look like:
+
+<code>
+\0x00
+
+RouterBOOT booter 2.29
+
+RouterBoard 493G
+
+CPU frequency: 680 MHz
+  Memory size: 256 MB
+
+Press any key within 2 seconds to enter setup..
+writing settings to flash... OK
+trying bootp protocol... OK
+Got IP address: 192.168.177.2
+resolved mac address 00:14:0B:3F:BB:C3
+Gateway: 192.168.177.1
+transfer started ............................... transfer ok, time=1.46s
+setting up elf image... OK
+jumping to kernel code
+[    0.000000] Linux version 3.3.8 (renne@renne) (gcc version 4.6.3 20120201 (prerelease) (Linaro GCC 4.6-2012.02) ) #1 Mon Sep 17 12:57:18 CEST 2012
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019374 (MIPS 24Kc)
+[    0.000000] SoC: Atheros AR7161 rev 2
+[    0.000000] Clocks: CPU:680.000MHz, DDR:340.000MHz, AHB:170.000MHz, Ref:40.000MHz
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 10000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00010000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] Early memory PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00010000
+
+...
+
+Please press Enter to activate this console. [   21.710000] device eth0 entered promiscuous mode
+[   21.720000] device eth1.1 entered promiscuous mode
+[   21.720000] device eth1 entered promiscuous mode
+[   23.110000] eth0: link up (1000Mbps/Full duplex)
+[   23.130000] br-lan: port 1(eth0) entered forwarding state
+[   23.130000] br-lan: port 1(eth0) entered forwarding state
+[   23.600000] eth1: link up (1000Mbps/Full duplex)
+[   23.610000] br-lan: port 2(eth1.1) entered forwarding state
+[   23.620000] br-lan: port 2(eth1.1) entered forwarding state
+[   25.130000] br-lan: port 1(eth0) entered forwarding state
+[   25.620000] br-lan: port 2(eth1.1) entered forwarding state
+</code>
+
+Press **Enter** and you are in the console of OpenWRT running from RAM and booted via DHCP/BOOTP/TFTP.
+
+Note that you may need to set dns servers to get net-access while running the netbooted image. Enter a working dns for you in
+<code>vi /tmp/resolv.conf.auto</code>
+then restart dnsmasq to make the change effective (cross-check that you indeed have net-access afterwords):
+<code>/etc/init.d/dnsmasq restart</code>
+
+==== Permanent Installation Into NAND Flash ====
+
+You need a working **Netboot** first, see above.
+
+With the 18.06 merger of openwrt/LEDE and the addition of the Unsorted Block Images (UBI) code to the Mikrotik code base described here [[https://git.openwrt.org/?p=openwrt/openwrt.git;a=commit;h=9db9072d6767e5910e01b8962171c89359ab7a14|Introduce sysupgrade + 64MB/Large NAND sysupgrade images]], this has become much simpler than previous versions of openwrt installation.
+
+After loading the initramfs-lzma.elf image using netboot, connect to any of the LAN ports (ether2 through ether9) on the RB493G, login to LUCI (default at 192.168.1.1), and perform a 'Flash image' from System->Backup/Flash Firmware
+using the nand-large-squashfs-sysupgrade.bin file.  
+
+The other .bin files in the openwrt releases folder, such as this 18.06.1 folder http://downloads.openwrt.org/releases/18.06.1/targets/ar71xx/mikrotik/, are NOT used for the RB493G: use only the nand-large version for the RB493G, which includes support for any optional (current, 2018) WiFi cards.
+
+There is no need to explicitly erase the flash as indicated in prior instructions here and wget2nand has been deprecated with this new release: the sysupgrade .bin file used by 'Flash image' in LuCI handles all these flash details now.
+==== Upgrading OpenWrt ====
+
+Use the built-in openwrt 'Flash image' in the OpenWrt LuCI web interface to upgrade OpenWRT as indicated in the **Permanent Installation** guide above.  With this latest version of OpenWrt, the same sysupgrade .bin file and procedure is used for the initial flash installation into NAND or subsequent upgrades.
+
+==== An installation experience ====
+=== Providing tftp boot and images with an existing openwrt router ===
+== On the existing openwrt router ==
+File ''/etc/config/dhcp''
+<file>
+config dnsmasq
+        ...
+        option 'enable_tftp' '1'
+        option 'tftp_root' '/tmp/tftpboot/'
+
+config 'boot' 'pxe_mikrotik_rb493g'
+        option 'filename' 'vmlinux'
+        option 'servername' 'routersetup'
+        option 'serveraddress' '192.168.88.254'
+
+config 'host' 'mikrotik'
+        option 'name'   'mikrotik'
+        option 'mac'    '<the ip address of the eth1 port on the mikrotik> You can find it from the mikrotik winbox interface'
+        option 'ip'     '192.168.88.1'
+
+config dhcp 'lan'
+        option interface 'lanmikrotik'
+        option start '10'
+        option limit '150'
+        option leasetime '10m'
+
+...
+</file>
+
+File ''/etc/config/network''
+<file>
+...
+
+config interface 'lan'
+        option type 'bridge'
+        option ifname 'eth0.0'
+        option proto 'static'
+        option ipaddr '192.168.1.254'
+        option netmask '255.255.255.0'
+
+config interface 'lanmikrotik'
+        option ifname 'br-lan' #it is an alias interface
+        option proto 'static'
+        option ipaddr '192.168.88.254'
+        option netmask '255.255.255.0'
+        
+...
+</file>
+
+We need to provide files. Therefore:
+<file>
+cd /tmp/
+mkdir tftpboot
+wget 'http://downloads.openwrt.org/releases/18.06.1/targets/ar71xx/mikrotik/openwrt-18.06.1-ar71xx-mikrotik-vmlinux-initramfs-lzma.elf'
+#this image is needed for booting from the ram
+
+ln -s openwrt-18.06.1-ar71xx-mikrotik-vmlinux-initramfs-lzma.elf vmlinux
+# to match the bootloader requests
+</file>
+
+  * Connect the eth1 port of the Mikrotik to the lan ports of the openwrt router.
+  * Unplug the power cable of the Mikrotik.
+  * With the proper tool press the reset button near the eth1 interface on the Mikrotik and hold it.
+  * Plug in the Mikrotik power cable.
+  * Wait for the boot of the Mikrotik (careful, if the Mikrotik has a license level 0 won't be possible to boot in this way).
+  * After 10-15 seconds from the boot (after the green light extinguishes), release the button.
+  * Now connect the port "eth2" on the mikrotik to a proper device, such as a PC. It should show the openwrt interface, reachable on 192.168.1.1
+  * Use SysUpgrade from LUCI to permanently write the nand-large-squashfs-sysupgrade.bin kernel/ubi image into the NAND of the RB493G
+
+
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name          ^ Description   ^ Default configuration   ^
+| br-lan (eth0, eth1.1)   | LAN           | 192.168.1.1/24          |
+| eth1.2                  | WAN           | DHCP                    |
+
+
+==== Switch Ports (for VLANs) ====
+
+The default switch configuration is:
+^ Board      ^ Switch   ^ Port   ^ VLAN   ^ Interface   ^
+|            |    0     |  CPU   |   1    |             |
+| Eth5       |    0     |   1    |   1    |    eth0     |
+| Eth2       |    0     |   2    |   1    |    eth0     |
+| Eth3       |    0     |   3    |   1    |    eth0     |
+| Eth4       |    0     |   4    |   1    |    eth0     |
+|            |    0     |   5    |  off   |             |
+|            |    1     |  CPU   |  1/2   |             |
+| Eth9       |    1     |   1    |   1    |   eth1.1    |
+| Eth6       |    1     |   2    |   1    |   eth1.1    |
+| Eth8       |    1     |   3    |   1    |   eth1.1    |
+| Eth7       |    1     |   4    |   1    |   eth1.1    |
+| Eth1/PoE   |    1     |   5    |   2    |   eth1.2    |
+
+=== ''/etc/config/network'' every port usable as single port ===
+<file>
+config interface 'loopback'
+	     option ifname 'lo'
+	     option proto 'static'
+	     option ipaddr '127.0.0.1'
+	     option netmask '255.0.0.0'
+
+config switch
+	     option name 'switch0'
+	     option reset '1'
+	     option enable_vlan '1'
+
+# eth5
+config switch_vlan
+	     option device 'switch0'
+	     option vlan '1'
+	     option ports '0t 1'
+
+# eth2
+config switch_vlan
+        option device 'switch0'
+        option vlan '2'
+        option ports '0t 2'
+
+# eth3
+config switch_vlan
+        option device 'switch0'
+        option vlan '3'
+        option ports '0t 3'
+
+# eth4
+config switch_vlan
+        option device 'switch0'
+        option vlan '4'
+        option ports '0t 4'
+
+config switch
+	      option name 'switch1'
+	      option reset '1'
+	      option enable_vlan '1'
+
+# eth9
+config switch_vlan
+	      option device 'switch1'
+	      option vlan '1'
+	      option ports '0t 1'
+
+# eth6
+config switch_vlan
+        option device 'switch1'
+        option vlan '2'
+        option ports '0t 2'
+
+# eth8
+config switch_vlan
+        option device 'switch1'
+        option vlan '3'
+        option ports '0t 3'
+
+# eth7
+config switch_vlan
+        option device 'switch1'
+        option vlan '4'
+        option ports '0t 4'
+
+# eth1
+config switch_vlan
+        option device 'switch1'
+        option vlan '5'
+        option ports '0t 5'
+</file>
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The Routerboard 493G has one software reset button.
+^ BUTTON   ^ Event   ^
+| Reset    | reset   |
+
+
+==== Micro-SD-Card-Reader ====
+
+The SD-card reader is now supposed to work, but the needed patch is currently not in trunk. You will find the ticket with history here: [[https://dev.openwrt.org/ticket/12349]]
+
+Hence precompiled images with working SD-card reader is not yet available from the OpenWrt server. Until that is resolved, you can find compiled kernel and rootfs here:
+[[http://ubuntuone.com/1bZTk4vlKwroZezcdeJa4l]]
+[[http://ubuntuone.com/2V1BoearwvvMOsNzUz7mcx]]
+
+Provide them on a web-server, or copy them manually over to the kernel and rootfs partitions on the nand.
+
+==== USB ====
+
+The USB-port of the RB493G is a **shameful chapter of Mikrotik engineering**.
+
+The USB-standard demands a 5VDC-power-supply on the USB-socket, but Mikrotik tried to save a few cents for a voltage converter. So one has to buy a power-injector from Mikrotik and any 5VDC-power-supply. Pray the plug of your power-supply fits into the power-injector! Just using a powered USB-hub doesn't solve the problem, as USB-hubs only enumerate/register with the host-controller when 5VDC is supplied by the host-controller.
+
+Reliable vendors just update their PCB-layout, but Mikrotik sells that **non-standard/sub-standard** PCB-layout **for years**, now.
+
+The Routerboard has a OHCI-controller for USB 1.x and a EHCI-controller for USB 2.0.
+
+See [[docs:guide-user:storage:usb-installing]] for configuration.
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set|Architecture]]   | [[wp>MIPS architecture|MIPS]]-BE                    |
+^ Vendor                                | [[wp>Mikrotik]] / [[wp>Qualcomm Atheros]]           |
+^ [[docs:techref:bootloader]]           | MikroTik RouterBoot (Rescue- and Main-Bootloader)   |
+^ Default Operating System              | MikroTik RouterOS v4, Level5-license                |
+^ [[docs:techref:hardware:soc|System-On-Chip]]   | Atheros AR7161 rev 2 |
+^ [[docs:techref:hardware:cpu|CPU]]/Speed        | MIPS 24Kc rev 00019374 680/800 MHz |
+^ Flash-Chip   | Samsung NAND 128MiB 3,3V 8-bit or\\ ST Micro NAND 01GW3B2CN6 or\\ Toshiba NAND 128MiB 3,3V 8-bit |
+^ Flash size   | 128 MiB NAND-Flash                 |
+^ Micro-SD     | 1x Micro-SD-socket (probably SPI)  |
+^ RAM          | 256 MiB DDR-SDRAM                  |
+^ Wireless     | optional via 3x Mini-PCI IIIA/B    |
+^ Ethernet     | 9x 10/100/1000Base-T(X) (2x Atheros AR8316-5-port-switch with VLAN support [[docs:techref:swconfig]] |
+^ Internet     | n/a/xDSL/DOCSIS/3g/LTE   |
+^ USB          | 1x 2.0 (unpowered)       |
+^ [[docs:techref:hardware:port.serial|Serial]]    | [[#Serial|YES 1x Sub-DB9 RS-232C asynchronous]]   |
+^ [[docs:techref:hardware:port.jtag|JTAG]]        | [[#JTAG|Maybe]] (contatcs on PCB, not tested)     |
+^ LED               | Power, NAND activity, 5x user LED              |
+^ Power options     | 10..28 VDC Power-over-Ethernet or Power-Jack   |
+^ Power consumption | ~3 Watt, up to 10 Watt for MiniPCI-cards, maximum 16 Watt |
+^ Dimensions        | 160 mm x 105 mm, 189 grams |
+
+==== Photos ====
+
+Casing: Mikrotik case CA493 with two N-pigtails and -antennas (antennas are ALFA ARS-N19CW, 2.4GHz 9dBi - pigtails and antennas not included in enclosure package)\\
+{{media:mikrotik:ca493_case_antennas.jpg?400}}
+
+//Front://\\
+Casing: Mikrotik CA493 with serial port, Ethernet-port, LEDs and power-connector of Routerboard RB493G\\
+{{media:mikrotik:ca493_frontside.jpg?400}}
+
+//Back://\\
+Casing: Mikrotik CA493 with two N-pigtails (not included), multi-purpose hole (e.g. N-connector, Swivel-antenna, ...) and ground-screw\\
+{{media:mikrotik:ca493_backside.jpg?400}}
+
+//Left/Top://
+Casing: Mikrotik CA493 with eight Ethernet-ports of Routerboard RB493G\\
+{{media:mikrotik:ca493_left_top.jpg?400}}
+
+
+//Right://
+Casing: Mikrotik CA493 with venting holes\\
+{{media:mikrotik:ca493_right.jpg?400}}
+
+
+//Bottom://
+Casing: Mikrotik CA493\\
+{{media:mikrotik:ca493_bottom.jpg?400}}
+
+Casing opened:\\
+Casing: Mikrotik CA493 with two N-pigtails (not included), Routerboard 493G and Routerboard R52nM (Wifi-card)\\
+{{media:mikrotik:ca493_case_pcb.jpg?400}}
+
+==== Opening the case ====
+
+  *To remove the cover just unscrew the 4 screws (2 left side, two right side)
+
+//Main PCB top//\\
+{{media:mikrotik:rb493_pcb-top.jpg?600}}
+
+  * Power socket
+  * 2x LED
+  * 1x 1000Base-T with proprietary POE
+  * 1x Sub-D9 Serial Port (Console by default)
+  * 8x 1000Base-T Port
+  * 1x Reset-contacts
+  * 2x Atheros AR8316 (under heatsinks)
+  * 1x JTAG-contacts
+  * 1x USB 2.0 (unpowered)
+  * 3x MiniPCI Type IIIA/B
+  * 2x RAM SAMSUNG K4H510838G-LCCC
+  * 2x regulated Fan-connector 3.3V 500mA
+  * 2x regulated Fan connector main voltage 500mA
+  * 4x Screw holes
+
+//Main PCB bottom//\\
+{{media:mikrotik:rb493_pcb-bottom.jpg?600}}
+
+  * Flash: ST NAND01GW382CNb
+  * CPLD:  XILINX XC9536XL
+  * Flash: microSD-Socket
+  * RAM:   2x SAMSUNG K4H510838G-LCCC
+
+==== Serial ====
+The Routerboard has one serial interface in form of a Sub-D9-socket. By default it provides a serial console.
+It can be accessed with a Null-Modem-Cable (115200, 8N1, no handshaking!).
+
+==== JTAG ====
+There are seven contacts named "JTAG" between USB- and MiniPCI-Socket, but not tested.
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+In worst case keep "Reset"-button pressed when powering on the Routerboard to access the recovery-boot-loader via serial console.
+That way the Routerboard can be re-flashed with a RouterOS-image (NPK-file) using the origin MikroTik-Netinstall-software (BOOTP/TFTP).
+
+===== Hardware Mods =====
+As a beginner, you really should inform yourself about [[docs:techref:hardware:soldering]] in general and then even obtain some experience!
+
+==== USB-Modification ====
+
+Components:
+
+| 1x | PCB |
+| 1x | USB-2.0-dual-A-socket, e.g., [[http://dx.com/p/diy-dual-usb-female-type-a-180-degree-dip-socket-connector-silver-10-piece-pack-127653|these]]. |
+| 1x | USB-2.0- A-plug, e.g., [[http://dx.com/p/diy-usb-4-pin-female-type-a-smt-socket-connector-silver-10-piece-pack-127642|these]]. |
+| 1x | Traco TSR 1-2450 step-down-converter 5VDC/1A (doesn't need any other components like capacitors or heatsink). As of this writing you will find the LM7805V voltage regulator at [[http://dx.com/p/lm7805l-5v-voltage-regulator-ics-10-pcs-157382 | DealExtreme]] |
+| 1x | Multifuse 60VDC/0,5A I<sub>hold</sub>/1A I<sub>trip</sub> |
+
+Proto-type and diagrams/layouts aren't beauties, but maybe someone with more Cadsoft-Eagle-experience can make a nice circuit-diagram and a real PCB-layout: {{media:mikrotik:rb493g_usb-mod.zip|Eagle files and datasheets}} ;-)
+
+Rudimentary circuit-diagram with USB-2.0 data-port (1) and generic USB-2.0 charger port (2), both supplied by a step-down-converter via the fan-connector of the RB493G:\\
+{{media:mikrotik:rb493g_usb-mod_circuit-diagram.png?400}}
+
+Rudimentary PCB-layout, not applicable:\\ 
+{{media:mikrotik:rb493g_usb-mod_pcb.png?400}}
+
+USB-mod prototype top-view:\\ 
+{{media:mikrotik:rb493g_usb-mod-top.jpg?400}}
+
+USB-mod prototype bottom-view:\\ 
+{{media:mikrotik:rb493g_usb-mod-bottom.jpg?400}}
+
+USB-mod prototype attached:\\ 
+{{media:mikrotik:rb493g_usb-mod-attached.jpg?400}}
+
+===== Links =====
+
+  * [[http://alduras.com/wp/install-openwrt-mikrotik-rb493g/ | A Detailed Example of Installing OpenWrt on a Mikrotik RB493G (V18 Style)]]  Written by the author of many of the V18 upgrades to the [[toh:mikrotik:common|Common Procedures for Mikrotik Router Boards]] wiki.  Procedure should work on most RouterBoards with only a change to the selected initramfs and sysupgrade.bin file names.
+  * [[http://alduras.com/wp/install-openwrt-mikrotik-rb450g/ | A Detailed Example of Installing OpenWrt on a Mikrotik RB450G (Old Style, Attitude Adjustment, Includes Compiling)]]
+  * [[http://alduras.com/wp/mikrotik-netinstall-failures-avoid/ | Using Mikrotik NetInstall to Install RouterOS]]  Covers the process of re-installing RouterOS after you have previously installed OpenWrt. You may need to have a copy of your RouterOS license .key file to do this (if NetInstall does not recognize your prior license)
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR7161 GigabitEthernet 2NIC 0WNIC 9Port USB DetachableAntenna 256RAM 128Flash gt32flash miniPCI 3miniPCI MIPS MIPS32 24Kc}}

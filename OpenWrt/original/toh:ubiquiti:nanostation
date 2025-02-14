@@ -1,0 +1,381 @@
+====== Ubiquiti NanoStation 2 ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+**NanoStation2, NanoStation Loco2, LiteStation 2 and PicoStation 2**
+
+The following devices are not NanoStations but these devices use the same image as well. They most probably **require snapshot builds**.
+
+  * LiteStation 2 uses ''openwrt-atheros-ubnt2-squashfs.bin''. Steps for flashing are the same as for NanoStation2.
+
+Models of the Ubiquiti NanoStation family are quite similar to each other so the same images and instructions can be used for the listed devices.
+
+Datasheets for all models are available from Ubiquiti.
+
+  * [[http://www.ubnt.com/downloads/ns2_datasheet.pdf|NanoStation 2]]
+  * [[http://www.ubnt.com/downloads/loco2_datasheet.pdf|NanoStation Loco2]]
+  * [[http://www.ubnt.com/downloads/ls2_datasheet.pdf|LiteStation 2]]
+  * [[http://www.ubnt.com/downloads/pico2_datasheet.pdf|PicoStation 2]]
+  * [[http://dl.ubnt.com/wiki/UBNT-AOS_prod-specs-gen_5.pdf|Ubiquiti AirOS-based general product specs]]
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "forumsearch", "deviceid"],
+  "filterColumns": {"model": "^NanoStation 2$|^NanoStation Loco2$|^PicoStation 2$|^Litestation 2$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^NanoStation 2$|^NanoStation Loco2$|^PicoStation 2$|^Litestation 2$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^NanoStation 2$|^NanoStation Loco2$|^PicoStation 2$|^Litestation 2$"}
+} -->
+
+
+==== Installing ====
+The OpenWrt buildroot generates images that can be directly flashed to the NanoStation, usually with a name like openwrt-atheros-ubnt2-squashfs.bin (for the NS2 and Loco2).
+
+When flashing those images, the Ubiquiti web interface will show a warning about unsupported third-party firmware.
+This warning can be ignored.
+
+==== Upgrading ====
+In order to upgrade from OpenWrt to a newer version, both the kernel mtd and filesystem mtd must be reflashed.  The kernel is likely lzma compressed.  If either mtd block isn't big enough, reflashing can not be completed through OpenWrt, but must be done through the [[docs:techref:bootloader:redboot|RedBoot bootloader]].
+
+Recent versions of OpenWrt (8.09.2 and newer) support //sysupgrade// on this platform. To upgrade, put a //combined// firmware image into ''/tmp'' on the device and flash it using the sysupgrade command as outlined below.
+
+<code>
+cd /tmp
+wget http://example.org/openwrt-atheros-combined.img
+sysupgrade openwrt-atheros-combined.img
+</code>
+
+==== Loading via tftp ====
+This can also be used to upgrade a device if you don't mind loosing your old config.
+
+=== Requirements ===
+  * Ethernet cable connection between PC and NanoStation.  A switched connection or a bridged connection seems to work fine.
+  * Network settings of PC: 192.168.1.254/255.255.255.0
+  * TFTP client on PC
+  * NanoStation firmware file from Ubiquiti (not an OpenWrt image)
+
+=== Procedure ===
+  - Turn off the device
+  - Press the reset button
+  - Turn on the device
+  - Release the reset button ~10 seconds (but not longer) after turning the device on.  You will know it's ready when the LEDs change.
+  - Ping 192.168.1.20.  If it works, you're ready to upload an image, if not, go back to step 1.
+  - tftp the image in binary mode to 192.168.1.20 as 'flash_update'.
+<code>
+tftp 192.168.1.20
+tftp> bin
+tftp> put openwrt-atheros-ubnt5-squashfs.bin flash_update
+Sent 1965199 bytes in 28.8 seconds
+tftp> quit
+</code>
+
+or in Windows Dos prompt
+<code>
+tftp -i 192.168.1.20 put openwrt-atheros-ubnt5-squashfs.bin flash_update
+</code>
+
+ 7. Signal LEDs might be blinking during the upgrade.  On a Nano5L, the power lights go back and forth.
+ 7. Wait ~7 minutes before restarting or until the power lights stop their back and forth blinking.
+ 7. Restart.  The device should be back to its old configuration (OpenWrt doesn't overwrite or modify the NVRAM settings).
+
+ 8. telnet to 192.168.1.1 and set a password with
+<code>
+passwd
+</code>
+
+==== Restore Original AirOS firmware on Nanostation ====
+To restore original firmware back you can't use mtd or sysupgrade but you have to use tftp method described above. (Note that the Nanostation will show up under 192.168.1.20 if everything is done correctly)
+
+First put Nanostation in recovery mode via reset button on power on, and then flash original flash image via tftp.
+
+===== wifi failure, 632nd bit =====
+If wireless does not work with eg. backfire 10.03.1 prebuilt firmware, and you get (in dmesg) "wifi%d: ath_attach failed: -22", then you may need to run the following [[http://forum.ubnt.com/showthread.php?t=43773&page=2|script by Bill Moffitt]].  WARNING: This script might brick your router (but it worked for me, User:green, on a NanoStation Loco2).
+<code bash>
+#!/bin/sh
+# By Bill Moffitt - this script puts a zero in the 632nd byte of the appropriate device
+#
+date >>/etc/firstbootlog
+echo "Starting regdomain-script.sh" >>/etc/firstbootlog
+partn=`grep boardconfig /proc/mtd |awk '{print $1}' |cut -d: -f1`
+byte=$(hexdump -b /dev/$partn |grep 0000270 |awk '{print $9}')
+echo "Going to work on partition $partn where regdomain is $byte"
+if [ $byte == "000" ]; then
+   echo "success" >/tmp/regdomain_success
+   exit
+fi
+if [ $partn -a ! $byte == "000" ]; then
+   echo "Setting up regdomain on partition /dev/$partn" >>/etc/firstbootlog
+   dd if=/dev/$partn of=/tmp/mtdfile bs=1 count=631 && echo "got the first 631 bytes" >>/etc/firstbootlog
+   dd if=/dev/zero bs=1 count=1 >>/tmp/mtdfile && echo "put in the zero" >>/etc/firstbootlog
+   dd if=/dev/$partn bs=1 skip=632 >>/tmp/mtdfile && echo "got the rest of the file" >>/etc/firstbootlog
+   mtd erase $partn && echo "erased the partition" >>/etc/firstbootlog
+   dd if=/tmp/mtdfile of=/dev/$partn 2>>/etc/firstbootlog && echo "Finished flashing partition $partn" >>/etc/firstbootlog
+   wait
+   sync && echo "Sync succeeded" >>/etc/firstbootlog
+   byte=$(hexdump -b /dev/$partn |grep 0000270 |awk '{print $9}')
+   if [ $byte -eq "000" ]; then
+      echo "regdomain is zero" >>/etc/firstbootlog
+      sync &&
+      rm /tmp/mtdfile
+      date >>/etc/firstbootlog
+      echo "done with regdomain" >>/etc/firstbootlog
+      echo "success" >/tmp/regdomain_success
+   else
+      echo "FAIL writing the file back to /dev/$partn - regdomain remains $byte"
+   fi
+else
+   echo "Could not find partition" >>/etc/firstbootlog
+fi
+</code>
+
+===== Switching antenna =====
+The two internal antennas work more or less automatically, using the driver's "diversity" setting to choose the correct one.  Using an external antenna requires manually setting a few things:
+
+<code>
+sysctl set dev.wifi0.softled 0
+gpioctl 7 0
+</code>
+
+These can be added to an init file in /etc/rc.d and /etc/init.d
+
+In recent OpenWrt versions (8.09.1+) the antenna setting is covered by the wireless configuration.
+The corresponding option is called ''antenna'' and should be set within the ''wifi-iface'' section.
+
+<code>
+uci set wireless.@wifi-iface[0].antenna=mode
+uci commit wireless
+wifi
+</code>
+
+^ Value (//mode//) ^ Description ^
+| ''vertical'' | Use internal antenna with vertical polarization |
+| ''horizontal'' | Use internal antenna with horizontal polarization |
+| ''external'' | Use external antenna port |
+
+----
+Some photos on this page (c) [[http://www.flickr.com/photos/mattw/|Matt Westervelt]] and available for use under a [[http://creativecommons.org/licenses/by-nc-sa/2.0/deed.en|Creative Commons license]] for non-commercial works.
+
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set]]                   | [[wp>MIPS architecture|MIPS]]                   |
+^ Vendor                                   | [[wp>Qualcomm Atheros]]                         |
+^ [[docs:techref:bootloader]]              | [[docs:techref:bootloader:redboot]]             |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | Atheros AR2315                             |
+^ [[docs:techref:hardware:cpu|CPU]] @Frq        | MIPS 4Kc @180MHz                           |
+^ Flash size                               | 4 MiB                                           |
+^ Flash Chip                               | ST 25P32V6P                                     |
+^ RAM size                                 | 16 MiB                                          |
+^ RAM Chip                                 | ISSI IS42S1680A-7TL / SDR-100                   |
+^ Wireless                                 | //SoC-integrated//: Atheros 802.11b/g (400mW)   |
+^ Ethernet                                 | 1 port connected to the CPU                     |
+^ USB                                      | No                                              |
+^ Power   | passive POE (pairs 4,5+; 7,8 return) 12 to 24 VDC (POE injector included in the package) |
+^ [[docs:techref:hardware:port.serial|Serial]]      | [[#Serial|Yes]]   |
+^ [[docs:techref:hardware:port.jtag|JTAG]]          | [[#JTAG|Yes]]     |
+
+
+This device is an integrated wifi spot designed to be used outdoor. With Ubiquiti Firmware, AirOS 3 actually, it can act as station, station WDS, client, client wds... There is a dual patch antenna system able to work in vertical or horizontal polarity, or to send RF to an external RP-SMA female or SMA female connector (depending of date of manufacturing) - This feature is software selectable with AirOS.
+
+[[http://ubnt.com/downloads/press_nano.jpg]]
+
+  * The Nanostation comes with a 12V power supply, the internal DC-Converter seems to be realized with a AP1510 PWM Control 3A Step-Down Converter. This can handle up to 23V. (untested)
+
+also, hardware partically compatibility with [[toh:tp-link:TL-WA5210G|TP-Link TL-WA5210G]] 
+
+==== Opening the case ====
+There are two screws under the label on the back. The newer M2 and M5 versions have just one screw under the label and two plastic pins that can be lifted out of their holes by pushing a plastic cable tie end next to them.  After removing these, the board can be removed.
+
+Nanostation2:\\
+{{:media:ubiquiti:nanostation2_unscrewed.jpg?400|}}
+{{:media:ubiquiti:nanostation2_opening.jpg?400|}}
+
+NanoStation Loco 2:\\
+{{:media:ubiquiti:nanostation2_serial.jpg?400|Nanostation Loco 2 serial}}
+
+LiteStation 2:\\
+{{:media:ubiquiti:litestation2_serial.jpg?400|Litestation 2 serial}}
+
+===== Serial =====
+
+<code>
+pin 1 - vcc
+pin 3 - RX
+pin 7 - TX
+pin 9 - gnd
+
+(9600 8n1)
+</code>
+
+
+<code>
+RedBoot> fconfig
+[...]
+Local IP address: 192.168.1.20
+Local IP address mask: 255.255.255.0
+[...]
+</code>
+
+
+<code>
+$ echo -e "\0377\0364\0377\0375\0006" > break
+$ nc -vvv 192.168.1.20 9000 < break ; telnet 192.168.1.20 9000
+</code>
+
+===== JTAG =====
+
+<code>
+pin 1 - TRST  pin 2 - GND
+pin 3 - TDI   pin 4 - GND 
+pin 5 - TDO   pin 6 - GND
+pin 7 - TMS   pin 8 - 3V3
+pin 9 - TCK   pin 10 - COLD_RST
+</code>
+
+===== JTAG and Serial Headers =====
+
+<code>
+Do note that the 10 pin headers used for both JTAG and Serial have a hart-to-hart pin distance, 'pitch', of 2 mm.
+Not the common 1/10" / 2.54 mm.
+</code>
+
+
+===== OEM bootlog =====
+NanoStation2
+<WRAP bootlog>
+<nowiki>+Ethernet eth0: MAC address 00:15:6d:a8:b9:c2
+IP: 0.0.0.0/255.255.255.0, Gateway: 0.0.0.0
+Default server: 0.0.0.0
+
+RedBoot(tm) bootstrap and debug environment [ROMRAM]
+Ubiquiti Networks certified release, version 0.9.00483.1103151313 - built 13:14:44, Mar 15 2011
+
+Copyright (C) 2000, 2001, 2002, 2003, 2004 Red Hat, Inc.
+
+Board: Ubiquiti Ubiquiti AR2315/6/7/8 based board (Ubiquiti NanoStation2 detected)
+
+ Arch: ar2316
+  RAM: 0x80000000-0x81000000, [0x80040b80-0x80fe1000] available
+Flash: 0xbfc00000-0xbfff0000, in 64 blocks of 0x00010000 bytes each
+== Executing boot script in 1.000 seconds - enter ^C to abort
+RedBoot> cache off
+RedBoot> fis load -d -e kernel
+Trying LZMA decompression...
+Image loaded from 0x80041000-0x801df25c
+Entry point: 0x80196040, address range: 0x80042000-0x801bf000
+RedBoot> go
+[    0.000000] CPU revision is: 00019064
+[    0.000000] Primary instruction cache 16kB, physically tagged, 4-way, linesize 16 bytes.
+[    0.000000] Primary data cache 16kB 4-way, linesize 16 bytes.
+[    0.000000] Linux version 2.4.27-ubnt0 (buildd@builder) (gcc version 3.3.3) #2 Thu Mar 28 10:55:48 EET 2013
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 01000000 @ 00000000 (usable)
+[    0.000000] On node 0 totalpages: 4096
+[    0.000000] zone(0): 4096 pages.
+[    0.000000] zone(1): 0 pages.
+[    0.000000] zone(2): 0 pages.
+[    0.000000] Kernel command line: console=ttyS0,9600 console=ttyS0,9600 root=/dev/mtdblock2 rootfstype=squashfs init=/linuxrc ro
+[    0.000000] Using 92.000 MHz high precision timer.
+[    0.010000] Calibrating delay loop... 181.45 BogoMIPS
+[    0.290000] Memory: 14228k/16384k available (1351k kernel code, 2156k reserved, 88k data, 68k init, 0k highmem)
+[    0.410000] Dentry cache hash table entries: 2048 (order: 2, 16384 bytes)
+[    0.490000] Inode cache hash table entries: 1024 (order: 1, 8192 bytes)
+[    0.570000] Mount cache hash table entries: 512 (order: 0, 4096 bytes)
+[    0.650000] Buffer cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.730000] Page-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.810000] Checking for 'wait' instruction...  unavailable.
+[    0.870000] POSIX conformance testing by UNIFIX
+[    0.930000] Linux NET4.0 for Linux 2.4
+[    0.970000] Based upon Swansea University Computer Society NET3.039
+[    1.050000] Initializing RT netlink socket
+[    1.100000] Starting kswapd
+[    1.130000] Squashfs 2.2-r2 (released 2005/09/08) (C) 2002-2005 Phillip Lougher
+[    1.220000] pty: 256 Unix98 ptys configured
+[    1.270000] Serial driver version 5.05c (2001-07-08) with no serial options enabled
+[    1.360000] ttyS00 at 0xb1100003 (irq = 37) is a 16550A
+[    1.430000] PPP generic driver version 2.4.2
+[    1.480000] PPP Deflate Compression module registered
+[    1.540000] MPPE/MPPC encryption/compression module registered
+[    1.610000] spiflash: JEDEC compatible device detected (Manufacturer: 0x20; device: 0x2016)
+[    1.710000] mtd: adjusted dev mtd2 size from 61440 to 65536 bytes
+[    1.790000] Creating 8 MTD partitions on "spiflash":
+[    1.850000] 0x00000000-0x00030000 : "RedBoot"
+[    1.900000] 0x00030000-0x00100000 : "kernel"
+[    1.950000] 0x00100000-0x003c0000 : "cramfs"
+[    2.000000] 0x003c0000-0x003e0000 : "cfg"
+[    2.050000] 0x003e0000-0x003f0000 : "FIS directory"
+[    2.110000] 0x003ef000-0x003f0000 : "RedBoot config"
+[    2.170000] mtd: partition "RedBoot config" doesn't start on an erase block boundary -- force read-only
+[    2.280000] 0x003f0000-0x00400000 : "EEPROM"
+[    2.330000] 0x00030000-0x003e0000 : "Working flash"
+[    2.390000] Initializing Cryptographic API
+[    2.440000] NET4: Linux TCP/IP 1.0 for NET4.0
+[    2.490000] IP: routing cache hash table of 512 buckets, 4Kbytes
+[    2.560000] TCP: Hash tables configured (established 1024 bind 2048)
+[    2.640000] IPv4 over IPv4 tunneling driver
+[    2.690000] GRE over IPv4 tunneling driver
+[    2.740000] Linux IP multicast router 0.06 plus PIM-SM
+[    2.800000] NET4: Unix domain sockets 1.0/SMP for Linux NET4.0.
+[    2.870000] Ebtables v2.0 registered
+[    2.910000] NET4: Ethernet Bridge 008 for NET4.0
+[    2.970000] Bridge firewalling registered
+[    3.020000] 802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+[    3.100000] All bugs added by David S. Miller <davem@redhat.com>
+[    3.180000] VFS: Mounted root (squashfs filesystem) readonly.
+[    3.250000] Freeing unused kernel memory: 68k freed
+[    3.310000] Warning: unable to open an initial console.
+[    3.760000] Algorithmics/MIPS FPU Emulator v1.5
+
+UBNT login: ubnt
+Password: 
+Mar 28 10:58:13 login[297]: root login  on `ttyS0'
+
+
+
+BusyBox v1.01 (2013.03.28-08:56+0000) Built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+XS2.ar2316.v4.0.3.5058.130328.1054# cat /proc/cpuinfo 
+system type             : Atheros AR5315
+processor               : 0
+cpu model               : unknown V6.4
+BogoMIPS                : 181.45
+wait instruction        : no
+microsecond timers      : yes
+tlb_entries             : 16
+extra interrupt vector  : yes
+hardware watchpoint     : no
+VCED exceptions         : not available
+VCEI exceptions         : not available
+XS2.ar2316.v4.0.3.5058.130328.1054#</nowiki>
+</WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+
+NanoStation2 and NanoStation Loco2: {{tag>ath25 4Flash 16RAM FastEthernet 1NIC 1WNIC no_switch PoE JTAG Serial 802.11bg InternalAntenna Outdoor}}
+
+LiteStation2: {{tag>ath25 4Flash 16RAM FastEthernet 1NIC 1WNIC no_switch PoE JTAG Serial 802.11bg InternalAntenna}}
+
+PicoStation2: {{tag>ath25 8Flash 32RAM FastEthernet 1NIC 1WNIC no_switch PoE JTAG Serial 802.11bg InternalAntenna}}

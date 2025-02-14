@@ -1,0 +1,382 @@
+====== ZyXEL P-2601HN-Fx Series ======
+{{:media:zyxel:p2601hn:f1.png?200|}}
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^P-2601HN-Fx$"}
+} -->
+
+
+==== OpenWrt status ====
+  * Version 18.06 everything seems to work (19.07 breaks wireless)
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^P-2601HN-Fx$"}
+} -->
+
+
+
+===== Installation =====
+Currently there is no standard installation method available, only by opening the device and using serial console (and then possibly depending on the oem firmware version installed on the device).
+
+Running OpenWrt (initramfs) image for testing on stock serial console by tftp boot to memory works fine, but flashing is denied by "Z-Boot" image check. There are some traces of OpenWrt replacement U-boot builds for p-2601hn target, but support was dropped in Lede and hence not available in current builds. There isn't known "UART mode" bootsel pins on this board for serial bootloader recovery.
+
+However it is possible to trick stock SPL binary (custom u-boot) into chain loading directly OpenWrt image instead of "Z-LOADER/Z-Boot" and thus skip the image check! For older boards with U-Boot script image feature see [[https://forum.openwrt.org/t/how-to-get-lede-17-01-04-on-zyxel-p-2601hn-fx/8994/6|here]], for newer or updated boards without autoscript see below.
+
+==== Bootloader ====
+<WRAP bootlog>
+<nowiki>
+ROM VER: 1.1.3
+CFG 01
+DDR Access auto data-eye tuning Rev 0.3a
+DDR size from 0xa0000000 - 0xa3ffffff
+DDR check ok... start booting...
+
+
+
+ZyU-F01-200-01CA004-V2.03|02/21|2013(AACB)
+
+Boot from NOR flash
+AR9 BOARD
+CLOCK CPU 333M RAM 166M
+DRAM:  64 MB
+
+ relocate_code start
+ relocate_code finish.
+Flash: 16 MB
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:
+switch chip id=0000ffff
+
+switch chip id=0000ffff
+amazon_s Switch
+## Starting application at 0x86A80000 ...
+
+
+Z-LOADER 2.0(Feb 21 2013)
+
+check z-boot 1, checksum: 977a, 977a
+load zboot from b0020000 to 86a90000
+go 0x86a90000
+## Starting application at 0x86A90000 ...
+
+
+Z-Boot 2.0.0(Sep 21 2011)
+
+Protected 1 sectors
+Hit any key to stop autoboot: 0
+ROM-D check=0
+MRD_CERT_1 check=0
+MRD_CERT_2 check=0
+bootargs=root=/dev/mtdblock0 console=ttyS1,115200 phym=64M mem=62M panic=1 vpe1_load_addr=0x83e00000M vpe1_mem=2M vpe1_wired_tlb_entries=1
+## Booting image at 80800000 ...
+   Image Name:   MIPS Linux-2.6.20
+   Created:      2013-08-02   1:32:49 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1250979 Bytes =  1.2 MB
+   Load Address: 80002000
+   Entry Point:  8039e000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+</nowiki>
+</WRAP>\\
+On many ZyXEL devices the stock bootloader should be replaced to start OpenWrt, but in this case the binary is modified to skip image check by jumping directly to OpenWrt kernel image. Stock boot can be interrupted by triple "z" on serial console, followed by ZLGU to get back to U-boot shell prompt. U-boot environment reveals stock bootcmd and details about flash layout:
+<WRAP bootlog>
+<nowiki>
+ZyU-F01-200-01CA004-V2.03|02/21|2013(AACB)
+
+Boot from NOR flash
+AR9 BOARD
+CLOCK CPU 333M RAM 166M
+DRAM:  64 MB
+
+ relocate_code start
+ relocate_code finish.
+Flash: 16 MB
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:
+switch chip id=0000ffff
+
+switch chip id=0000ffff
+amazon_s Switch
+## Starting application at 0x86A80000 ...
+
+
+Z-LOADER 2.0(Feb 21 2013)
+
+ZLO> zzz
+ZLGO              boot up the whole system
+ZLGU              go back to U-Boot command line
+ZLUA    x         upgrade ras image (whole image)
+ZLUP    x         upgrade ras image (zboot+kernel+rootfs)
+ZLO> zlgu
+
+
+=>## Application terminated, rc = 0x0
+AMAZON_S # printenv
+bootcmd=cp.b 0xb001B800 0x86a80000 10000; go 0x86a80000
+bootdelay=0
+baudrate=115200
+ipaddr=192.168.1.1
+serverip=192.168.1.33
+ethaddr=00:e0:92:01:01:7d
+netdev=eth0
+baudrate=115200
+rootpath=/opt/nfs
+nfsargs=setenv bootargs root=/dev/nfs rw nfsroot=$(serverip):$(rootpath)
+ramargs=setenv bootargs root=/dev/ram rw
+addip=setenv bootargs $(bootargs) ip=$(ipaddr):$(serverip):$(gatewayip):$(netmask):$(hostname):$(netdev):on
+mem=64M
+vpe0mem=62M
+vpe1mem=2M
+vpe1_load_addr=0x83e00000
+addmisc=setenv bootargs $(bootargs) console=ttyS1,$(baudrate) ethaddr=$(ethaddr) phym=$(mem) mem=$(vpe0mem) panic=1 vpe1_load_addr=$(vpe1_load_addr) vpe1_mem=$(vpe1mem) vpe1_wired_tlb_entries=1
+flash_nfs=run nfsargs addip addmisc;bootm $(kernel_addr)
+ramdisk_addr=B0100000
+flash_self=run ramargs addip addmisc;bootm $(kernel_addr) $(ramdisk_addr)
+img_uboot=u-boot.ifx
+img_kernel=uImage
+img_dslfw=firmware.img
+img_fullimg=fullimage.img
+img_rootfs=rootfs.img
+net_nfs=tftp 80500000 $(img_kernel);run nfsargs addip addmisc;bootm
+net_ram=tftp 80500000 $(img_kernel);run ramargs addip addmisc;bootm
+load=tftp 80500000 $(img_uboot)
+update=protect off 1:0-2;era 1:0-2;cp.b 80500000 0xB0000000 $(filesize)
+flashargs=setenv bootargs root=/dev/mtdblock1
+update_uboot=tftpboot 80400000 $(img_uboot);erase all;cp.b 80400000 b0000000 $(filesize)
+update_kernel=tftpboot 80400000 $(img_kernel);upgrade 80400000 $(filesize)
+update_rootfs=tftpboot 80400000 $(img_rootfs);upgrade 80400000 $(filesize)
+update_firmware=tftpboot 80400000 $(img_dslfw);upgrade 80400000 $(filesize)
+update_fullimage=tftpboot 80400000 $(img_fullimg);upgrade 80400000 $(filesize)
+flash_flash=run flashargs addip addmisc; bootm $(kernel_addr)
+reset_uboot_config=erase $(f_ubootconfig_addr) $(f_uboot_end) 1;erase $(f_rootfs_end) $(f_kernel_addr) 1
+reset_system_config=erase $(f_sysconfig_addr) $(f_sysconfig_end) 1
+part0_begin=0xB0000000
+part1_begin=0xB0020000
+part2_begin=0xB0F00000
+part3_begin=0xB0F80000
+total_part=4
+flash_end=0xB0FFFFFF
+data_block0=uboot
+data_block1=rootfs
+data_block2=kernel
+data_block3=sysconfig
+data_block4=mrd_cert
+total_db=5
+f_uboot_addr=0xB0000000
+f_uboot_size=0
+f_uboot_end=0xB0020000
+f_sysconfig_addr=0xB0F60000
+f_sysconfig_size=0x80000
+f_sysconfig_end=0xB0FEFFFF
+f_rootfs_addr=0xB0020000
+f_rootfs_size=0
+f_rootfs_end=0xB0020000
+f_kernel_addr=0xB0F5FFFF
+kernel_addr=0xB0F5FFFF
+f_kernel_size=0
+f_mrd_cert_addr=0xB0FE0000
+f_mrd_cert_size=0x20000
+stdin=serial
+stdout=serial
+stderr=serial
+ethact=amazon_s Switch
+
+Environment size: 2469/131068 bytes
+AMAZON_S #
+AMAZON_S # flinfo
+
+Bank # 1: MXIC  29GL128EH (128 Mbit, boot sector SA0~SA128 size 128K bytes)
+  Size: 16 MB in 128 Sectors
+  Sector Start Addresses:
+      B0000000      B0020000      B0040000      B0060000      B0080000
+    B00A0000      B00C0000      B00E0000      B0100000      B0120000
+    B0140000      B0160000      B0180000      B01A0000      B01C0000
+    B01E0000      B0200000      B0220000      B0240000      B0260000
+    B0280000      B02A0000      B02C0000      B02E0000      B0300000
+    B0320000      B0340000      B0360000      B0380000      B03A0000
+    B03C0000      B03E0000      B0400000      B0420000      B0440000
+    B0460000      B0480000      B04A0000      B04C0000      B04E0000
+    B0500000      B0520000      B0540000      B0560000      B0580000
+    B05A0000      B05C0000      B05E0000      B0600000      B0620000
+    B0640000      B0660000      B0680000      B06A0000      B06C0000
+    B06E0000      B0700000      B0720000      B0740000      B0760000
+    B0780000      B07A0000      B07C0000      B07E0000      B0800000
+    B0820000      B0840000      B0860000      B0880000      B08A0000
+    B08C0000      B08E0000      B0900000      B0920000      B0940000
+    B0960000      B0980000      B09A0000      B09C0000      B09E0000
+    B0A00000      B0A20000      B0A40000      B0A60000      B0A80000
+    B0AA0000      B0AC0000      B0AE0000      B0B00000      B0B20000
+    B0B40000      B0B60000      B0B80000      B0BA0000      B0BC0000
+    B0BE0000      B0C00000      B0C20000      B0C40000      B0C60000
+    B0C80000      B0CA0000      B0CC0000      B0CE0000      B0D00000
+    B0D20000      B0D40000      B0D60000      B0D80000      B0DA0000
+    B0DC0000      B0DE0000      B0E00000      B0E20000      B0E40000
+    B0E60000      B0E80000      B0EA0000      B0EC0000      B0EE0000
+    B0F00000      B0F20000      B0F40000      B0F60000      B0F80000
+    B0FA0000      B0FC0000      B0FE0000
+AMAZON_S #
+</nowiki>
+</WRAP>\\
+NOR flash on this board is stored in 128k blocks. [[https://mega.nz/#!67BFQQYC|Full flash]] can be dumped and copied out from within stock firmware using "dump_nor_flash.sh". Second stage U-boot is stored within the first block and has its autostart/ default settings built-in as "read only" - at the end of a so called legacy image - which happens to be lzma compressed... So all what's needed is just to uncompress the image, change the settings, repack full binary block and flash it, easy as that :-D
+==== Flashing firmware ====
+  * Download xway target "//**initramfs**//" image of zyxel_p-2601hn first [[http://downloads.openwrt.org/releases/18.06.8/targets/lantiq/xway/openwrt-18.06.8-lantiq-xway-zyxel_p-2601hn-initramfs-kernel.bin|link]]
+  * Have TFTP [[https://wiki.debian.org/TFTP|server]] ready
+  * Connect serial and interrupt boot by pressing "z", followed by ZLGU to get U-boot cli prompt AMAZON_S #
+<code>
+setenv ipaddr 192.168.0.1
+setenv serverip 192.168.0.33
+tftp 0x80700000 openwrt-...-lantiq-xway-zyxel_p-2601hn-initramfs-kernel.bin
+bootm 0x80700000
+</code>
+  * Change LAN IP of the freshly booted OpenWrt on the serial console to provide Internet connectivity (ifconfig br-lan, default route, provide nameserver etc) to download and verify directly the OpenWrt firmware (or get squashfs "//sysupgrade//" image for zyxel_p-2601hn  [[http://downloads.openwrt.org/releases/18.06.8/targets/lantiq/xway/openwrt-18.06.8-lantiq-xway-zyxel_p-2601hn-squashfs-sysupgrade.bin|link]]
+  * Let the [[https://openwrt.org/docs/guide-user/installation/sysupgrade.cli|sysupgrade tool]] to work out all the magic for you in one go:
+<code>
+opkg install libustream-openssl ca-bundle
+sysupgrade -n -i https://downloads.openwrt.org/releases/18.06.6/targets/lantiq/xway/openwrt-18.06.6-lantiq-xway-zyxel_p-2601hn-squashfs-sysupgrade.bin
+</code>
+  * Firmware will be auto-magically flashed and router will reboot
+  * Interrupt the boot again ("zzz") as the new firmware is not started by U-boot yet
+  * Try to boot manually first:
+<code>
+bootm 0xb0060000
+</code>
+<WRAP  round important 60%>
+Change and save basic OpenWrt settings now and restart once more to boot manually and confirm it looks ok. Do not proceed to flashing U-boot if stored firmware is no good or OpenWrt not accessible on serial console!
+</WRAP>
+==== Flashing Das U-Boot ====
+  * Build your own or get the modified ready-made U-boot [[https://mega.nz/#!KyoFUQAI!e9_EQmO72jGQBTHJuLgjIFMulkUcBqjg8j7m9JUgJ3Q|here]] //(Caveat emptor//)
+  * interrupt boot by pressing "z", followed by ZLGU to get U-boot cli prompt AMAZON_S #
+  * Watch out for not getting tftp transfer errors when finally flashing U-Boot
+<code>
+setenv ipaddr 192.168.0.1
+setenv serverip 192.168.0.33
+tftp 80500000 128uboot
+erase 1:0
+cp.b 80500000 0xB0000000 20000
+reset
+</code>
+<WRAP round info 60%>
+The downside of this prebuilt U-boot binary is that there is no more access to U-boot shell now! On the upside the upgrade/ re-flash of OpenWrt from the web interface works just fine :-P
+</WRAP>
+<WRAP bootlog>
+<nowiki>
+AMAZON_S # tftp 80500000 128uboot
+Using amazon_s Switch device
+TFTP from server 192.168.1.33; our IP address is 192.168.1.1
+Filename '128uboot'.
+Load address: 0x80500000
+Loading: ##########################
+done
+Bytes transferred = 131072 (20000 hex)
+
+AMAZON_S # erase 1:0
+Erase Flash Sectors 0-0 in Bank # 1
+ done
+AMAZON_S # cp.b 80500000 0xB0000000 20000
+Copy to Flash... done
+
+AMAZON_S # reset
+ROM VER: 1.1.3
+CFG 01
+DDR Access auto data-eye tuning Rev 0.3a
+DDR size from 0xa0000000 - 0xa3ffffff
+DDR check ok... start booting...
+
+
+
+ZyU-F01-200-01CA004-V2.03|02/21|2013(AACB)
+
+Boot from NOR flash
+AR9 BOARD
+CLOCK CPU 333M RAM 166M
+DRAM:  64 MB
+
+ relocate_code start
+ relocate_code finish.
+Flash: 16 MB
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:
+switch chip id=0000ffff
+
+switch chip id=0000ffff
+amazon_s Switch
+## Booting image at b0060000 ...
+   Image Name:   MIPS OpenWrt Linux-4.9.208
+   Created:      2020-01-05  19:06:07 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1594227 Bytes =  1.5 MB
+   Load Address: 80002000
+   Entry Point:  80002000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+</nowiki>
+</WRAP>
+==== Datatable ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^P-2601HN-Fx$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+FIXME Please add the installation procedure here.
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                                         |
+^ Vendor           | ZyXEL                                        |
+^ Bootloader       | [[docs:techref:bootloader:uboot]]            |
+^ System-On-Chip   | Lantiq PSB 50800 rev 1.2 (ARX182 MIPS 34K)   |
+^ CPU/Speed        | 333 Mhz (dual TC/VPE)                        |
+^ Flash-Chip       | MXIC MX29GL128EHT21-90G                      |
+^ Flash size       | 16 MiB                                       |
+^ RAM Chip         | Promos V58C2512164SDI5                       |
+^ RAM              | 64 MiB                                       |
+^ Wireless         | Ralink RT3070L                               |
+^ Ethernet         | RTL8306E                                     |
+^ Internet         | ADSL2+ (annex A and B)                       |
+^ USB              | No                                           |
+^ Serial           | [[#Serial|Yes]]                              |
+
+
+==== Serial ====
+On J3 GND-NC-RX-TX-NotUsed
+
+root/zychaa8zx62
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>PSB50800 16flash 64ram}}

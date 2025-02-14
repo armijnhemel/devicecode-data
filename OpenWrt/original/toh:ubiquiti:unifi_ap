@@ -1,0 +1,439 @@
+====== Ubiquiti UniFi AP and AP-LR ======
+
+===== Supported Versions =====
+
+**NOTE for UAP-v2**: As for July 2018, Ubiquiti seems to have **blocked custom firmware** installation possibility by using signatures on all 3.7 and later brand firmwares. As long as there is no brand pre-3.7 firmware available (in order to downgrade) for UAP-v2 devices, installing **OpenWrt/LEDE could be impossible**, as seen on the forum [[https://forum.lede-project.org/t/are-ubiquiti-actively-blocking-installation-of-third-party-firmware/4301]] and [[https://forum.lede-project.org/t/are-ubiquiti-blocking-lede-installation/3877]]. If you want liberty, do not buy Ubiquiti.
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^UniFi AP$"}
+} -->
+
+==== Status ====
+
+Barrier Breaker 14.07 [[https://downloads.openwrt.org/barrier_breaker/14.07/ar71xx/generic/openwrt-ar71xx-generic-ubnt-unifi-squashfs-factory.bin|openwrt-ar71xx-generic-ubnt-unifi-squashfs-factory.bin]] works out of the box, no need to change XM/BZ for the firmware image. Configurations then can be changed right away using LuCi.
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^UniFi AP$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^UniFi AP$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+  - Device get IP address from DHCP (without DHCP the UniFi AP's default to 192.168.1.20)
+  - Login inside the AP with ssh ubnt@ip_address (password ubnt)
+  - Find the image like "openwrt-ar71xx-ubnt-unifi-*-factory.bin" on openwrt binary repository and download inside /tmp.
+  - Rename the image to fwupdate.bin
+  - Use the Ubiquiti fwupdate.real script to reflash it: <code>
+fwupdate.real -m openwrt-ar71xx-generic-ubnt-unifi-squashfs-factory.bin -d
+</code>
+**Later 3.xx firmware versions fail to upgrade using the above <color #ed1c24>and brick so use instead</color>.** If brick reset device with 20-sec-press way with connected lan-cable - after it tftp start work.
+
+  - Device get IP address from DHCP (without DHCP the UniFi AP's default to 192.168.1.20)
+  - Login inside the AP with ssh ubnt@ip_address (password ubnt)
+  - Find the image like "openwrt-ar71xx-ubnt-unifi-*-factory.bin" on openwrt binary repository and download inside /tmp.
+  - Use syswrapper to flash it:
+<code>
+mv /tmp/openwrt-ar71xx-generic-ubnt-unifi-squashfs-factory.bin /tmp/fwupdate.bin
+cd /tmp
+nohup syswrapper.sh upgrade2
+</code>
+
+- As refered, it could be **impossible to install** OpenWrt/LEDE on UAP-v2 devices.
+
+**Later 4.xx firmware versions fail to upgrade via TFTP too because of different MTD partition scheme.**
+See via serial port console:
+<code>
+ar7240> mtdparts
+
+device nor0 <ar7240-nor0>, # parts = 5
+ #: name			size		offset		mask_flags
+ 0: u-boot                	0x00040000	0x00000000	0
+ 1: u-boot-env            	0x00010000	0x00040000	0
+ 2: kernel                	0x00760000	0x00050000	0
+ 3: cfg                   	0x00040000	0x007b0000	0
+ 4: EEPROM                	0x00010000	0x007f0000	0
+</code>
+rootfs partition is removed so firmware upgrade fail. In the serial port console, during booting, press any button to interrupt the U-BOOT autoboot procedure:
+<code>
+U-Boot unifi-v1.6.17.296-g1af7670c (Apr 22 2019 - 11:05:55)
+
+DRAM:  64 MB
+Base:0x80000000, Top:0x84000000, Res logbuf:0xa3ff3800, log_magic:0xf0e0f0f0 kseg: 0xa0000000
+Flash:  8 MB
+PCIe WLAN Module found (tries: 1). 
+Net:   eth0, eth1
+Board: Copyright Ubiquiti Networks Inc. 2014
+Hit any key to stop autoboot:  1 
+ar7240>
+</code>
+Optionally, it is also possible to set and check the IP address:
+<code>
+ar7240> setenv ipaddr 192.168.0.20
+ar7240> setenv serverip 192.168.0.231 
+ar7240> ping ${serverip}
+</code>
+And now, with a tftp server at 192.168.1.254 (default, or 192.168.0.231 in above example) with openwrt sysupgrade firmware file, issue this commands:
+<code>
+ar7240> tftpboot 0x80000000 openwrt-19.07.2-ar71xx-generic-ubnt-unifi-squashfs-sysupgrade.bin
+</code>
+reply:
+<code>
+Using eth0 device
+TFTP from server 192.168.1.254; our IP address is 192.168.1.20
+Filename 'openwrt-19.07.2-ar71xx-generic-ubnt-unifi-squashfs-sysupgrade.bin'.
+Load address: 0x80000000
+Loading: *#################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 ########################################
+done
+Bytes transferred = 4194308 (400004 hex)
+</code>
+after:
+<code>
+ar7240> erase 0x9f050000 +0x00760000
+</code>
+reply:
+<code>
+..................................... done
+Erased 118 sectors
+</code>
+after:
+<code>
+ar7240> cp.b 0x80000000 0x9f050000 0x400004
+</code>
+Important: the last number in that line (0x400004) refers to the size from the last line of TFTP transfer (400004 hex). Other OpenWrt firmware files can have other sizes. Mind to adjust command line as needed. The size should be 0x52012f for 21.02.1
+reply:
+<code>
+Copy to Flash... write addr: 9f050000
+done
+</code>
+finally:
+<code>
+ar7240> reset
+</code>
+
+
+===== Upgrading OpenWrt =====
+
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the sysupgrade command line tool. It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+==== LuCI Web Upgrade Process ====
+  * Browse to ''%%http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/%%'' LuCI Upgrade URL
+  * Upload "openwrt-ar71xx-ubnt-unifi-*-sysupgrade.bin" file to LuCI
+  * Wait for reboot
+
+==== Terminal Upgrade Process ====
+  * Login as root via SSH on your access point ip
+  * Use the following commands to upgrade: <code>
+cd /tmp/
+wget http://downloads.openwrt.org/.../openwrt-ar71xx-ubnt-unifi-*-sysupgrade.bin
+sysupgrade -i /tmp/openwrt-ar71xx-ubnt-unifi-*-sysupgrade.bin
+</code>
+
+==== TFTP Upgrade Process ====
+
+//Very helpful in case your upgrade went wrong or your AP is not responding anymore.  //
+//See TFTP Unbricking section below for more detailed instructions on this process//
+
+  * Keep the reset button pressed while powering on AP
+  * Once the LED ring is blinking green/orange, you can run the TFTP command. 
+  * In case you are on Windows, the command is:<code>
+tftp -i 192.168.1.20 put openwrt-ar71xx-generic-ubnt-unifi-squashfs-factory.bin</code>
+  * On linux using tftp-hpa 5.2 you can run <code>
+tftp 192.168.1.20 -lv -m binary -c put openwrt-[version]-ar71xx-generic-ubnt-unifi-squashfs-factory.bin
+-lv = literal mode + verbose
+-m binary = transfer in binary mode
+-c put file-path = run `put file-path`</code>
+  * If this is succesful, you will see:<code>
+Transfer successful: 3342748 bytes in 2 second(s), 1671374 bytes/s</code>
+  * After this, just wait for about a minute for the AP to reboot and boot OpenWrt. The LED ring will show static green when ready.
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture      | MIPS               |
+^ Vendor            | Atheros            |
+^ Bootloader        | U-boot             |
+^ System-On-Chip    | Atheros (AR7240)   |
+^ CPU Speed         | 400 MHz            |
+^ Flash-Chip        | [[http://www.macronix.com/QuickPlace/hq/PageLibrary4825740B00298A3B.nsf/$defaultview/7CE3021F57B8EA4848257412002E26CC/$File/PCN21_3V%206405D%20SPI.pdf?OpenElement|MX25L6405D]] | 
+^ Flash size        | 8 MiB              |
+^ RAM               | 64 MiB DDR         |
+^ Wireless          | AR9287             |
+^ Switch            | none               |
+^ Ethernet ports    | 1x 10/100, PoE capable  |
+^ USB               | No ((but [[https://forum.openwrt.org/viewtopic.php?pid=109825#p109825|hackable]]))   |
+^ Serial            | [[docs:techref:hardware:port.serial.cables|Yes]], [[#serial|settings]]   |
+^ JTAG              | [[docs:techref:hardware:port.jtag.cables|Yes]]                           |
+
+==== Serial ====
+A male-strip is on board to connect your TTL capable serial converter.
+Serial connection parameters: 115200, 8N1.
+Do not connect 3.3V pin.
+
+{{:media:ubiquiti:unifi_serial.png?0x200|}}
+
+==== JTAG ====
+How to connect to JTAG interface, and how to reflash the device with JTAG tools\\
+See [[docs:techref:hardware:port.jtag]] for more JTAG details.\\
+The [[http://www.usbjtag.com|USBJTAG NT]] also supports read, write, erase, debrick, etc. You can use the WRT160NL config, or download the specific device config from [[http://www.usbjtag.com/vbforum/showthread.php?t=9410|this forum post]].
+
+==== Photos ====
+{{media:ubiquiti:unifi_ap_pcb.jpg?300|}} {{:media:ubiquiti:unifi_case.png?225}}\\
+
+
+===== Specific Configuration =====
+The UniFi ap has 2 leds, the orange one can be configured adding something like:
+<code>
+config led
+	option default '0'
+	option name 'led1'
+	option sysfs 'ubnt:green:dome'
+	option trigger 'netdev'
+	option dev 'br-lan'
+	option mode 'link'
+
+config led
+	option default '0'
+	option name 'led2'
+	option sysfs 'ubnt:orange:dome'
+	option trigger 'netdev'
+	option dev 'br-lan'
+	option mode 'tx rx'
+</code>
+at the end of ///etc/config/system//. This will give you a steady green when the ethernet is up and a light blink during wireless activity.
+
+Also its possible to change the led status manually. 
+
+
+  - static, use 1 for on, 0 for off: <code shell>
+echo 1 > /sys/class/leds/ubnt\:orange\:dome/brightness
+echo 1 > /sys/class/leds/ubnt\:green\:dome/brightness
+echo 0 > /sys/class/leds/ubnt\:green\:dome/brightness
+echo 0 > /sys/class/leds/ubnt\:orange\:dome/brightness</code>
+  - blinking
+    - blinking on, interval 1000ms, orange led: <code shell>echo timer > /sys/class/leds/ubnt\:orange\:dome/trigger
+echo 1000 > /sys/class/leds/ubnt\:orange\:dome/delay_on
+echo 1000 > /sys/class/leds/ubnt\:orange\:dome/delay_off
+</code>
+    - blinking off: <code shell>echo 0 > /sys/class/leds/ubnt\:orange\:dome/delay_off</code>
+
+===== Network configuration  (Unifi as standalone wireless Router) =====
+
+This is a working standalone router setup, working as of 17.01.4.
+The old version used a trick with bridging a nonexistent interface (eth1) for no real reason, and it didn't work for me. Instead, I just set the wlan0 interface to be the lan network and everything worked perfectly. This is a working configuration that should be default, in easily pasteable form:
+
+	uci set network.loopback=interface
+	uci set network.loopback.ifname='lo'
+	uci set network.loopback.proto='static'
+	uci set network.loopback.ipaddr='127.0.0.1'
+	uci set network.loopback.netmask='255.0.0.0'
+	uci set network.lan=interface
+	uci set network.lan.proto='static'
+	uci set network.lan.ipaddr='192.168.1.1'
+	uci set network.lan.netmask='255.255.255.0'
+	uci set network.lan.ip6assign='60'
+	uci set network.wan=interface
+	uci set network.wan.proto='dhcp'
+	uci set network.wan.ifname='eth0'
+	uci set network.wan6=interface
+	uci set network.wan6.proto='dhcpv6'
+	uci set network.wan6.ifname='eth0'
+	uci set network.wan6.reqaddress='try'
+	uci set network.wan6.reqprefix='auto'
+	
+	uci set wireless.radio0=wifi-device
+	uci set wireless.radio0.type='mac80211'
+	uci set wireless.radio0.channel='11'
+	uci set wireless.radio0.hwmode='11g'
+	uci set wireless.radio0.path='pci0000:00/0000:00:00.0'
+	uci set wireless.radio0.htmode='HT20'
+	uci set wireless.radio0.distance='20'
+	uci set wireless.default_radio0=wifi-iface
+	uci set wireless.default_radio0.device='radio0'
+	uci set wireless.default_radio0.network='lan'
+	uci set wireless.default_radio0.mode='ap'
+	uci set wireless.default_radio0.ssid='OpenWRT'
+	uci set wireless.default_radio0.encryption='open'
+	uci commit
+	
+	/etc/init.d/network reload
+
+===== OLD: Network configuration  (Unifi as standalone wireless Router) =====
+
+The UniFi has only the single ethernet port, so much of the OpenWrt documentation is a little confusing.  Most of the documentation is written with the idea of routers which have a WAN port, a LAN wired switch and the WLAN wireless.  Clearly the Unifi doesn't have the wired LAN switch.
+
+After flashing (I found r41163 worked while the 12.09 version had the XM problem discussed above and editing the characters 4-6 didn't fix it) I was able to connect via wired ethernet as described in FirstLogin (i.e. there is a DHCP server handing out IPs in the 192.168.1.X subnet, running on the ethernet port).
+
+After changing the password and exiting, I had to wait a while (60 secs?) until I could ssh back into the box. That was strange because I thought I'd lost networking ... I think that is due to a long-running first time ssh key generation.  Even so, each ssh in takes a long time to respond (something about recent versions of dropbear taking a long time to setup a session key). I found LUCI not installed, so I had to work to get internet access on the box before I could use that.
+
+Once ssh'd into the box I followed these steps: 
+1. Enable wireless, using commands at top of [[docs:guide-user:network:wifi:basic|the UCI wireless config page]]. This enables the radio.  The radio is bridged to the lan network.
+2. Connect to the wireless network, disconnect the wired from your computer, and ensure that you can ssh in via the wifi.
+3. Swap eth0 and eth1 between lan and wan. The default configuration has the ethernet port on the lan network.  But if you are going to plug the Unifi into a cable modem (for example) to use it as a router, then you want the ethernet port to be the wan network (and to seek a dhcp assigned address).  I edited the /etc/config/wireless file changing etho in the lan section to eth1, and eth0 in the wan section to eth1.  Quite honestly I'm not sure that this is perfect (since there isn't an eth1 on the Unifi, but it worked for me).
+4. Restart networking (/etc/inid.d/networking restart)
+5. Connect the ethernet lan on the PoE injector to the cable modem.  Remember nonsense about having cable modem off for 20 seconds or so to give out an IP to a new MAC address.
+6.  Connect back to the OpenWrt Wifi.
+7.  ping google.com.  yay. 
+
+At this point things are working with NAT routing between the lan and the wan.
+
+ 	root@OpenWrt:~# cat /etc/config/network
+
+	config interface 'loopback'
+		option ifname 'lo'
+		option proto 'static'
+		option ipaddr '127.0.0.1'
+		option netmask '255.0.0.0'
+
+	config globals 'globals'
+		option ula_prefix 'fd18:37f2:587f::/48'
+
+	config interface 'lan'
+		option ifname 'eth1'
+		option force_link '1'
+		option type 'bridge'
+		option proto 'static'
+		option ipaddr '192.168.1.1'
+		option netmask '255.255.255.0'
+		option ip6assign '60'
+
+	config interface 'wan'
+		option ifname 'eth0'
+		option proto 'dhcp'
+
+	config interface 'wan6'
+		option ifname '@wan'
+		option proto 'dhcpv6'
+
+	root@OpenWrt:~# ifconfig
+	br-lan    Link encap:Ethernet  HWaddr DC:9F:DB:EB:19:24
+	          inet addr:192.168.1.1  Bcast:192.168.1.255  Mask:255.255.255.0
+	          inet6 addr: fd18:37f2:587f::1/60 Scope:Global
+	          inet6 addr: 2605:6000:1018:5f::1/64 Scope:Global
+	          inet6 addr: fe80::de9f:dbff:feeb:1924/64 Scope:Link
+	          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+	          RX packets:35879 errors:0 dropped:0 overruns:0 frame:0
+	          TX packets:64154 errors:0 dropped:0 overruns:0 carrier:0
+	          collisions:0 txqueuelen:0
+	          RX bytes:7629054 (7.2 MiB)  TX bytes:76188963 (72.6 MiB)
+
+	eth0      Link encap:Ethernet  HWaddr DC:9F:DB:EA:19:24
+	          inet addr:70.113.82.54  Bcast:70.113.95.255  Mask:255.255.224.0
+	          inet6 addr: 2605:6000:ffc0:60:1406:59bd:ae45:b383/128 Scope:Global
+	          inet6 addr: fe80::de9f:dbff:feea:1924/64 Scope:Link
+	          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+	          RX packets:88136 errors:0 dropped:1 overruns:0 frame:0
+	          TX packets:36148 errors:0 dropped:0 overruns:0 carrier:0
+	          collisions:0 txqueuelen:1000
+	          RX bytes:78402192 (74.7 MiB)  TX bytes:8333999 (7.9 MiB)
+	          Interrupt:4
+
+	lo        Link encap:Local Loopback
+	          inet addr:127.0.0.1  Mask:255.0.0.0
+	          inet6 addr: ::1/128 Scope:Host
+	          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+	          RX packets:16092 errors:0 dropped:0 overruns:0 frame:0
+	          TX packets:16092 errors:0 dropped:0 overruns:0 carrier:0
+	          collisions:0 txqueuelen:0
+	          RX bytes:1137726 (1.0 MiB)  TX bytes:1137726 (1.0 MiB)
+
+	wlan0     Link encap:Ethernet  HWaddr DC:9F:DB:EB:19:24
+	          inet6 addr: fe80::de9f:dbff:feeb:1924/64 Scope:Link
+	          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+	          RX packets:35881 errors:0 dropped:0 overruns:0 frame:0
+	          TX packets:65056 errors:0 dropped:0 overruns:0 carrier:0
+	          collisions:0 txqueuelen:1000
+	          RX bytes:8131532 (7.7 MiB)  TX bytes:77645373 (74.0 MiB)
+===== Network configuration  (DHCP Client and static IP) =====
+
+In a situation where you'd just like to drop the AP in an existing network, it might be handy to use DHCP. However, how do you figure which IP the AP is using... Below config allows you to use a DHCP assigned IP and still keep an extra IP address (192.168.254.1) you can use to directly connect over the ethernet port. 
+
+Your usual 'ifconfig -a' will not show this 2nd IP. Yes, this very confusing and is caused due to a limitation of Busybox. You'll have to use the 'ip' command which you can install using 'opkg install ip'.
+
+<code>#/etc/config/network 
+
+config interface 'loopback'
+	option ifname 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config globals 'globals'
+	option ula_prefix 'fdcb:9bde:4f7c::/48'
+
+config interface 'lan'
+	option ifname 'eth0'
+	option force_link '1'
+	option type 'bridge'
+	option proto 'dhcp'
+
+config interface 'lan2'
+	option ifname 'br-lan'
+	option proto 'static'
+	option ipaddr '192.168.254.1'
+	option netmask '255.255.255.0'
+
+config interface 'wan'
+	option ifname 'eth1'
+	option proto 'dhcp'
+
+config interface 'wifi'
+	option proto 'static'
+</code>
+
+===== Putting Unifi into failsafe mode & TFTP Recovery/Upgrade =====
+
+Parts of this section taken from [[https://help.ubnt.com/hc/en-us/articles/204910124-UniFi-TFTP-soft-recovery-for-bricked-access-point|UniFi - TFTP soft recovery for bricked access point]]
+
+Before starting, set a static IP on your PC's NIC from 192.168.1.0/24 range, but not 192.168.1.20 (this is the Unifi AP default TFTP IP).
+
+Follow the steps to unbrick your UAP:
+
+  - Set the IP on your PC to be able to access the bricked unit and prepare the firmware file.
+  - On your PC, open your TFTP client and locate the firmware.bin file so you can start it later. Do not initiate the transfer. (You may use a stock Ubiquiti firmware or applicable OpenWrt firmware as mentioned above)
+  - Using the Windows integrated TFTP client (or the client of your choice) the command to **prepare** is: "tftp -i 192.168.1.20 PUT [path to file]\firmware.bin" for stock or "tftp -i 192.168.1.20 PUT [path to file]\openwrt-ar71xx-generic-ubnt-unifi-squashfs-factory.bin" for OpenWrt. Do not start the transfer until following steps below.
+  - Unplug the bricked unit.
+  - Plug the LAN connection of the PoE injector directly to your PC's NIC.
+  - Keep the UniFi AP's reset button depressed and plug in network/PoE in the unit.
+  - Keep the reset button depressed until you see the light cycling relatively fast through **amber/green/off** colors (~14 seconds from power on) -> Release it. Now the device is in TFTP transfer mode. **The AP will not respond to pings in this mode but will accept a TFTP file transfer**
+  - Engage the TFTP push command and wait. The device will write the firmware and it will reboot.
+  - If you wait too long to start the TFTP transfer, the push will not work as the device will stall. Please redo from step 3.
+  - At this point your device should be recovered and ready to go. If it is still not functioning as expected then you will need to send for RMA (if under warranty).
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR7240 8Flash 64RAM ceiling}}

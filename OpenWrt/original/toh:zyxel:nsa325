@@ -1,0 +1,142 @@
+====== ZyXEL NSA325 ======
+
+The Zyxel NSA325 is a [[docs:techref:targets:kirkwood|Kirkwood]] based [[docs:guide-user:services:nas:start|NAS (aka Network Attached Storage)]] with two <abbr>HDD [Hard Disk Drive]</abbr> bay using <abbr>SATA [Serial ATA]</abbr>.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^NSA325$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "sataports", "usbports"],
+  "filterColumns": {"model": "^NSA325$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^NSA325$"}
+} -->
+
+We require a USB stick (FAT32 formatted, single partition) and a 3.3V USB to serial adapter. We will then copy the required files to the USB stick and command the device through a terminal (using serial) to load and flash our files to NAND.
+
+Copy the ''u-boot.kwb'' and ''-factory.bin'' files to a FAT32 formatted USB stick with msdos partition table (single partition).
+Rename the ''-factory.bin'' to something simple like ''nsa325.bin''.
+
+Attention: the u-boot.kwb from 19.x.x release is bugged and won't allow access to any mass storage. Use the latest u-boot.kwb from the 18.x.x release instead: [[https://archive.openwrt.org/releases/18.06.0/targets/kirkwood/generic/u-boot-nsa325/|u-boot-nsa325]]
+
+
+====Installation ====
+:!: Please note that to write to NAND you have to erase the NAND first, which means all data on the NAND will be __deleted__! Meaning stock firmware, bootloader, settings and everything will be gone! So make sure you got the proper files ready before you start as it's vital that you flash the new bootloader __before__ you restart your device as it would otherwise get soft-bricked.
+
+:!: Make sure to write down your device's MAC address as we need to set it later! Otherwise it would get lost!
+
+:!: Reboot the NAS and observe the output on the serial console (or //terminal//). When the u-boot information appears on the screen, press any key in the //terminal// to interrupt the boot process and stay in the bootloader.
+
+:!: If your USB stick isn't recognized/found by u-boot, try putting an active (powered) USB hub between the NAS and the flash drive.
+
+  * Option 1 to update the U-boot partition.
+After plugging in the USB stick (use the rear USB ports), into the NAS, with the correct files and booting into u-boot, first step is to install OpenWrt's u-boot:
+
+  usb reset
+  fatload usb 0 0x1000000 u-boot.kwb
+  nand erase 0x0 0x100000
+  nand write 0x1000000 0x00000 0x100000
+  reset
+
+  * Option 2 to update the U-boot partition.
+Use tftp server to update the u-boot partition. This case you will find the Load address in the tftpboot output!
+[[docs:guide-user:troubleshooting:tftpserver|Setting up a TFTP server for TFTP Recovery/Install]]
+
+  setenv ipaddr 192.168.1.2
+  setenv serveraddr 192.168.1.101
+  tftpboot u-boot.kwb
+  nand erase 0x0 0x100000
+  nand write 0x800000 0x00000 0x100000
+  reset
+
+Now we set the correct environment variables:
+
+  setenv mtdparts 'mtdparts=orion_nand:0x00c0000(uboot),0x80000(uboot_env),0x7ec0000(ubi)'
+  setenv bootcmd 'run setenv bootargs; ubi part ubi; ubi read 0x800000 kernel; bootm 0x800000'
+  saveenv
+  reset
+
+After the device reboots into the OpenWrt u-boot we adjust the device's MAC address (adjust the values, see the sticker under the NAS case):
+
+  setenv ethaddr AB:CD:EF:00:00:00
+  saveenv
+
+Then we proceed to flashing OpenWrt itself (which we called nsa325.bin for less typing):
+
+  usb reset
+  fatload usb 0 0x2000000 nsa325.bin
+  nand erase.part ubi
+  nand write 0x2000000 ubi 0x600000
+  
+Note that the number at the end indicates the size to write in hex. In this case up to 6 MiB. Increasing this number should work but has not been tested.
+ 
+And now we reboot to OpenWrt:
+
+  reset
+
+===== How to unbrick the device after some problem with the U-Boot image =====  
+
+If no output can be seen in the serial terminal, you probably messed up your U-Boot image.
+
+  kwboot  -t -B 115200 /dev/ttyUSB00 -b u-boot.kwb -p
+
+[[https://forum.doozan.com/read.php?3,51739,51919#msg-51919|Source]]
+
+===== Specific Configuration =====
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX>
+
+The device has the following buttons:
+
+^ BUTTON                       ^ Event  ^
+| Power                        | power  |
+| Reset                        | reset  |
+| Copy                         | copy   |
+
+</WRAP>
+
+===== Hardware =====
+==== Serial  ====
+Don't connect the 3.3v pin when using the serial port.
+
+             +----+----+           
+             |    |    |
+   +----+----+----+----+----+
+   |3.3V| TX | RX |    | GND|
+   +----+----+----+    +----+
+
+[[http://zyxel.nas-central.org/wiki/Serial_port_(NSA325)]]
+
+^ Serial connection parameters | 3.3V, 115200 Baud |
+
+  # screen /dev/ttyUSB0 115200
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>kirkwood 128flash 512ram 1port gigabitethernet 3USB USB2.0 USB3.0 SATA2 GigabitEthernet NAS rtc fan serial ARMv5}}

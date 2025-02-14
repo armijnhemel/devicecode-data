@@ -1,0 +1,494 @@
+====== MikroTik Routerboard RB493 ======
+
+The RB493 has nine ethernet ports and three miniPCI slots, it also has a switch chip, so the ethernet ports of your choice can be grouped together to make it act as a switch.
+
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RB493$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RB493$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RB493$"}
+} -->
+
+==== Flash Layout ====
+^ Layer0       |  m25p80 [[wp>Serial Peripheral Interface Bus|spi]]0.0: pm25lv512 (64 Kbytes)  ||||   Samsung NAND 64MiB 3,3V 8-bit |
+^ Layer1       |  mtd0 **//routerboot//** |  mtd1 **//hard_config//** |  mtd2 **//bios//** | mtd3 **//soft_config//** | mtd4 **//booter//** | mtd5 **//kernel//** | mtd6 **//rootfs//** |
+^ Size in MiB  | 45 KiB | 4 KiB| 8 KiB| 4 KiB | 256 KiB |3.7 MiB | 60 MiB |
+^ Name         | | | | | | **//kernel//** | **//rootfs//** |
+^ <color magenta>mountpoint</color>   |  //none//  |  //none//  |  //none//  |  //none//  |  //none//  |  //none//  | <color magenta>''/''</color> |
+^ filesystem   |  //none//  |  //none//  |  //none//  |  //none//  |  //none//  |  //none//  |  [[docs:techref:filesystems#JFFS2]]  |
+
+==== OEM installation using the TFTP method ====
+
+->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+=== Specific values needed for tftp ===
+
+1.  Have the following software installed on a linux system with an eth0 interface on the 192.168.1.0/24 network (instructions assume address 192.168.1.15) to install from: 
+    atftpd
+    isc-dhcp-server
+    python3 (provides SimpleHTTPServer)
+    screen (for monitoring Serial port)
+2.  Download the following 3 files to a work directory:
+    http://downloads.openwrt.org/barrier_breaker/14.07/ar71xx/mikrotik/openwrt-ar71xx-mikrotik-vmlinux-initramfs-lzma.elf
+    http://downloads.openwrt.org/chaos_calmer/15.05/ar71xx/mikrotik/openwrt-15.05-ar71xx-mikrotik-vmlinux-lzma.elf
+    http://downloads.openwrt.org/chaos_calmer/15.05/ar71xx/mikrotik/openwrt-15.05-ar71xx-mikrotik-Ath5k-rootfs.tar.gz
+3.  Run the following commands to rename the file correctlys for the wget2nand script:
+    mv openwrt-ar71xx-mikrotik-vmlinux-initramfs-lzma.elf  openwrt-ar71xx-mikrotik-vmlinux-initramfs.elf
+    mv openwrt-15.05-ar71xx-mikrotik-Ath5k-rootfs.tar.gz openwrt-ar71xx-mikrotik-rootfs.tar.gz
+    mv openwrt-15.05-ar71xx-mikrotik-vmlinux-lzma.elf openwrt-ar71xx-mikrotik-vmlinux-lzma.elf
+            
+5.  Run the following command to set up dhcp and tftp to serve the image file to the RB493:
+    sudo dnsmasq --no-daemon --port=0 --dhcp-range="192.168.1.50,192.168.1.150,12h" --enable-tftp --bootp-dynamic --dhcp-boot="openwrt-ar71xx-mikrotik-vmlinux-initramfs.elf" --tftp-root=`pwd`
+6.  Connect ethernet cable from your system to ETH1 on the RouterBoard 493.
+
+7.  Connect serial cable between your system and the RouterBoard 493.  Example connection using the screen utility (assumes serial access is via ttyUSB0):
+    sudo screen -L /dev/ttyUSB0 115200 8N1    
+8.  Press a key shortly after applying power to the router board to halt the boot process and enter the RouterBoot configuration.
+
+9.  Select **e** to format nand.    
+
+10. Select **o** to change the boot device.
+
+11. Select **1** to boot from Ethernet once.
+
+12. Select **x** to exit setup.  If everything is setup correctly it should boot the RouterBoard from the tftp image.
+
+13. Press Enter and you are in the console of OpenWRT running from RAM and booted via BOOTP/TFTP. 
+
+14. On the Linux computer enter Ctrl-C on the console to stop the dnsmasq program and run the following command to serve the kernel and root filesystem image:
+    python -m SimpleHTTPServer 8080
+
+15. In the serial console run the following command to install OpenWrt to the RouterBoard 493 NAND:
+    wget2nand http://192.168.1.15:8080
+ 
+16. This script will download the kernel and roots tar file from the server above, erase the NAND flash and mount the root and kernel partitions.  It will then copy the kernel to the appropriate partition, prepare the root filesystem and copy the files.  You should see the following lines when this has completed:
+    Cleaning up… 
+    Image written, you can now reboot. Remember to change the boot source to Boot from Nand
+ 
+18. Run the following command in the serial console, then wait :
+    reboot
+    
+19. After the system reboots wait about 60 seconds and press enter and you should see the Chaos Calmer busybox shell.
+
+20. Since the initial configuration of networking is broken edit the /etc/config/network file and replace the contents with the following:
+<file>
+config interface 'loopback'
+        option ifname 'lo'
+        option proto 'static'
+        option ipaddr '127.0.0.1'
+        option netmask '255.0.0.0'
+
+config globals 'globals'
+        option ula_prefix 'fd23:0841:73cf::/48'
+
+config interface 'lan'
+        option ifname 'eth1'
+        option force_link '1'
+        option type 'bridge'
+        option proto 'static'
+        option ipaddr '192.168.1.1'
+        option netmask '255.255.255.0'
+        option ip6assign '60'
+
+config interface 'wan'
+        option ifname 'eth0'
+        option proto 'dhcp'
+
+config interface 'wan6'
+        option ifname 'eth0'
+        option proto 'dhcpv6'
+
+config switch 
+        option name 'switch0'
+        option reset '1'
+        option enable_vlan '1'
+
+config switch_vlan
+        option device 'switch0'
+        option vlan '1'
+        option ports '0 1 2 3 4 5 6 7 8'
+</file>
+
+21. You can now reboot the RouterBoard and remove the serial connection.  Eth1 will now get an address from DHCP when connected and Eth2 thru Eth9 can be used to access the RouterBoard at 192.168.1.1
+ 
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+
+=== wget2nand ===
+
+''sysupgrade'' does not support this router.  It may be possible to upgrade using the wget2nand script, but I have not tested this method.
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+In worst case keep "Reset"-button pressed when powering on the Routerboard to access the recovery-boot-loader via serial console. That way the Routerboard can be re-flashed with a RouterOS-image (NPK-file) using the origin MikroTik-Netinstall-software (BOOTP/TFTP). 
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+==== Network interfaces ====
+The default network configuration should be (see below for corrected configuration file):
+
+^ Interface Name   ^ Description                ^ Default configuration   ^
+| br-lan(eth1)     | LAN & WiFi                 | 192.168.1.1/24          |
+| vlan1 (eth1  )   | LAN ports (ETH2 to ETH9)   | 192.168.1.1/24          |
+| eth0             | WAN port  (ETH1)           | DHCP                    |
+| wl0              | EXAMPLE WiFi               | Disabled                |
+
+==== Switch Ports (for VLANs) ====
+
+Initial configuration of ports is broken.  
+
+The default switch configuration should be:
+
+^ Board   ^ Port   ^ VLAN   ^ Interface   ^
+| Eth1    |        |  eth0  |
+| Eth2    |   0    |   1    |    eth1     |
+| Eth3    |   1    |   1    |    eth1     |
+| Eth4    |   2    |   1    |    eth1     |
+| Eth5    |   3    |   1    |    eth1     |
+| Eth6    |   4    |   1    |    eth1     |
+| Eth7    |   5    |   1    |    eth1     |
+| Eth8    |   6    |   1    |    eth1     |
+| Eth9    |   7    |   1    |    eth1     |
+| CPU     |   8    |   1    |    eth1     |
+
+=== ''/etc/config/network'' to enable above configuration ===
+<file>
+config interface 'loopback'
+        option ifname 'lo'
+        option proto 'static'
+        option ipaddr '127.0.0.1'
+        option netmask '255.0.0.0'
+
+config globals 'globals'
+        option ula_prefix 'fd23:0841:73cf::/48'
+
+config interface 'lan'
+        option ifname 'eth1'
+        option force_link '1'
+        option type 'bridge'
+        option proto 'static'
+        option ipaddr '192.168.1.1'
+        option netmask '255.255.255.0'
+        option ip6assign '60'
+
+config interface 'wan'
+        option ifname 'eth0'
+        option proto 'dhcp'
+
+config interface 'wan6'
+        option ifname 'eth0'
+        option proto 'dhcpv6'
+
+config switch 
+        option name 'switch0'
+        option reset '1'
+        option enable_vlan '1'
+
+config switch_vlan
+        option device 'switch0'
+        option vlan '1'
+        option ports '0 1 2 3 4 5 6 7 8'
+</file>
+
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set|Architecture]]   | [[wp>MIPS architecture|MIPS]]-BE   |
+^ Vendor                                | [[wp>Mikrotik]] / [[wp>Atheros]]   |
+^ [[docs:techref:bootloader]]           | MikroTik RouterBoot (Rescue- and Main-Bootloader)   |
+^ Default Operating System              | MikroTik RouterOS v4, Level5-license                |
+^ [[docs:techref:hardware:soc|System-On-Chip]]   | Atheros AR7130    |
+^ [[docs:techref:hardware:cpu|CPU]]/Speed        | MIPS 24Kc 300 MHz |
+^ Flash-Chip   | [[Samsung NAND 64MiB 3,3V 8-bit]]  |
+^ Flash size   | 64 MiB NAND-Flash                  |
+^ RAM          | 64 MiB DDR-SDRAM                   |
+^ Wireless     | optional via 3x Mini-PCI IIIA/B    |
+^ Ethernet     | 9x 10/100Base-T(X) (IC+ IP178C 8-port-switch with VLAN support [[docs:techref:swconfig]] |
+^ Internet     | n/a/xDSL/DOCSIS/3g/LTE   |
+^ USB          | none   |
+^ [[docs:techref:hardware:port.serial|Serial]]   | [[#Serial|YES 1x Sub-DB9 RS-232C asynchronous]]   |
+^ [[docs:techref:hardware:port.jtag|JTAG]]       | [[#JTAG|Maybe]] (contacts on PCB, not tested)     |
+^ LED               | Power, NAND activity, 5x user LED              |
+^ Power options     | 10..28 VDC Power-over-Ethernet or Power-Jack   |
+^ Power consumption | ~3 Watt, up to 10 Watt for MiniPCI-cards, maximum 16 Watt |
+^ Dimensions  | 160 mm x 105 mm, 189 grams |
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+
+
+//Main PCB://\\
+**Insert photo of PCB**
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+
+
+The Routerboard has one serial interface in form of a Sub-D9-socket. By default it provides a serial console. It can be accessed with a Null-Modem-Cable (115200, 8N1, no handshaking!).
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+There are seven contacts named "JTAG" between Eth2 port and MiniPCI-Socket, but not tested. 
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+The MikroTik Routerboard RB493 has the following buttons:
+
+^ BUTTON   ^ Event   ^
+| Reset    | reset   |
+
+
+===== Bootlogs =====
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>RouterBOOT booter 2.39
+
+RouterBoard 493
+
+CPU frequency: 300 MHz
+  Memory size:  64 MB
+
+Press any key within 4 seconds to enter setup....
+loading kernel from nand... OK
+setting up elf image... OK
+jumping to kernel code
+
+
+^MOpenWrt kernel loader for AR7XXX/AR9XXX
+^MCopyright (C) 2011 Gabor Juhos <juhosg@openwrt.org>
+^MDecompressing kernel... done!
+^MStarting kernel at 80060000...
+
+^M[    0.000000] Linux version 3.18.20 (buildbot@builder1) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r46450) ) #1 Fri Sep 4 21:32:22 CEST 2015
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019374 (MIPS 24Kc)
+[    0.000000] SoC: Atheros AR7130 rev 2
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x00000000-0x03ffffff]
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line:  console=ttyS0,115200 gpio=4031 HZ=150000000 mem=64M kmac=00:0C:42:74:B2:06 board=493 boot=1 mlc=2 rootfstype=yaffs noinitrd
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00000040
+[    0.000000] Readback ErrCtl register=00000040
+[    0.000000] Memory: 61072K/65536K available (2573K kernel code, 153K rwdata, 332K rodata, 196K init, 189K bss, 4464K reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:51
+[    0.000000] Clocks: CPU:300.000MHz, DDR:300.000MHz, AHB:150.000MHz, Ref:40.000MHz
+[    0.000000] Calibrating delay loop... 199.06 BogoMIPS (lpj=995328)
+[    0.080000] pid_max: default: 32768 minimum: 301
+[    0.080000] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.090000] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.100000] NET: Registered protocol family 16
+[    0.100000] MIPS: machine is MikroTik RouterBOARD 493/AH
+[    0.840000] registering PCI controller with io_map_base unset
+[    0.860000] rb4xx-spi rb4xx-spi: master is unqueued, this is deprecated
+[    0.860000] PCI host bridge to bus 0000:00
+[    0.870000] pci_bus 0000:00: root bus resource [mem 0x10000000-0x16ffffff]
+[    0.870000] pci_bus 0000:00: root bus resource [io  0x0000]
+[    0.880000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.880000] pci 0000:00:12.0: BAR 0: assigned [mem 0x10000000-0x1000ffff]
+[    0.890000] pci 0000:00:14.0: BAR 0: assigned [mem 0x10010000-0x1001ffff]
+[    0.890000] pci 0000:00:12.0: using irq 40 for pin 1
+[    0.900000] pci 0000:00:14.0: using irq 42 for pin 1
+[    0.900000] Switched to clocksource MIPS
+[    0.910000] NET: Registered protocol family 2
+[    0.910000] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.910000] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.920000] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.930000] TCP: reno registered
+[    0.930000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.940000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.940000] NET: Registered protocol family 1
+[    0.950000] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.980000] msgmni has been set to 119
+[    0.980000] io scheduler noop registered
+[    0.990000] io scheduler deadline registered (default)
+[    0.990000] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    1.000000] console [ttyS0] disabled
+[    1.030000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 9375000) is a 16550A
+[    1.040000] console [ttyS0] enabled
+[    1.040000] console [ttyS0] enabled
+[    1.040000] bootconsole [early0] disabled
+[    1.040000] bootconsole [early0] disabled
+[    1.050000] m25p80 spi0.0: pm25lv512 (64 Kbytes)
+[    1.060000] Creating 4 MTD partitions on "spi0.0":
+[    1.070000] 0x000000000000-0x00000000b000 : "routerboot"
+[    1.070000] 0x00000000b000-0x00000000c000 : "hard_config"
+[    1.080000] 0x00000000d000-0x00000000f000 : "bios"
+[    1.090000] 0x00000000f000-0x000000010000 : "soft_config"
+[    1.090000] NAND flash driver for RouterBoard 4xx series version 0.2.0
+[    1.100000] nand: device found, Manufacturer ID: 0xec, Chip ID: 0x76
+[    1.110000] nand: Samsung NAND 64MiB 3,3V 8-bit
+[    1.110000] nand: 64MiB, SLC, page size: 512, OOB size: 16
+[    1.120000] Scanning device for bad blocks
+[    1.180000] Bad eraseblock 256 at 0x000000400000
+[    1.710000] Bad eraseblock 2455 at 0x00000265c000
+[    2.100000] Creating 3 MTD partitions on "NAND 64MiB 3,3V 8-bit":
+[    2.110000] 0x000000000000-0x000000040000 : "booter"
+[    2.110000] 0x000000040000-0x000000400000 : "kernel"
+[    2.120000] 0x000000400000-0x000004000000 : "rootfs"
+[    2.130000] mtd: device 6 (rootfs) set to be root filesystem
+[    2.130000] mtdsplit: no squashfs found in "rootfs"
+[    2.140000] mtdsplit: no squashfs found in "NAND 64MiB 3,3V 8-bit"
+[    2.160000] IP17xx: Found IP178C at ag71xx-mdio.0:00
+[    2.170000] libphy: ag71xx_mdio: probed
+[    2.490000] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:MII
+[    2.970000] ag71xx ag71xx.1: connected to PHY at ag71xx-mdio.0:00 [uid=02430d80, driver=IC+ IP17xx]
+[    2.980000] eth1: Atheros AG71xx at 0xba000000, irq 5, mode:RMII
+[    2.980000] TCP: cubic registered
+[    2.990000] NET: Registered protocol family 17
+[    2.990000] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    3.000000] Bridge firewalling registered
+[    3.010000] 8021q: 802.1Q VLAN Support v1.8
+[    3.010000] rb: no calibration data found
+[    3.020000] yaffs: dev is 32505862 name is "mtdblock6" ro
+[    3.030000] yaffs: passed flags ""
+[    8.470000] VFS: Mounted root (yaffs filesystem) readonly on device 31:6.
+[    8.480000] Freeing unused kernel memory: 196K (8035f000 - 80390000)
+[   10.100000] init: Console is alive
+[   10.100000] init: - watchdog -
+[   13.220000] init: - preinit -
+[   13.680000] eth0: link up (100Mbps/Full duplex)
+[   13.710000] random: procd urandom read with 78 bits of entropy available
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   16.940000] mount_root: mounting /dev/root
+[   16.990000] eth0: link down
+[   17.000000] procd: - early -
+[   17.010000] procd: - watchdog -
+[   17.620000] procd: - ubus -
+[   18.650000] procd: - init -
+Please press Enter to activate this console.
+[   19.950000] NET: Registered protocol family 10
+[   19.960000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   19.990000] Loading modules backported from Linux version master-2015-03-09-0-g141f155
+[   20.000000] Backport generated by backports.git backports-20150129-0-gdd4a670
+[   20.010000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   20.030000] nf_conntrack version 0.5.0 (957 buckets, 3828 max)
+[   20.080000] xt_time: kernel timezone is -0000
+[   20.120000] cfg80211: Calling CRDA to update world regulatory domain
+[   20.360000] cfg80211: World regulatory domain updated:
+[   20.360000] cfg80211:  DFS Master region: unset
+[   20.370000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   20.380000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   20.380000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   20.390000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   20.400000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   20.410000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[   20.420000] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   20.420000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   20.430000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   20.700000] PPP generic driver version 2.4.2
+[   20.710000] NET: Registered protocol family 24
+[   20.730000] PCI: Enabling device 0000:00:14.0 (0000 -> 0002)
+[   20.740000] ath5k 0000:00:14.0: registered as 'phy0'
+[   20.830000] random: nonblocking pool is initialized
+[   21.230000] ath5k: phy0: Atheros AR5213A chip found (MAC: 0x59, PHY: 0x43)
+[   21.230000] ath5k: phy0: RF5112B multiband radio found (0x36)
+[   21.520000] PCI: Enabling device 0000:00:12.0 (0000 -> 0002)
+[   23.110000] ieee80211 phy1: Atheros AR9280 Rev:2 mem=0xb0000000, irq=40
+[   23.240000] cfg80211: Calling CRDA for country: US
+[   23.240000] cfg80211: Regulatory domain changed to country: US
+[   23.250000] cfg80211:  DFS Master region: FCC
+[   23.250000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   23.260000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 3000 mBm), (N/A)
+[   23.270000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 1700 mBm), (N/A)
+[   23.280000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2300 mBm), (0 s)
+[   23.290000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 3000 mBm), (N/A)
+[   23.300000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+[   37.170000] device eth1 entered promiscuous mode
+[   37.170000] br-lan: port 1(eth1) entered forwarding state
+[   37.180000] br-lan: port 1(eth1) entered forwarding state
+[   37.210000] ar71xx: pll_reg 0xb8050010: 0x1099
+[   37.230000] eth0: link up (100Mbps/Full duplex)
+[   38.160000] br-lan: port 1(eth1) entered disabled state
+[   39.060000] ar71xx: pll_reg 0xb8050014: 0x1099
+[   39.060000] eth1: link up (100Mbps/Full duplex)
+[   39.060000] br-lan: port 1(eth1) entered forwarding state
+[   39.070000] br-lan: port 1(eth1) entered forwarding state
+[   41.070000] br-lan: port 1(eth1) entered forwarding state
+
+
+
+BusyBox v1.23.2 (2015-07-25 12:03:12 CEST) built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ CHAOS CALMER (15.05, r46767)
+ -----------------------------------------------------
+  * 1 1/2 oz Gin            Shake with a glassful
+  * 1/4 oz Triple Sec       of broken ice and pour
+  * 3/4 oz Lime Juice       unstrained into a goblet.
+  * 1 1/2 oz Orange Juice
+  * 1 tsp. Grenadine Syrup
+ -----------------------------------------------------
+root@RB493:/#</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>FastEthernet 1NIC 3WNIC 8Port 64RAM 64Flash MIPS MIPS32 24K}}

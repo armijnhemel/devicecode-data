@@ -1,0 +1,226 @@
+====== Seagate GoFlexHome ======
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^GoFlexHome$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^GoFlexHome$"}
+} -->
+
+===== Hardware =====
+==== Info ====
+^ Architecture   | [[http://en.wikipedia.org/wiki/ARM_architecture|ARM ]]  armv5te |
+^ Vendor         | Marvell |
+^ [[docs:techref:bootloader]] | [[docs:techref:bootloader:uboot|U-Boot]] |
+^ System-On-Chip | Marvell [[http://www.marvell.com/products/processors/embedded/kirkwood/HW_88F6281_OpenSource.pdf|MV88F6281 A0 (DDR2)]] with ARM926EJ-S CPU (Marvell Feroceon) |
+^ CPU Speed    | 1200 Mhz                                   |
+^ Flash size   | 256 MiB                                    |
+^ RAM          | 128 MiB                                    |
+^ Wireless     | n/a                                        |
+^ Ethernet     | 1x GigE port / Marvell "Alaska" 88E1116R   |
+^ USB          | 1x USB 2.0 port                            |
+^ Serial       | [[#Serial|Yes]]                            |
+
+**Note:**  No green led working NIC / data partition (mtd3) does not seem to be 216 MiB(see serial installation  wiki (french side) + command ''df -h'') 
+
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+Serial port
+<code>
+Pinout J1:
+8  Rx  (in)
+9  Tx  (out)
+10 GND (3.3V)
+
+Port:
+115200 
+8N1
+</code>
+
+^ Serial connection parameters\\ for Seagate GoFlexHome | 115200, 8N1 |
+
+==== Flash Layout ====
+^           Original FlashLayout           ^^^^^
+^ mtd#    | mtd0      | mtd1                               | mtd2      | mtd3     |
+^ start   | 0x000000  | 0x100000                           | 0x500000  | 0x2500000|
+^ size    | 0x100000  | 0x400000                           | 0x2000000 | 0xdb00000|
+^ in MiB  | 1         | 4                                  | 32        | 219      |
+^ name    | u-boot    | uImage                             | root      | data     |
+^ file system   |  none  |  ???  |  JFFS2  |  ??  |
+
+
+===== Specific Configuration =====
+==== Interfaces ====
+The default network configuration is:
+
+^ Interface Name ^ Description ^ Default configuration ^
+| eth0 | Ethernet port | DHCP |
+
+
+==== Crypto Hardware Acceleration ====
+See [[:toh:seagate:dockstar#crypto_hardware_acceleration|Crypto Hardware Acceleration]]
+
+
+==== SSH ====
+Connect device to Ethernet port. To prevent automatic updates by cloud engines (which may disable ssh access), use a separate switch or disconnect your router from the internet. If the ssh access was disabled by the automatic cloud engine update service, you need to login there and re-activate ssh.
+
+Find IP address, BE and EF are the last two bytes of the MAC of your device (printed on the bottom of the GoFlexHome)
+| <code>
+root@host ~ # ifconfig eth0 169.254.1.0 
+root@host ~ # nmap -e eth0 -sP $(printf "169.254.%d.%d" 0xbe 0xef)
+</code> |
+Connect to IP address via ssh (root / stxadmin) to see if it works.
+
+==== Backup ====
+If you want to restore the original firmware at a later point use [[http://ahsoftware.de/dockstar/#backup|this guide]] to make a backup. You need to login to the original firmware via [[#SSH|ssh]] first.
+Another method beside using "dd" is nanddump. To be on the safe side, you should take a 2nd backup with the nanddump method.
+Assuming you have a USB Stick or other USB drive mapped via sda - you can try this:
+<code>
+cd /tmp
+mkdir backup
+mount /dev/sda1 /tmp/backup
+wget http://plugapps.com/os/pogoplug/uboot/nanddump
+chmod +x nanddump
+./nanddump -nf backup/mtd0 /dev/mtd0
+./nanddump -nf backup/mtd1 /dev/mtd1
+./nanddump -nf backup/mtd2 /dev/mtd2
+umount /dev/sda1
+</code>
+
+===== Install u-boot and OpenWrt into NAND via serial cable and tftp-server =====
+
+==== Installation ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "GoFlexHome"}
+} -->
+
+**Prepare on PC**
+
+Download files
+(change the 18.06.2 in the following link into whatever is the last OpenWrt release) 
+[[https://downloads.openwrt.org/releases/18.06.2/targets/kirkwood/generic/u-boot-goflexhome/u-boot.kwb]]
+
+[[https://downloads.openwrt.org/releases/18.06.2/targets/kirkwood/generic/openwrt-18.06.2-kirkwood-seagate_goflexhome-squashfs-factory.bin]]
+
+Start tftp-server
+<code>
+sudo dnsmasq -p0 --enable-tftp --tftp-root="/tmp" -d
+</code>
+
+Copy files **u-boot.kwb**, **openwrt-18.06.2-kirkwood-seagate_goflexhome-squashfs-factory.bin** to /tmp 
+
+**Install u-boot**
+
+Hit any key to stop autoboot in the u-boot and set goflexhome ip, tftp-server ip, set your mac-address from bottom of the machine:
+<code>
+setenv ipaddr '192.168.1.1'
+setenv serverip '192.168.1.2'
+setenv ethaddr '00:10:75:xx:xx:xx'
+saveenv
+</code>
+
+download from tftp-server **u-boot.kwb** file to RAM start offset 0x6400000
+<code>tftp 0x6400000 u-boot.kwb</code>
+or
+<code>tftpboot 0x6400000 u-boot.kwb</code>
+Bytes transferred = 607044 (94344 hex)
+
+erase nand start from 0x0 size 0x100000
+<code>nand erase 0x0 0x100000</code>
+write nand from RAM start offset 0x6400000 to nand start 0x0 size 0x100000 (1MB)
+<code>nand write 0x6400000 0x0 0x100000</code>
+reboot device
+<code>reset</code>
+now you are rebooting in the new u-boot
+
+**Install OpenWrt**
+
+Hit any key to stop autoboot in the u-boot and set goflexhome ip, tftp-server ip, set your mac-address from bottom of the machine:
+<code>
+setenv ipaddr '192.168.1.1'
+setenv serverip '192.168.1.2'
+setenv ethaddr '00:10:75:xx:xx:xx'
+saveenv
+</code>
+
+download from tftp-server file **openwrt-18.06.2-kirkwood-seagate_goflexhome-squashfs-factory.bin** to RAM start default offset 0x800000
+<code>tftpboot openwrt-18.06.2-kirkwood-seagate_goflexhome-squashfs-factory.bin</code>
+Load address: 0x800000
+...
+Bytes transferred = 4063232 (3e0000 hex)
+
+erase nand UBI partition
+<code>nand erase.part ubi</code>
+write nand from RAM start offset 0x800000 to nand UBI partition size 0x3e0000
+<code>nand write 0x800000 ubi 0x600000</code>
+reboot device
+<code>reset</code>
+
+Congratulations!
+<code>
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt 18.06.2, r7258-5eb055306f
+ -----------------------------------------------------
+</code>
+
+
+===== Upgrading from Chaos Calmer 15.05.1 to LEDE 17.01.4 using SSH and MTD =====
+
+In version 15.05.01 'sysupgrade' not available for GoFlex Home. Use 'mtd' instead to flash the firmware.
+**Note:** This is upgrade instruction from already installed OpenWrt. Also, if you have serial access you can still do the normal installation as above.
+
+  * Backup configuration.
+  * To ssh into the OpenWrt GoFlex Home device.
+  * Check list mtd devices:
+<code>cat /proc/mtd</code>
+output:
+<code>
+dev:    size   erasesize  name
+mtd0: 00100000 00020000 "u-boot"
+mtd1: 00400000 00020000 "kernel"
+mtd2: 02000000 00020000 "rootfs"        
+</code>
+  * Download last firmware release LEDE 17.01.4 to /tmp:
+<code>wget -P /tmp http://downloads.openwrt.org/releases/17.01.4/targets/kirkwood/generic/lede-17.01.4-kirkwood-goflexhome-squashfs-sysupgrade.tar</code>
+  * Extract files from a tar file to /tmp:
+<code>tar -xvf /tmp/lede-17.01.4-kirkwood-goflexhome-squashfs-sysupgrade.tar -C /tmp</code>
+  * Check extracted files:
+<code>ls /tmp/sysupgrade-goflexhome/</code>
+output:
+<code>CONTROL  kernel   root</code>
+  * Erase 'kernel':
+<code>mtd erase /dev/mtd1</code>
+  * Write 'kernel':
+<code>mtd write /tmp/sysupgrade-goflexhome/kernel /dev/mtd1</code>
+  * Erase 'rootfs':
+<code>mtd erase /dev/mtd2</code>
+  * Write 'rootfs' with reboot after:
+<code>mtd -r write /tmp/sysupgrade-goflexhome/root /dev/mtd2</code>
+
+===== Tags =====
+{{tag>kirkwood 256NAND 128RAM GigabitEthernet 1NIC 0WNIC no_switch USB 4USB JTAG ARM ARMv5 ARM926EJ-S crypto NAS}}

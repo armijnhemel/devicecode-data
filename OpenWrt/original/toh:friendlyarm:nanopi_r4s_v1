@@ -1,0 +1,741 @@
+====== FriendlyARM NanoPi R4S ======
+
+The NanoPi R4S is made by FriendlyElec for IoT applications. It includes the RK3399 SoC, two 1Gbps Ethernet ports, microSD storage, and 4GB LPDDR4 RAM. The NanoPi R4S Enterprise Edition adds an additional EEPROM for the MAC address. These models are supported by official builds of OpenWrt.
+
+The R4S model with 1GB RAM and the R4SE with onboard 32GB eMMC are not officially supported however have custom builds available.
+
+{{:media:friendlyarm:r4s_01-900x630.jpg?450|FriendlyARM NanoPi R4S}}
+
+**support forum:** https://forum.openwrt.org/t/nanopi-r4s-rk3399-is-a-great-new-openwrt-device/79143/1741
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^FriendlyARM$", "model": "^NanoPi R4S$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^FriendlyARM$", "model": "^NanoPi R4S$"}
+} -->
+===== Installation =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^FriendlyARM$", "model": "^NanoPi R4S$"}
+} -->
+
+Decompress the OpenWrt ''...sysupgrade.img.gz'' image and write it to a [[:docs:guide-user:installation:installation_methods:sd_card|micro SD]] card using software such as ''dd'' or [[https://www.balena.io/etcher/|Balena Etcher]]. Then simply insert the SD card into the R4S, apply power, and it will boot OpenWrt.
+
+See [[https://forum.openwrt.org/t/nanopi-r4s-rk3399-is-a-great-new-openwrt-device/79143|forum post]] for discussion and assistance.
+
+The **1GB model** is currently not bootable from snapshot. For this model use one of the unofficial builds linked below:
+  * https://github.com/anaelorlinski/OpenWrt-NanoPi-R2S-R4S-Builds
+  * https://github.com/immortalwrt/immortalwrt
+  * https://github.com/quintus-lab/OpenWRT-Rockchip
+
+===== Upgrading OpenWrt =====
+
+==== List and export installed packages ====
+
+Flashing via Luci gives the option to generate a list of installed applications for easy reinstall. However, this gets lost with an update in snapshot. To make sure you can re-install them afterwards, I'd recommend to make a list of installed applications like this:
+
+<code>opkg list-installed | cut -f 1 -d " " > /root/opkg_installed.tx</code>
+
+You may also attempt this process in Luci by installing and using ''luci-app-attendedsysupgrade''.
+
+==== Backup ====
+
+Backup key directories such as: ''/root'' ''/etc'' before performing the sysupgrade.
+Rsync: You can do this with ''rsync -rav /root /etc /mnt/sda1/router_backup/'' (Where ''/mnt/sda1/router_backup/'' is for example an external disk). 
+SCP: Alternatively, you can use the network with SCP: ''scp -r /root user@x.x.x.x:/path''
+
+==== LuCI Web Upgrade Process ====
+
+  * Browse to ''<nowiki>http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/</nowiki>'' LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+==== Terminal Upgrade Process ====
+
+If you don't have a GUI (LuCI) available, you can alternatively upgrade via the command line.
+There are two command line methods for upgrading:
+
+  * ''sysupgrade''
+  * ''mtd''
+
+Note: It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== sysupgrade ===
+
+  * Login as root via SSH on for example 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+sysupgrade /tmp/xxx.abc
+</code>
+
+=== mtd ===
+
+If ''sysupgrade'' does not support this router, use ''mtd''.
+
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+mtd write /tmp/xxx.abc linux && reboot
+</code>
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+==== CPU Management ====
+
+[[:docs:guide-user:advanced:load_balancing_-_tuning_smp_irq| How to Load Balance OpenWrt]] More explanation here but below are specific examples for the R4S.
+
+To set processor affinity
+
+<code>
+#eth0 interrupts on core 0
+echo 1 > /proc/irq/35/smp_affinity
+#eth0 queue on core 1
+echo 2 > /sys/class/net/eth0/queues/rx-0/rps_cpus
+#eth1 interrupts on core 2
+echo 4 > /proc/irq/87/smp_affinity
+#eth1 queue on core 3
+echo 8 > /sys/class/net/eth1/queues/rx-0/rps_cpus
+</code>
+
+Your IRQ numbers might be different... you can find them with "grep eth /proc/interrupts". First column is the IRQ, so replace those in the commands above. The number you echo into the file defines which CPUs to use. It's basically a binary number where each bit represents one CPU, then convert that to hex. Rightmost bit is CPU 0. 
+
+For example:
+**Bits for CPU**
+<code>
+00000001 > hex 1 > cpu 0
+00000010 > hex 2 > cpu 1
+00001111 > hex F > cpu 0,1,2,3
+00110000 > hex 30 > cpu 4,5
+</code>
+**Examples:** 
+
+:!: If you restart or change settings with [[:docs:guide-user:network:traffic-shaping:sqm|SQM]], it will **reset** the CPU affinity and you will **need** to re-apply settings.
+
+Putting the commands in ''rc.local'' should work, assuming the IRQ numbers are somewhat static, which they seem to be. You may want to double check the IRQ numbers in ''/proc/interrupts'' and then do a reboot and check again to make sure they stay the same.  
+<code>
+#eth0 IRQ on A53 cores
+echo f > /proc/irq/35/smp_affinity
+#eth1 IRQ on A53 cores
+echo f > /proc/irq/87/smp_affinity
+#eth0 queue on A72 cores
+echo 30 > /sys/class/net/eth0/queues/rx-0/rps_cpus
+#eth1 queue on A72 cores
+echo 30 > /sys/class/net/eth1/queues/rx-0/rps_cpus
+</code>
+If you want to get more fancy, you could get the IRQ with a command instead of hard coding it:
+<code>
+#eth0 IRQ
+echo f > /proc/irq/`grep eth0 /proc/interrupts|awk -F ':' '{print $1}'|xargs`/smp_affinity
+#eth1 IRQ
+echo f > /proc/irq/`grep eth1 /proc/interrupts|awk -F ':' '{print $1}'|xargs`/smp_affinity
+</code>
+The grep command prints the line from /proc/interrupts, awk prints the first column which is the IRQ number, and xargs trims the whitespace.
+
+Consider also this [[https://github.com/StarWhiz/NanoPi-R6S-CPU-Optimization-for-Gigabit-SQM/blob/main/R4S%20CPU%20Optimization/README.md|CPU optimization guide]] for more performance with affinity tuning.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name ^ Description ^ Default configuration ^
+| eth0           | WAN port    | DHCP                  |
+| eth1           | LAN port    | static 192.168.1.1    |
+
+
+==== Buttons ====
+-> The FriendlyARM NanoPi R4S has the following buttons:
+
+^ BUTTON ^ Event ^
+| Reset  | reset |
+
+Use [[docs:guide-user:hardware:hardware.button]] for howto use and configure the hardware button(s).
+
+===== Hardware =====
+
+==== Info ====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^FriendlyARM$", "model": "^NanoPi R4S$"}
+} -->
+
+==== Photos ====
+{{:media:friendlyarm:nanopi_r4s_layout.jpg?400|}}
+{{:media:friendlyarm:r4s_en_03.jpg?400|}}
+{{:media:friendlyarm:boardbatteryclip.jpg?400|}}
+{{:media:friendlyarm:batterybackofcase.jpg?400|}}
+
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial port of this device:\\
+
+See photos picture. Serial UART is between USB C port and WAN port.
+
+**2x5-pin GPIO header**
+
+^ Pin# ^ Assignment ^ Pin# ^ Assignment ^     
+| 1    | VDD_5V  | 2     | VDD_3.3V |
+| 3    | VDD_5V  | 4     | GPIO4_C0/I2C3_SDA(3V) |
+| 5    | GND     | 6     | GPIO4_C1/I2C3_SCL(3V) |
+| 7    | GPIO1_B1/SPI1_CLK    | 8     | GPIO1_B0/SPI1_TXD/UART4-TX |
+| 9    | GPIO1_B2/SPI1_CSn | 10    | GPIO1_A7/SPI1_RXD/UART4-RX |
+
+
+**4-pin USB2 header**
+^  1      ^  2      ^  3     ^  4  ^
+| VDD_5V  | USB_DM  | USB_DP | GND |
+
+**Debug UART Pin header**
+
+3V level signals, 1500000bps 8N1
+
+^ Pin# ^ Assignment ^ Description ^    
+| 1   | GND                 | 0V |
+| 2   | UART2DBG_TX         | output |
+| 3   | UART2DBG_RX         | input |
+
+<WRAP important 100%>With console or internal USB2 tail attached, you will have to drill a hole in the side and modify the connectors as the case sits flush to the top of the Ethernet ports!</WRAP>
+
+**RTC**
+  * RTC backup current is 27uA.
+  * Connector P/N: Molex 53398-0271
+  * 1.27/1.25mm RTC battery input connector
+
+<WRAP important 100%>A bios battery will NOT fit in the case. You will have to drill a hole in the side and tape it to the side of the case externally, or mill/modify the case internally. Potentially milling part of the main heatsink and deepening above the ram chip would give enough space for internal RTC battery position.</WRAP>
+
+**5V Fan connector**
+  * zh1.5-2a connector
+
+^ Serial connection parameters\\ for FriendlyARM NanoPi R4S | 1500000, 8N1 |
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+//Main PCB://\\
+
+{{:media:friendlyarm:r4s_en_11.jpg?400|}}
+\\ Remove all cables and the SDCard. There are 4 rubber/foam pads covering the screws. Remove them then unscrew all 4 screws. With the base removed, there are a further 2 screws holding the board into the case. Remove them and then tilt the case and tip the board out. It will NOT come out if the SDCard is still inserted. You may need to prise it out gently from the USB ports side if the heatsink pad sticks the board to the case.
+
+
+===== Bootloader mods =====
+-> [[docs:techref:bootloader]]
+
+[[https://source.denx.de/u-boot/u-boot/-/blob/master/doc/board/rockchip/rockchip.rst|How to build U-Boot on rockchip boards]]
+
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>COPY HERE THE BOOTLOG WITH THE ORIGINAL FIRMWARE</nowiki>
+</WRAP>\\
+
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x410fd034]
+[    0.000000] Linux version 5.4.163 (ao@zzz) (gcc version 9.3.0 (OpenWrt GCC 9.3.0 r16419-5a8faa407a)) #0 SMP PREEMPT Mon Dec 13 17:21:25 2021
+[    0.000000] Machine model: FriendlyElec NanoPi R4S
+[    0.000000] earlycon: uart8250 at MMIO32 0x00000000ff1a0000 (options '')
+[    0.000000] printk: bootconsole [uart8250] enabled
+[    0.000000] cma: Reserved 8 MiB at 0x00000000f7800000
+[    0.000000] On node 0 totalpages: 1015296
+[    0.000000]   DMA32 zone: 15864 pages used for memmap
+[    0.000000]   DMA32 zone: 0 pages reserved
+[    0.000000]   DMA32 zone: 1015296 pages, LIFO batch:63
+[    0.000000] psci: probing for conduit method from DT.
+[    0.000000] psci: PSCIv1.1 detected in firmware.
+[    0.000000] psci: Using standard PSCI v0.2 function IDs
+[    0.000000] psci: MIGRATE_INFO_TYPE not supported.
+[    0.000000] psci: SMC Calling Convention v1.0
+[    0.000000] percpu: Embedded 21 pages/cpu s47832 r8192 d29992 u86016
+[    0.000000] pcpu-alloc: s47832 r8192 d29992 u86016 alloc=21*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 [0] 2 [0] 3 [0] 4 [0] 5 
+[    0.000000] Detected VIPT I-cache on CPU0
+[    0.000000] CPU features: detected: ARM erratum 845719
+[    0.000000] CPU features: detected: GIC system register CPU interface
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 999432
+[    0.000000] Kernel command line: console=ttyS2,1500000 earlycon=uart8250,mmio32,0xff1a0000 root=PARTUUID=5452574f-02 rw rootwait
+[    0.000000] Dentry cache hash table entries: 524288 (order: 10, 4194304 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 262144 (order: 9, 2097152 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 3959100K/4061184K available (7806K kernel code, 598K rwdata, 2416K rodata, 1728K init, 724K bss, 93892K reserved, 8192K cma-reserved)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=6, Nodes=1
+[    0.000000] rcu: Preemptible hierarchical RCU implementation.
+[    0.000000] rcu: 	RCU event tracing is enabled.
+[    0.000000] rcu: 	RCU restricting CPUs from NR_CPUS=256 to nr_cpu_ids=6.
+[    0.000000] 	Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=6
+[    0.000000] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[    0.000000] GICv3: GIC: Using split EOI/Deactivate mode
+[    0.000000] GICv3: 256 SPIs implemented
+[    0.000000] GICv3: 0 Extended SPIs implemented
+[    0.000000] GICv3: Distributor has no Range Selector support
+[    0.000000] GICv3: 16 PPIs implemented
+[    0.000000] GICv3: no VLPI support, no direct LPI support
+[    0.000000] GICv3: CPU0: found redistributor 0 region 0:0x00000000fef00000
+[    0.000000] ITS [mem 0xfee20000-0xfee3ffff]
+[    0.000000] ITS@0x00000000fee20000: allocated 65536 Devices @f2080000 (flat, esz 8, psz 64K, shr 0)
+[    0.000000] ITS: using cache flushing for cmd queue
+[    0.000000] GICv3: using LPI property table @0x00000000f2040000
+[    0.000000] GIC: using cache flushing for LPI property table
+[    0.000000] GICv3: CPU0: using allocated LPI pending table @0x00000000f2050000
+[    0.000000] GICv3: GIC: PPI partition interrupt-partition-0[0] { /cpus/cpu@0[0] /cpus/cpu@1[1] /cpus/cpu@2[2] /cpus/cpu@3[3] }
+[    0.000000] GICv3: GIC: PPI partition interrupt-partition-1[1] { /cpus/cpu@100[4] /cpus/cpu@101[5] }
+[    0.000000] random: get_random_bytes called from start_kernel+0x29c/0x398 with crng_init=0
+[    0.000000] arch_timer: cp15 timer(s) running at 24.00MHz (phys).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x588fe9dc0, max_idle_ns: 440795202592 ns
+[    0.000007] sched_clock: 56 bits at 24MHz, resolution 41ns, wraps every 4398046511097ns
+[    0.001945] Console: colour dummy device 80x25
+[    0.002412] Calibrating delay loop (skipped), value calculated using timer frequency.. 48.00 BogoMIPS (lpj=96000)
+[    0.003391] pid_max: default: 32768 minimum: 301
+[    0.004047] Mount-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.004773] Mountpoint-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.007525] ASID allocator initialised with 32768 entries
+[    0.008150] rcu: Hierarchical SRCU implementation.
+[    0.008890] Platform MSI: interrupt-controller@fee20000 domain created
+[    0.009954] PCI/MSI: /interrupt-controller@fee00000/interrupt-controller@fee20000 domain created
+[    0.011414] smp: Bringing up secondary CPUs ...
+[    0.012427] Detected VIPT I-cache on CPU1
+[    0.012464] GICv3: CPU1: found redistributor 1 region 0:0x00000000fef20000
+[    0.012480] GICv3: CPU1: using allocated LPI pending table @0x00000000f2060000
+[    0.012527] CPU1: Booted secondary processor 0x0000000001 [0x410fd034]
+[    0.013185] Detected VIPT I-cache on CPU2
+[    0.013211] GICv3: CPU2: found redistributor 2 region 0:0x00000000fef40000
+[    0.013224] GICv3: CPU2: using allocated LPI pending table @0x00000000f2070000
+[    0.013256] CPU2: Booted secondary processor 0x0000000002 [0x410fd034]
+[    0.013879] Detected VIPT I-cache on CPU3
+[    0.013904] GICv3: CPU3: found redistributor 3 region 0:0x00000000fef60000
+[    0.013918] GICv3: CPU3: using allocated LPI pending table @0x00000000f2100000
+[    0.013947] CPU3: Booted secondary processor 0x0000000003 [0x410fd034]
+[    0.014592] CPU features: detected: EL2 vector hardening
+[    0.014600] ARM_SMCCC_ARCH_WORKAROUND_1 missing from firmware
+[    0.014608] Detected PIPT I-cache on CPU4
+[    0.014638] GICv3: CPU4: found redistributor 100 region 0:0x00000000fef80000
+[    0.014652] GICv3: CPU4: using allocated LPI pending table @0x00000000f2110000
+[    0.014686] CPU4: Booted secondary processor 0x0000000100 [0x410fd082]
+[    0.015321] Detected PIPT I-cache on CPU5
+[    0.015345] GICv3: CPU5: found redistributor 101 region 0:0x00000000fefa0000
+[    0.015358] GICv3: CPU5: using allocated LPI pending table @0x00000000f2120000
+[    0.015385] CPU5: Booted secondary processor 0x0000000101 [0x410fd082]
+[    0.015490] smp: Brought up 1 node, 6 CPUs
+[    0.028617] SMP: Total of 6 processors activated.
+[    0.029069] CPU features: detected: 32-bit EL0 Support
+[    0.029559] CPU features: detected: CRC32 instructions
+[    0.042497] CPU: All CPU(s) started at EL2
+[    0.042930] alternatives: patching kernel code
+[    0.058149] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.059125] futex hash table entries: 2048 (order: 5, 131072 bytes, linear)
+[    0.060115] pinctrl core: initialized pinctrl subsystem
+[    0.061251] NET: Registered protocol family 16
+[    0.063903] DMA: preallocated 256 KiB pool for atomic allocations
+[    0.065532] cpuidle: using governor menu
+[    0.066060] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
+[    0.066939] Serial: AMBA PL011 UART driver
+[    0.093503] HugeTLB registered 1.00 GiB page size, pre-allocated 0 pages
+[    0.094163] HugeTLB registered 32.0 MiB page size, pre-allocated 0 pages
+[    0.094817] HugeTLB registered 2.00 MiB page size, pre-allocated 0 pages
+[    0.095487] HugeTLB registered 64.0 KiB page size, pre-allocated 0 pages
+[    0.098628] cryptd: max_cpu_qlen set to 1000
+[    0.101517] reg-fixed-voltage vcc3v3-sys: Failed to register regulator: -517
+[    0.102301] reg-fixed-voltage vcc5v0-sys: Failed to register regulator: -517
+[    0.103073] reg-fixed-voltage vcc1v8-s3: Failed to register regulator: -517
+[    0.103951] reg-fixed-voltage vcc3v0-sd: Failed to register regulator: -517
+[    0.105219] iommu: Default domain type: Translated 
+[    0.107675] SCSI subsystem initialized
+[    0.108225] usbcore: registered new interface driver usbfs
+[    0.108795] usbcore: registered new interface driver hub
+[    0.109351] usbcore: registered new device driver usb
+[    0.110234] workqueue: max_active 576 requested for napi_workq is out of range, clamping between 1 and 512
+[    0.111782] clocksource: Switched to clocksource arch_sys_counter
+[    0.112491] VFS: Disk quotas dquot_6.6.0
+[    0.112927] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+[    0.116703] thermal_sys: Registered thermal governor 'step_wise'
+[    0.116707] thermal_sys: Registered thermal governor 'power_allocator'
+[    0.117773] NET: Registered protocol family 2
+[    0.119127] IP idents hash table entries: 65536 (order: 7, 524288 bytes, linear)
+[    0.122456] tcp_listen_portaddr_hash hash table entries: 2048 (order: 3, 32768 bytes, linear)
+[    0.123359] TCP established hash table entries: 32768 (order: 6, 262144 bytes, linear)
+[    0.124489] TCP bind hash table entries: 32768 (order: 7, 524288 bytes, linear)
+[    0.125858] TCP: Hash tables configured (established 32768 bind 32768)
+[    0.126619] UDP hash table entries: 2048 (order: 4, 65536 bytes, linear)
+[    0.127401] UDP-Lite hash table entries: 2048 (order: 4, 65536 bytes, linear)
+[    0.128384] NET: Registered protocol family 1
+[    0.128834] PCI: CLS 0 bytes, default 64
+[    0.130049] hw perfevents: enabled with armv8_cortex_a53 PMU driver, 7 counters available
+[    0.131132] hw perfevents: enabled with armv8_cortex_a72 PMU driver, 7 counters available
+[    0.139279] workingset: timestamp_bits=46 max_order=20 bucket_order=0
+[    0.145833] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.146407] jffs2: version 2.2 (NAND) (SUMMARY) (ZLIB) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.171190] NET: Registered protocol family 38
+[    0.171662] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 252)
+[    0.172523] io scheduler mq-deadline registered
+[    0.179641] rockchip-pcie f8000000.pcie: no vpcie12v regulator found
+[    0.182008] dma-pl330 ff6d0000.dma-controller: Loaded driver for PL330 DMAC-241330
+[    0.182751] dma-pl330 ff6d0000.dma-controller: 	DBUFF-32x8bytes Num_Chans-6 Num_Peri-12 Num_Events-12
+[    0.184659] dma-pl330 ff6e0000.dma-controller: Loaded driver for PL330 DMAC-241330
+[    0.185402] dma-pl330 ff6e0000.dma-controller: 	DBUFF-128x8bytes Num_Chans-8 Num_Peri-20 Num_Events-16
+[    0.187913] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+[    0.189656] printk: console [ttyS2] disabled
+[    0.190130] ff1a0000.serial: ttyS2 at MMIO 0xff1a0000 (irq = 37, base_baud = 1500000) is a 16550A
+[    0.191146] printk: console [ttyS2] enabled
+[    0.191939] printk: bootconsole [uart8250] disabled
+[    0.194813] random: fast init done
+[    0.194984] cacheinfo: Unable to detect cache hierarchy for CPU 0
+[    0.195387] random: crng init done
+[    0.200421] loop: module loaded
+[    0.200707] mtip32xx Version 1.3.1
+[    0.202807] libphy: Fixed MDIO Bus: probed
+[    0.204230] rk_gmac-dwmac fe300000.ethernet: IRQ eth_wake_irq not found
+[    0.204817] rk_gmac-dwmac fe300000.ethernet: IRQ eth_lpi not found
+[    0.216688] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    0.217264] ehci-pci: EHCI PCI platform driver
+[    0.217698] ehci-platform: EHCI generic platform driver
+[    0.220337] ehci-platform fe380000.usb: EHCI Host Controller
+[    0.220856] ehci-platform fe380000.usb: new USB bus registered, assigned bus number 1
+[    0.221641] ehci-platform fe380000.usb: irq 29, io mem 0xfe380000
+[    0.235807] ehci-platform fe380000.usb: USB 2.0 started, EHCI 1.00
+[    0.236767] hub 1-0:1.0: USB hub found
+[    0.237125] hub 1-0:1.0: 1 port detected
+[    0.237864] rockchip-usb2phy ff770000.syscon:usb2-phy@e460: Requested PHY is disabled
+[    0.238555] ehci-platform fe3c0000.usb: EHCI Host Controller
+[    0.239064] ehci-platform fe3c0000.usb: new USB bus registered, assigned bus number 2
+[    0.239847] ehci-platform fe3c0000.usb: irq 31, io mem 0xfe3c0000
+[    0.255802] ehci-platform fe3c0000.usb: USB 2.0 started, EHCI 1.00
+[    0.256713] hub 2-0:1.0: USB hub found
+[    0.257071] hub 2-0:1.0: 1 port detected
+[    0.257868] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    0.258425] ohci-platform: OHCI generic platform driver
+[    0.259036] ohci-platform fe3a0000.usb: Generic Platform OHCI controller
+[    0.259640] ohci-platform fe3a0000.usb: new USB bus registered, assigned bus number 3
+[    0.260445] ohci-platform fe3a0000.usb: irq 30, io mem 0xfe3a0000
+[    0.324184] hub 3-0:1.0: USB hub found
+[    0.324542] hub 3-0:1.0: 1 port detected
+[    0.325265] rockchip-usb2phy ff770000.syscon:usb2-phy@e460: Requested PHY is disabled
+[    0.325957] ohci-platform fe3e0000.usb: Generic Platform OHCI controller
+[    0.326558] ohci-platform fe3e0000.usb: new USB bus registered, assigned bus number 4
+[    0.327331] ohci-platform fe3e0000.usb: irq 32, io mem 0xfe3e0000
+[    0.392202] hub 4-0:1.0: USB hub found
+[    0.392560] hub 4-0:1.0: 1 port detected
+[    0.393837] xhci-hcd xhci-hcd.0.auto: xHCI Host Controller
+[    0.394335] xhci-hcd xhci-hcd.0.auto: new USB bus registered, assigned bus number 5
+[    0.395133] xhci-hcd xhci-hcd.0.auto: hcc params 0x0220fe64 hci version 0x110 quirks 0x0000000002010010
+[    0.396007] xhci-hcd xhci-hcd.0.auto: irq 219, io mem 0xfe800000
+[    0.397082] hub 5-0:1.0: USB hub found
+[    0.397439] hub 5-0:1.0: 1 port detected
+[    0.398024] xhci-hcd xhci-hcd.0.auto: xHCI Host Controller
+[    0.398515] xhci-hcd xhci-hcd.0.auto: new USB bus registered, assigned bus number 6
+[    0.399193] xhci-hcd xhci-hcd.0.auto: Host supports USB 3.0 SuperSpeed
+[    0.399860] usb usb6: We don't know the algorithms for LPM for this host, disabling LPM.
+[    0.400921] hub 6-0:1.0: USB hub found
+[    0.401276] hub 6-0:1.0: 1 port detected
+[    0.401989] xhci-hcd xhci-hcd.1.auto: xHCI Host Controller
+[    0.402487] xhci-hcd xhci-hcd.1.auto: new USB bus registered, assigned bus number 7
+[    0.403279] xhci-hcd xhci-hcd.1.auto: hcc params 0x0220fe64 hci version 0x110 quirks 0x0000000002010010
+[    0.404155] xhci-hcd xhci-hcd.1.auto: irq 220, io mem 0xfe900000
+[    0.405197] hub 7-0:1.0: USB hub found
+[    0.405553] hub 7-0:1.0: 1 port detected
+[    0.406143] xhci-hcd xhci-hcd.1.auto: xHCI Host Controller
+[    0.406633] xhci-hcd xhci-hcd.1.auto: new USB bus registered, assigned bus number 8
+[    0.407312] xhci-hcd xhci-hcd.1.auto: Host supports USB 3.0 SuperSpeed
+[    0.407951] usb usb8: We don't know the algorithms for LPM for this host, disabling LPM.
+[    0.409005] hub 8-0:1.0: USB hub found
+[    0.409367] hub 8-0:1.0: 1 port detected
+[    0.410122] usbcore: registered new interface driver usb-storage
+[    0.410797] i2c /dev entries driver
+[    0.412689] at24 2-0051: 256 byte 24c02 EEPROM, writable, 16 bytes/write
+[    0.414636] fan53555-regulator 0-0040: FAN53555 Option[8] Rev[1] Detected!
+[    0.415928] fan53555-regulator 0-0040: Failed to register regulator!
+[    0.417070] fan53555-regulator 0-0041: FAN53555 Option[8] Rev[1] Detected!
+[    0.418328] fan53555-regulator 0-0041: Failed to register regulator!
+[    0.419434] rk808 0-001b: chip id: 0x0
+[    0.423671] rk808-regulator rk808-regulator: there is no dvs0 gpio
+[    0.424260] rk808-regulator rk808-regulator: there is no dvs1 gpio
+[    0.425264] rk808 0-001b: failed to register 0 regulator
+[    0.428802] rk808-rtc rk808-rtc: registered as rtc0
+[    0.433088] sdhci: Secure Digital Host Controller Interface driver
+[    0.433634] sdhci: Copyright(c) Pierre Ossman
+[    0.434019] Synopsys Designware Multimedia Card Interface Driver
+[    0.435241] dwmmc_rockchip fe320000.dwmmc: IDMAC supports 32-bit address mode.
+[    0.435929] dwmmc_rockchip fe320000.dwmmc: Using internal DMA controller.
+[    0.436533] dwmmc_rockchip fe320000.dwmmc: Version ID is 270a
+[    0.437077] dwmmc_rockchip fe320000.dwmmc: DW MMC controller at irq 28,32 bit host data width,256 deep fifo
+[    0.438257] sdhci-pltfm: SDHCI platform and OF driver helper
+[    0.440168] ledtrig-cpu: registered to indicate activity on CPUs
+[    0.441138] usbcore: registered new interface driver usbhid
+[    0.441629] usbhid: USB HID core driver
+[    0.443733] NET: Registered protocol family 10
+[    0.444946] Segment Routing with IPv6
+[    0.445338] NET: Registered protocol family 17
+[    0.445759] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    0.446890] 8021q: 802.1Q VLAN Support v1.8
+[    0.478684] reg-fixed-voltage vcc3v3-sys: Failed to register regulator: -517
+[    0.479569] vcc5v0_sys: supplied by vdd_5v
+[    0.480276] reg-fixed-voltage vcc1v8-s3: Failed to register regulator: -517
+[    0.481224] reg-fixed-voltage vcc3v0-sd: Failed to register regulator: -517
+[    0.482418] rockchip-pcie f8000000.pcie: no vpcie12v regulator found
+[    0.483869] rk_gmac-dwmac fe300000.ethernet: IRQ eth_wake_irq not found
+[    0.484454] rk_gmac-dwmac fe300000.ethernet: IRQ eth_lpi not found
+[    0.486305] rk_gmac-dwmac fe300000.ethernet: PTP uses main clock
+[    0.486858] rk_gmac-dwmac fe300000.ethernet: phy regulator is not available yet, deferred probing
+[    0.488949] fan53555-regulator 0-0040: FAN53555 Option[8] Rev[1] Detected!
+[    0.491104] fan53555-regulator 0-0040: Failed to register regulator!
+[    0.493425] fan53555-regulator 0-0041: FAN53555 Option[8] Rev[1] Detected!
+[    0.495315] fan53555-regulator 0-0041: Failed to register regulator!
+[    0.496162] rk808-regulator rk808-regulator: there is no dvs0 gpio
+[    0.496726] rk808-regulator rk808-regulator: there is no dvs1 gpio
+[    0.497332] rk808 0-001b: failed to register 0 regulator
+[    0.498995] dwmmc_rockchip fe320000.dwmmc: IDMAC supports 32-bit address mode.
+[    0.499650] dwmmc_rockchip fe320000.dwmmc: Using internal DMA controller.
+[    0.500281] dwmmc_rockchip fe320000.dwmmc: Version ID is 270a
+[    0.500815] dwmmc_rockchip fe320000.dwmmc: DW MMC controller at irq 28,32 bit host data width,256 deep fifo
+[    0.501903] vcc3v3_sys: supplied by vcc5v0_sys
+[    0.502599] reg-fixed-voltage vcc1v8-s3: Failed to register regulator: -517
+[    0.503495] vcc3v0_sd: supplied by vcc3v3_sys
+[    0.504540] rockchip-pcie f8000000.pcie: no vpcie12v regulator found
+[    0.505162] rockchip-pcie f8000000.pcie: no vpcie1v8 regulator found
+[    0.505733] rockchip-pcie f8000000.pcie: no vpcie0v9 regulator found
+[    0.532105] rockchip-pcie f8000000.pcie: host bridge /pcie@f8000000 ranges:
+[    0.532753] rockchip-pcie f8000000.pcie:   MEM 0xfa000000..0xfbdfffff -> 0xfa000000
+[    0.533435] rockchip-pcie f8000000.pcie:    IO 0xfbe00000..0xfbefffff -> 0xfbe00000
+[    0.534417] rockchip-pcie f8000000.pcie: PCI host bridge to bus 0000:00
+[    0.535005] pci_bus 0000:00: root bus resource [bus 00-1f]
+[    0.535492] pci_bus 0000:00: root bus resource [mem 0xfa000000-0xfbdfffff]
+[    0.536121] pci_bus 0000:00: root bus resource [io  0x0000-0xfffff] (bus address [0xfbe00000-0xfbefffff])
+[    0.536989] pci 0000:00:00.0: [1d87:0100] type 01 class 0x060400
+[    0.537639] pci 0000:00:00.0: supports D1
+[    0.537997] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    0.542949] pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    0.543839] pci 0000:01:00.0: [10ec:8168] type 00 class 0x020000
+[    0.544476] pci 0000:01:00.0: reg 0x10: initial BAR value 0x00000000 invalid
+[    0.545097] pci 0000:01:00.0: reg 0x10: [io  size 0x0100]
+[    0.545650] pci 0000:01:00.0: reg 0x18: [mem 0x00000000-0x00000fff 64bit]
+[    0.546296] pci 0000:01:00.0: reg 0x20: [mem 0x00000000-0x00003fff 64bit]
+[    0.546942] pci 0000:01:00.0: Upstream bridge's Max Payload Size set to 128 (was 256, max 256)
+[    0.547710] pci 0000:01:00.0: Max Payload Size set to 128 (was 128, max 128)
+[    0.548678] pci 0000:01:00.0: supports D1 D2
+[    0.549058] pci 0000:01:00.0: PME# supported from D0 D1 D2 D3hot D3cold
+[    0.564269] pci_bus 0000:01: busn_res: [bus 01-1f] end is updated to 01
+[    0.564883] pci 0000:00:00.0: BAR 8: assigned [mem 0xfa000000-0xfa0fffff]
+[    0.565491] pci 0000:01:00.0: BAR 4: assigned [mem 0xfa000000-0xfa003fff 64bit]
+[    0.566176] pci 0000:01:00.0: BAR 2: assigned [mem 0xfa004000-0xfa004fff 64bit]
+[    0.566857] pci 0000:01:00.0: BAR 0: no space for [io  size 0x0100]
+[    0.567410] pci 0000:01:00.0: BAR 0: failed to assign [io  size 0x0100]
+[    0.568008] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    0.568452] pci 0000:00:00.0:   bridge window [mem 0xfa000000-0xfa0fffff]
+[    0.569240] pcieport 0000:00:00.0: enabling device (0000 -> 0002)
+[    0.570044] pcieport 0000:00:00.0: PME: Signaling with IRQ 231
+[    0.571227] pcieport 0000:00:00.0: AER: enabled with IRQ 231
+[    0.572717] rk_gmac-dwmac fe300000.ethernet: IRQ eth_wake_irq not found
+[    0.573304] rk_gmac-dwmac fe300000.ethernet: IRQ eth_lpi not found
+[    0.575603] rk_gmac-dwmac fe300000.ethernet: PTP uses main clock
+[    0.576222] rk_gmac-dwmac fe300000.ethernet: phy regulator is not available yet, deferred probing
+[    0.578487] fan53555-regulator 0-0040: FAN53555 Option[8] Rev[1] Detected!
+[    0.580578] vdd_cpu_b: supplied by vcc3v3_sys
+[    0.584803] fan53555-regulator 0-0041: FAN53555 Option[8] Rev[1] Detected!
+[    0.586450] vdd_gpu: supplied by vcc3v3_sys
+[    0.589706] rk808-regulator rk808-regulator: there is no dvs0 gpio
+[    0.590276] rk808-regulator rk808-regulator: there is no dvs1 gpio
+[    0.590896] vdd_center: supplied by vcc3v3_sys
+[    0.593109] vdd_cpu_l: supplied by vcc3v3_sys
+[    0.593822] vcc_ddr: supplied by vcc3v3_sys
+[    0.595379] vcc_1v8: supplied by vcc3v3_sys
+[    0.596798] vcc1v8_cam: supplied by vcc3v3_sys
+[    0.599210] vcc3v0_touch: supplied by vcc3v3_sys
+[    0.601807] vcc1v8_pmupll: supplied by vcc3v3_sys
+[    0.604418] vcc_sdio: supplied by vcc3v3_sys
+[    0.606535] vcca3v0_codec: supplied by vcc3v3_sys
+[    0.608829] vcc_1v5: supplied by vcc3v3_sys
+[    0.610561] vcca1v8_codec: supplied by vcc3v3_sys
+[    0.612791] vcc_3v0: supplied by vcc3v3_sys
+[    0.614016] vcc3v3_s3: supplied by vcc3v3_sys
+[    0.614609] vcc3v3_s0: supplied by vcc3v3_sys
+[    0.616810] energy_model: pd0: hertz/watts ratio non-monotonically decreasing: em_cap_state 1 >= em_cap_state0
+[    0.622010] dwmmc_rockchip fe320000.dwmmc: IDMAC supports 32-bit address mode.
+[    0.622667] dwmmc_rockchip fe320000.dwmmc: Using internal DMA controller.
+[    0.623272] dwmmc_rockchip fe320000.dwmmc: Version ID is 270a
+[    0.623844] dwmmc_rockchip fe320000.dwmmc: DW MMC controller at irq 28,32 bit host data width,256 deep fifo
+[    0.624802] dwmmc_rockchip fe320000.dwmmc: Got CD GPIO
+[    0.636024] mmc_host mmc0: Bus speed (slot 0) = 400000Hz (slot req 400000Hz, actual 400000HZ div = 0)
+[    0.648305] vcc1v8_s3: supplied by vcc_1v8
+[    0.649032] rk_gmac-dwmac fe300000.ethernet: IRQ eth_wake_irq not found
+[    0.649608] rk_gmac-dwmac fe300000.ethernet: IRQ eth_lpi not found
+[    0.651325] rk_gmac-dwmac fe300000.ethernet: PTP uses main clock
+[    0.651910] rk_gmac-dwmac fe300000.ethernet: clock input or output? (input).
+[    0.652540] rk_gmac-dwmac fe300000.ethernet: TX delay(0x28).
+[    0.653033] rk_gmac-dwmac fe300000.ethernet: RX delay(0x11).
+[    0.653529] rk_gmac-dwmac fe300000.ethernet: integrated PHY? (no).
+[    0.654095] rk_gmac-dwmac fe300000.ethernet: cannot get clock clk_mac_speed
+[    0.654707] rk_gmac-dwmac fe300000.ethernet: clock input from PHY
+[    0.660249] rk_gmac-dwmac fe300000.ethernet: init for RGMII
+[    0.661495] rk_gmac-dwmac fe300000.ethernet: User ID: 0x10, Synopsys ID: 0x35
+[    0.662147] rk_gmac-dwmac fe300000.ethernet: 	DWMAC1000
+[    0.662620] rk_gmac-dwmac fe300000.ethernet: DMA HW capability register supported
+[    0.663272] rk_gmac-dwmac fe300000.ethernet: RX Checksum Offload Engine supported
+[    0.663952] rk_gmac-dwmac fe300000.ethernet: COE Type 2
+[    0.664411] rk_gmac-dwmac fe300000.ethernet: TX Checksum insertion supported
+[    0.665024] rk_gmac-dwmac fe300000.ethernet: Wake-Up On Lan supported
+[    0.665586] rk_gmac-dwmac fe300000.ethernet: Normal descriptors
+[    0.666110] rk_gmac-dwmac fe300000.ethernet: Ring mode enabled
+[    0.666617] rk_gmac-dwmac fe300000.ethernet: Enable RX Mitigation via HW Watchdog Timer
+[    0.723817] libphy: stmmac: probed
+[    0.728040] rk808-rtc rk808-rtc: setting system clock to 2013-01-18T08:50:10 UTC (1358499010)
+[    0.729893] ttyS2 - failed to request DMA
+[    0.730292] Waiting for root device PARTUUID=5452574f-02...
+[    1.322245] mmc_host mmc0: Bus speed (slot 0) = 148500000Hz (slot req 150000000Hz, actual 148500000HZ div = 0)
+[    1.561048] dwmmc_rockchip fe320000.dwmmc: Successfully tuned phase to 173
+[    1.561686] mmc0: new ultra high speed SDR104 SDXC card at address 59b4
+[    1.563948] mmcblk0: mmc0:59b4 SD128 116 GiB 
+[    1.567681]  mmcblk0: p1 p2
+[    1.585212] EXT4-fs (mmcblk0p2): mounted filesystem without journal. Opts: (null)
+[    1.585936] VFS: Mounted root (ext4 filesystem) on device 179:2.
+[    1.587208] Freeing unused kernel memory: 1728K
+[    1.612234] Run /sbin/init as init process
+[    1.657058] init: Console is alive
+[    1.917102] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    1.973058] Key type encrypted registered
+[    1.983625] raid6: using algorithm neonx8 gen() 0 MB/s
+[    1.984136] raid6: .... xor() 0 MB/s, rmw enabled
+[    1.984713] raid6: using neon recovery algorithm
+[    1.993615] xor: measuring software checksum speed
+[    2.032077]    8regs     :   811.000 MB/sec
+[    2.071927]    32regs    :  1863.000 MB/sec
+[    2.111998]    arm64_neon:  1595.000 MB/sec
+[    2.112384] xor: using function: 32regs (1863.000 MB/sec)
+[    2.163294] Btrfs loaded, crc32c=crc32c-generic
+[    2.169824] ehci-fsl: Freescale EHCI Host controller driver
+[    2.175280] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    2.177533] init: - preinit -
+[    6.428467] mount_root: mounting /dev/root
+[    6.432635] EXT4-fs (mmcblk0p2): re-mounted. Opts: (null)
+[    6.496039] EXT4-fs (mmcblk0p1): mounted filesystem without journal. Opts: (null)
+[    6.505786] urandom-seed: Seed file not found (/etc/urandom.seed)
+[    6.581236] procd: - early -
+[    7.102989] procd: - ubus -
+[    7.157755] procd: - init -
+[    7.296941] urngd: v1.0.2 started.
+[    7.479062] kmodloader: loading kernel modules from /etc/modules.d/*
+[    7.527934] device-mapper: ioctl: 4.41.0-ioctl (2019-09-16) initialised: dm-devel@redhat.com
+[    7.546818] Key type cifs.idmap registered
+[    7.551934] NET: Registered protocol family 15
+[    7.553497] Initializing XFRM netlink socket
+[    7.567557] tun: Universal TUN/TAP device driver, 1.6
+[    7.608531] cryptodev: driver 1.11 loaded.
+[    7.610838] GACT probability on
+[    7.611553] Mirror/redirect action on
+[    7.614509] u32 classifier
+[    7.614749]     input device check on
+[    7.615069]     Actions configured
+[    7.638795] Bridge firewalling registered
+[    7.663279] ipt_CLUSTERIP: ClusterIP Version 0.8 loaded successfully
+[    7.695653] usbcore: registered new interface driver r8152
+[    7.704133] r8168 Gigabit Ethernet driver 8.049.02-NAPI loaded
+[    7.704684] r8168 0000:01:00.0: enabling device (0000 -> 0002)
+[    7.721919] r8168 0000:01:00.0 (unnamed net_device) (uninitialized): Invalid ether addr 00:00:00:00:00:00
+[    7.722753] r8168 0000:01:00.0 (unnamed net_device) (uninitialized): Random ether addr b2:87:6a:6a:ca:b5
+[    7.723964] r8168: This product is covered by one or more of the following patents: US6,570,884, US6,115,776, and US6,327,625.
+[    7.726973] r8168  Copyright (C) 2021 Realtek NIC software team <nicfae@realtek.com> 
+[    7.726973]  This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. 
+[    7.726973]  This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. 
+[    7.736500] rockchip-vop ff8f0000.vop: Adding to iommu group 1
+[    7.737297] rockchip-vop ff900000.vop: Adding to iommu group 2
+[    7.741320] usbcore: registered new interface driver snd-usb-caiaq
+[    7.769903] xt_time: kernel timezone is -0000
+[    7.781277] PPP generic driver version 2.4.2
+[    7.782574] NET: Registered protocol family 24
+[    7.787406] usbcore: registered new interface driver snd-usb-audio
+[    7.790147] wireguard: WireGuard 1.0.0 loaded. See www.wireguard.com for information.
+[    7.790831] wireguard: Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+[    7.793597] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   13.247175] eth1: 0xffff80001105d000, 6a:27:19:ac:e8:85, IRQ 232
+[   13.307514] br-lan: port 1(eth1) entered blocking state
+[   13.307985] br-lan: port 1(eth1) entered disabled state
+[   13.308559] device eth1 entered promiscuous mode
+[   13.313074] rk_gmac-dwmac fe300000.ethernet eth0: PHY [stmmac-0:01] driver [RTL8211E Gigabit Ethernet]
+[   13.323827] rk_gmac-dwmac fe300000.ethernet eth0: No Safety Features support found
+[   13.324507] rk_gmac-dwmac fe300000.ethernet eth0: PTP not supported by HW
+[   13.325108] rk_gmac-dwmac fe300000.ethernet eth0: configuring for phy/rgmii link mode
+[   15.005950] rk_gmac-dwmac fe300000.ethernet eth0: Link is Up - 100Mbps/Full - flow control rx/tx
+[   15.006745] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   17.399938] r8168: eth1: link up
+[   17.400392] br-lan: port 1(eth1) entered blocking state
+[   17.400857] br-lan: port 1(eth1) entered forwarding state
+[   17.401576] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   31.716120] vbus_typec: disabling</nowiki>
+</WRAP>\\
+
+
+===== Misc =====
+
+**USB Port**
+  * Each USB 3.0 port has 2A overcurrent protection.
+
+**RTC**
+  * RTC backup current is 27uA.
+  * Connector P/N: Molex 53398-0271
+
+**Power Input**
+  * 5V/3A, via USB Type-C(USB PD Specification is not supported) or Pin1&Pin2 of the 2x5-pin header
+
+**Link to Rockchip Resources**
+  * [[http://opensource.rock-chips.com/images/d/d7/Rockchip_RK3399_Datasheet_V2.1-20200323.pdf|RK3399 datasheet V2.1]]
+  * [[http://opensource.rock-chips.com/images/d/d7/Rockchip_RK3399_Datasheet_V2.1-20200323.pdf|RK3399TRM V1.4]]
+
+**Schematic, PCB CAD File**
+  * Schematic:  [[https://wiki.friendlyelec.com/wiki/images/0/06/NanoPi-R4S-1GB-2008-Schematic.pdf|NanoPi-R4S-1GB-2008-Schematic.pdf]] [[https://wiki.friendlyelec.com/wiki/images/c/c2/NanoPi-R4S-4GB-2008-Schematic.pdf|NanoPi-R4S-4GB-2008-Schematic.pdf]]
+  * PCB CAD File：[[https://wiki.friendlyelec.com/wiki/images/a/ab/NanoPi_R4S_1GB_2008_dxf.zip|NanoPi_R4S_1GB_2008_dxf.zip]] [[https://wiki.friendlyelec.com/wiki/images/1/18/NanoPi_R4S_4GB_2008_dxf.zip|NanoPi_R4S_4GB_2008_dxf.zip]]
+
+
+===== Notes =====
+
+1. See [[https://wiki.friendlyelec.com/wiki/index.php/NanoPi_R4S|FriendlyElec wiki]] for more info.
+
+2. NanoPi line of devices with multiple 1G/2.5G ethernet ports: [[:toh:hwdata:friendlyarm:friendlyarm_nanopi_r4s]], [[:toh:hwdata:friendlyarm:friendlyarm_nanopi_r5s]], [[:toh:hwdata:friendlyarm:friendlyarm_nanopi_r6s]].
+
+3. Youtube review: [[https://www.youtube.com/watch?v=f74J4LVfoOo|OpenWRT - NanoPi R4S Overview & Performance Test (NAT, OpenVPN,Wireguard, iPerf)]].
+
+===== Tags =====
+
+[[meta:tags|How to add tags]]
+
+{{tag>rockchip RK3399 6core armv8 microsd 1024ram 4096ram 2port gigabitethernet 0wnic 2nic 2USB usb2.0 usb3.0 serial GPIO portable_router RTC 5v_powered}}

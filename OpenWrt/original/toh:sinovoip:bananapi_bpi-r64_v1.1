@@ -1,0 +1,867 @@
+====== Sinovoip BananaPi BPi-R64 V1.1, V1.2======
+
+{{media:sinovoip:banana_pi_bpi-r64.jpg?400|Bananapi BPi-R64 board}}
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^Sinovoip$", "model": "^Banana Pi BPi-R64$", "version": "^V1\\.1$"}
+} -->
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["unsupported_functions"],
+  "filterColumns": {"brand": "^Sinovoip$", "model": "^Banana Pi BPi-R64$", "version": "^V1\\.1$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["commentsusbsataports"],
+  "filterColumns": {"brand": "^Sinovoip$", "model": "^Banana Pi BPi-R64$", "version": "^V1\\.1$"}
+} -->
+ 
+===== Installation =====
+/* stable release */
+/* uncomment once stable release is available
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Sinovoip$", "model": "^Banana Pi BPi-R64$", "version": "^V1\\.1$"}
+} -->
+*/
+
+
+/* snapshot */
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtsnapshotinstallurl", "firmwareopenwrtsnapshotupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Sinovoip$", "model": "^Banana Pi BPi-R64$", "version": "^V1\\.1$"}
+} -->
+
+==== SD Card Installation ====
+
+Prepare SD Card:
+<code>
+gzip -cd bananapi_bpi-r64-sdcard.img.gz > /dev/mmcblkX
+</code>
+
+This card can now be used to boot OpenWrt recovery (==initramfs) as well as production (==with f2fs overlay) system from that card.
+When running OpenWrt from the SD card, you can trigger the installation of the bootloader and OpenWrt images to the on-board eMMC or SPI-NAND flash by setting a bootloader environment variable or by using the bootloader menu accessible via the serial console.
+If you do not have access to the serial console, connect via SSH and access the U-Boot environment using `fw_setenv`:
+<code>
+fw_setenv bootcmd run emmc_init
+</code>
+At the next reboot the bootloader on the SD card will write ARM Trusted Firmware, U-Boot and the OpenWrt images contained on the SD card to the eMMC. You can then switch to boot from eMMC and use sysupgrade to keep the system up-to-date.
+
+Alternatively, installation to the on-board SPI-NAND flash chip can be achieved as well:
+<code>
+fw_setenv bootcmd run ubi_init
+</code>
+At the next reboot the bootloader on the SD Card will write ARM Trusted Firmware, U-Boot and the OpenWrt images contained on the SD card to the SPI-NAND flash. Wait for 2-3 minutes to be safe, disconnect the board and set the hardware switch in the position to boot from SPI-NAND. Verify that have are now using UBIFS as rootfs-overlay.
+
+=== sysupgrade ===
+
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget https://downloads.openwrt.org/snapshots/targets/mediatek/mt7622/openwrt-mediatek-mt7622-bananapi_bpi-r64-squashfs-sysupgrade.itb
+sysupgrade /tmp/openwrt-mediatek-mt7622-bananapi_bpi-r64-squashfs-sysupgrade.itb
+</code>
+
+==== update uboot-mediatek bootloader for new device tree overlay feature ====
+
+  * BananaPi R64 that were flashed before this commit, need to follow this manual bootloader update process
+<code>
+commit ec50d2d366fecb6f4bac2ae9d5cfa4aba9cf7bbc
+Author: Daniel Golle <daniel@makrotopia.org>
+Date:   Sun Jun 4 18:55:17 2023 +0100
+
+    uboot-mediatek: adapt BPi-R3 and BPi-R64 to new device tree overlay:
+</code>
+
+=== easy uboot update in case you have your BananaPi at hand via sdcard ===
+  - create config backup (sysupgrade or via LUCI)
+  - put new openwrt image to a micro sdcard
+  - rerun the [[toh:sinovoip:bananapi_bpi-r64_v1.1#sd_card_installation|installation procedure]]
+
+alternatively: 
+  - connect serial console to your BananaPi to instruct the uboot bootloader menu
+  - boot with sdcard and choose your favorite option (sdcard to emmc or nand)
+  - switch to your prefered boot device & remove sdcard
+  - reboot & restore your config backup
+
+=== easy uboot update in case you have your BananaPi at hand via tftp ===
+  * 1) attache serial console
+  * 2) provide full folder content from bin/targets/mediatek/mt7622 via tftp to your BananaPi
+<code>
+#e.g.
+cd bin/targets/mediatek/mt7622
+tftpd -L -v -s .
+</code>
+  * 3) choose in uboot menu: Update BL31+U-Boot via TFTP
+  * 4) choose in uboot menu: Reset all settings to factory defaults (to reset uboot env)
+
+=== complex uboot update in case you have your BananaPi running on the roof ===
+
+  * 1) CHECK from which storage your BananaPi has booted from:
+<code>
+cat /proc/cmdline
+if return = root=/dev/ubiblock0* ... YOU BOOTED FROM internal NAND
+if return = root=/dev/mmcblk0* ... YOU BOOTED from EMMC
+if return = root=/dev/mmcblk1* ... YOU BOOTED from the SDCARD
+</code>
+  * 2a) in case snand / sdcard boot copy new bootloader to your BananaPi:
+<code>
+scp -O openwrt-snapshot-mediatek-mt7622-bananapi_bpi-r64-snand-bl31-uboot.fip root@my_router_ip:/tmp
+</code>
+  * 2a) install mtd with write support
+<code>
+ scp -O kmod-mtd-rw_aarch64_cortex-a53.ipk root@my_router_ip:/tmp
+#ssh into your router & install mtd_rw: 
+opkg install --force-depends /tmp/kmod-mtd-rw_aarch64_cortex-a53.ipk
+insmod /lib/modules/*/mtd-rw.ko i_want_a_brick=1
+</code>
+  * 2a) write new bootloader image WITHOUT reboot!
+<code>
+mtd write /tmp/openwrt-snapshot-r23288+58-7a0ec001ff79-mediatek-mt7622-bananapi_bpi-r64-snand-bl31-uboot.fip fip
+# clear environment after you have checked where you environment is stored: ubinfo -a
+ubiupdatevol /dev/ubi0_0 -t
+ubiupdatevol /dev/ubi0_1 -t
+</code>
+  * 2b) in case of emmc boot:
+# find fip partition and ubootenv partition
+# X=fip partition
+# Y=ubootenv partition
+<code>
+for p in /sys/block/mmcblk*/mmcblk*p* ; do bn=$(basename $p) ; echo -n "$bn : " ; grep PARTNAME $p/uevent || echo ; done
+</code>
+#copy uboot to your router and update the uboot partition
+<code>
+scp -O openwrt-snapshot-mediatek-mt7622-bananapi_bpi-r64-emmc-bl31-uboot.fip root@my_router_ip:/tmp
+dd if=/tmp/openwrt-snapshot-mediatek-mt7622-bananapi_bpi-r64-emmc-bl31-uboot.fip of=/dev/mmcblk0pX
+</code>
+# clear environment
+<code>
+dd if=/dev/zero of=/dev/mmcblk0pY
+</code>
+
+  * 3) as we have cleared the env, rootfs_data_max no longer exists at this point...
+# now copy your sysupgrade image to the target router
+<code>
+scp -O openwrt-snapshot-mediatek-mt7622-bananapi_bpi-r64-squashfs-sysupgrade.itb root@my_router_ip:/tmp
+sysupgrade -F /tmp/openwrt-snapshot-mediatek-mt7622-bananapi_bpi-r64-squashfs-sysupgrade.itb
+</code>
+  * 4) a 2nd sysupgrade is needed, because of rootfs_data_max desires: set compat version and restore rootfs_data_max
+<code>
+uci set system.@system[0].compat_version=1.1
+uci commit system
+fw_setenv rootfs_data_max 0x2000000 (only needed in case you have not reduced the size to 32MByte)
+scp -O openwrt-snapshot-mediatek-mt7622-bananapi_bpi-r64-squashfs-sysupgrade.itb root@my_router_ip:/tmp
+sysupgrade /tmp/openwrt-snapshot-mediatek-mt7622-bananapi_bpi-r64-squashfs-sysupgrade.itb
+</code>
+  * 5) update recovery partition as well, in case you need to boot into your recovery partition
+<code>
+#check your partitions, names and which number can be used:
+ubinfo -a
+#delete your recorvery
+ubirmvol /dev/ubi0 -N recovery
+scp -O openwrt-snapshot-mt7622-bananapi_bpi-r64-initramfs-recovery.itb root@my_router_ip:/tmp
+size=$( wc -c /tmp/openwrt-snapshot-mediatek-mt7622-bananapi_bpi-r64-initramfs-recovery.itb | cut -d' ' -f0 )
+ubimkvol /dev/ubi0 -n 3 -N recovery -s $size
+ubiupdatevol /dev/ubi0_3 /tmp/openwrt-snapshot-mediatek-mt7622-bananapi_bpi-r64-initramfs-recovery.itb
+</code>
+
+==== Flash Layout ====
+<code>
+opkg update && opkg install lsblk && lsblk /dev/mmcblk0 /dev/mtdblock*  -o START,SIZE,FSTYPE,NAME,PARTLABEL
+</code>
+
+^  START  ^  SIZE  ^  FSTYPE  ^     NAME      ^ PARTLABEL ^
+|         |   512K |          | mtdblock0     |            | 
+|         |    2M  |          | mtdblock1     |            | 
+|         | 125.5M |          | mtdblock2     |            | 
+|         |  7.3G  |          | mmcblk0       |            | 
+|  4096   |     2M |          | ├─mmcblk0p1   | fip        | 
+|  8192   |     1M |          | ├─mmcblk0p2   | ubootenv   | 
+| 12288   |    32M |          | ├─mmcblk0p3   | recovery   | 
+| 81920   |   104M |          | ├─mmcblk0p4   | production | 
+| 92600   |   4.4M | squashfs | ├─mmcblk0p65  |            | 
+| 101600  |  94.4M | f2fs     | ├─mmcblk0p66  |            | 
+|    34   |    2M  |          | └─mmcblk0p128 |            | 
+
+How to resize overlay (Disk space in LuCI) on eMMC (in you have f2fs overlay):
+  * Check you have partitions looks like above. Looks like in new version it's single ext4 partition on mmcblk0p4 - so resize.f2fs not working with this
+  * Boot from eMMC (SW1 in position 0). You need to make at least one boot from eMMC after installation from SD card
+      Note: looks like SW1 reads only at hardware reboot (reset button/power loss). Reboot from console don't change boot source 
+  * Boot from SD card (SW1 to position 1) and type:
+<code>
+opkg update
+opkg install parted
+parted /dev/mmcblk0 resizepart 4 7818MB
+Error: The backup GPT table is corrupt, but the primary appears OK, so that will
+be used.
+OK/Cancel? OK
+Warning: Not all of the space available to /dev/mmcblk0 appears to be used, you
+can fix the GPT to use all of the space (an extra 14974943 blocks) or continue
+with the current setting?
+Fix/Ignore? Fix
+Partition number? 4
+End?  [151MB]? 7818MB
+</code>
+  * Reboot (from SD card again) and type:
+<code>
+mount /dev/mmcblk0p66 /mnt 
+umount /dev/mmcblk0p66
+resize.f2fs /dev/mmcblk0p66
+</code>
+
+  * Boot from eMMC (SW1 to position 0) and check it worked:
+<code>
+# opkg update && opkg install lsblk && lsblk /dev/mmcblk0
+NAME          MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+mmcblk0       179:8    0  7.3G  0 disk
+├─mmcblk0p1   179:9    0    2M  0 part
+├─mmcblk0p2   179:10   0    1M  0 part
+├─mmcblk0p3   179:11   0   32M  0 part
+├─mmcblk0p4   179:12   0  7.2G  0 part
+├─mmcblk0p65  259:3    0  4.4M  1 part /rom
+├─mmcblk0p66  259:4    0  7.2G  0 part /overlay
+└─mmcblk0p128 259:5    0    2M  0 part
+</code>
+- If you have LuCI installed,
+<code>
+opkg update && opkg install luci
+</code> ()
+it will be looks like this:
+Status -> Overview
+
+{{https://i.ibb.co/F8sN3Zs/storage-size-openwrt.png}}
+
+==== Setting a permanent MAC address for Ethernet==== 
+
+Being a development board, the Bananapi BPi-R64 doesn't come with (a) MAC address(es) allocated and assigned by the vendor.
+Hence it is left to the user to assign a permanent address to the device.
+If there is a MAC address stored in the U-Boot environment used during boot, this address is used by U-Boot and it is handed down to Linux and becomes the default for all downstream interfaces in OpenWrt as well.
+To set it from inside OpenWrt, run
+<code>
+fw_setenv ethaddr 02:33:44:55:66:77
+</code>
+and reboot.
+
+
+===== Failsafe mode =====
+The 'factory' button next to the power connector on the board can be used to trigger bootloader environment reset if held down during power on. Once OpenWrt is booting and the LED starts flashing, that button can be used to enter failsafe mode.
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+<WRAP BOX>
+The Sinovoip BananaPi BPi-R64 has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| Factory                      |  reset  |
+| WPS                          |   ses   |
+
+</WRAP>
+
+==== Switch Boot select ====
+The switch Boot select/SW1 can be used to choose between the following modes:
+^ switch position ^    boot probes sequence   ^
+| 1               | SD card → eMMC            |
+| 0               | SPI-NAND → eMMC → SD card |
+
+===== Hardware =====
+==== Info ====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Sinovoip$", "model": "^Banana Pi BPi-R64$", "version": "^V1\\.1$"}
+} -->
+{{media:sinovoip:banana_pi_bpi-r64_interface.jpg|Hardware interfaces}}
+
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+There are a 3.3V TTL level serial port pins marked on the board, see photo above 'TTL debug'
+^ Serial connection parameters\\ for Sinovoip BananaPi BPi-R64 V1.1 | 115200, 8N1 |
+
+==== SATA ====
+The SATA interface can't be used at same time as the second mPCIe slot. The decision is made by hogging gpio 90 which can be set via dtoverlay. See also commit [[commit>?p=openwrt/openwrt.git;a=commitdiff;h=b40f707f71|b40f707f71]].
+
+**⚠** Due to structural changes in the way device tree overlays are handled after [[commit>?p=openwrt/openwrt.git;a=commitdiff;h=6b01d40bfedb42323a1324e1b5624f192a4c91de|commit 6b01d40bfe]] the way to instruct the bootloader to load either the SATA or mPCIe specific overlay has changed.
+
+  * before [[commit>?p=openwrt/openwrt.git;a=commitdiff;h=6b01d40bfedb42323a1324e1b5624f192a4c91de|commit 6b01d40bfe]] (snapshot before 2023-06-06)
+Enable SATA:
+<code>
+fw_setenv bootconf config-mt7622-bananapi-bpi-r64-sata
+</code>
+Enable second mPCIe (default):
+<code>
+fw_setenv bootconf config-mt7622-bananapi-bpi-r64-pcie1
+</code>
+  * after [[commit>?p=openwrt/openwrt.git;a=commitdiff;h=6b01d40bfedb42323a1324e1b5624f192a4c91de|commit 6b01d40bfe]] (snapshot after 2023-06-06)
+Enable SATA:
+<code>
+fw_setenv bootconf config-1#mt7622-bananapi-bpi-r64-sata
+</code>
+Enable second mPCIe (default):
+<code>
+fw_setenv bootconf config-1#mt7622-bananapi-bpi-r64-pcie1
+</code>
+
+
+===== Post Install Tips =====
+
+==== Optionally enable Hardware Flow Offloading ====
+A device configured as a router will likely benefit from hardware offloading
+  * If the device is configured as a dumb access points with VLANs, skip this step
+  * If using LuCI: ''Network -> Firewall'' and check the box for "Software flow offloading" and then the box for "Hardware flow offloading" then hit Save & Apply
+  * Users not using LuCI should edit ''/etc/config/firewall'' and insert the following under the config defaults section and make sure to restart the firewall after making the ''/etc/init.d/firewall restart'':
+<code>config defaults
+...
+  option flow_offloading '1'
+  option flow_offloading_hw '1'</code>
+
+==== Change the default CPU governor ====
+In v22.03, by default the CPU will constantly run at the maximum frequency of 1.35 Ghz. This can increase both power consumption and heat by a trivial amount. 
+ Most users will want to change the default CPU governor to either ''ondemand'' or to ''schedutil'' instead.  Either will allow the CPU to dynamically scale the CPU frequency.
+
+  echo ondemand > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+
+This can be added to ''/etc/rc.local'' so it executes automatically by editing that file directly or through LuCI: ''System -> Startup -> Local Startup''
+
+The default governor is already ''ondemand'' in version 23 and above.
+
+
+===== MT7915/7916 Cards =====
+This board is commonly used with mt7915/7916 cards to add 5GHz WiFi 5/6 and WiFi 6e.  It should be noted, that prior to version 1.2 of this board, the PCI slots could only source ~2.5A at 3.3v.  Many of the MT7915/7915 boards (especially those from AsiaRF) draw upwards of 3-3.5A at 3.3v.  These can cause significant instability in the board unless hardware tweaks are done to it.  Version 1.2 of the board eliminates this issue, and can stably provide the 3.5a at 3.3v that these cards require.  As of Nov 2022, all boards being sold are version 1.2.
+
+Mod for V1.0, V1.1 for increasing current to 2.2a for CN25 slot (it's the maximum you can get without replacing the protection chip SY6280 with for example SY6282ACC):
+
+{{https://i.ibb.co/WykVsW7/current-patch-1.jpg}}
+
+Or you can disable current protection by short circuit protection chips - <color #ed1c24>__AT YOUR OWN RISK__</color>
+
+{{https://i.ibb.co/dmvzjST/r64-pcie-issue.png}}
+
+
+Add support:
+<code>
+# opkg update && opkg install kmod-mt7915-firmware kmod-mt7915e
+</code>
+If not working - check card is detected:
+<code>
+# opkg update && opkg install pciutils && lspci
+0001:00:01.0 PCI bridge: MEDIATEK Corp. Device 3258
+0001:01:00.0 Unclassified device [0002]: MEDIATEK Corp. MT7915E 802.11ax PCI Express Wireless Network Adapter
+
+</code>
+
+
+If one of these cards is used in this board, then Wireless Ethernet Dispatch becomes available:
+
+====  Wireless Ethernet Dispatch (WED) HW acceleration for Wireless clients ====
+Wireless Ethernet Dispatch (WED) is an extension of hardware flow offloading which can reduce CPU loads/increase routing throughput when wireless clients are active.  This board's built-in mt7615-compatible WiFi 5 does not support the new Wireless Ethernet Dispatch acceleration.  However, if a MediaTek mt7915/16 card is used in this device it will support WED.  The following applies only if you have such a card.
+
+A few caveats to using WED:
+  * Users may experience stability issues as this is a [[https://patchwork.kernel.org/project/linux-wireless/patch/20220505113729.50380-4-nbd@nbd.name/|relatively new]] feature
+  * It can be used alone or in addition to other hardware offloading
+  * Requires 22.03.0 or later
+  * Only accelerates wireless traffic, not wired traffic
+  * Only supported on the 5 GHz radio
+  * If used on a [[:docs:guide-user:network:wifi:dumbap|dumb access point]], an additional package is needed
+
+=== Enable WED ===
+== OpenWrt 22.03.2 ==
+  * Edit ''/etc/modules.d/mt7915e'' and append this line ''mt7915e wed_enable=Y''
+  * This change requires a reboot
+  * :!: This change will not persist upon updating as the file edited is not the target of a backup tarball. 
+== Development snapshot ==
+  * Edit ''/etc/modules.conf'' and append this line: ''options mt7915e wed_enable=Y''
+  * This change requires a reboot
+== Dumb access point configuration ==
+Flow offloading happens in situations where flows are actually being tracked, ie. when using NAT/routing.  To use WED on a dumb access point requires the [[https://github.com/openwrt/openwrt/tree/master/package/network/services/bridger|bridger]] package which does a bit of BPF magic to get bridged streams tracked (and hence offloaded).
+  * [[faq/how_to_install_packages|Install]] the bridger package.  Optionally edit ''/etc/config/bridger'' and define a device or bridge to exclude from bridge forwarding acceleration.
+
+=== Verifying that WED is enabled ===
+To check that the kernel module has the needed option applied:
+<code># cat /sys/module/mt7915e/parameters/wed_enable
+Y</code>
+
+=== Query the status of WED ===
+To see which flows are actually getting off-loaded. This command works only for router mode (not AP):
+<code># cat /sys/kernel/debug/mtk_ppe/bind
+01dd0 BND IPv4 5T orig=xxx:11068->10.1.10.241:33328 new=xxx:11068->10.1.10.241:33328 eth=xx:xx:xx:xx:xx:xx->xx:xx:xx:xx:xx:xx etype=0008 vlan=0,129 ib1=21403a8d ib2=007e0060</code>
+
+On development snapshot
+<code># cat /sys/kernel/debug/ppe0/bind</code>
+
+Note that the above shows all traffic that is accelerated by the chipset's Packet Processing Engine (PPE), including the wired clients, so if a mix of wired and wireless clients are expected, the output will need to be inspected for specific MACs or IPs of the wireless clients to confirm WED is working.
+
+If <html>/sys/kernel/debug/mtk_ppe/bind</html> is empty, that merely means that there are no offloaded flows. Again, this is expected if you do not use the device as NAT/router. If you only use it as bridged access point, WED cannot work on OpenWrt 22.03. If you ware willing to try development snapshots, you can use WED by installing the bridger package which facilitates flow-offloading also in bridged configuration.
+
+In general, on MT7622 WED is only supported in TX direction (from router point of view), so CPU load reduction (from around 15% load to around 3% load when running speedtest) can only be observed if traffic is sent from the router to the client.
+
+
+===== Bootlogs =====
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+
+F0: 102B 0000
+F5: 480A 0031
+F5: 480A 0031
+F3: 0000 0000
+V0: 0000 0000 [0001]
+00: 0000 0000
+BP: 0400 0041 [0000]
+G0: 1190 0000
+T0: 0000 02D9 [000F]
+Jump to BL
+
+NOTICE:  BL2: v2.2(release):OpenWrt v2020-11-09-03017334-7 (mt7622-emmc-2ddr)
+NOTICE:  BL2: Built : 09:54:38, Mar  2 2021
+NOTICE:  BL2: Booting BL31
+NOTICE:  BL31: v2.2(release):OpenWrt v2020-11-09-03017334-7 (mt7622-emmc-2ddr)
+NOTICE:  BL31: Built : 09:54:38, Mar  2 2021
+pinctrl_select_state_full: uclass_get_device_by_phandle_id: err=-19
+
+
+U-Boot 2020.10 (Mar 02 2021 - 09:54:38 +0000)
+
+CPU:   MediaTek MT7622
+Model: mt7622-bpi-r64
+DRAM:  1 GiB
+WDT:   Started with servicing (60s timeout)
+MMC:   mmc@11230000: 0, mmc@11240000: 1
+Loading Environment from MMC... OK
+In:    serial@11002000
+Out:   serial@11002000
+Err:   serial@11002000
+Loading Environment from MMC... OK
+Net:   
+Warning: ethernet@1b100000 (eth0) using random MAC address - 7e:28:52:21:af:ec
+eth0: ethernet@1b100000
+      ( ( ( OpenWrt ) ) )  [eMMC]       U-Boot 2020.10 (Mar 01 2021 - 19:35:08 +0000)  Press UP/DOWN to move, ENTER to select     0. Run default boot command.     1. Boot system via TFTP.     2. Boot production system from eMMC.     3. Boot recovery system from eMMC.     4. Load production system via TFTP then write to eMMC.     5. Load recovery system via TFTP then write to eMMC.     6. Reboot.     7. Reset all settings to factory defaults.     U-Boot console  Hit any key to stop autoboot:  3  2  1  0 switch to partitions #0, OK
+mmc0(part 0) is current device
+
+MMC read: dev # 0, block # 81920, count 8 ... 8 blocks read: OK
+
+MMC read: dev # 0, block # 81920, count 19440 ... 19440 blocks read: OK
+## Loading kernel from FIT Image at 4007ff28 ...
+   Using 'config@1' configuration
+   Trying 'kernel@1' kernel subimage
+     Description:  ARM64 OpenWrt Linux-5.10.18
+     Type:         Kernel Image
+     Compression:  gzip compressed
+     Data Start:   0x40080f28
+     Data Size:    4928456 Bytes = 4.7 MiB
+     Architecture: AArch64
+     OS:           Linux
+     Load Address: 0x44000000
+     Entry Point:  0x44000000
+     Hash algo:    crc32
+     Hash value:   4269a8f2
+     Hash algo:    sha1
+     Hash value:   a834d420beaff7c446535af9d1ed035f93cd1515
+   Verifying Hash Integrity ... crc32+ sha1+ OK
+## Loading fdt from FIT Image at 4007ff28 ...
+   Using 'config@1' configuration
+   Trying 'fdt@1' fdt subimage
+     Description:  ARM64 OpenWrt bananapi_bpi-r64 device tree blob
+     Type:         Flat Device Tree
+     Compression:  uncompressed
+     Data Start:   0x40534f28
+     Data Size:    25453 Bytes = 24.9 KiB
+     Architecture: AArch64
+     Hash algo:    crc32
+     Hash value:   2e9dde3b
+     Hash algo:    sha1
+     Hash value:   835fb2ce0fbb87c3f03d0f896a539023bb6caa62
+   Verifying Hash Integrity ... crc32+ sha1+ OK
+   Booting using the fdt blob at 0x40534f28
+## Loading loadables from FIT Image at 4007ff28 ...
+   Trying 'rootfs@1' loadables subimage
+     Description:  ARM64 OpenWrt bananapi_bpi-r64 rootfs
+     Type:         Filesystem Image
+     Compression:  uncompressed
+     Data Start:   0x4053bf28
+     Data Size:    4988928 Bytes = 4.8 MiB
+     Hash algo:    crc32
+     Hash value:   26f139ea
+     Hash algo:    sha1
+     Hash value:   fa4f28d067882d6722a6680987fbb0b65a9b520d
+   Verifying Hash Integrity ... crc32+ sha1+ OK
+   Uncompressing Kernel Image
+   Loading Device Tree to 000000007f7f1000, end 000000007f7fa36c ... OK
+
+Starting kernel ...
+
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x410fd034]
+[    0.000000] Linux version 5.10.18 (daniel@box) (aarch64-openwrt-linux-musl-gcc (OpenWrt GCC 8.4.0 r15637+17-7d12f29ae1) 8.4.0, GNU ld (GNU Binutils) 2.34) #0 SMP Mon Mar 1 19:35:08 2021
+[    0.000000] Machine model: Bananapi BPI-R64
+[    0.000000] earlycon: uart8250 at MMIO32 0x0000000011002000 (options '')
+[    0.000000] printk: bootconsole [uart8250] enabled
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x0000000040000000-0x000000007fffffff]
+[    0.000000]   DMA32    empty
+[    0.000000]   Normal   empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000040000000-0x0000000042ffffff]
+[    0.000000]   node   0: [mem 0x0000000043030000-0x000000007fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000040000000-0x000000007fffffff]
+[    0.000000] On node 0 totalpages: 262096
+[    0.000000]   DMA zone: 4096 pages used for memmap
+[    0.000000]   DMA zone: 0 pages reserved
+[    0.000000]   DMA zone: 262096 pages, LIFO batch:63
+[    0.000000] psci: probing for conduit method from DT.
+[    0.000000] psci: PSCIv1.1 detected in firmware.
+[    0.000000] psci: Using standard PSCI v0.2 function IDs
+[    0.000000] psci: MIGRATE_INFO_TYPE not supported.
+[    0.000000] psci: SMC Calling Convention v1.2
+[    0.000000] percpu: Embedded 20 pages/cpu s44568 r8192 d29160 u81920
+[    0.000000] pcpu-alloc: s44568 r8192 d29160 u81920 alloc=20*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 
+[    0.000000] Detected VIPT I-cache on CPU0
+[    0.000000] CPU features: detected: ARM erratum 845719
+[    0.000000] CPU features: kernel page table isolation disabled by kernel configuration
+[    0.000000] CPU features: detected: ARM erratum 843419
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 258000
+[    0.000000] Kernel command line: earlycon=uart8250,mmio32,0x11002000 console=ttyS0,115200n1 swiotlb=512 root=/dev/mmcblk0p5
+[    0.000000] Dentry cache hash table entries: 131072 (order: 8, 1048576 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 65536 (order: 7, 524288 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 1016820K/1048384K available (7486K kernel code, 848K rwdata, 2112K rodata, 448K init, 292K bss, 31564K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu: 	CONFIG_RCU_FANOUT set to non-default value of 32.
+[    0.000000] 	Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[    0.000000] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[    0.000000] GIC: GICv2 detected, but range too small and irqchip.gicv2_force_probe not set
+[    0.000000] random: get_random_bytes called from start_kernel+0x340/0x48c with crng_init=0
+[    0.000000] arch_timer: cp15 timer(s) running at 12.50MHz (phys).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x2e2049cda, max_idle_ns: 440795202628 ns
+[    0.000003] sched_clock: 56 bits at 12MHz, resolution 80ns, wraps every 4398046511080ns
+[    0.008484] Calibrating delay loop (skipped), value calculated using timer frequency.. 25.00 BogoMIPS (lpj=50000)
+[    0.019126] pid_max: default: 32768 minimum: 301
+[    0.024006] Mount-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.031678] Mountpoint-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.040778] rcu: Hierarchical SRCU implementation.
+[    0.045872] dyndbg: Ignore empty _ddebug table in a CONFIG_DYNAMIC_DEBUG_CORE build
+[    0.054128] smp: Bringing up secondary CPUs ...
+[    0.059137] Detected VIPT I-cache on CPU1
+[    0.059187] CPU1: Booted secondary processor 0x0000000001 [0x410fd034]
+[    0.059255] smp: Brought up 1 node, 2 CPUs
+[    0.074413] SMP: Total of 2 processors activated.
+[    0.079284] CPU features: detected: 32-bit EL0 Support
+[    0.084605] CPU features: detected: CRC32 instructions
+[    0.090047] CPU: All CPU(s) started at EL2
+[    0.094296] alternatives: patching kernel code
+[    0.102256] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.112384] futex hash table entries: 512 (order: 3, 32768 bytes, linear)
+[    0.119500] pinctrl core: initialized pinctrl subsystem
+[    0.125388] NET: Registered protocol family 16
+[    0.130721] DMA: preallocated 128 KiB GFP_KERNEL pool for atomic allocations
+[    0.138156] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+[    0.146276] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+[    0.154818] thermal_sys: Registered thermal governor 'fair_share'
+[    0.154826] thermal_sys: Registered thermal governor 'bang_bang'
+[    0.161179] thermal_sys: Registered thermal governor 'step_wise'
+[    0.167416] thermal_sys: Registered thermal governor 'user_space'
+[    0.173918] ASID allocator initialised with 65536 entries
+[    0.205904] gpio-499 (asm_sel): hogged as output/high
+[    0.223676] SCSI subsystem initialized
+[    0.227913] libata version 3.00 loaded.
+[    0.232120] usbcore: registered new interface driver usbfs
+[    0.237917] usbcore: registered new interface driver hub
+[    0.243484] usbcore: registered new device driver usb
+[    0.249340] workqueue: max_active 576 requested for napi_workq is out of range, clamping between 1 and 512
+[    0.260793] clocksource: Switched to clocksource arch_sys_counter
+[    0.267798] NET: Registered protocol family 2
+[    0.272715] tcp_listen_portaddr_hash hash table entries: 512 (order: 1, 8192 bytes, linear)
+[    0.281401] TCP established hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.289474] TCP bind hash table entries: 8192 (order: 5, 131072 bytes, linear)
+[    0.297059] TCP: Hash tables configured (established 8192 bind 8192)
+[    0.303763] UDP hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.310639] UDP-Lite hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.318063] NET: Registered protocol family 1
+[    0.322597] PCI: CLS 0 bytes, default 64
+[    0.327745] workingset: timestamp_bits=46 max_order=18 bucket_order=0
+[    0.337176] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.343231] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.386514] mtk-tphy 1a0c4000.usb-phy: failed to get ref_clk(id-1)
+[    0.398239] mt-pmic-pwrap 10001000.pwrap: unexpected interrupt int=0x1
+[    0.413111] Serial: 8250/16550 driver, 3 ports, IRQ sharing disabled
+[    0.420612] printk: console [ttyS0] disabled
+[    0.425122] 11002000.serial: ttyS0 at MMIO 0x11002000 (irq = 23, base_baud = 1562500) is a 16550A
+[    0.434348] printk: console [ttyS0] enabled
+[    0.434348] printk: console [ttyS0] enabled
+[    0.442722] printk: bootconsole [uart8250] disabled
+[    0.442722] printk: bootconsole [uart8250] disabled
+[    0.453173] 11004000.serial: ttyS1 at MMIO 0x11004000 (irq = 24, base_baud = 1562500) is a 16550A
+[    0.462947] 1100c000.serial: ttyS2 at MMIO 0x1100c000 (irq = 30, base_baud = 17499995) is a MediaTek BTIF
+[    0.472684] serial serial0: tty port ttyS2 registered
+[    0.478104] cacheinfo: Unable to detect cache hierarchy for CPU 0
+[    0.487472] loop: module loaded
+[    0.493464] libphy: Fixed MDIO Bus: probed
+[    0.521349] libphy: mdio: probed
+[    0.525249] mtk_soc_eth 1b100000.ethernet: generated random MAC address ce:43:f8:e7:16:80
+[    0.533780] mtk_soc_eth 1b100000.ethernet eth0: mediatek frame engine at 0xffffffc011860000, irq 39
+[    0.542892] mtk_soc_eth 1b100000.ethernet: generated random MAC address ba:09:2c:09:f1:3e
+[    0.551388] mtk_soc_eth 1b100000.ethernet eth1: mediatek frame engine at 0xffffffc011860000, irq 39
+[    0.562210] rtc_mt7622 10212800.rtc: registered as rtc0
+[    0.567503] rtc_mt7622 10212800.rtc: setting system clock to 2021-03-02T20:49:47 UTC (1614718187)
+[    0.577728] mtk-wdt 10212000.watchdog: Watchdog enabled (timeout=31 sec, nowayout=0)
+[    0.588217] mtk-msdc 11240000.mmc: Got CD GPIO
+[    0.589038] NET: Registered protocol family 10
+[    0.598499] Segment Routing with IPv6
+[    0.602229] NET: Registered protocol family 17
+[    0.606872] 8021q: 802.1Q VLAN Support v1.8
+[    0.621599] mtk-pcie 1a143000.pcie: host bridge /pcie@1a143000 ranges:
+[    0.628174] mtk-pcie 1a143000.pcie: Parsing ranges property...
+[    0.634018] mtk-pcie 1a143000.pcie:      MEM 0x0020000000..0x0027ffffff -> 0x0020000000
+[    0.701511] mtk-msdc 11230000.mmc: phase: [map:7ffffff] [maxlen:27] [final:9]
+[    0.709755] mmc0: new HS200 MMC card at address 0001
+[    0.715980] mmcblk0: mmc0:0001 008G30 7.28 GiB 
+[    0.721466] mmcblk0boot0: mmc0:0001 008G30 partition 1 4.00 MiB
+[    0.728422] mmcblk0boot1: mmc0:0001 008G30 partition 2 4.00 MiB
+[    0.734445] mmcblk0rpmb: mmc0:0001 008G30 partition 3 4.00 MiB, chardev (250:0)
+[    0.742319] mtk-pcie 1a143000.pcie: Port0 link down
+[    0.744166] Alternate GPT is invalid, using primary GPT.
+[    0.747419] mtk-pcie 1a143000.pcie: PCI host bridge to bus 0000:00
+[    0.753402] FIT: volume size: 2007040 sectors (1027604480 bytes)
+[    0.758741] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    0.764740] FIT: FDT structure size: 4096 bytes
+[    0.770211] pci_bus 0000:00: root bus resource [mem 0x20000000-0x27ffffff]
+[    0.770215] pci_bus 0000:00: scanning bus
+[    0.774765] FIT: Default configuration: config@1 (OpenWrt bananapi_bpi-r64)
+[    0.782743] pci_bus 0000:00: fixups for bus
+[    0.785632] FIT:           kernel sub-image 0x00001000 - 0x004b43c8 'kernel@1' (ARM64 OpenWrt Linux-5.10.18) 
+[    0.792559] pci_bus 0000:00: bus scan returning with max=00
+[    0.792998] mtk-pcie 1a145000.pcie: host bridge /pcie@1a145000 ranges:
+[    0.796760] FIT:          flat_dt sub-image 0x004b5000 - 0x004bb36d 'fdt@1' (ARM64 OpenWrt bananapi_bpi-r64 device tree blob) 
+[    0.806670] mtk-pcie 1a145000.pcie: Parsing ranges property...
+[    0.812219] FIT:       filesystem sub-image 0x004bc000 - 0x0097e000 'rootfs@1' (ARM64 OpenWrt bananapi_bpi-r64 rootfs) 
+[    0.818733] mtk-pcie 1a145000.pcie:      MEM 0x0028000000..0x002fffffff -> 0x0028000000
+[    0.830113] FIT: selecting configured loadable rootfs@1 to be root filesystem
+[    0.860327] mtk-pcie 1a145000.pcie: PCI host bridge to bus 0001:00
+[    0.861854]  mmcblk0: p1 p2 p3 p4 p5(rootfs@1) p6(rootfs_data) p130
+[    0.868012] pci_bus 0001:00: root bus resource [bus 00-ff]
+[    0.879775] pci_bus 0001:00: root bus resource [mem 0x28000000-0x2fffffff]
+[    0.886657] pci_bus 0001:00: scanning bus
+[    0.890850] pci 0001:00:01.0: [14c3:3258] type 01 class 0x060400
+[    0.896892] pci 0001:00:01.0: reg 0x10: [mem 0x00000000-0x1ffffffff 64bit pref]
+[    0.905658] pci_bus 0001:00: fixups for bus
+[    0.909855] pci 0001:00:01.0: scanning [bus 00-00] behind bridge, pass 0
+[    0.916552] pci 0001:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    0.924563] pci 0001:00:01.0: scanning [bus 00-00] behind bridge, pass 1
+[    0.931404] pci_bus 0001:01: scanning bus
+[    0.935602] pci 0001:01:00.0: [14c3:7615] type 00 class 0x000280
+[    0.941787] pci 0001:01:00.0: reg 0x10: [mem 0x00000000-0x000fffff 64bit]
+[    0.949558] pci 0001:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s PCIe x1 link at 0001:00:01.0 (capable of 4.000 Gb/s with 5.0 GT/s PCIe x1 link)
+[    0.977999] pci_bus 0001:01: fixups for bus
+[    0.982201] pci_bus 0001:01: bus scan returning with max=01
+[    0.987776] pci_bus 0001:01: busn_res: [bus 01-ff] end is updated to 01
+[    0.994392] pci_bus 0001:00: bus scan returning with max=01
+[    0.999979] pci 0001:00:01.0: BAR 0: no space for [mem size 0x200000000 64bit pref]
+[    1.007631] pci 0001:00:01.0: BAR 0: failed to assign [mem size 0x200000000 64bit pref]
+[    1.015631] pci 0001:00:01.0: BAR 8: assigned [mem 0x28000000-0x280fffff]
+[    1.022418] pci 0001:01:00.0: BAR 0: assigned [mem 0x28000000-0x280fffff 64bit]
+[    1.029806] pci 0001:00:01.0: PCI bridge to [bus 01]
+[    1.034773] pci 0001:00:01.0:   bridge window [mem 0x28000000-0x280fffff]
+[    1.041590] pci 0001:00:01.0: Max Payload Size set to  256/ 256 (was  128), Max Read Rq  256
+[    1.050145] pci 0001:01:00.0: Max Payload Size set to  128/ 128 (was  128), Max Read Rq  128
+[    1.058662] pcieport 0001:00:01.0: of_irq_parse_pci: failed with rc=-22
+[    1.065272] pcieport 0001:00:01.0: assign IRQ: got 0
+[    1.070241] pcieport 0001:00:01.0: enabling device (0000 -> 0002)
+[    1.076347] pcieport 0001:00:01.0: enabling bus mastering
+[    1.082239] mtk_hsdma 1b007000.dma-controller: Using 3 as missing dma-requests property
+[    1.090514] mtk_hsdma 1b007000.dma-controller: MediaTek HSDMA driver registered
+[    1.134657] libphy: dsa slave smi: probed
+[    1.139599] mt7530 mdio-bus:00 wan (uninitialized): PHY [dsa-0.0:00] driver [Generic PHY] (irq=POLL)
+[    1.150171] mt7530 mdio-bus:00 lan1 (uninitialized): PHY [dsa-0.0:01] driver [Generic PHY] (irq=POLL)
+[    1.160832] mt7530 mdio-bus:00 lan2 (uninitialized): PHY [dsa-0.0:02] driver [Generic PHY] (irq=POLL)
+[    1.171465] mt7530 mdio-bus:00 lan3 (uninitialized): PHY [dsa-0.0:03] driver [Generic PHY] (irq=POLL)
+[    1.182117] mt7530 mdio-bus:00 lan4 (uninitialized): PHY [dsa-0.0:04] driver [Generic PHY] (irq=POLL)
+[    1.192425] mt7530 mdio-bus:00: configuring for fixed/2500base-x link mode
+[    1.200012] mt7530 mdio-bus:00: Link is Up - 2.5Gbps/Full - flow control rx/tx
+[    1.200668] DSA: tree 0 setup
+[    1.211128] xhci-mtk 1a0c0000.usb: xHCI Host Controller
+[    1.216409] xhci-mtk 1a0c0000.usb: new USB bus registered, assigned bus number 1
+[    1.225481] xhci-mtk 1a0c0000.usb: hcc params 0x01403198 hci version 0x96 quirks 0x0000000000210010
+[    1.234574] xhci-mtk 1a0c0000.usb: irq 35, io mem 0x1a0c0000
+[    1.240734] hub 1-0:1.0: USB hub found
+[    1.244541] hub 1-0:1.0: 2 ports detected
+[    1.248847] xhci-mtk 1a0c0000.usb: xHCI Host Controller
+[    1.254092] xhci-mtk 1a0c0000.usb: new USB bus registered, assigned bus number 2
+[    1.261495] xhci-mtk 1a0c0000.usb: Host supports USB 3.0 SuperSpeed
+[    1.267814] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    1.276232] hub 2-0:1.0: USB hub found
+[    1.280014] hub 2-0:1.0: 1 port detected
+[    1.288938] VFS: Mounted root (squashfs filesystem) readonly on device 179:5.
+[    1.296271] Freeing unused kernel memory: 448K
+[    1.304904] Run /sbin/init as init process
+[    1.308999]   with arguments:
+[    1.311957]     /sbin/init
+[    1.314657]   with environment:
+[    1.317792]     HOME=/
+[    1.320141]     TERM=linux
+[    1.477540] init: Console is alive
+[    1.481082] init: - watchdog -
+[    1.706270] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    1.750773] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    1.758057] ehci-fsl: Freescale EHCI Host controller driver
+[    1.764478] ehci-platform: EHCI generic platform driver
+[    1.771580] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    1.778473] ohci-platform: OHCI generic platform driver
+[    1.785767] mt7622-pinctrl 10211000.pinctrl: invalid function func1 in map table
+[    1.793194] mt7622-pinctrl 10211000.pinctrl: invalid function func1 in map table
+[    1.800589] mt7622-pinctrl 10211000.pinctrl: invalid function func1 in map table
+[    1.808765] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    1.817097] init: - preinit -
+[    1.974360] random: fast init done
+[    2.059084] mtk_soc_eth 1b100000.ethernet eth0: configuring for fixed/2500base-x link mode
+[    2.067452] mtk_soc_eth 1b100000.ethernet eth0: Link is Up - 2.5Gbps/Full - flow control rx/tx
+[    2.084883] mt7530 mdio-bus:00 lan1: configuring for phy/gmii link mode
+[    2.092048] 8021q: adding VLAN 0 to HW filter on device lan1
+[    2.106272] random: procd: uninitialized urandom read (4 bytes read)
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    6.170766] mt7530 mdio-bus:00 lan1: Link is Up - 1Gbps/Full - flow control rx/tx
+[    6.178347] IPv6: ADDRCONF(NETDEV_CHANGE): lan1: link becomes ready
+[    6.198725] mount_root: loading kmods from internal overlay
+[    6.209071] kmodloader: loading kernel modules from //etc/modules-boot.d/*
+[    6.216269] kmodloader: done loading kernel modules from //etc/modules-boot.d/*
+[    6.405375] block: attempting to load /etc/config/fstab
+[    6.410691] block: unable to load configuration (fstab: Entry not found)
+[    6.417408] block: no usable configuration
+[    6.578103] F2FS-fs (mmcblk0p6): Mounted with checkpoint version = 3f02ec04
+[    6.671516] block: attempting to load /etc/config/fstab
+[    6.676852] block: unable to load configuration (fstab: Entry not found)
+[    6.683573] block: no usable configuration
+[    6.689174] mount_root: switching to f2fs overlay
+[    6.696010] overlayfs: "xino" feature enabled using 32 upper inode bits.
+Failed to find nls_cp437. Maybe it is a built in module ?
+Failed to find nls_iso8859-1. Maybe it is a built in module ?
+Failed to find fat. Ma[    6.718452] /dev/mmcblk0p6: Can't open blockdev
+ybe it is a built in module ?
+Failed to find vfat. Maybe it is [    6.728322] urandom-seed: Seeding with /etc/urandom.seed
+a built in module ?
+[    6.766764] mt7530 mdio-bus:00 lan1: Link is Down
+[    6.775976] procd: - early -
+[    6.778967] procd: - watchdog -
+[    7.314049] procd: - watchdog -
+[    7.318909] procd: - ubus -
+[    7.342518] random: ubusd: uninitialized urandom read (4 bytes read)
+[    7.371814] random: ubusd: uninitialized urandom read (4 bytes read)
+[    7.378450] random: ubusd: uninitialized urandom read (4 bytes read)
+[    7.386361] procd: - init -
+Please press Enter to activate this console.
+[    7.610252] urngd: v1.0.2 started.
+[    7.639430] random: crng init done
+[    7.642896] random: 6 urandom warning(s) missed due to ratelimiting
+[    7.711071] kmodloader: loading kernel modules from /etc/modules.d/*
+[    7.787911] fuse: init (API version 7.32)
+[    7.794942] Loading modules backported from Linux version v5.10.16-0-gde53befa79cf
+[    7.802558] Backport generated by backports.git v5.10.16-1-0-g21d2a1d2
+[    7.865380] xt_time: kernel timezone is -0000
+[    7.907865] mt7615e 0001:01:00.0: assign IRQ: got 147
+[    7.913006] pci 0001:00:01.0: enabling bus mastering
+[    7.918020] mt7615e 0001:01:00.0: enabling device (0000 -> 0002)
+[    7.924153] mt7615e 0001:01:00.0: enabling bus mastering
+[    7.932454] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[    7.955114] mt7622-wmac 18000000.wmac: Invalid MAC address, using random address a2:ad:f8:26:d9:c4
+[    7.965513] ieee80211 phy1: Selected rate control algorithm 'minstrel_ht'
+[    7.965932] mt7615e 0001:01:00.0: HW/SW Version: 0x8a108a10, Build Time: 20180518100604a
+[    7.965932] 
+[    7.988161] PPP generic driver version 2.4.2
+[    7.993402] NET: Registered protocol family 24
+[    8.001396] mt7622-wmac 18000000.wmac: HW/SW Version: 0x8a108a10, Build Time: 20190801210006a
+[    8.001396] 
+[    8.034416] kmodloader: done loading kernel modules from /etc/modules.d/*
+[    8.045507] mt7615e 0001:01:00.0: N9 Firmware Version: _reserved_, Build Time: 20200814163649
+[    8.059669] mt7615e 0001:01:00.0: CR4 Firmware Version: _reserved_, Build Time: 20190121161307
+[    8.102375] mt7622-wmac 18000000.wmac: N9 Firmware Version: 2.0, Build Time: 20200131180931
+[   10.283089] mtk_soc_eth 1b100000.ethernet eth0: Link is Down
+[   10.292959] mtk_soc_eth 1b100000.ethernet eth0: configuring for fixed/2500base-x link mode
+[   10.301318] mtk_soc_eth 1b100000.ethernet eth0: Link is Up - 2.5Gbps/Full - flow control rx/tx
+[   10.311125] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   10.318250] mt7530 mdio-bus:00 lan1: configuring for phy/gmii link mode
+[   10.325748] 8021q: adding VLAN 0 to HW filter on device lan1
+[   10.336372] br-lan: port 1(lan1) entered blocking state
+[   10.341651] br-lan: port 1(lan1) entered disabled state
+[   10.350660] device lan1 entered promiscuous mode
+[   10.355353] device eth0 entered promiscuous mode
+[   10.372511] mt7530 mdio-bus:00 lan2: configuring for phy/gmii link mode
+[   10.380885] 8021q: adding VLAN 0 to HW filter on device lan2
+[   10.389533] br-lan: port 2(lan2) entered blocking state
+[   10.394841] br-lan: port 2(lan2) entered disabled state
+[   10.401291] device lan2 entered promiscuous mode
+[   10.411298] mt7530 mdio-bus:00 lan3: configuring for phy/gmii link mode
+[   10.419053] 8021q: adding VLAN 0 to HW filter on device lan3
+[   10.430013] br-lan: port 3(lan3) entered blocking state
+[   10.435315] br-lan: port 3(lan3) entered disabled state
+[   10.441362] device lan3 entered promiscuous mode
+[   10.450812] mt7530 mdio-bus:00 lan4: configuring for phy/gmii link mode
+[   10.458043] 8021q: adding VLAN 0 to HW filter on device lan4
+[   10.466074] br-lan: port 4(lan4) entered blocking state
+[   10.471321] br-lan: port 4(lan4) entered disabled state
+[   10.477503] device lan4 entered promiscuous mode
+[   10.488445] mt7530 mdio-bus:00 wan: configuring for phy/gmii link mode
+[   10.495526] 8021q: adding VLAN 0 to HW filter on device wan
+[   13.402620] mt7530 mdio-bus:00 lan1: Link is Up - 1Gbps/Full - flow control rx/tx
+[   13.410151] br-lan: port 1(lan1) entered blocking state
+[   13.415385] br-lan: port 1(lan1) entered forwarding state
+[   13.421335] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+
+
+
+BusyBox v1.33.0 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r16065-a8a37d4ea5
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@OpenWrt:/# 
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+  * As this board comes with empty flash from factory without any MAC addresses assigned, the WiFi calibration data is stored in device tree which results in random WiFi MAC addresses at each boot.[[commit>?p=openwrt/openwrt.git;a=commitdiff;h=3a93704a63cf018187411108d241c35ec83992c0]]
+===== Tags =====
+[[meta:tags|How to add tags]]
+
+{{tag>mediatek MT7622 8192eMMC 1024RAM 5Port GigabitEthernet JumboFrames microSD sata3 1WNIC 802.11bgn DetachableAntenna 2MiniPCIe GPIO 1USB USB3.0 hwVLAN 2NIC U-boot 2core ARMv8 SPI I2C 2button DevBoard}}

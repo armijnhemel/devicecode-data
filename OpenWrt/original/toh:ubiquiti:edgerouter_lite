@@ -1,0 +1,928 @@
+====== Ubiquiti EdgeRouter Lite ======
+
+The Ubiquiti EdgeRouter Lite is a 3 port Gigabit router. [[http://www.smallnetbuilder.com/lanwan/lanwan-reviews/32012-first-look-ubiquiti-edgerouter-lite|SmallNetBuilder]] reviewed the device back in January 2013. It looks like Ubiquiti modified the casing at some point, going from a design with tapered upper corners to a fully rectangular design.
+
+
+{{:media:ubiquiti:edgerouter_lite:edgerouter-lite-tapered-sides.png?350|EdgeRouter Lite old case (tapered sides)}}
+{{:media:ubiquiti:edgerouter_lite:edgerouter-lite-angled.png?350|EdgeRouter Lite new case (angled view)}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": [
+    "brand",
+    "model", 
+    "version",
+    "supportedcurrentrel",
+    "oemdevicehomepageurl", 
+    "owrt_forum_topic_url",
+    "deviceid"
+  ],
+  "filterColumns": {
+    "brand": "^Ubiquiti$",
+    "model": "^EdgeRouter Lite$"
+  }
+} -->
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": [
+    "model", 
+    "version",
+    "cpu",
+    "cpumhz", 
+    "flashmb",
+    "rammb",
+    "wlanhardware",
+    "wlan24ghz",
+    "wlan50ghz",
+    "ethernet100mports",
+    "ethernet1gports",
+    "modem",
+    "usbports"
+  ],
+  "filterColumns": {
+    "brand": "^Ubiquiti$",
+    "model": "^EdgeRouter Lite$"
+  }
+} -->
+
+The 4MB SPI flash contains only the bootloader.  Nonvolatile mass storage of the OS kernel and filesystem is provided by a 4GB USB flash drive plugged into an internal port.  The CPU's USB port is dedicated to access this drive, and is inside the enclosure.  There are no USB ports on the outside of the case.
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": [
+    "model", 
+    "version",
+    "supportedcurrentrel",
+    "firmwareopenwrtinstallurl", 
+    "firmwareopenwrtupgradeurl",
+    "firmwareoemstockurl"
+  ],
+  "filterColumns": {
+    "brand": "^Ubiquiti$",
+    "model": "^EdgeRouter Lite$"
+  }
+} -->
+==== Flash Layout ====
+
+The layout of the SPI flash is not well known, mostly because it is not important since the installation and operation of OpenWrt occurs entirely within the USB flash drive.  The USB drive contains two partitions, one holding the kernel and the other is the rootfs.
+
+==== Installation Procedure ====
+=== Overview ===
+  * Installation is an offline process of removing the USB flash drive from //inside// the EdgeRouter Lite and using a Linux system to place the OpenWrt kernel and filesystem on it.  As the OpenWrt firmware is packaged as a squashfs, it has to be un-squashed and copied to the flash drive.  Then the drive can be reinstalled into the EdgeRouter Lite and it will directly boot up OpenWrt.
+  * The bootloader in the EdgeRouter Lite is stored on the SPI flash.  It will scan the USB drive and boot any main kernel from it.  Thus there is no need to change anything the internal SPI flash.  
+  * Of course you could entirely replace the USB drive with a different one and set the stock one aside with its OS intact for a trivial reversion to stock.  The drive should be USB2.0, and must be quite physically small enough to fit inside the case: approximately 2cm long and no wider than the USB port itself.  For example, a Kingston SE9 series fits.
+
+=== Removing the USB drive ===
+
+To gain physical access to the USB drive, remove the three small Philips head screws from the top of the back panel, then slide the top/front case assembly forward and detach it from the bottom part which holds the circuit board.  
+
+{{:media:ubiquiti:erl_case_back.jpg?400|}}
+
+{{:media:ubiquiti:erl_insides.jpg?400|}}
+
+=== Partition and format the USB drive ===
+Pull the flash drive out of the USB socket and plug it into a Linux computer on which you have root privileges.
+
+Use lsblk to determine the drive location.  The following descriptions assume it is sdb.  **CAUTION**: Using the wrong drive name may cause severe loss of data on one of your other drives.
+<code bash>
+$ lsblk
+NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sdb      8:16   1   3.8G  0 disk 
+├─sdb1   8:17   1   142M  0 part 
+└─sdb2   8:18   1   1.6G  0 part 
+</code>
+
+The factory partition scheme is intended to fit into a 2GB drive: 142MB in a FAT32 partition (which will hold the kernel) and 1.6GB in an ext3 partition (which is used for the rootfs).  Many EdgeRouter Lites appear to ship with a 4GB drive with 2GB unallocated.  Re-partitioning is not strictly necessary unless you want to make extra space available in your rootfs, but it does not hurt.
+
+If you are using a new drive, you will need to create two partitions, one FAT32 (142MB recommended) and one empty partition for OpenWrt's rootfs.  They can be of almost any size, within reason.
+
+Here we are re-using the original USB drive, expanding the rootfs partition (/dev/sdb2, here) to use all available space.
+<code bash>
+$ sudo fdisk /dev/sdb
+
+Welcome to fdisk (util-linux 2.28.2).
+Changes will remain in memory only, until you decide to write them.
+Be careful before using the write command.
+
+
+Command (m for help): p
+Disk /dev/sdb: 3.6 GiB, 3880452096 bytes, 7579008 sectors
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x8c6e0e00
+
+Device     Boot  Start     End Sectors  Size Id Type
+/dev/sdb1         2048  292863  290816  142M  c W95 FAT32 (LBA)
+/dev/sdb2       292864 7579007 7286144  3.5G 83 Linux
+
+Command (m for help): d
+Partition number (1,2, default 2): 2
+
+Partition 2 has been deleted.
+
+Command (m for help): n
+Partition type
+   p   primary (1 primary, 0 extended, 3 free)
+   e   extended (container for logical partitions)
+Select (default p): p
+Partition number (2-4, default 2): 2
+First sector (292864-7579007, default 292864): 
+Last sector, +sectors or +size{K,M,G,T,P} (292864-7579007, default 7579007): 
+
+Created a new partition 2 of type 'Linux' and of size 3.5 GiB.
+
+Command (m for help): w
+The partition table has been altered.
+Calling ioctl() to re-read partition table.
+Syncing disks.
+</code>
+
+The FAT32 partition on the flash drive is about 145 MB, and holds two files:
+  * the kernel file named vmlinux.64, and 
+  * and md5sum named vmlinux.64.md5, which holds only the 32 digit, hex encoded md5sum of the vmlinux.64 file.
+The bootloader computes the md5 of the kernel while reading it, then compares it to the checksum file before continuing with the boot. We will create this file.
+
+The second partition on the flash drive is a read-only squashfs in the stock firmware, and it's also where we will write the squashfs image of OpenWrt.
+On first boot, the OpenWrt system will use the rest of the space in this partition to create the read-write overlay partition.
+
+We need to download the OpenWrt firmware .*-octeon-erlite-squashfs-sysupgrade.tar file and manually extract the kernel (which is in ELF format, ready to use but needs to be renamed) and the rootfs (which is in squashfs format) to place it on the USB flash drive. 
+
+Download sysupgrade-squashfs file from openwrt-19.07.8-octeon-erlite-squashfs-sysupgrade.tar and untar it.
+<code bash>
+$ wget https://downloads.openwrt.org/releases/19.07.8/targets/octeon/generic/openwrt-19.07.8-octeon-erlite-squashfs-sysupgrade.tar
+...
+Connecting to downloads.openwrt.org (downloads.openwrt.org)|168.119.138.211|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+...
+$ tar -xf openwrt-19.07.8-octeon-erlite-squashfs-sysupgrade.tar
+</code>
+This will unpack to sysupgrade-erlite/
+
+We will now mount the USB flash partitions and the squashfs partition on the loopback to transfer OpenWrt to the flash drive:
+<code bash>
+$ mkdir kernel
+$ sudo mount /dev/sdb1 kernel
+</code>
+
+Copy the new kernel - renaming it from kernel to vmlinux.64 as this is the name the bootloader expects.
+<code bash>
+$ sudo cp sysupgrade-erlite/kernel kernel/vmlinux.64
+$ md5sum kernel/vmlinux.64 | cut -d' ' -f 1 > vmlinux.64.md5
+$ sudo cp vmlinux.64.md5 kernel/
+</code>
+//Note: if you get an error when trying to copy the vmlinux.64 file or create the vmlinux.64.md5, try deleting these first: rm kernel/*//
+
+Now we write raw the squashfs filesystem to the second partition, it is the file called "root" in the extracted folder.
+
+<code bash>
+sudo dd if=sysupgrade-erlite/root of=/dev/sdb2 bs=4096
+</code>
+
+Finally, a little clean up:
+<code bash>
+$ umount kernel 
+$ sync
+$ rm -rf kernel sysupgrade-erlite
+</code>
+
+Now place your USB drive back on your EdgeRouter Lite and you are ready to go!
+
+Connect your PC to the **"eth0"** port on the Edgerouter-Lite and access OpenWrt at 192.168.1.1. 
+
+==== Installing OpenWrt using Ext4 ====
+
+While originally the Edgerouter and the Edgerouter Lite had an ext4 image as well, it seems the creation of ext4 images for the whole target was disabled with commit [[https://git.openwrt.org/?p=openwrt/openwrt.git;a=commit;h=27fbf541475b16f34967d1b0fe72d57b4d053050|27fbf541475b16f34967d1b0fe72d57b4d053050]]
+
+But the rest of the code is still in place so we can still manually install as ext4. Note that this install will be automatically converted in the squashfs version if you run a firmware upgrade from Luci or commandline, so any firmware upgrade must be done manually. I think you can run these commands also inside the installed OpenWrt system while connected with console, and then reboot immediately. (you probably need to install rsync package first)
+Also note that the [[docs:guide-user:troubleshooting:failsafe_and_factory_reset|"Failsafe Mode" and the "Firmware Reset"]] will not work with an ext4 partition, as normal with other devices as well.
+
+So after you did the partitioning and installed the kernel as explained in the install procedure above, you need to format the sdb2 partition with ext4.
+<code bash>
+$ mkfs.ext4 /dev/sdb2
+</code>
+
+Then you need to "mount" the squashfs as a loop device to access the files inside it
+
+<code bash>
+$ mkdir root
+$ sudo mount /dev/sdb2 root
+$ mkdir looproot
+$ sudo mount sysupgrade-erlite/root looproot -o loop
+</code>
+
+And rsync the squashfs root contents in the ext4 partition you created:
+<code bash>
+$ rsync -aHAX looproot/* root/
+</code>
+
+Finally, a little clean up:
+<code bash>
+$ umount root looproot
+$ sync
+$ rm -rf looproot root sysupgrade-erlite
+</code>
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan (eth0)    | LAN port 0                   | 192.168.1.1/24   |
+| wan (eth1)       | LAN port 1                   | DHCP             |
+| (eth2)           | LAN port 2                   | Not configured   |
+
+The bridge on eth0 is useless since eth2 is not configured, and disabling it might increase performance.
+===== Hardware =====
+==== Info ====
+
+^ [[wp>Instruction set]]               | [[wp>MIPS architecture#MIPS64|MIPS64]]  |
+^ Vendor                               | [[wp>Cavium Networks]]  |
+^ [[docs:techref:bootloader]]          | [[docs:techref:bootloader:uboot|U-Boot]] |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | [[http://www.cavium.com/OCTEON-Plus_CN50XX.html|Octeon5020]] |
+^ [[docs:techref:hardware:cpu|CPU]] @Frq        | Cavium Dual cnMIPS Core V?.? @x500MHz |
+^ Flash size                 | 4MiB + 2048 MiB USB Stick |
+^ Flash Chip                 | Macronix MX29LV320ETTI-70G/Toshiba  |
+^ RAM size                   | 512 MiB   |
+^ RAM Chip                   | Winbond W971GG8JB-25 x 4 |
+^ Wireless                   | na   |
+^ [[docs:techref:hardware:switch]]    | Atheros AR8035 Gigabit PHY x3 |
+^ Modem                      | na  |
+^ USB                        | Yes 1 x 2.0 (internal Type A port, for the flash drive) |
+^ [[docs:techref:hardware:port.serial|Serial]]  | [[#Serial|Yes]] |
+^ [[docs:techref:hardware:port.jtag|JTAG]]      | [[#JTAG|Yes]]   |
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+There is an RJ45 console port which can be used with an RJ45 to 9pin serial cable.  The connector pinout is the same as those found on much Cisco equipment and it uses true RS-232 levels.  USB to TTL adapters must not be connected to this port, as the voltage levels are not compatible.  Use a USB to RS-232 adapter or 9 pin RS-232 port mostly found on older computers, along with a 9 pin to RJ45 adapter wired to the Cisco standard.
+
+^ Serial connection parameters for Ubiquiti EdgeRouter Lite | 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+===== Bootlogs =====
+
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>
+Looking for valid bootloader image....
+Jumping to start of image at address 0xbfc80000
+
+
+U-Boot 1.1.1 (UBNT Build ID: 4493936-g009d77b) (Build time: Sep 20 2012 - 15:48:51)
+
+BIST check passed.
+UBNT_E100 r1:2, r2:14, serial #: DC9FDB80387F
+Core clock: 500 MHz, DDR clock: 266 MHz (532 Mhz data rate)
+DRAM:  512 MB
+Clearing DRAM....... done
+Flash:  4 MB
+Net:   octeth0, octeth1, octeth2
+
+USB:   (port 0) scanning bus for devices... 1 USB Devices found
+       scanning bus for storage devices...
+  Device 0: Vendor:          Prod.: USB DISK 2.0     Rev: PMAP
+            Type: Removable Hard Disk
+            Capacity: 3700.6 MB = 3.6 GB (7579008 x 512)
+^H^H^H 0 
+reading vmlinux.64
+........................................
+
+8081560 bytes read
+argv[2]: coremask=0x3
+argv[3]: root=/dev/sda2
+argv[4]: rootdelay=15
+argv[5]: rw
+argv[6]: rootsqimg=squashfs.img
+argv[7]: rootsqwdir=w
+argv[8]: mtdparts=phys_mapped_flash:512k(boot0),512k(boot1),64k@3072k(eeprom)
+ELF file is 64 bit
+Allocating memory for ELF segment: addr: 0xffffffff81100000 (adjusted to: 0x1100000), size 0x7f2a90
+Allocated memory for ELF segment: addr: 0xffffffff81100000, size 0x7f2a90
+Processing PHDR 0
+  Loading 79a980 bytes at ffffffff81100000
+  Clearing 58110 bytes at ffffffff8189a980
+## Loading Linux kernel with entry point: 0xffffffff81105cd0 ...
+Bootloader: Done loading app on coremask: 0x3
+Linux version 2.6.32.13-UBNT (ancheng@ubnt-builder2) (gcc version 4.3.3 (Cavium Networks Version: 2_0_0 build 99) ) #1 SMP Wed Oct 24 01:08:06 PDT 2012
+CVMSEG size: 2 cache lines (256 bytes)
+Cavium Networks SDK-2.0
+CPU revision is: 000d0601 (Cavium Octeon+)
+Checking for the multiply/shift bug... no.
+Checking for the daddiu bug... no.
+Determined physical RAM map:
+ memory: 0000000000034000 @ 000000000186c000 (usable after init)
+ memory: 0000000006800000 @ 0000000001900000 (usable)
+ memory: 0000000007c00000 @ 0000000008200000 (usable)
+ memory: 000000000fc00000 @ 0000000410000000 (usable)
+Wasting 350112 bytes for tracking 6252 unused pages
+Zone PFN ranges:
+  DMA32    0x0000186c -> 0x00100000
+  Normal   0x00100000 -> 0x0041fc00
+Movable zone start PFN for each node
+early_node_map[4] active PFN ranges
+    0: 0x0000186c -> 0x000018a0
+    0: 0x00001900 -> 0x00008100
+    0: 0x00008200 -> 0x0000fe00
+    0: 0x00410000 -> 0x0041fc00
+Cavium Hotplug: Available coremask 0x0
+PERCPU: Embedded 10 pages/cpu @a8000000020b8000 s10624 r8192 d22144 u65536
+pcpu-alloc: s10624 r8192 d22144 u65536 alloc=16*4096
+pcpu-alloc: [0] 0 [0] 1 
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 63895
+Kernel command line:  bootoctlinux $loadaddr coremask=0x3 root=/dev/sda2 rootdelay=15 rw rootsqimg=squashfs.img rootsqwdir=w mtdparts=phys_mapped_flash:512k(boot0),512k(boot1),64k@3072k(eeprom) console=ttyS0,115200
+PID hash table entries: 1024 (order: 1, 8192 bytes)
+Dentry cache hash table entries: 32768 (order: 6, 262144 bytes)
+Inode-cache hash table entries: 16384 (order: 5, 131072 bytes)
+Primary instruction cache 32kB, virtually tagged, 4 way, 64 sets, linesize 128 bytes.
+Primary data cache 16kB, 64-way, 2 sets, linesize 128 bytes.
+Memory: 483444k/491728k available (3478k kernel code, 8064k reserved, 4118k data, 208k init, 0k highmem)
+Hierarchical RCU implementation.
+NR_IRQS:152
+Calibrating delay loop (skipped) preset value.. 1000.00 BogoMIPS (lpj=5000000)
+Security Framework initialized
+Mount-cache hash table entries: 256
+Checking for the daddi bug... no.
+SMP: Booting CPU01 (CoreId  1)...
+CPU revision is: 000d0601 (Cavium Octeon+)
+Brought up 2 CPUs
+NET: Registered protocol family 16
+bio: create slab <bio-0> at 0
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+Switching to clocksource OCTEON_CVMCOUNT
+NET: Registered protocol family 2
+IP route cache hash table entries: 2048 (order: 2, 16384 bytes)
+TCP established hash table entries: 8192 (order: 5, 131072 bytes)
+TCP bind hash table entries: 8192 (order: 5, 131072 bytes)
+TCP: Hash tables configured (established 8192 bind 8192)
+TCP reno registered
+NET: Registered protocol family 1
+/proc/octeon_perf: Octeon performace counter interface loaded
+octeon_wdt: Initial granularity 5 Sec.
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+Registering unionfs 2.5.11 (for 2.6.32.55)
+msgmni has been set to 944
+alg: No test for stdrng (krng)
+io scheduler noop registered
+io scheduler cfq registered (default)
+Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+serial8250.0: ttyS0 at MMIO 0x1180000000800 (irq = 58) is a OCTEON
+console [ttyS0] enabled
+loop: module loaded
+ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+OcteonUSB: Detected 1 ports
+OcteonUSB OcteonUSB.0: Octeon Host Controller
+OcteonUSB OcteonUSB.0: new USB bus registered, assigned bus number 1
+OcteonUSB OcteonUSB.0: irq 80, io mem 0x00000000
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+OcteonUSB: Registered HCD for port 0 on irq 80
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+usbcore: registered new interface driver libusual
+Probing USB hub...
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+TCP cubic registered
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+L2 lock: TLB refill 256 bytes
+L2 lock: General exception 128 bytes
+L2 lock: low-level interrupt 128 bytes
+L2 lock: interrupt 640 bytes
+L2 lock: memcpy 1152 bytes
+Bootbus flash: Setting flash for 4MB flash at 0x1f800000
+phys_mapped_flash: Found 1 x16 devices at 0x0 in 8-bit bank
+ Amd/Fujitsu Extended Query Table at 0x0040
+phys_mapped_flash: Swapping erase regions for broken CFI table.
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+3 cmdlinepart partitions found on MTD device phys_mapped_flash
+Creating 3 MTD partitions on "phys_mapped_flash":
+0x000000000000-0x000000080000 : "boot0"
+0x000000080000-0x000000100000 : "boot1"
+0x000000300000-0x000000310000 : "eeprom"
+Waiting 15sec before mounting root device...
+hub 1-0:1.0: activate --> -22
+usb 1-1: new high speed USB device using OcteonUSB and address 2
+usb 1-1: configuration #1 chosen from 1 choice
+scsi0 : SCSI emulation for USB Mass Storage devices
+scsi 0:0:0:0: Direct-Access              USB DISK 2.0     PMAP PQ: 0 ANSI: 4
+sd 0:0:0:0: [sda] 7579008 512-byte logical blocks: (3.88 GB/3.61 GiB)
+sd 0:0:0:0: [sda] Write Protect is off
+sd 0:0:0:0: [sda] Assuming drive cache: write through
+sd 0:0:0:0: [sda] Assuming drive cache: write through
+ sda: sda1 sda2
+sd 0:0:0:0: [sda] Assuming drive cache: write through
+sd 0:0:0:0: [sda] Attached SCSI removable disk
+kjournald starting.  Commit interval 5 seconds
+EXT3 FS on sda2, internal journal
+EXT3-fs: recovery complete.
+EXT3-fs: mounted filesystem with writeback data mode.
+VFS: Mounted root (unionfs filesystem) on device 0:12.
+Freeing unused kernel memory: 208k freed
+Algorithmics/MIPS FPU Emulator v1.5
+^MINIT: version 2.88 booting^M
+^MINIT: Entering runlevel: 2^M
+Starting routing daemon: rib.
+Starting EdgeOS router: migrate rl-system configure.
+
+Welcome to EdgeOS ubnt ttyS0
+
+By logging in, accessing, or using the Ubiquiti product, you
+acknowledge that you have read and understood the Ubiquiti
+License Agreement (available in the Web UI at, by default,
+http://192.168.1.1) and agree to be bound by its terms.
+
+ubnt login: ubnt
+Password: 
+Linux ubnt 2.6.32.13-UBNT #1 SMP Wed Oct 24 01:08:06 PDT 2012 mips64
+Welcome to EdgeOS
+ubnt@ubnt:~$ 
+</nowiki>
+</WRAP>\\
+
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+Looking for valid bootloader image....
+Jumping to start of image at address 0xbfc80000
+
+
+U-Boot 1.1.1 (UBNT Build ID: 4493936-g009d77b) (Build time: Sep 20 2012 - 15:48:51)
+
+BIST check passed.
+UBNT_E100 r1:2, r2:14, serial #: DC9FDB80387F
+Core clock: 500 MHz, DDR clock: 266 MHz (532 Mhz data rate)
+DRAM:  512 MB
+Clearing DRAM....... done
+Flash:  4 MB
+Net:   octeth0, octeth1, octeth2
+
+USB:   (port 0) scanning bus for devices... 1 USB Devices found
+       scanning bus for storage devices...
+  Device 0: Vendor: SanDisk  Prod.: Cruzer Fit       Rev: 1.27
+            Type: Removable Hard Disk
+            Capacity: 30532.5 MB = 29.8 GB (62530624 x 512)
+^H^H^H 0 
+reading vmlinux.64
+........................
+
+4874120 bytes read
+argv[2]: coremask=0x3
+argv[3]: root=/dev/sda2
+argv[4]: rootdelay=15
+argv[5]: rw
+argv[6]: rootsqimg=squashfs.img
+argv[7]: rootsqwdir=w
+argv[8]: mtdparts=phys_mapped_flash:512k(boot0),512k(boot1),64k@3072k(eeprom)
+ELF file is 64 bit
+Allocating memory for ELF segment: addr: 0xffffffff81100000 (adjusted to: 0x1100000), size 0x14fd878
+Allocated memory for ELF segment: addr: 0xffffffff81100000, size 0x14fd878
+Processing PHDR 0
+  Loading 4a4a00 bytes at ffffffff81100000
+  Clearing 1058e78 bytes at ffffffff815a4a00
+## Loading Linux kernel with entry point: 0xffffffff81107610 ...
+Bootloader: Done loading app on coremask: 0x3
+[    0.000000] Linux version 3.18.20 (buildbot@builder1) (gcc version 4.6.4 (OpenWrt/Linaro GCC 4.6-2013.05 r46450) ) #1 SMP Fri Sep 4 18:32:59 CEST 2015
+[    0.000000] CVMSEG size: 2 cache lines (256 bytes)
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 000d0601 (Cavium Octeon+)
+[    0.000000] Checking for the multiply/shift bug... no.
+[    0.000000] Checking for the daddiu bug... no.
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 0000000005800000 @ 0000000002600000 (usable)
+[    0.000000]  memory: 0000000007c00000 @ 0000000008200000 (usable)
+[    0.000000]  memory: 000000000fc00000 @ 0000000410000000 (usable)
+[    0.000000]  memory: 00000000014fd878 @ 0000000001100000 (usable)
+[    0.000000] Wasting 243712 bytes for tracking 4352 unused pages
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Using internal Device Tree.
+[    0.000000] software IO TLB [mem 0x0358e000-0x0758e000] (64MB) mapped at [800000000358e000-800000000758dfff]
+[    0.000000] Zone ranges:
+[    0.000000]   DMA32    [mem 0x01100000-0xefffffff]
+[    0.000000]   Normal   [mem 0xf0000000-0x41fbfffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x01100000-0x025fcfff]
+[    0.000000]   node   0: [mem 0x02600000-0x07dfffff]
+[    0.000000]   node   0: [mem 0x08200000-0x0fdfffff]
+[    0.000000]   node   0: [mem 0x410000000-0x41fbfffff]
+[    0.000000] Initmem setup node 0 [mem 0x01100000-0x41fbfffff]
+[    0.000000] Primary instruction cache 32kB, virtually tagged, 4 way, 64 sets, linesize 128 bytes.
+[    0.000000] Primary data cache 16kB, 64-way, 2 sets, linesize 128 bytes.
+[    0.000000] PERCPU: Embedded 12 pages/cpu @8000000007649000 s10752 r8192 d30208 u49152
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 122459
+[    0.000000] Kernel command line:  bootoctlinux $loadaddr coremask=0x3 root=/dev/sda2 rootdelay=15 rw rootsqimg=squashfs.img rootsqwdir=w mtdparts=phys_mapped_flash:512k(boot0),512k(boot1),64k@3072k(eeprom) console=ttyS0,115200
+[    0.000000] PID hash table entries: 2048 (order: 2, 16384 bytes)
+[    0.000000] Dentry cache hash table entries: 65536 (order: 7, 524288 bytes)
+[    0.000000] Inode-cache hash table entries: 32768 (order: 6, 262144 bytes)
+[    0.000000] Memory: 400752K/496628K available (3661K kernel code, 269K rwdata, 584K rodata, 260K init, 16694K bss, 95876K reserved)
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000]  CONFIG_RCU_FANOUT set to non-default value of 32
+[    0.000000]  RCU restricting CPUs from NR_CPUS=16 to nr_cpu_ids=2.
+[    0.000000] RCU: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=2
+[    0.000000] NR_IRQS:127
+[    7.155498] Calibrating delay loop (skipped) preset value.. 1000.00 BogoMIPS 
+(lpj=2000000)
+[    7.163591] pid_max: default: 32768 minimum: 301
+[    7.168453] Mount-cache hash table entries: 1024 (order: 1, 8192 bytes)
+[    7.174930] Mountpoint-cache hash table entries: 1024 (order: 1, 8192 bytes)
+[    7.182838] Checking for the daddi bug... no.
+[    7.189525] SMP: Booting CPU01 (CoreId  1)...
+[    7.193896] CPU1 revision is: 000d0601 (Cavium Octeon+)
+[    7.194067] Brought up 2 CPUs
+[    7.208091] NET: Registered protocol family 16
+[    7.213435] Not in host mode, PCI Controller not initialized
+[    7.241280] SCSI subsystem initialized
+[    7.245592] usbcore: registered new interface driver usbfs
+[    7.251140] usbcore: registered new interface driver hub
+[    7.256505] usbcore: registered new device driver usb
+[    7.263131] Switched to clocksource OCTEON_CVMCOUNT
+[    7.269507] NET: Registered protocol family 2
+[    7.274961] TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+[    7.282025] TCP bind hash table entries: 4096 (order: 5, 131072 bytes)
+[    7.288583] TCP: Hash tables configured (established 4096 bind 4096)
+[    7.294876] TCP: reno registered
+[    7.298027] UDP hash table entries: 256 (order: 2, 24576 bytes)
+[    7.303932] UDP-Lite hash table entries: 256 (order: 2, 24576 bytes)
+[    7.310577] NET: Registered protocol family 1
+[    7.321577] futex hash table entries: 512 (order: 4, 65536 bytes)
+[    7.329568] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    7.335402] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    7.345551] msgmni has been set to 782
+[    7.349869] io scheduler noop registered
+[    7.353680] io scheduler deadline registered (default)
+[    7.359124] octeon_gpio 1070000000800.gpio-controller: OCTEON GPIO driver probed.
+[    7.366864] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    7.377417] console [ttyS0] disabled
+[    7.380915] 1180000000800.serial: ttyS0 at MMIO 0x1180000000800 (irq = 41, base_baud = 31250000) is a OCTEON
+[    7.390685] console [ttyS0] enabled
+[    7.390685] console [ttyS0] enabled
+[    7.397597] bootconsole [early0] disabled
+[    7.397597] bootconsole [early0] disabled
+[    7.406065] 1180000000c00.serial: ttyS1 at MMIO 0x1180000000c00 (irq = 42, base_baud = 31250000) is a OCTEON
+[    7.416579] octeon_rng octeon_rng: Octeon Random Number Generator
+[    7.424226] of-flash 1f400000.nor: Can't get bank width from device tree
+[    7.431364] libphy: mdio-octeon: probed
+[    7.437409] mdio-octeon 1180000001800.mdio: Version 1.0
+[    7.443107] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    7.449827] ehci-pci: EHCI PCI platform driver
+[    7.454438] ehci-platform: EHCI generic platform driver
+[    7.459943] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    7.466341] ohci-platform: OHCI generic platform driver
+[    7.471931] usbcore: registered new interface driver usb-storage
+[    7.477984] octeon_wdt: Initial granularity 5 Sec
+[    7.483415] cavium-ethernet 1.9
+[    7.489361] Interface 0 has 3 ports (RGMII)
+[    7.507929] OcteonUSB 16f0010000000.usbc: Octeon Host Controller
+[    7.514015] OcteonUSB 16f0010000000.usbc: new USB bus registered, assigned bus number 1
+[    7.522121] OcteonUSB 16f0010000000.usbc: irq 124, io mem 0x00000000
+[    7.529500] hub 1-0:1.0: USB hub found
+[    7.533398] hub 1-0:1.0: 1 port detected
+[    7.537855] OcteonUSB 16f0010000000.usbc: Registered HCD for port 0 on irq 124
+[    7.545470] TCP: cubic registered
+[    7.548838] NET: Registered protocol family 17
+[    7.553430] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    7.566112] Bridge firewalling registered
+[    7.570159] 8021q: 802.1Q VLAN Support v1.8
+[    7.574582] Bootbus flash: Setting flash for 4MB flash at 0x1f800000
+[    7.581027] phys_mapped_flash: Found 1 x16 devices at 0x0 in 8-bit bank. Manufacturer ID 0x0000c2 Chip ID 0x0000a7
+[    7.591405] Amd/Fujitsu Extended Query Table at 0x0040
+[    7.596578]   Amd/Fujitsu Extended Query version 1.1.
+[    7.601650] phys_mapped_flash: Swapping erase regions for top-boot CFI table.
+[    7.608803] number of CFI chips: 1
+[    7.612247] 3 cmdlinepart partitions found on MTD device phys_mapped_flash
+[    7.619143] Creating 3 MTD partitions on "phys_mapped_flash":
+[    7.624909] 0x000000000000-0x000000080000 : "boot0"
+[    7.631014] 0x000000080000-0x000000100000 : "boot1"
+[    7.637020] 0x000000300000-0x000000310000 : "eeprom"
+[    7.644963] Waiting 15 sec before mounting root device...
+[    7.903003] usb 1-1: new high-speed USB device number 2 using OcteonUSB
+[    8.088333] usb-storage 1-1:1.0: USB Mass Storage device detected
+[    8.094929] scsi host0: usb-storage 1-1:1.0
+[    9.100109] scsi 0:0:0:0: Direct-Access     SanDisk  Cruzer Fit       1.27 PQ: 0 ANSI: 6
+[    9.110864] sd 0:0:0:0: [sda] 62530624 512-byte logical blocks: (32.0 GB/29.8 GiB)
+[    9.119423] sd 0:0:0:0: [sda] Write Protect is off
+[    9.124706] sd 0:0:0:0: [sda] Write cache: disabled, read cache: enabled, doesn't support DPO or FUA
+[    9.139098]  sda: sda1 sda2
+[    9.144692] sd 0:0:0:0: [sda] Attached SCSI removable disk
+[   21.591004] random: nonblocking pool is initialized
+[   22.663435] EXT4-fs (sda2): couldn't mount as ext3 due to feature incompatibilities
+[   22.672567] EXT4-fs (sda2): couldn't mount as ext2 due to feature incompatibilities
+[   22.705233] EXT4-fs (sda2): mounted filesystem with ordered data mode. Opts: (null)
+[   22.712988] VFS: Mounted root (ext4 filesystem) on device 8:2.
+[   22.719137] Freeing unused kernel memory: 260K (ffffffff8156f000 - ffffffff815b0000)
+[   22.863758] init: Console is alive
+[   22.867664] init: - watchdog -
+[   23.875320] init: - preinit -
+cat: can't open '/proc/device-tree/model': No such file or directory
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   27.072217] mount_root: mounting /dev/root
+[   27.076960] EXT4-fs (sda2): re-mounted. Opts: (null)
+[   27.103111] procd: - early -
+[   27.106176] procd: - watchdog -
+[   27.695465] procd: - ubus -
+[   28.712293] procd: - init -
+Please press Enter to activate this console.
+[   29.344728] NET: Registered protocol family 10
+[   29.355138] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   29.379427] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   29.392393] nf_conntrack version 0.5.0 (3132 buckets, 12528 max)
+[   29.443418] xt_time: kernel timezone is -0000
+[   29.456306] PPP generic driver version 2.4.2
+[   29.461800] NET: Registered protocol family 24
+[   33.150085] device eth0 entered promiscuous mode
+[   33.162001] br-lan: port 1(eth0) entered forwarding state
+[   33.167506] br-lan: port 1(eth0) entered forwarding state
+[   33.233722] IPv6: ADDRCONF(NETDEV_UP): eth1: link is not ready
+[   34.135103] br-lan: port 1(eth0) entered disabled state
+[   37.139095] eth0: 1000 Mbps Full duplex, port 0
+[   37.143706] br-lan: port 1(eth0) entered forwarding state
+[   37.149196] br-lan: port 1(eth0) entered forwarding state
+[   37.231109] eth1: 1000 Mbps Full duplex, port 1
+[   37.235712] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+[   39.150996] br-lan: port 1(eth0) entered forwarding state
+
+
+
+BusyBox v1.23.2 (2015-07-25 01:39:02 CEST) built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ CHAOS CALMER (15.05, r46767)
+ -----------------------------------------------------
+  * 1 1/2 oz Gin            Shake with a glassful
+  * 1/4 oz Triple Sec       of broken ice and pour
+  * 3/4 oz Lime Juice       unstrained into a goblet.
+  * 1 1/2 oz Orange Juice
+  * 1 tsp. Grenadine Syrup
+ -----------------------------------------------------
+root@OpenWrt:/# 
+</nowiki>
+</WRAP>\\
+
+==== LEDE bootlog ====
+<WRAP bootlog>
+<nowiki>
+Looking for valid bootloader image....
+Jumping to start of image at address 0xbfc80000
+
+
+U-Boot 1.1.1 (UBNT Build ID: 4493936-g009d77b) (Build time: Sep 20 2012 - 15:48:51)
+
+BIST check passed.
+UBNT_E100 r1:2, r2:12, serial #: DC9FDB29E116
+Core clock: 500 MHz, DDR clock: 266 MHz (532 Mhz data rate)
+DRAM:  512 MB
+Clearing DRAM....... done
+Flash:  4 MB
+Net:   octeth0, octeth1, octeth2
+
+USB:   (port 0) scanning bus for devices... 1 USB Devices found
+       scanning bus for storage devices...
+  Device 0: Vendor:          Prod.: USB DISK 2.0     Rev: PMAP
+            Type: Removable Hard Disk
+            Capacity: 3700.6 MB = 3.6 GB (7579008 x 512)                                                                                                                                                                                                                     0 
+reading vmlinux.64
+............................
+
+5555424 bytes read
+argv[2]: coremask=0x3
+argv[3]: root=/dev/sda2
+argv[4]: rootdelay=15
+argv[5]: rw
+argv[6]: rootsqimg=squashfs.img
+argv[7]: rootsqwdir=w
+argv[8]: mtdparts=phys_mapped_flash:512k(boot0),512k(boot1),64k@3072k(eeprom)
+ELF file is 64 bit
+Allocating memory for ELF segment: addr: 0xffffffff81100000 (adjusted to: 0x1100000), size 0x16a3fa0
+Allocated memory for ELF segment: addr: 0xffffffff81100000, size 0x16a3fa0
+Processing PHDR 0
+  Loading 54af00 bytes at ffffffff81100000
+  Clearing 11590a0 bytes at ffffffff8164af00
+## Loading Linux kernel with entry point: 0xffffffff811078a0 ...
+Bootloader: Done loading app on coremask: 0x3
+[    0.000000] Linux version 4.4.61 (buildbot@builds-02.infra.lede-project.org) (gcc version 5.4.0 (LEDE GCC 5.4.0 r3103-1b51a49) ) #0 SMP Sat Apr 15 16:13:45 2017
+[    0.000000] CVMSEG size: 2 cache lines (256 bytes)
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 000d0601 (Cavium Octeon+)
+[    0.000000] Checking for the multiply/shift bug... no.
+[    0.000000] Checking for the daddiu bug... no.
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 0000000005800000 @ 0000000002800000 (usable)
+[    0.000000]  memory: 0000000007c00000 @ 0000000008200000 (usable)
+[    0.000000]  memory: 000000000fc00000 @ 0000000410000000 (usable)
+[    0.000000]  memory: 00000000016a3fa0 @ 0000000001100000 (usable)
+[    0.000000] Wasting 243712 bytes for tracking 4352 unused pages
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Using internal Device Tree.
+[    0.000000] software IO TLB [mem 0x0378e000-0x0778e000] (64MB) mapped at [800000000378e000-800000000778dfff]
+[    0.000000] Zone ranges:
+[    0.000000]   DMA32    [mem 0x0000000001100000-0x00000000efffffff]
+[    0.000000]   Normal   [mem 0x00000000f0000000-0x000000041fbfffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000001100000-0x00000000027a2fff]
+[    0.000000]   node   0: [mem 0x0000000002800000-0x0000000007ffffff]
+[    0.000000]   node   0: [mem 0x0000000008200000-0x000000000fdfffff]
+[    0.000000]   node   0: [mem 0x0000000410000000-0x000000041fbfffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000001100000-0x000000041fbfffff]
+[    0.000000] Primary instruction cache 32kB, virtually tagged, 4 way, 64 sets, linesize 128 bytes.
+[    0.000000] Primary data cache 16kB, 64-way, 2 sets, linesize 128 bytes.
+[    0.000000] PERCPU: Embedded 14 pages/cpu @8000000007849000 s20224 r8192 d28928 u57344
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 122875
+[    0.000000] Kernel command line: mtdparts=phys_mapped_flash:512k(boot0)ro,512k(boot1)ro,64k(eeprom)ro root=/dev/sda2 rootfstype=squashfs,ext4 rootwait  console=ttyS0,115200
+[    0.000000] PID hash table entries: 2048 (order: 2, 16384 bytes)
+[    0.000000] Dentry cache hash table entries: 65536 (order: 7, 524288 bytes)
+[    0.000000] Inode-cache hash table entries: 32768 (order: 6, 262144 bytes)
+[    0.000000] Memory: 400736K/498316K available (4199K kernel code, 304K rwdata, 652K rodata, 1284K init, 16719K bss, 97580K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=128, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000]  CONFIG_RCU_FANOUT set to non-default value of 32
+[    0.000000]  RCU restricting CPUs from NR_CPUS=16 to nr_cpu_ids=2.
+[    0.000000] RCU: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=2
+[    0.000000] NR_IRQS:127
+[    8.254250] clocksource: OCTEON_CVMCOUNT: mask: 0xffffffffffffffff max_cycles: 0xe6a171a037, max_idle_ns: 881590485102 ns
+[    8.265095] Calibrating delay loop (skipped) preset value.. 1000.00 BogoMIPS (lpj=2000000)
+[    8.273271] pid_max: default: 32768 minimum: 301
+[    8.278017] Mount-cache hash table entries: 1024 (order: 1, 8192 bytes)
+[    8.284490] Mountpoint-cache hash table entries: 1024 (order: 1, 8192 bytes)
+[    8.292281] Checking for the daddi bug... no.
+[    8.298853] SMP: Booting CPU01 (CoreId  1)...
+[    8.303235] CPU1 revision is: 000d0601 (Cavium Octeon+)
+[    8.303433] Brought up 2 CPUs
+[    8.316555] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    8.326238] futex hash table entries: 512 (order: 4, 65536 bytes)
+[    8.333097] NET: Registered protocol family 16
+[    8.338236] Can't analyze schedule() prologue at ffffffff81109a08
+[    8.356308] Not in host mode, PCI Controller not initialized
+[    8.379766] SCSI subsystem initialized
+[    8.383972] usbcore: registered new interface driver usbfs
+[    8.389483] usbcore: registered new interface driver hub
+[    8.394815] usbcore: registered new device driver usb
+[    8.401660] clocksource: Switched to clocksource OCTEON_CVMCOUNT
+[    8.408961] NET: Registered protocol family 2
+[    8.414146] TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+[    8.421206] TCP bind hash table entries: 4096 (order: 5, 131072 bytes)
+[    8.427775] TCP: Hash tables configured (established 4096 bind 4096)
+[    8.434100] UDP hash table entries: 256 (order: 2, 24576 bytes)
+[    8.439965] UDP-Lite hash table entries: 256 (order: 2, 24576 bytes)
+[    8.446527] NET: Registered protocol family 1
+[    8.457706] Crashlog allocated RAM at address 0x3f00000
+[    8.478740] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    8.484885] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    8.498990] io scheduler noop registered
+[    8.502814] io scheduler deadline registered (default)
+[    8.508205] octeon_gpio 1070000000800.gpio-controller: OCTEON GPIO driver probed.
+[    8.515931] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    8.526853] console [ttyS0] disabled
+[    8.530351] 1180000000800.serial: ttyS0 at MMIO 0x1180000000800 (irq = 41, base_baud = 31250000) is a OCTEON
+[    8.540125] console [ttyS0] enabled
+[    8.540125] console [ttyS0] enabled
+[    8.547045] bootconsole [early0] disabled
+[    8.547045] bootconsole [early0] disabled
+[    8.555648] 1180000000c00.serial: ttyS1 at MMIO 0x1180000000c00 (irq = 42, base_baud = 31250000) is a OCTEON
+[    8.566224] octeon_rng octeon_rng: Octeon Random Number Generator
+[    8.582065] loop: module loaded
+[    8.586136] of-flash 1f400000.nor: Can't get bank width from device tree
+[    8.593328] libphy: mdio-octeon: probed
+[    8.599043] mdio-octeon 1180000001800.mdio: Version 1.1
+[    8.604697] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    8.611274] ehci-pci: EHCI PCI platform driver
+[    8.615865] ehci-platform: EHCI generic platform driver
+[    8.621396] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    8.627642] ohci-platform: OHCI generic platform driver
+[    8.633292] usbcore: registered new interface driver usb-storage
+[    8.639345] octeon_wdt: Initial granularity 5 Sec
+[    8.647952] Interface 0 has 3 ports (RGMII)
+[    8.656756] OcteonUSB 16f0010000000.usbc: Octeon Host Controller
+[    8.662875] OcteonUSB 16f0010000000.usbc: new USB bus registered, assigned bus number 1
+[    8.670986] OcteonUSB 16f0010000000.usbc: irq 124, io mem 0x00000000
+[    8.678452] hub 1-0:1.0: USB hub found
+[    8.682341] hub 1-0:1.0: 1 port detected
+[    8.686818] OcteonUSB 16f0010000000.usbc: Registered HCD for port 0 on irq 124
+[    8.695593] NET: Registered protocol family 10
+[    8.702317] NET: Registered protocol family 17
+[    8.706923] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    8.719581] 8021q: 802.1Q VLAN Support v1.8
+[    8.724062] Bootbus flash: Setting flash for 4MB flash at 0x1f800000
+[    8.730569] phys_mapped_flash: Found 1 x16 devices at 0x0 in 8-bit bank. Manufacturer ID 0x0000c2 Chip ID 0x0000a7
+[    8.740950] Amd/Fujitsu Extended Query Table at 0x0040
+[    8.746140]   Amd/Fujitsu Extended Query version 1.1.
+[    8.751215] phys_mapped_flash: Swapping erase regions for top-boot CFI table.
+[    8.758374] number of CFI chips: 1
+[    8.761818] 3 cmdlinepart partitions found on MTD device phys_mapped_flash
+[    8.768716] Creating 3 MTD partitions on "phys_mapped_flash":
+[    8.774492] 0x000000000000-0x000000080000 : "boot0"
+[    8.780891] 0x000000080000-0x000000100000 : "boot1"
+[    8.787381] 0x000000100000-0x000000110000 : "eeprom"
+[    8.795480] fdt: not creating '/sys/firmware/fdt': CRC check failed
+[    8.802259] Waiting for root device /dev/sda2...
+[    9.045156] usb 1-1: new high-speed USB device number 2 using OcteonUSB
+[   10.269685] usb-storage 1-1:1.0: USB Mass Storage device detected
+[   10.276453] scsi host0: usb-storage 1-1:1.0
+[   11.676239] scsi 0:0:0:0: Direct-Access              USB DISK 2.0     PMAP PQ: 0 ANSI: 4
+[   11.686672] sd 0:0:0:0: [sda] 7579008 512-byte logical blocks: (3.88 GB/3.61 GiB)
+[   11.694760] sd 0:0:0:0: [sda] Write Protect is off
+[   11.700109] sd 0:0:0:0: [sda] No Caching mode page found
+[   11.705508] sd 0:0:0:0: [sda] Assuming drive cache: write through
+[   11.715745]  sda: sda1 sda2
+[   11.721339] sd 0:0:0:0: [sda] Attached SCSI removable disk
+[   11.789795] EXT4-fs (sda2): INFO: recovery required on readonly filesystem
+[   11.796730] EXT4-fs (sda2): write access will be enabled during recovery
+[   11.863739] EXT4-fs (sda2): recovery complete
+[   11.875001] EXT4-fs (sda2): mounted filesystem with ordered data mode. Opts: (null)
+[   11.882779] VFS: Mounted root (ext4 filesystem) readonly on device 8:2.
+[   11.890629] Freeing unused kernel memory: 1284K (ffffffff8160f000 - ffffffff81750000)
+[   12.035826] init: Console is alive
+[   12.039597] init: - watchdog -
+[   12.141488] init: - preinit -
+cat: can't open '/tmp/sysinfo/board_name': No such file or directory
+[   12.291123] random: jshn: uninitialized urandom read (4 bytes read, 80 bits of entropy available)
+[   12.339788] random: jshn: uninitialized urandom read (4 bytes read, 84 bits of entropy available)
+[   12.377199] random: jshn: uninitialized urandom read (4 bytes read, 84 bits of entropy available)
+[   12.412619] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   15.819742] mount_root: mounting /dev/root
+[   15.850138] random: nonblocking pool is initialized
+[   16.853764] EXT4-fs (sda2): re-mounted. Opts: (null)
+[   17.023476] urandom-seed: Seeding with /etc/urandom.seed
+[   17.073402] procd: - early -
+[   17.076422] procd: - watchdog -
+[   17.665558] procd: - ubus -
+[   17.981520] procd: - init -
+Please press Enter to activate this console.
+[   18.168504] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   18.190903] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   18.201879] nf_conntrack version 0.5.0 (3140 buckets, 12560 max)
+[   18.262627] xt_time: kernel timezone is -0000
+[   18.275351] PPP generic driver version 2.4.2
+[   18.280811] NET: Registered protocol family 24
+[   21.687901] device eth0 entered promiscuous mode
+[   21.714395] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   21.798293] IPv6: ADDRCONF(NETDEV_UP): eth1: link is not ready
+[   24.797295] eth1: 1000 Mbps Full duplex, port 1, queue 1
+[   24.802740] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+
+
+
+BusyBox v1.25.1 () built-in shell (ash)
+
+     _________
+    /        /\      _    ___ ___  ___
+   /  LE    /  \    | |  | __|   \| __|
+  /    DE  /    \   | |__| _|| |) | _|
+ /________/  LE  \  |____|___|___/|___|                      lede-project.org
+ \        \   DE /
+  \    LE  \    /  -----------------------------------------------------------
+   \  DE    \  /    Reboot (17.01.1, r3316-7eb58cf109)
+    \________\/    -----------------------------------------------------------
+
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@LEDE:/# 
+</nowiki>
+</WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>octeon 4096flash 512ram GigabitEthernet 0WNIC MIPS64 cavium crypto}}

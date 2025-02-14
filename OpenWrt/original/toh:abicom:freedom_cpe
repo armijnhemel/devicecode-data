@@ -1,0 +1,235 @@
+====== Freedom CPE ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+The Freedom CPE is based upon the Atheros AR5312 Wireless SoC. The Freedom CPE delivers dual-band, single channel, 2.4GHz/5.8GHz capability in a 85mmx85mm form. 
+
+===== Supported Versions =====
+^ Version/Model   ^ S/N   ^ OpenWrt Version Supported   ^ Model Specific Notes   ^
+| Rev 05          | n/a   | Backfire 10.03              | -                      |
+
+===== Hardware Highlights =====
+^ CPU                     ^ Ram     ^ Flash   ^ Network   ^ USB   ^ Serial   ^ JTag   ^
+| Atheros AR5312@220MHz   | 32MiB   | 8MiB    | 1         | No    | Yes      | Yes    |
+
+
+===== Installation =====
+==== Installing of OpenWrt for the first time ====
+You may need to upgrade the bootloader on your board prior to installing of OpenWrt, because they were shipped with a bootloader which checks CRC on the installed firmware. You have to go to the Abicom's [[http://www.abicom.co.uk/support.php|support]] page to obtain a new bootloader image which have ability to disable CRC checking.
+
+Once you have a suitable bootloader and you can access it via [[#serial|serial console]] you can install OpenWrt with the following method.
+
+You have to download two files:
+
+  * [[http://downloads.openwrt.org/backfire/10.03/atheros/openwrt-atheros-vmlinux.lzma|openwrt-atheros-vmlinux.lzma]]
+  * [[http://downloads.openwrt.org/backfire/10.03/atheros/openwrt-atheros-root.squashfs|openwrt-atheros-root.squashfs]]
+
+Copy //**openwrt-atheros-vmlinux.lzma**// and //**openwrt-atheros-root.squashfs**// to /tftpboot/ and flash them with the following method.
+
+=== Configure the IP address of the board ===
+| <code>
+RedBoot> ip_address -h 192.168.1.254 -l 192.168.1.1/24
+IP: 192.168.1.1/255.255.255.0, Gateway: 0.0.0.0
+Default server: 192.168.1.254
+RedBoot> </code> |
+
+=== Initialize the FLASH image system ===
+| <code>
+RedBoot> fis init -y
+*** Initialize FLASH Image System
+... Erase from 0xbe7fa000-0xbe7fc000: .
+... Program from 0x80fee400-0x80ff0400 at 0xbe7fa000: .
+RedBoot> </code> |
+
+You have a default flash layout now:
+
+| <code>
+RedBoot> fis list
+Name              FLASH addr  Mem addr    Length      Entry point
+RedBoot           0xBE000000  0xBE000000  0x00030000  0x00000000
+APConfig          0xBE7D0000  0xBE7D0000  0x00020000  0x00000000
+OEMData           0xBE7F0000  0xBE7F8000  0x00008000  0x00000000
+RedBoot config    0xBE7F8000  0xBE7F8000  0x00002000  0x00000000
+FIS directory     0xBE7FA000  0xBE7FA000  0x00002000  0x00000000
+RedBoot> </code> |
+
+=== Load the kernel from the TFTP server ===
+| <code>
+RedBoot> load -r -b %{FREEMEMLO} openwrt-atheros-vmlinux.lzma
+Using default protocol (TFTP)
+Raw file loaded 0x80000400-0x800e03ff, assumed entry at 0x80000400
+RedBoot> </code> |
+
+=== Flash the kernel into the board ===
+
+//**Note:**// 
+  * The values for the -e and -r switches in the 'fis create' RedBoot command below is the Kernel entry point. Do not change those values.
+
+| <code>
+RedBoot> fis create -e 0x80041000 -r 0x80041000 vmlinux.bin.l7
+... Erase from 0xbe030000-0xbe110000: ..............
+... Program from 0x80000400-0x800e0400 at 0xbe030000: ..............
+... Erase from 0xbe7fa000-0xbe7fc000: .
+... Program from 0x80fee400-0x80ff0400 at 0xbe7fa000: .
+RedBoot> </code> |
+
+=== Load the rootfs image from the TFTP server ===
+| <code>
+RedBoot> load -r -b %{FREEMEMLO} openwrt-atheros-root.squashfs
+Using default protocol (TFTP)
+Raw file loaded 0x80000400-0x801c03ff, assumed entry at 0x80000400
+RedBoot> </code> |
+
+=== Flash the rootfs image ===
+**//'fis free'//** will print the first and last free block
+
+| <code>
+RedBoot> fis free
+0xBE110000 .. 0xBE7D0000
+RedBoot> </code> |
+
+Now do the math (last - first, cause you need the difference) 
+
+| <code>
+0xBE7D0000 - 0xBE110000 = 0x6C0000
+</code> |
+
+And use the computed value for the -l switch in the //**'fis create'**// RedBoot command below.
+
+| <code>
+RedBoot> fis create -l 0x6C0000 rootfs
+... Erase from 0xbe110000-0xbe7d0000: ............................................................................................................
+... Program from 0x80000400-0x801c0400 at 0xbe110000: ............................
+... Erase from 0xbe7fa000-0xbe7fc000: .
+... Program from 0x80fee400-0x80ff0400 at 0xbe7fa000: .
+RedBoot> </code> |
+ 
+=== Upgrade RedBoots's configuration ===
+
+//**Notes:**// 
+  * You have to disable CRC checking because the bootloader won't load the OpenWrt image if it is enabled.
+  * The boot script is needed for automatic booting.
+  * OpenWrt logs to its serial console with 9600bps, so you must have to set the same baud rate.
+
+| <code>
+RedBoot> fconfig
+Disable CRC Checking: true
+Automatic FirmwareUpdate: false
+Run script at boot: true
+Boot script:
+.. fis load -l vmlinux.bin.l7
+.. exec
+Enter script, terminate with empty line
+>> fis load -l vmlinux.bin.l7
+>> exec
+>>
+Boot script timeout (1000ms resolution): 3
+Use BOOTP for network configuration: false
+Gateway IP address:
+Local IP address: 192.168.1.1
+Local IP address mask: 255.255.255.0
+Default server IP address: 192.168.1.254
+Console baud rate: 9600
+GDB connection port: 9000
+Force console for special debug messages: false
+Network debug at boot time: false
+Safe Console: true
+Update RedBoot non-volatile configuration - continue (y/n)? y
+cfgbase 0xbe7f8000 cfgsize 2000
+... Erase from 0xbe7f8000-0xbe7fa000: .
+... Program from 0x80fe1400-0x80fe2400 at 0xbe7f8000: .
+RedBoot> </code> |
+
+Finally, reset the board:
+| <code>
+RedBoot> reset 
+</code> |
+
+==== Upgrading OpenWrt ====
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the sysupgrade command line tool. 
+
+It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+| <code>
+root@OpenWrt:/# cd /tmp
+root@OpenWrt:/tmp# wget ftp://192.168.1.254/openwrt-atheros-combined.squashfs.img
+Connecting to 192.168.1.254:2121 (192.168.1.254:2121)
+openwrt-atheros-comb 100% |*******************************|  2752k 00:00:00 ETA
+root@OpenWrt:/#
+</code> |
+
+When it is done, use the sysupgrade command to flash it:
+
+| <code>
+root@OpenWrt:/tmp# sysupgrade openwrt-atheros-combined.squashfs.img
+Saving config files...
+Switching to ramdisk...
+mount: mounting mini_fo:/overlay on /mnt failed: Function not implemented
+Performing system upgrade...
+Unlocking vmlinux.bin.l7 ...
+Unlocking rootfs ...
+Writing from <stdin> to vmlinux.bin.l7 ...
+Writing from <stdin> to rootfs ...
+Appending jffs2 data from /tmp/sysupgrade.tgz to rootfs...
+Updating FIS table...
+Rebooting ...
+br-lan: port 1(eth0) entering disabled state
+device eth0 left promiscuous mode
+br-lan: port 1(eth0) entering disabled state
+Restarting system.
+</code> |
+
+===== Hardware =====
+==== Info ====
+^ Architecture:     | MIPS                             |
+^ Vendor:           | Atheros                          |
+^ Bootloader:       | RedBoot                          |
+^ System-On-Chip:   | AR5312                           |
+^ CPU Speed:        | 220 MHz                          |
+^ Flash-Chip:       | Spansion S29JL064H90T            |
+^ Flash size:       | 8MiB                             |
+^ RAM:              | 32MiB                            |
+^ Wireless:         | Atheros 802.11b/g/a (built-in)   |
+^ Ethernet:         | 1x 100M                          |
+^ USB:              | No                               |
+^ Serial:           | Yes                              |
+^ JTAG:             | Yes                              |
+
+==== Photos ====
+{{:media:abicom:freedom_cpe.jpg|PCB}}
+
+==== Serial ====
+The signals of the built-in UART lines can be found on the expansion connector. The full pinout of the expansion connector can be found in the user guide of the device.
+
+| <code>
+Serial pinout:
+           |                   |                   |    |     SHIELD
+           |                   |        CPU        |    |_____________
+           |                   |___________________|                  
+ 7: 3.3V   |                                                          
+41: GND    |                                                          
+45: TX     |       49         _____________________________         1 
+47: RX     |        o o o o o|o o o o o o o o o o o o o o o|o o o o o
+           |        o o o o o|o o o o o o o o o o o o o o o|o o o o o
+           |       50         -----------------------------         2
+           |__________________________________________________________
+</code> |
+
+The UART lines are operating at TTL voltage levels, so if you want to connect it to your PC, you need a TTL-to-RS232 level shifter. See the [[http://nuwiki.openwrt.org/oldwiki/openwrtdocs/customizing/hardware/serial_console|Serial Console]] article for more informations.
+
+===== Interfaces =====
+The default network configuration is:
+^ Interface Name   ^ Description                             ^ Default configuration   ^
+| br-lan           | eth0, wifi0 & wifi1                     | 192.168.1.1/24          |
+| eth0             | 8P8C port                               | None                    |
+| eth1             | Expansion connector                     | None                    |
+| wifi0            | improperly detected in Backfire 10.03   |                         |
+| wifi1            | WiFi 2.4+5.0 GHz                        | Disabled                |
+
+===== Other Info =====
+  * Product [[http://www.abicom.co.uk/wordpress/wp-content/uploads/2014/01/FreedomCPE_Rev5.pdf|datasheet]]
+  * [[http://www.abicom.co.uk/datasheets/Freedom%20UserGuide%20Rev%20V01.06.5-Draft.pdf|User Guide]] FIXME (dead link)
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+
+{{tag>ath25 8Flash 32RAM 802.11a 802.11b 802.11g 802.11abg DetachableAntenna 2Ant FastEthernet 1NIC 1WNIC no_switch PoE integrated DevBoard Serial JTAG}}

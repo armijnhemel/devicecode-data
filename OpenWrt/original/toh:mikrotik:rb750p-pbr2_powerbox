@@ -1,0 +1,227 @@
+====== MikroTik RB750P-PBr2 (PowerBox) ======
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RB750P-PBr2 \\(PowerBox\\)$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RB750P-PBr2 \\(PowerBox\\)$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RB750P-PBr2 \\(PowerBox\\)$"}
+} -->
+
+→ [[docs:guide-user:installation:generic.flashing|Install OpenWrt]]
+
+==== Enable TFTP ====
+==== OEM easy installation ====
+
+=== Method 1 (using Winbox) ===
+Download Winbox from Mikrotik webpage [[https://download2.mikrotik.com/routeros/winbox/3.11/winbox.exe]]
+
+Boot up the RB750P r2, connect your DHCP client to any of the ports 2 to 5 but not the Internet labeled port (Port 1)
+
+Open up Winbox, IP Address 192.168.88.1, If a password has been set put this in if not the Default is just **Blank**
+
+Also, while we are in Winbox lets backup the license so returning to RouterOS is later possible.
+Go to:
+
+    System → Routerboard → Settings → License → Export key
+
+Go to:
+
+    System → Routerboard → Settings → Boot device: Try ethernet once then NAND
+    System → Routerboard → Settings → Boot protocol: DHCP
+    System → Routerboard → Settings → Force Backup Booter: Checked (if supported by your routerboard - !IMPORTANT)
+    System → Shutdown
+
+Connect the LAN port on Internet labled port and reboot the RB750P r2, Connect the computers LAN port on Internet
+
+=== Method 2 (TFTP with Telnet) ===
+
+Please note that the aforementioned mechanism is not properly working on some boards. Don't worry, boot up the mikrotik board,
+connect your DHCP client to port 1. An address from 192.168.88.0/24 must be obtained. You can now telnet to the board, and configure it for TFTPboot.
+
+Telnet user is ''admin'', leave the password empty.
+
+  telnet 192.168.88.1
+  system routerboard settings set boot-device=try-ethernet-once-then-nand 
+  system routerboard settings set boot-protocol=dhcp 
+
+Now reboot the board, it should boot from the labled "Internet" port now.
+
+==== Install Firmware ====
+
+For Windows 10 x64 (7/XP/Vista should be ok)
+
+Download [[http://tftpd32.jounin.net/tftpd32_download.html]] (i used tftpd64 portable edition), ''initramfs-kernel.bin'' and ''squashfs-sysupgrade.bin'' as shown in [[#installation|the table above]] and save them in the same tftpd32 folder **IMPORTANT**
+
+Extract the tftpd32 folder and make sure the ''initramfs-kernel.bin'' is there and open up tftp32 config file and match theses settings I have (worked for me)
+
+<code>
+[DHCP]
+   4C:5E:0C:XX:XX:XX=192.168.1.250  (Should be the same ETH1 MAC Address)
+   BootFile=lede-ar71xx-mikrotik-rb-nor-flash-16M-initramfs-kernel.bin
+   Lease_NumLeases=2
+   IP_Pool=192.168.1.2
+   PoolSize=4
+   Mask=255.255.255.0
+   Gateway=192.168.1.1
+   Lease (minutes)=90
+</code>
+
+Save!
+
+Open up tftpd64.exe and the go to Settings > GLOBAL and make sure, TFTP server and DHCP are ticked, everything else unticked, Save and Exit and then reopen tftpd64.exe for the saved changes!
+
+Set a static IP on your Windows computer LAN port with the following
+   192.168.1.2  (Keep this to 192.168.1.2 or tftpd wont work **IMPORTANT**)
+   255.255.255.0 (**IMPORTANT**)
+   192.168.1.1 (**IMPORTANT**)
+
+Follow method 1 to enable TFTP, Once done keep the LAN on port 1 (internet port) and then you should see something transferring and then the RB750r2 will boot into OpenWrt, Unplug the LAN port from Internet port 1 and set a DHCP on your Windows machine and then plug in the LAN port into any port 2-5 and the Internet port for a Cable Modem? Switch? Router? something that has internet access to it if you want to keep the OpenWrt on as this is in RAM mode and won't save any changes!
+
+Now, If you want to **erase you RouterOS** then follow theses steps;
+
+Log into SSH 192.168.1.1 with just root and password been blank (press enter)
+
+  cd /tmp
+  wget http://downloads.lede-project.org/snapshots/targets/ar71xx/mikrotik/lede-ar71xx-mikrotik-rb-nor-flash-16M-squashfs-sysupgrade.bin
+  mtd erase firmware
+  mtd write -r lede-ar71xx-mikrotik-rb-nor-flash-16M-squashfs-sysupgrade.bin firmware
+  
+The device will reboot after flashing and will boot OpenWrt.
+
+==== Upgrade ====
+  - Download the ''sysupgrade.bin'' as shown in [[#installation|the table above]]
+  - Go to **System** > **Backup/Flash Firmware**
+  - Untick Keep settings
+  - Click the **Browse** button and select the previously downloaded ''sysupgrade.bin'' image
+  - Click the **Flash Image** button
+
+Or use sysupgrade over SSH
+
+===== Debricking =====
+
+Load ''initramfs-kernel.bin'' using TFTP like in step 1.
+
+===== Failsafe mode =====
+Only built in OpenWrt failsafe
+
+===== Returning to RouterOS =====
+  - Install the "rbcfg" package on in OpenWrt.
+  - By terminal: \\ <code>
+root@OpenWrt:~#rbcfg set boot_protocol bootp
+root@OpenWrt:~#rbcfg set boot_device ethnand
+root@OpenWrt:~#rbcfg apply
+</code>
+  - Open Netinstall and reboot routerboard. Now netinstall sees routerboard and you can install RouterOS.
+If NetInstall gets stuck on Sending offer just wait for it to timeout and then close and open Netinstall again.
+Click on install again
+
+In order for RouterOS to function properly, you need to restore license for the device.
+You can do that by including license in NetInstall
+
+===== Switch Ports (for VLANs) =====
+Ports 2-5 directly correspond to ports 2-5 as labeled on the unit, port 1 is the Internet (WAN) on the unit, 0 is the internal connection to the CPU.
+
+^ Port             ^ Switch port   ^
+| CPU              | 0             |
+| Internet (WAN)   | 1             |
+| LAN 1            | 2             |
+| LAN 2            | 3             |
+| LAN 3            | 4             |
+| LAN 4            | 5             |
+
+==== Buttons ====
+
+The MikroTik RB750P-PBr2 (PowerBox) has the following buttons:
+
+^ BUTTON   ^ Event   ^
+| Reset    |  reset  |
+
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^MikroTik$", "model": "^RB750P-PBr2 \\(PowerBox\\)$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+//Front://\\
+**Insert photo of front of the casing**
+
+//Back://\\
+**Insert photo of back of the casing**
+
+//Backside label://\\
+**Insert photo of backside label**
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+<WRAP BOX>
+FIXME //Describe what needs to be done to open the device, e.g. remove rubber feet, adhesive labels, screws, ...//
+  * To remove the cover and open the device, do a/b/c
+</WRAP>
+
+//Main PCB://\\
+**Insert photo of PCB**
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+**Insert photo of PCB with markings for serial port**
+
+<WRAP BOX>
+FIXME //Replace EXAMPLE by real values.//
+</WRAP>
+
+^ Serial connection parameters\\ for MikroTik RB750P-PBr2 (PowerBox) @@Version@@ | EXAMPLE 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+
+===== Notes =====
+  * the bootloader is not initializing the serial PINs so the serial console wont work (until bootloader reflash)
+  * OpenWrt enables serial output from point of kernel loading
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>QCA9533 16Flash 64RAM 5port FastEthernet}}

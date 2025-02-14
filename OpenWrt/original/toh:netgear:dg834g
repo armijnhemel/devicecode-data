@@ -1,0 +1,346 @@
+====== NETGEAR DG834G ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+===== Release Status =====
+^ Version   ^ OpenWrt Version              ^ Status            ^ Notes                                           ^
+| v1/2/3    | Kamikaze 8.09.2              | Working           | Stable with the occasional "dma ring overrun"   |
+| v1/2/3    | Backfire 10.03               | Working           |                                                 |
+| v1/2/3    | Backfire 10.03.1-rc1/2       | Working           |                                                 |
+| v1/2/3    | Backfire 10.03.1-rc3/4/5/6   | Not Working :!:   |                                                 |
+| v1/2/3    | Backfire 10.03.1             | Possibly Working  | Works for some users. However one user reports "Ethernet Switch lost=Reflash using nftp tool + Netgear recovery mode" |
+| v1/2/3    | Attitude Adjustment 12.09 beta  | Not Working :!:   |    |
+
+:!: Note: This doesn't help people using pre-compiled binaries, but YMMV [[https://dev.openwrt.org/changeset/29241|removing certain cpmac patches]] prior to compilation.
+
+===== Known Issues =====
+
+  * Only WEP encryption is available in Wifi settings! not sure why - stock Netgear firmware supported WPA-PSK - need to check, may be a package install issue?
+[[http://oldwiki.openwrt.org/OpenWrtDocs(2f)WhiteRussian(2f)Configuration.html#head-f335c44d5b896564e2fb57831ceb0ab3958a668a]] suggests that a package called “nas” is needed, but that does not exist in the backfire packages available from [[http://downloads.openwrt.org/backfire/10.03/ar7/packages/]] - however there are some “wpa-*” packages there.
+[[https://forum.openwrt.org/viewtopic.php?id=24493]] suggests that wpad-mini is needed for WPA and wpad for WPA Enterprise - yet to confirm that this works - doubtful as that topic refers to Broadcom chipsets so it may not work on TI AR7 ... [[http://www.lizardking.biz/2010/03/qwest-actiontec-gt701-wg-ppoe-openwrt/]] seems to reinforce 
+
+  * Further upgrade(s) via web and sysupgrade command not supported, manual upgrade required, here’s how to do that at the device cmdline: <code>mtd -r write firmware.trx linux</code>
+  (NB .trx and .bin interchangeable) [[doc:howto:installing#flashing.openwrt]]
+
+===== Hardware Versions =====
+^ Model ^ CPU ^ Wireless ^ Flash ^ RAM ^ FCC ID ^
+| [[http://kb.netgear.com/app/answers/detail/a_id/1329/kw/dg834gv1|DG834G v1]]   | TI AR7 TNETD7300GDU   | TI TNETW1130GVF (PC-card)   | 4MB   | 16MB   | ---   |
+| [[http://kb.netgear.com/app/answers/detail/a_id/1330/kw/dg834gv2|DG834G v2]]   | TI AR7 TNETD7301GDU   | TI TNETW1130GVF (PC-card)   | 4MB   | 16MB   | ---   |
+| [[dg834g.v3|DG834G v3]]   | TI AR7 TNETD7200ZDW   | TI TNETW1350A (Integrated)   | 4MB   | 16MB   | ---   |
+| [[dg834g.v4|DG834G v4]]   | Broadcom BCM6348      | Broadcom BCM4318             | 4MB   | 16MB   | ---   |
+
+==== Clones ====
+
+  * [[toh:sphairon:turbolinkjdr454wb|Sphairon JDR454WB]]
+
+
+===== Installation for v3 =====
+
+The ADAM2 bootloader in v3 is different, and cannot be patched as shown below. It does not seem to be needed anyway. Another important difference is that the bootloader does not allow FTP access nor interruption of the boot from the serial console, so recovery can only be done with the Windows recovery tool or the nftp.2 tool described below.
+
+The old wiki has information for this particular model: [[https://wiki.openwrt.org/oldwiki/openwrtdocs/hardware/netgear/dg834gv3]]
+
+See also: [[http://www.pitt-pladdy.com/blog/_20100424-103102+0100%20OpenWrt%20Take%202%20-%20native%20IPv6%20on%20DG834%20v3%20%28using%20AAISP%29/]]
+
+===== Installation for v1 and v2 =====
+
+I have successfully installed OpenWrt on a v1 model using the procedure outlined above for the v3 model (after disabling the checksum verification - see below) - however I have not seen any other reports on the internet of anyone doing this successfully - I have no way of knowing if this is because no one else has tried or no one else has succeeded. It must be said that the procedure for the v3 model is simpler and easier than attempting to connect to the bootloader TFTP service which can be infuriatingly tricky. Attempt at your own risk. 
+
+Successfully followed this procedure for a v1 model using Backfire 10.03 - note that on install openwrt changes the router IP to 192.168.**1**.1 so you need to reset your client interface, or re-do dhcp to reconnect. --- //match 2015/12/30 17:45//
+==== Flash Layout ====
+Please see [[docs:techref:flash.layout]] for an overview of how the flash space is partitioned and accessed using [[docs:techref:mtd| MTD (Memory Technology Device)]]. Here the flash layout of the Netgear DG834G:
+
+^ Netgear DG834G  ^^^
+| mtd0   | 0x900d0000,0x903e0000   | RootFS                    |
+| mtd1   | 0x90020000,0x900d0000   | Kernel                    |
+| mtd2   | 0x90000000,0x90020000   | ADAM2                     |
+| mtd3   | 0x903e0000,0x903f0000   | Netgear firmware config   |
+| mtd4   | 0x903f0000,0x90400000   | ADAM2 config              |
+
+The mtd2 device/partition (base location) holds the bootloader with its configuration stored in mtd4 so you can use mtd1 + mtd0 + mtd3, from 0x90020000 to 0x903f0000 to store OpenWrt (providing 3920KiB of storage space).
+
+
+**''NOTE:''** These instructions don't work for v3. See previous section.
+
+==== Overview ====
+
+For this segment it will be assumed that your routers IP is 192.168.0.1, if it is not please take this into account then performing the following steps:
+  * telnet to the router
+  * check the firmware on the router allows access to the bootloader configuration
+  * copy the contents of the mtd blocks containing the firmware to your pc
+  * disable the firmware checksum verification by manually editing one of these files
+  * update the relevant mtd special device on the router
+  * write openwrt to the relevant mtd firmware files
+  * manually assign an ip address to the [[docs:techref:bootloader:adam2|Adam2]] bootloader
+  * reboot the router and connect to the Adam2 ftp service
+  * transfer the updated firmware files to the router and write to the mtd special devices
+  * reboot
+
+==== Telnet to the Router ====
+  * Enable debug mode. Visit ''%%http://192.168.0.1/setup.cgi?todo=debug%%''
+  * Telnet into your router <code>
+telnet 192.168.0.1</code>
+
+==== Check firmware version ====
+If there is no adam2 directory in /proc on the router then upgrade the device to newer firmware for example [[http://www.downloads.netgear.com/files/dg834_dg834g_3_01_29.zip|DG834_V3.01.29]].
+
+==== Obtaining your current Bootloader ====
+
+  * Enable debug mode. Visit ''%%http://192.168.0.1/setup.cgi?todo=debug%%''
+  * Telnet into your router <code>
+telnet 192.168.0.1</code>
+  * Backup each MTD Block to RAM<code>
+   dd if=/dev/mtdblock/0 of=/tmp/mtd0.bin
+   dd if=/dev/mtdblock/1 of=/tmp/mtd1.bin
+   dd if=/dev/mtdblock/2 of=/tmp/mtd2.bin
+   dd if=/dev/mtdblock/3 of=/tmp/mtd3.bin
+   dd if=/dev/mtdblock/4 of=/tmp/mtd4.bin</code>
+  * Spawn a HTTP Daemon to download MTD Backups<code>
+cd /tmp
+mini_httpd -p 1080</code>
+  * On your PC download the MTD Backups<code>
+http://192.168.0.1:1080/mtd0.bin
+http://192.168.0.1:1080/mtd1.bin
+http://192.168.0.1:1080/mtd2.bin
+http://192.168.0.1:1080/mtd3.bin
+http://192.168.0.1:1080/mtd4.bin</code>
+
+==== Disable firmware checksum verification ====
+The DG834(G) ADAM 2 Bootloader calculates a checksum of the image in flash memory, if this check fails the router will not boot.
+
+This checksum verification can be removed from the bootloader.
+
+Once you patch the bootloader you don't need to patch the device again in case of recovery.
+
+ADAM2 is contained in the mtd2.bin file, we will patch this to disable the verificaiton.
+
+  * Verify the current edition is eligible for modification:
+    * These modifications steps apply to the 0.18.01 edition of ADAM2 as distributed by Netgear.
+    * The MD5 sum of ''mtd2.bin'' should be ''0530bfdf00ec155f4182afd70da028c1'' if this isn't the case DO NOT follow these instructions (have you previously patched this loader?, if unsure go to step 3).
+  * Modify the bootloeader binary file with a hex editor:
+    * go to offset 0x3944. Here there should be 4 bytes: 44 09 00 0C  (representing //jal 0x90002510// during execution)
+    * Replace these 4 bytes with 00 (representing nop).
+  * Verify the modification
+    * Confirm the new MD5 of the modified mtd2.bin is ''d8a2f4623bf6f64b7427812f0e849aa7''.
+
+==== Replace the restricted ADAM2 on the router ====
+  * Place the Modified mtd2.bin onto a web or FTP server (e.g ''%%http://127.0.0.1/mtd2.bin%%'')
+    * for this you can enable IIS on your PC to serve the directory containing the firmware files. Google for details on how to do this. 
+    * Don't forget to update the firewall on your PC to allow access to the relevant port. 
+    * You may also need to allow the IIS user read access to the directory and files - alternatively configure IIS to access the files as the user that owns them
+  * Download the new mtd2.bin to the router via WGET<code>
+cd /tmp
+rm mtd2.bin
+wget http://127.0.0.1/mtd2.bin</code>
+  * Install the new mtd2.bin to the Router<code>
+dd if=mtd2.bin of=/dev/mtdblock/2</code>
+
+==== Write OpenWrt to Firmware Files ====
+Download the OpenWrt SquashFS image: https://downloads.openwrt.org/backfire/10.03/ar7/openwrt-ar7-squashfs.bin
+
+It should be noted that due to the memory layout of this device an OpenWrt SquashFS image needs to be split into to files, this can be done using the DD tool.
+
+The MTD1 Partition is 720896 bytes in size and is executed first and so should be the first 720896 bytes of the OpenWrt Image, the MTD0 partition contains the remainder of the image.
+
+  dd if=openwrt-ar7-squashfs.bin of=ow-mtd1.bin count=720896 bs=1
+  dd if=openwrt-ar7-squashfs.bin of=ow-mtd0.bin skip=720896 bs=1
+
+==== Assign an IP address to ADAM2 ====
+<code>
+echo "my_ipaddress 192.168.0.1" > /proc/sys/dev/adam2/environment</code>
+
+This means that the ADAM2 bootloader will configure the network interface and be reachable over the network before it loads the firmware. It has an embedded TFTP server which we can use to upload the modified firmware files.
+
+- this can be reached for a second or so before the bootloader loads the firmware.
+
+Installation of OpenWrt can now be done using the TFTP method by targeting the IP address you specified in part 3 of obtaining the bootloader.
+
+Now that the image has been split appropriately its can now be uploaded (and flashed) to the Router using its ADAM2 FTP service.
+To connect to the ADAM2 FTP service you need to use a COMMAND LINE ftp client targeting the IP address you specified in part 3 of obtaining the bootloader.re
+
+There are several issues here:
+  * The size of the two images combined cannot be bigger than 3932160 bytes, or the upload will fail and you will end with an unusable device!
+  * Modern Windows FTP command line clients are incompatible with this process so the Windows XP one must be used
+  * Linux users, make sure to enable Passive mode.
+  * Linux: you may need to reduce the MTU on the interface: <code>echo 0 512 512 > /proc/sys/net/ipv4/tcp_wmem</code> - don't forget to save the original value
+  * The TFTP server is only available for a second or so right after the router boots. You may find that the network interface on your PC will take longer than that to re-sync and thus you will mix this window of opportunity. The solution is to connect the router to the PC via a switch.
+  * There are reports that even after all this that Linux will fail to connect - try using a Windows machine.
+
+==== Connect the the ADAM2 TFTP service ====
+Reboot the router and straight away attempt to connect to it via FTP - the service is only up for a second or so.
+
+  ftp 192.168.0.1
+  Connected to 192.168.0.1.
+  220 ADAM2 FTP Server ready.
+  Name (192.168.0.1:none): adam2
+  331 Password required for adam2.
+  Password: adam2
+  230 User adam2 successfully logged in.
+  Remote system type is UNIX.
+  ftp> quote "MEDIA FLSH"
+  200 Media set to FLSH.
+  ftp> bin
+  200 Type set to I.
+  ftp> put ow-mtd0.bin "fs mtd0"
+  local: ow-mtd0.bin remote: fs mtd0
+  200 Port command successful.
+  150 Opening BINARY mode data connection for file transfer.
+  226 Transfer complete.
+  1598607 bytes sent in 14.64 secs (106.6 kB/s)
+  ftp> put ow-mtd1.bin "fs mtd1"
+  local: ow-mtd1.bin remote: fs mtd1
+  200 Port command successful.
+  150 Opening BINARY mode data connection for file transfer.
+  226 Transfer complete.
+  720896 bytes sent in 6.56 secs (107.3 kB/s)
+  ftp> quote REBOOT
+  221-Thank you for using the FTP service on ADAM2.
+  221 Goodbye.
+
+The router will now reboot - it should take several minutes to unpack the new firmware - once it has done so you should be able to telnet to it.
+
+===== Recovery  =====
+
+In case of a failed upload, the device might become unresponsive and look bricked. 
+
+Enter the failsafe mode:
+<code>
+Power-cycling the router with the reset button pressed,
+power and test leds will blink.</code>
+
+In this mode you can return the device flash back to original.
+
+There is a official netgear [[http://support.netgear.com/app/answers/detail/a_id/263/~/dg834,-dg834g-router-recovery-utility|recovery utility]] or you can use [[https://dev.openwrt.org/browser/trunk/scripts/adam2flash.pl?rev=7770|adam2flash]] Perl script.
+
+Also there is a small utility [[https://dev.openwrt.org/ticket/2897|nftp.2.c]] that is able to reflash and verify the router.
+
+Compile as follows:
+
+<code>
+  $ gcc -o nftp.2 nftp.2.c
+</code>
+
+Invoke the utility like this to re-flash the router (it requires root as it uses raw sockets):
+
+<code>
+  $ sudo ./nftp.2 -u eth0 IMAGE_TO_UPDATE
+</code>
+
+The image file is expected to be in the official firmware format, which I think is mtd2+mtd1+mtd0 concatenated.
+
+After programming, the router will reset.
+
+You can also verify the flashed image like this:
+
+<code>
+  $ sudo ./nftp.2 -v eth0 IMAGE_TO_VERIFY
+</code>
+
+Note: This program might complain about the image not passing an integrity check, but that seems to be broken. In that case, just remove the "return 1" from line 266 and try again.
+
+
+===== Hardware =====
+==== Info - Revision 1 ====
+| **Architecture:**     | MIPS (little endian)                 |
+| **Vendor:**           | Texas Instruments                    |
+| **Bootloader:**       | ADAM2                                |
+| **System-On-Chip:**   | TI AR7 TNETD7300GDU                  |
+| **CPU Speed:**        | 150Mhz                               |
+| **Flash-Chip:**       | Fujitsu 29DL32BF-70PFTN              |
+| **Flash size:**       | 4 MiB                                |
+| **RAM:**              | 16 MiB V54C3128164VAT7               |
+| **Wireless:**         | TI TNETW1130GVF MiniPCI (802.11bg)   |
+| **Ethernet:**         | Marvell 88E6060-RCJ                  |
+| **Serial:**           | Yes                                  |
+| **JTAG:**             | Yes                                  |
+
+{{:media:netgear:dg834.g:dg834v1.jpg?400|Netgear DG834 v1 PCB top side}}
+
+
+==== Info - Revision 2 ====
+| **Architecture:**     | MIPS (little endian)                          |
+| **Vendor:**           | Texas Instruments                             |
+| **Bootloader:**       | ADAM2                                         |
+| **System-On-Chip:**   | TI AR7 TNETD7301GDU                           |
+| **CPU Speed:**        | 150Mhz                                        |
+| **Flash-Chip:**       | MX 29LV320ABTC-90\\ Fujitsu 29DL32BF-70PFTN   |
+| **Flash size:**       | 4 MiB                                         |
+| **RAM:**              | 16 MiB ISSI IS42S16800A-7T                    |
+| **Wireless:**         | TI TNETW1350A On-Board (802.11bg)\\ TI TNETW1130GVF on Mini-PCI card (802.11bg)   |
+| **Ethernet:**         | Marvell 88E6060     |
+| **Serial:**           | Yes - JP603 as V1   |
+| **JTAG:**             | **No**              |
+
+{{:media:netgear:dg834.g:dg834v2-nowifi.jpg?400|Netgear DG834 v2 PCB top side}}
+
+*Wired Only Edition Pictured
+
+==== Info - Revision 3 ====
+| **Architecture:**     | MIPS (little endian)                |
+| **Vendor:**           | Texas Instruments                   |
+| **Bootloader:**       | ADAM2                               |
+| **System-On-Chip:**   | TI AR7 TNETD7200ZDW                 |
+| **CPU Speed:**        | 150Mhz                              |
+| **Flash-Chip:**       | Macronix 29LV32                     |
+| **Flash size:**       | 4 MiB                               |
+| **RAM:**              | 16 MiB EtronTech EM63916            |
+| **Wireless:**         | TI TNETW1350A On-Board (802.11bg)   |
+| **Ethernet:**         | Marvell 88E6060                     |
+| **Serial:**           | Yes - JP603 as V1                   |
+| **JTAG:**             | Yes - JP102 as V1                   |
+
+{{:media:netgear:dg834.g:dg834v3.jpg?400|Netgear DG834 v3 PCB top side}}
+
+==== Info - Revision 4 ====
+| **Architecture:**     | MIPS (Big endian)                          |
+| **Vendor:**           | Broadcom                                   |
+| **Bootloader:**       | CFE                                        |
+| **System-On-Chip:**   | Broadcom BCM6348                           |
+| **CPU Speed:**        | 240 MHz                                    |
+| **Flash-Chip:**       | Spansion S29GL032A90TFIR4                  |
+| **Flash size:**       | 4 MiB                                      |
+| **RAM:**              | 2x8MiB EtronTech EM638165TS-6G / SDR-166   |
+| **Wireless:**         | Broadcom BCM4318                           |
+| **Ethernet:**         | Broadcom BCM5325                           |
+
+{{:media:netgear:dg834.g.v4:dg834gv4_front.jpg?400|Netgear DG834 v4 PCB top side}}
+
+==== General Information ====
+=== Serial - JP603 ===
+
+Serial console is J603. 
+Settings are: 115200, 8N1.
+
+^ pin   ^ signal       ^
+| 1     | GND          |
+| 2     | TX           |
+| 3     | VCC (3.3V)   |
+| 4     | RX           |
+
+(Pin 1 is identified by a square printed box on the PCB.
+
+
+=== JTAG - JP102 ===
+This JTAG port Follows the 14 pin EJTAG 2.5 specification, pin 1 is marked by a square printed box on the PCB (This is verified as working).
+
+Orientation and distribution on the board:
+| 2   | 4   | 6   | 8   | 10   | 12   | 14   |
+| 1   | 3   | 5   | 7   | 9    | 11   | 13   |
+
+
+JTAG signals and pins:
+| nTRST   |    1 |    2 |    GND |
+| TDI     |    3 |    4 |    GND |
+| TDO     |    5 |    6 |    GND |
+| TMS     |    7 |    8 |    GND |
+| TCK     |    9 | 10   |    GND |
+| nSRST   | 11   | 12   |   -key |
+| DINT    | 13   | 14   |    VCC |
+
+
+See [[docs:techref:hardware:port.jtag]] for more JTAG details.
+
+The onboard Flash Chip for V1 is a 4MB 29DL32BF-70PFTN when manipulating this chip from JTAG software such as TJTAG it may not be detected, in such cases masquerading as/forcing use of either the MBM29DL323BE or AM29LV320 chips will likely work (This has worked for the user Funkimunk, your mileage may vary).
+
+==== Tags ====
+{{tag>4Flash 16RAM ar7 }}

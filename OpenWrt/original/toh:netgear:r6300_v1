@@ -1,0 +1,734 @@
+====== NETGEAR R6300 v1======
+
+{{page>meta:infobox:construction&noheader&nofooter&noeditbtn}}
+
+{{media:netgear:r6300.png?200}}
+
+Netgear AC1750 router.  Version comparison:
+
+^               ^ v1                ^ [[toh:netgear:r6300_v2| v2]] ^
+^ Architecture  | MIPS              | ARM                                   |
+^ CPU cores     | 1                 | 2                                     |
+^ RAM           | 128MiB            | 256MiB                                |
+^ SPI flash     | 2 MiB             | none\\ (pads present but unpopulated) |
+^ USB           | 2 x USB2          | 1 x USB3, 1 x USB2                    |
+^ PSU rating    | 5A @ 12V          | 2.5A @ 12V                            |
+^ JTAG/serial   | through-hole      | surface mount                         |
+^ Model marking | R6300 WiFi Router | R6300 Smart WiFi Router               |
+^ (contd.)      | Model: R6300      | Model: R6300v2                        |
+
+The ethernet switch, WiFi, casing and buttons are the same.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^R6300$", "version": "^v1$"}
+} -->
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["unsupported_functions"],
+  "filterColumns": {"model": "^R6300$", "version": "^v1$"}
+} -->
+
+==== OpenWrt support status ====
+
+<color red>**No official support**</color>, **but the unit boots Chaos Calmer** and generally works except:
+  * the WiFi situation [[docs:techref:hardware:soc:soc.broadcom.bcm53xx#limitations|is pretty abysmal]]:
+    * the Broadcom BCM4360 802.11ac module has no open source driver support
+    * the BCM4331 driver probably doesn't support n mode
+    * the BCM4331 driver may have [[https://dev.openwrt.org/ticket/10852#comment:49 |range issues]] in b/g mode
+  * installation puts a squashfs image on NAND, [[http://www.infradead.org/pipermail/linux-mtd/2006-April/015386.html |which is not sustainable]] (squashfs cannot handle read errors, which are an expected and non-transient event on NAND owing to the "read-disturb" phenomenon)
+    * on the other hand, this is apparently no //worse// than the stock firmware on this device, or OpenWrt on the sibling [[toh/asus/rt-n66u |Asus RT-N66U]]
+  * there's a BCMA-related kernel oops during boot that probably needs investigating
+  * the NAND driver claims it finds a bad block table, which I don't entirely trust to be a real table
+  * no GPIOs have been sought
+  * no buttons have been configured
+
+Probably not supported before Barrier Breaker ([[https://dev.openwrt.org/changeset/42371 |r42371]], uncompressed image support).
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^R6300$", "version": "^v1$"}
+} -->
+
+See [[#Gigabit]] for details regarding gigabit ethenet on the v1 version.
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^R6300$", "version": "^v2$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^R6300$", "version": "^v1$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Installing OpenWrt ====
+
+The image that will flash and boot is under ''bcm47xx/mips74k/'':
+  * Before [[https://dev.openwrt.org/changeset/49006/ |r49006]]:
+    * ''openwrt-...-brcm47xx-mips74k-squashfs-noloader-nodictionary.trx''
+  * After:
+    * ''openwrt-brcm47xx-mips74k-standard-noloader-nodictionarylzma-squashfs.trx''
+
+The user writing this page went straight for serial access, out of habit, but there's a very good chance it would have flashed via the stock firmware's web interface, so try that first (if other Netgear web interfaces are anything to go by, you may need to rename the image to something shorter first).  If that works, please report it on the [[https://forum.openwrt.org/viewtopic.php?id=42808 |older]] or [[https://forum.openwrt.org/viewtopic.php?id=46758 |newer forum thread]]; on the newer one, be clear that you're talking about the v1.
+
+If that doesn't work, [[#Serial |serial]] access will let you break into CFE (hold Ctrl-C in your serial terminal and power the unit on); from there you can flash the OpenWrt TRX using the [[docs:techref:bootloader:cfe#tftp_server|bcm47xx CFE in TFTP server mode]]. Use:
+  flash -noheader : nflash1.trx
+and send the OpenWrt TRX in the usual way; this should yield:
+  Reading :: Done. nnn bytes read
+  Programming...done. nnn bytes written
+  *** command status = 0
+at which point, use:
+  go
+to boot.
+
+===== Failsafe mode =====
+
+For now (until there's support for UBI/UBIFS on this device) the serial-based or network-based [[docs:guide-user:troubleshooting:failsafe_and_factory_reset |failsafe]] methods should work, but buttons probably aren't recognised yet.
+
+It may well allow/solicit [[http://www.chubb.wattle.id.au/PeterChubb/nmrp.html |NMRP]] (the CFE makes several references to it), but tooling to make use of it may or may not be available.
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                                   |
+^ Vendor           | Broadcom                               |
+^ Bootloader       | [[docs:techref:bootloader:cfe|CFE]]    |
+^ System-on-Chip   | BCM4706 - MIPS32 74Kc V4.9             |
+^ CPU speed        | 600 MHz                                |
+^ NAND flash       | 128 MiB NAND (Samsung K9F1G08U0D)      |
+^ SPI flash        | 2 MiB SPI (Macronix MX25L1606EM2I-12G) |
+^ RAM              | 128 MiB                                |
+^ Wireless         | BCM4331 2.4GHz 802.11bgn\\ BCM4360 802.11ac (unsupported) |
+^ Ethernet         | Broadcom BCM53125 10/100/1000 w/vlan\\ but see [[#Gigabit]]   |
+^ USB              | 2 x 2.0                                |
+^ Serial           | [[#Serial|yes, populated]]             |
+^ JTAG             | [[#JTAG|probably, not populated]]      |
+
+==== Opening the case ====
+
+**Be careful**; the corners of the back casing are pretty sharp.
+
+All screws inside and out are TORX but fortunately not tiny nor "security" variants, so assorted flat-blade screwdrivers should suffice.
+
+Undo the two screws holding the base on (these also secure the front panel).  This will reveal two more screws to remove, which purely secure the front panel.
+
+The remaining connection between the front panel and the back casing is entirely clips.  The bottom edge has none.  First work up the right edge (with the buttons), which has two, ~3cm either side the "WiFi On/Off" button; lever the back casing outwards and the front panel inwards torwards the centre of the unit.  Then work along the left edge, which has three (two mirroring the right edge, and another one ~3cm from the bottom).  With these done, the bottom edge of the front panel should lift out, and the front panel should slide downwards out of the remaining clips along its top edge.
+
+==== Serial ====
+
+Generic info on ports, cables etc.: [[docs:techref:hardware:port.serial]]
+
+The header is on the right edge of the board, between the WiFi buttons and the USB socket.  The port is 3V3, 115200, 8N1.  [[https://wikidevi.com/wiki/Netgear_R6300_v1#Serial |Wikidevi says]] the layout is:
+
+                J252
+  (3.3) (TxD) (...) (...) (RxD) (GND)
+  Pin1  Pin2  Pin3  Pin4  Pin5  Pin6
+  
+   |
+   v
+  
+  to J251 (presumably JTAG)
+  
+A photo can be found on the [[https://www.dd-wrt.com/phpBB2/viewtopic.php?p=871101 |DD-WRT forums]].
+
+I've not checked that this has TxD and RxD the correct way around, but it's certainly at least correct about the pins involved.
+
+The SoC supports a second port ("ttyS1 at MMIO 0xb8000400") but I haven't searched to see whether its pins are brought out.
+
+==== JTAG ====
+
+Generic info on ports, cables etc.: [[docs:techref:hardware:port.jtag]]
+
+A photo showing J251 can be found on the [[https://www.dd-wrt.com/phpBB2/viewtopic.php?p=871101 |DD-WRT forums]].  Since the row of even-numbered pins is all GND, this looks very likely to be a truncated form of the EJTAG MIPS layout, missing nSRST and a GND.  This hasn't been tested yet but other MIPS 74k, Foxconn-made Netgear boards are [[toh/netgear/wnr834b#j12 |confirmed]] to use this layout.
+
+
+===== Notes =====
+
+==== Flash ====
+
+The vendor firmware uses three different drivers over the two different types of flash.
+
+The SPI flash uses ''bcm47xxsflash''; the magic for the vendor "T_Meter1" partitions isn't recognised by OpenWrt's bcm47xxpart driver so they remain unmapped under OpenWrt.  The ''MLn'' partitions contain language packs.
+
+In the vendor firmware, the low NAND is handled by ''nflash'' and has no ECC capability; the stock firmware puts Linux and the read-only squashfs(!) rootfs here, in the first 32 MiB.  The high NAND is handled by ''brcmnand'' and has ECC capability but is left completely unused (entirely ''0xff'').  No MTD partition covers the last 1 MiB; it's possible the stock NAND driver puts bad block management bookkeeping there.
+
+[[https://lists.openwrt.org/pipermail/openwrt-devel/2014-August/027535.html |As noted by rmilecki]], OpenWrt's NAND controller driver does no ECC owing to this odd arrangement, which may complicate installation of a proper UBIFS image directly on a stock firmware.
+
+==== Gigabit? ====
+
+Bear in mind that the gigabit Ethernet may be slower than 1000Mbps between ports in different VLANs (e.g. NAT, firewalling) owing to [[docs:techref:hardware:soc:soc.broadcom.bcm47xx#ethernet|CPU limitations]].
+
+==== Bootloader ====
+
+CFE resides in the 2MiB SPI flash.   The stock CFE is missing some useful commands (including ''show devices'', unassemble and dump), which is peculiar since both the SPI and NAND flash have plenty of spare room.  It supports ''boot_wait'' and ''wait_time'', which can be set from the stock userspace serial console using ''nvram''.
+
+It may well allow/solicit [[http://www.chubb.wattle.id.au/PeterChubb/nmrp.html |NMRP]], which would be a mixed blessing; if there's tooling and if you absolutely couldn't get serial access then it might save a brick, but I expect it's hilariously insecure.
+
+CFE doesn't seem to be included in the GPL source drops from Netgear, but a new CFE could probably be built from the asuswrt source drop, and would help with:
+  * using a NAND driver that checks and updates ECC info across all of NAND
+  * adding back ''show devices''
+  * removing NMRP
+  * booting/flashing from USB
+  * web-based flashing when a button is held at power-on
+  * dual image support (plenty of space for it, and lack of failsafe under UBI is annoying)
+    * this would probably need kernel support in ''brcm47xxpart'' to be fully useful
+
+The following named regions seem likely to be recognised by ''flash'' (from poking around in the CFE binary) but it's not obvious exactly what flash parts and offsets they correspond to:
+  * flash0.0
+  * flash0.os
+  * flash0.nvram
+  * flash1.boot
+  * flash1.trx
+  * flash1.MLn, for n of 1--7
+  * flash1.board_data
+  * flash1.nvram
+  * nflash0.os
+  * nflash1.boot
+  * nflash1.trx
+
+===== Bootlogs =====
+
+==== OEM bootlog ====
+
+Courtesy of [[https://wikidevi.com/wiki/Netgear_R6300_v1#Console_dumps |Wikidevi]].
+
+<WRAP bootlog>
+<nowiki>Decompressing...done
+
+CFE for R6300 version: v1.0.4
+Build Date: Tue Jun 26 16:05:40 CST 2012 
+Init Arena
+Init Devs.
+Boot partition size = 262144(0x40000)
+Found an ST compatible serial flash with 32 64KB blocks; total size 2MB
+Found a Samsung NAND flash with 2048B pages or 128KB blocks; total size 128MB
+et0: Broadcom BCM47XX 10/100/1000 Mbps Ethernet Controller 5.100.138
+CPU type 0x19749: 600MHz
+Tot mem: 131072 KBytes
+
+Device eth0:  hwaddr 10-0D-7F-80-89-45, ipaddr 192.168.1.1, mask 255.255.255.0
+        gateway not set, nameserver not set
+Checking crc...Loader:raw Filesys:raw Dev:nflash0.os File: Options:(null)
+Loading: ....... 4153478 bytes read
+Entry at 0x80001000
+Closing network.
+Starting program at 0x80001000
+Linux version 2.6.22 (lawrence@localhost.localdomain) 
+(gcc version 4.2.3) #1 PREEMPT Tue Mar 19 13:40:40 CST 2013
+CPU revision is: 00019749
+Found an ST compatible serial flash with 32 64KB blocks; total size 2MB
+Determined physical RAM map:
+ memory: 07fff000 @ 00000000 (usable)
+Initrd not found or empty - disabling initrd
+Zone PFN ranges:
+  Normal          0 ->    32767
+  HighMem     32767 ->    32767
+early_node_map[1] active PFN ranges
+    0:        0 ->    32767
+Built 1 zonelists.  Total pages: 32767
+Kernel command line: root=/dev/mtdblock16 console=ttyS0,115200 init=/sbin/preinit
+Primary instruction cache 32kB, physically tagged, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, linesize 32 bytes.
+Synthesized TLB refill handler (20 instructions).
+Synthesized TLB load handler fastpath (32 instructions).
+Synthesized TLB store handler fastpath (32 instructions).
+Synthesized TLB modify handler fastpath (31 instructions).
+PID hash table entries: 512 (order: 9, 2048 bytes)
+CPU: BCM5300 rev 1 at 600 MHz
+Using 300.000 MHz high precision timer.
+Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+Memory: 125168k/131068k available (3177k kernel code, 5748k reserved, 646k data, 232k init, 0k highmem)
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+SCSI subsystem initialized
+PCI: Initializing host
+PCI: Reset RC
+PCI: Initializing host
+PCI: Reset RC
+PCI: Fixing up bus 0
+PCI/PCIe coreunit 0 is set to bus 1.
+PCI: Fixing up bridge
+PCI: Fixing up bridge
+PCI: Enabling device 0000:01:00.1 (0004 -> 0006)
+PCI: Fixing up bus 1
+PCI/PCIe coreunit 1 is set to bus 2.
+PCI: Fixing up bridge
+PCI: Fixing up bridge
+PCI: Enabling device 0000:02:00.1 (0004 -> 0006)
+PCI: Fixing up bus 2
+NET: Registered protocol family 2
+Time: MIPS clocksource has been installed.
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+TCP: Hash tables configured (established 4096 bind 4096)
+TCP reno registered
+squashfs: version 3.2-r2 (2007/01/15) Phillip Lougher
+JFFS2 version 2.2. (NAND) © 2001-2006 Red Hat, Inc.
+fuse init (API version 7.8)
+io scheduler noop registered (default)
+Serial: 8250/16550 driver $Revision: 1.1.1.1 $ 4 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x0 (irq = 8) is a 16550A
+serial8250: ttyS1 at MMIO 0x0 (irq = 8) is a 16550A
+RAMDISK driver initialized: 16 RAM disks of 4096K size 1024 blocksize
+loop: module loaded
+PPP generic driver version 2.4.2
+NET: Registered protocol family 24
+PPPoL2TP kernel driver, V0.17
+pflash: found no supported devices
+sflash: Couldn't find valid ROM disk image
+
+Creating 15 MTD partitions on "sflash":
+0x00000000-0x00200000 : "boot"
+0x00000000-0x00140000 : "linux"
+0x00000000-0x00200000 : "rootfs"
+0x00140000-0x00150000 : "ML1"
+0x00150000-0x00160000 : "ML2"
+0x00160000-0x00170000 : "ML3"
+0x00170000-0x00180000 : "ML4"
+0x00180000-0x00190000 : "ML5"
+0x00190000-0x001a0000 : "ML6"
+0x001a0000-0x001b0000 : "ML7"
+0x001b0000-0x001c0000 : "T_Meter1"
+0x001c0000-0x001d0000 : "T_Meter2"
+0x001d0000-0x001e0000 : "POT"
+0x001e0000-0x001f0000 : "board_data"
+0x001f0000-0x00200000 : "nvram"
+Found a Samsung NAND flash with 2048B pages or 128KB blocks; total size 128MB
+lookup_nflash_rootfs_offset: offset = 0x0
+
+ arch/mips/brcm-boards/bcm947xx/../../../../../../shared/nflash.c:nflash_read 643 unrecovable error. by pass all
+nflash: squash filesystem with lzma found at block 10
+Creating 2 MTD partitions on "nflash":
+0x00000000-0x02000000 : "linux"
+0x00158784-0x02000000 : "rootfs"
+NAND device: Manufacturer ID: 0xec, Chip ID: 0xf1 (Samsung NAND 128MiB 3,3V 8-bit)
+Creating 2 MTD partitions on "brcmnand":
+0x00000000-0x02000000 : "trx"
+0x02000000-0x07f00000 : "brcmnand"
+u32 classifier
+TCP cubic registered
+NET: Registered protocol family 1
+NET: Registered protocol family 10
+6WIND/LSIIT IPv6 multicast forwarding 0.1 plus PIM-SM/SSM with *BSD API
+lo: Disabled Privacy Extensions
+IPv6 over IPv4 tunneling driver
+sit0: Disabled Privacy Extensions
+NET: Registered protocol family 17
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted root (squashfs filesystem) readonly.
+Freeing unused kernel memory: 232k freed
+Warning: unable to open an initial console.
+Failed to execute /init
+[sighandler]: No more events to be processed, quitting.
+[cleanup]: Waiting for children.
+[cleanup]: All children terminated.
+Reading board data...
+WSC UUID: 0xf3f02a167d67a04f3803cc8438dbecc6
+NTP synchronized date/time: Mon Jul  8 01:49:30 2013
+MAC address of 1st STA connected: C4-85-08-81-01-FA
+wl: wl driver adapter not found
+wl: wl driver adapter not found
+wl: wl driver adapter not found
+wl: wl driver adapter not found
+invalid RF magic!
+No RF parameters! Use default.
+### main:1176 Set Normal Power!
+Initialise conn table 2048 entries
+insmod: dpsta.ko: no module by that name found
+insmod: wl_high.ko: no module by that name found
+eth3: cmd=14: No such device
+wl1 not up in 3 sec
+Hit enter to continue...killall: upnp: no process killed
+upnp: No such file or directory
+WARNING: console log level set to 1
+killall: wps_monitor: no process killed
+killall: wps_ap: no process killed
+killall: wps_enr: no process killed
+
+### wps_wfi_init(): <wl0_wfi_enable=(null)><wl1_wfi_enable=(null)>WFI is not enabled ###
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: selected channel spec: 0x100b
+Reading board data...
+WSC UUID: 0xf3f02a167d67a04f3803cc8438dbecc6
+acsd: scan in progress ...
+info, udhcp server (v0.9.8) started
+error, unable to parse 'option wins '
+error, unable to parse 'option domain '
+mevent start...
+opened loopback socket 4
+acsd: scan in progress ...
+acsd: scan in progress ...
+POT integrity check OK.
+POT time is up.
+result = 21
+g_record_info1->numofrcd1 = 21
+acsd: scan in progress ...
+result = 271
+g_record_info1->numofrcd2 = 271
+result = 21
+g_record_info2->numofrcd1 = 21
+result = 271
+g_record_info2->numofrcd2 = 271
+acsd: scan in progress ...
+shm ID: 32769
+ Get a correct Segment_ID: 32769 and semaphore ID:32769
+acsd: scan in progress ...
+Can't find handler for ASP command: eco_get_redirect_link();
+Can't find handler for ASP command: devices_cgi_get_acl_device_table("DEV_control");
+Can't find handler for ASP command: devices_cgi_get_acl_white_table();
+Can't find handler for ASP command: devices_cgi_get_acl_black_table();
+Can't find handler for ASP command: devices_cgi_get_show_access_ctrl_settings();
+Can't find handler for ASP command: devices_cgi_get_acl_device_table("DEV_device", "wired");
+Can't find handler for ASP command: devices_cgi_get_acl_device_table("DEV_device", "wireless");
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+acsd: scan in progress ...
+Can't find handler for ASP command: usb_cgi_get_register_state();
+Can't find handler for ASP command: usb_cgi_get_invite_state();
+Can't find handler for ASP command: cdl_cgi_set_hijack(0);
+Can't find handler for ASP command: cdl_cgi_set_hijack(1);
+acsd: scan in progress ...
+acsd: selected channel spec: 0x100b
+insmod: cannot insert '/lib/modules/2.6.22/kernel/drivers/usb/core/usbcore.ko': Success (17)
+insmod: cannot insert '/lib/modules/2.6.22/kernel/drivers/usb/host/ehci-hcd.ko': Success (17)
+Info: No FWPT default policies.
+agnat QOS disable!
+rmmod: l7_filter
+/tmp/samba/private/smb.conf: no files!
+killall: bftpd: no process killed
+add active user:192.168.5.100
+httpd: socket bound in 0.0.0.0:80.
+httpd: socket bound in 0.0.0.0:443.
+bftpd: segment_id:32769
+shared memory reattached at address 0x5000000
+bftpd: socket bound in 0.0.0.0:21
+mount: mounting none on /proc/bus/usb failed: Device or resource busy
+IOCTL_AG_REGION_SET: English
+Unable to create /dev/ptys0: File exists
+Unable to create /dev/ttys0: File exists
+ACOSNAT: Set BCMCTF to off
+ACOSNAT: Set NAT for LAN domain only to on
+killall: timesync: no process killed
+
+NAT Enabled
+pppd executed successfully. (0)
+minidlan :scan files
+route: ioctl 0x890c failed: No such process
+killall: dhcp6c: no process killed
+killall: IPv6-relay: no process killed
+killall: pppdv6: no process killed
+killall: rtsol: no process killed
+killall: dhcp6s: no process killed
+killall: radvd: no process killed
+route: ioctl 0x890c failed: No such process
+killall: dhcp6s: no process killed
+killall: radvd: no process killed
+Hit enter to continue...Hit enter to continue...
+
+BusyBox v1.7.2 (2013-03-19 13:45:51 CST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+
+Bear in mind this comes from a unit with the BCM4360 (802.11ac) module removed.
+
+<WRAP bootlog>
+<nowiki>Decompressing...done
+
+
+CFE for R6300 version: v1.0.2
+Build Date: Wed Apr 25 16:29:10 CST 2012 
+Init Arena
+Init Devs.
+Boot partition size = 262144(0x40000)
+Found an ST compatible serial flash with 32 64KB blocks; total size 2MB
+Found a Samsung NAND flash with 2048B pages or 128KB blocks; total size 128MB
+et0: Broadcom BCM47XX 10/100/1000 Mbps Ethernet Controller 5.100.138
+CPU type 0x19749: 600MHz
+Tot mem: 131072 KBytes
+
+Device eth0:  hwaddr 84-1B-5E-XX-XX-XX, ipaddr 192.168.1.1, mask 255.255.255.0
+        gateway not set, nameserver not set
+Checking crc...Loader:raw Filesys:raw Dev:nflash0.os File: Options:(null)
+Loading: ...... 3263516 bytes read
+Entry at 0x80001000
+Closing network.
+Starting program at 0x80001000
+[    0.000000] Linux version 3.18.23 (buildbot@builder1) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r48532) ) #1 Tue Mar 1 09:17:19 CET 2016
+[    0.000000] CPU0 revision is: 00019749 (MIPS 74Kc)
+[    0.000000] bcm47xx: Using bcma bus
+[    0.000000] bcma: bus0: Found chip with id 0x5300, rev 0x01 and package 0x00
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 07fff000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x07ffefff]
+[    0.000000]   HighMem  empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x07ffefff]
+[    0.000000] Initmem setup node 0 [mem 0x00000000-0x07ffefff]
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32511
+[    0.000000] Kernel command line:  noinitrd console=ttyS0,115200
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Writing ErrCtl register=80000ad0
+[    0.000000] Readback ErrCtl register=80000ad0
+[    0.000000] Cache parity protection enabled
+[    0.000000] Memory: 126364K/131068K available (2594K kernel code, 119K rwdata, 324K rodata, 148K init, 288K bss, 4704K reserved, 0K highmem)
+[    0.000000] NR_IRQS:128
+[    0.000000] bcma: bus0: Core 0 found: BCM4706 ChipCommon (manuf 0x4BF, id 0x500, rev 0x1F, class 0x0)
+[    0.000000] bcma: bus0: Core 1 found: BCM4706 GBit MAC (manuf 0x4BF, id 0x52D, rev 0x00, class 0x0)
+[    0.000000] bcma: bus0: Core 2 found: BCM4706 GBit MAC (manuf 0x4BF, id 0x52D, rev 0x00, class 0x0)
+[    0.000000] bcma: bus0: Core 3 found: MIPS 74K (manuf 0x4A7, id 0x82C, rev 0x00, class 0x0)
+[    0.000000] bcma: bus0: Core 4 found: USB 2.0 Host (manuf 0x4BF, id 0x819, rev 0x04, class 0x0)
+[    0.000000] bcma: bus0: Core 5 found: PCIe (manuf 0x4BF, id 0x820, rev 0x0E, class 0x0)
+[    0.000000] bcma: bus0: Core 6 found: PCIe (manuf 0x4BF, id 0x820, rev 0x0E, class 0x0)
+[    0.000000] bcma: bus0: Core 7 found: AMEMC (DDR) (manuf 0x4BF, id 0x52E, rev 0x00, class 0x0)
+[    0.000000] bcma: bus0: Core 8 found: BCM4706 SOC RAM (manuf 0x4BF, id 0x50E, rev 0x05, class 0x0)
+[    0.000000] bcma: bus0: Core 9 found: ALTA (I2S) (manuf 0x4BF, id 0x534, rev 0x00, class 0x0)
+[    0.000000] bcma: bus0: Core 10 found: BCM4706 GBit MAC Common (manuf 0x43B, id 0x5DC, rev 0x00, class 0x0)
+[    0.000000] bcma: bus0: Found M25P16 serial flash (size: 2048KiB, blocksize: 0x10000, blocks: 32)
+[    0.000000] bcma: bus0: Early bus registered
+[    0.000000] MIPS: machine is Unknown Board
+[    0.000000] bcm47xx: Setting up vectored interrupts
+[    0.070000] Calibrating delay loop... 299.82 BogoMIPS (lpj=1499136)
+[    0.070000] pid_max: default: 32768 minimum: 301
+[    0.070000] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.070000] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.070000] NET: Registered protocol family 16
+[    0.070000] Switched to clocksource MIPS
+[    0.080000] NET: Registered protocol family 2
+[    0.080000] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.080000] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.080000] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.080000] TCP: reno registered
+[    0.080000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.080000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.080000] NET: Registered protocol family 1
+[    0.220000] ------------[ cut here ]------------
+[    0.220000] WARNING: CPU: 0 PID: 1 at drivers/bcma/host_soc.c:140 0x801c5df8()
+[    0.220000] Accessed core has no wrapper/agent
+[    0.220000] Modules linked in:
+[    0.220000] CPU: 0 PID: 1 Comm: swapper Not tainted 3.18.23 #1
+[    0.220000] Stack : 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[    0.220000]    00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[    0.220000]    00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[    0.220000]    00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[    0.220000]    00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[    0.220000]    ...
+[    0.220000] Call Trace:[<80013df4>] 0x80013df4
+[    0.220000] [<80013df4>] 0x80013df4
+[    0.220000] [<80022854>] 0x80022854
+[    0.220000] [<801c5df8>] 0x801c5df8
+[    0.220000] [<800228b0>] 0x800228b0
+[    0.220000] [<801c5df8>] 0x801c5df8
+[    0.230000] [<801c432c>] 0x801c432c
+[    0.230000] [<801c43b8>] 0x801c43b8
+[    0.230000] [<801c4cb8>] 0x801c4cb8
+[    0.230000] [<802fb230>] 0x802fb230
+[    0.230000] [<801be760>] 0x801be760
+[    0.230000] [<802fdaa8>] 0x802fdaa8
+[    0.230000] [<802fb230>] 0x802fb230
+[    0.230000] [<802fdac8>] 0x802fdac8
+[    0.230000] [<8000a184>] 0x8000a184
+[    0.230000] [<80310000>] 0x80310000
+[    0.230000] [<80181464>] 0x80181464
+[    0.230000] [<80037b94>] 0x80037b94
+[    0.230000] [<802fbc10>] 0x802fbc10
+[    0.230000] [<802fb230>] 0x802fb230
+[    0.230000] [<8002d00c>] 0x8002d00c
+[    0.230000] [<80005df0>] 0x80005df0
+[    0.230000] [<80005e00>] 0x80005e00
+[    0.230000] [<80005df0>] 0x80005df0
+[    0.230000] [<80001478>] 0x80001478
+[    0.230000] 
+[    0.230000] ---[ end trace c5a8a43bcb89b63a ]---
+[    0.230000] bcma: bus0: PCIEcore in host mode found
+[    0.420000] PCI host bridge to bus 0000:00
+[    0.420000] pci_bus 0000:00: root bus resource [mem 0x08000000-0x0bffffff]
+[    0.420000] pci_bus 0000:00: root bus resource [io  0x0100-0x047f]
+[    0.420000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.420000] bcma: PCI: Fixing up bridge 0000:00:00.0
+[    0.420000] bcma: PCI: Fixing up device 0000:00:00.0
+[    0.420000] bcma: PCI: Fixing up bridge 0000:00:00.1
+[    0.420000] bcma: PCI: Fixing up device 0000:00:00.1
+[    0.420000] bcma: PCI: Fixing up addresses 0000:00:01.0
+[    0.420000] pci 0000:00:01.0: BAR 0: assigned [mem 0x08000000-0x08003fff 64bit]
+[    0.420000] PCI: Enabling device 0000:00:01.0 (0000 -> 0002)
+[    0.420000] bcma: PCI: Fixing up device 0000:00:01.0
+[    0.420000] bcma: change PCIe max read request size from 512 to 128
+[    0.420000] bcma: bus1: Found chip with id 0x4331, rev 0x02 and package 0x08
+[    0.420000] bcma: bus1: Core 0 found: ChipCommon (manuf 0x4BF, id 0x800, rev 0x25, class 0x0)
+[    0.420000] bcma: bus1: Core 1 found: IEEE 802.11 (manuf 0x4BF, id 0x812, rev 0x1D, class 0x0)
+[    0.420000] bcma: bus1: Core 2 found: PCIe (manuf 0x4BF, id 0x820, rev 0x13, class 0x0)
+[    0.550000] bcma: bus1: Invalid SPROM read from the PCIe card, trying to use fallback SPROM
+[    0.660000] can not parse nvram name pci/1/1/mcsbw402gpo(null) with value 0x0x88800000 got -22
+[    0.700000] bcma: bus1: Bus registered
+[    0.700000] bcma: bus0: PCIEcore in host mode found
+[    0.890000] PCI host bridge to bus 0000:01
+[    0.890000] pci_bus 0000:01: root bus resource [mem 0x40000000-0x43ffffff]
+[    0.890000] pci_bus 0000:01: root bus resource [io  0x0480-0x07ff]
+[    0.890000] pci_bus 0000:01: No busn resource found for root bus, will use [bus 01-ff]
+[    0.890000] bcma: PCI: Fixing up bridge 0000:01:00.0
+[    0.890000] bcma: PCI: Fixing up device 0000:01:00.0
+[    0.890000] bcma: PCI: Fixing up bridge 0000:01:00.1
+[    0.890000] bcma: PCI: Fixing up device 0000:01:00.1
+[    0.890000] bcma: bus0: Bus registered
+[    0.890000] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.900000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.900000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.900000] msgmni has been set to 246
+[    0.900000] io scheduler noop registered
+[    0.900000] io scheduler deadline registered (default)
+[    0.900000] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.900000] console [ttyS0] disabled
+[    0.920000] serial8250.0: ttyS0 at MMIO 0xb8000300 (irq = 2, base_baud = 1562500) is a U6_16550A
+[    1.690000] console [ttyS0] enabled
+[    1.710000] serial8250.0: ttyS1 at MMIO 0xb8000400 (irq = 2, base_baud = 1562500) is a U6_16550A
+[    1.740000] 11 bcm47xxpart partitions found on MTD device bcm47xxsflash
+[    1.750000] Creating 11 MTD partitions on "bcm47xxsflash":
+[    1.760000] 0x000000000000-0x000000140000 : "boot"
+[    1.760000] 0x000000140000-0x000000150000 : "ML"
+[    1.770000] 0x000000150000-0x000000160000 : "ML"
+[    1.770000] 0x000000160000-0x000000170000 : "ML"
+[    1.780000] 0x000000170000-0x000000180000 : "ML"
+[    1.790000] 0x000000180000-0x000000190000 : "ML"
+[    1.790000] 0x000000190000-0x0000001a0000 : "ML"
+[    1.800000] 0x0000001a0000-0x0000001d0000 : "ML"
+[    1.800000] 0x0000001d0000-0x0000001e0000 : "POT"
+[    1.810000] 0x0000001e0000-0x0000001f0000 : "board_data"
+[    1.820000] 0x0000001f0000-0x000000200000 : "nvram"
+[    1.820000] bcm47xxnflash: Requested invalid id_data: 32
+[    1.830000] bcm47xxnflash: Requested invalid id_data: 64
+[    1.830000] nand: device found, Manufacturer ID: 0xec, Chip ID: 0xf1
+[    1.840000] nand: Samsung NAND 128MiB 3,3V 8-bit
+[    1.840000] nand: 128MiB, SLC, page size: 2048, OOB size: 64
+[    1.850000] nand: NAND_ECC_NONE selected by board driver. This is not recommended!
+[    1.870000] Bad block table found at page 65472, version 0x01
+[    1.880000] Bad block table found at page 65408, version 0x01
+[    1.890000] nand_read_bbt: bad block at 0x000000600000
+[    2.200000] can not find a nvram partition reserve last block
+[    2.200000] 4 bcm47xxpart partitions found on MTD device NAND 128MiB 3,3V 8-bit
+[    2.210000] Creating 4 MTD partitions on "NAND 128MiB 3,3V 8-bit":
+[    2.220000] 0x000000000000-0x000007fc0000 : "firmware"
+[    2.220000] 0x00000000001c-0x00000011dc00 : "linux"
+[    2.230000] 0x00000011dc00-0x000007fc0000 : "rootfs"
+[    2.240000] mtd: device 13 (rootfs) set to be root filesystem
+[    2.240000] 1 squashfs-split partitions found on MTD device rootfs
+[    2.250000] 0x000000340000-0x000007fc0000 : "rootfs_data"
+[    2.260000] 0x000007fc0000-0x000008000000 : "nvram_guess"
+[    2.260000] bgmac bcma0:1: Found PHY addr: 30 (NOREGS)
+[    2.270000] bgmac bcma0:1: Support for Roboswitch not implemented
+[    2.280000] libphy: bgmac mii bus: probed
+[    2.440000] b53_common: found switch: BCM53125, rev 4
+[    2.450000] bgmac: Broadcom 47xx GBit MAC driver loaded
+[    2.460000] bcm47xx-wdt bcm47xx-wdt.0: BCM47xx Watchdog Timer enabled (30 seconds)
+[    2.460000] TCP: cubic registered
+[    2.470000] NET: Registered protocol family 17
+[    2.470000] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    2.490000] Bridge firewalling registered
+[    2.490000] 8021q: 802.1Q VLAN Support v1.8
+[    2.500000] VFS: Mounted root (squashfs filesystem) readonly on device 31:13.
+[    2.510000] Freeing unused kernel memory: 148K (802fb000 - 80320000)
+[    3.540000] init: Console is alive
+[    3.540000] init: - watchdog -
+[    4.550000] init: - preinit -
+[    5.040000] random: mktemp urandom read with 7 bits of entropy available
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    6.480000] eth0: Link is Up - 1Gbps/Full - flow control off
+[    8.340000] mount_root: no usable overlay filesystem found, using tmpfs overlay
+[    8.370000] procd: - early -
+[    8.380000] procd: - watchdog -
+[    9.210000] procd: - ubus -
+[   10.230000] procd: - init -
+Please press Enter to activate this console.
+[   12.480000] NET: Registered protocol family 10
+[   12.490000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   12.510000] Loading modules backported from Linux version master-2015-03-09-0-g141f155
+[   12.520000] Backport generated by backports.git backports-20150129-0-gdd4a670
+[   12.530000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   12.540000] nf_conntrack version 0.5.0 (1976 buckets, 7904 max)
+[   12.590000] xt_time: kernel timezone is -0000
+[   12.620000] cfg80211: Calling CRDA to update world regulatory domain
+[   12.620000] cfg80211: World regulatory domain updated:
+[   12.630000] cfg80211:  DFS Master region: unset
+[   12.630000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   12.640000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   12.650000] cfg80211:   (2457000 KHz - 2482000 KHz @ 20000 KHz, 92000 KHz AUTO), (N/A, 2000 mBm), (N/A)
+[   12.660000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   12.670000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (N/A)
+[   12.680000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[   12.690000] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   12.700000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   12.710000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   12.770000] PPP generic driver version 2.4.2
+[   12.780000] NET: Registered protocol family 24
+[   12.800000] b43-phy0: Broadcom 4331 WLAN found (core revision 29)
+[   12.810000] b43-phy0: Found PHY: Analog 9, Type 7 (HT), Revision 1
+[   12.810000] b43-phy0: Found Radio: Manuf 0x17F, ID 0x2059, Revision 0, Version 1
+[   12.830000] Broadcom 43xx driver loaded [ Features: NL ]
+[   18.680000] eth0: Link is Up - 1Gbps/Full - flow control off
+[   22.560000] device eth0.1 entered promiscuous mode
+[   22.560000] device eth0 entered promiscuous mode
+[   22.620000] br-lan: port 1(eth0.1) entered forwarding state
+[   22.620000] br-lan: port 1(eth0.1) entered forwarding state
+[   23.680000] eth0: Link is Up - 1Gbps/Full - flow control off
+[   24.620000] br-lan: port 1(eth0.1) entered forwarding state
+[   25.650000] jffs2: notice: (911) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+
+BusyBox v1.23.2 (2016-03-01 08:50:41 CET) built-in shell (ash)
+...
+</nowiki>
+</WRAP>\\
+
+
+===== Tags =====
+
+I think these are on the way out now that techdata is becoming a thing, but it seems unsupported units can't use techdata?
+
+{{tag>128Flash 128RAM USB2.0 5port CFE BCM4706 MIPS MIPS32 74Kc GigabitEthernet VLAN MiniPCI 1WNIC b43 JTAG Serial 2button}}

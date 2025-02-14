@@ -1,0 +1,508 @@
+====== Atheros PB44 ======
+
+{{:media:evaluation.boards:pb44_pcb.jpg?direct&300|}}
+
+The PB44 is a reference design (a.k.a. evaluation platform) from Atheros (now Qualcomm), designed to demonstrate their "AR9001AP-3NX2" dual-concurrent 802.11n AP/Router solution((See {{:media:datasheets:ar9001ap3nx2.pdf|}})), which consists of a AR7161 CPU/SOC (System On Chip) and two AR9160 wireless chipsets used in a high-performance dual-band access point/router. The PB44 contains two mini-PCI slots, each of which contains a dual-band 801.11abgn 3x3 (3T3R) wireless card based on the AR9160 wireless MAC and AR5133 or AR9016 dual-band 3x3 MIMO Radio (some have one single-band card which is similar but with AR2133 or AR9103 2.4 GHz Radio). Three dual-band antennas each have a connection to both wireless cards. Each radio operates in one band at a time, but the two radios allow simultaneous dual-band operation.
+
+The PB44 PCB carries a copyright dated 2006, 2007, and is marked with part number 250-01488-xxx, where xxx is a revision number (030 and 040 have been seen). The PB44 main PCB may be any of various colors: yellow, green, and red have been seen.
+
+===== Supported Versions =====
+^ Version/Model   ^ Launch Date   ^ S/N   ^ OpenWrt Version Supported   ^ Model Specific Notes                                              ^
+| Yellow PCB      |   2006-2007   | -     | Backfire 10.03.1            | includes one "MB81" 2.4 GHz radio and one "MB82 dual-band radio   |
+| Green PCB       |   2006-2007   | -     | Backfire 10.03.1            | includes two "MB82" dual-band radios                              |
+| Red PCB         |   2006-2007   | -     | Backfire 10.03.1            | (unknown configuration)                                           |
+
+===== Hardware Highlights =====
+^ CPU                        ^ Ram      ^ Flash   ^ Network   ^ Wireless   ^ USB   ^ Serial   ^ JTag   ^
+| Atheros AR7161 @ 680 MHz   | 64 MiB   | 8 MiB   | 4 + 1     | 2 abgn     | Yes   | Yes      | Yes    |
+
+===== Installation =====
+  - -> [[:downloads]]
+  - -> [[docs:guide-user:installation:generic.flashing|Install OpenWrt]]
+
+==== Flash Layout ====
+->[[docs:techref:flash.layout]]
+
+^  Atheros PB44 Flash Layout  ^^^^^^^^
+^ Layer0       |                       [[wp>Serial Peripheral Interface Bus|spi]]0.0: m25p64 8192KiB NAND FLASH                                    |||||||
+^ Layer1       |  mtd0 **//RedBoot//** 256 KiB  |  mtd1 **//vmlinux//** 896 KiB  |  mtd2 **//rootfs//** 6912 KiB                 ||  mtd2 **//FIS directory//** 60 KiB  |  mtd2 **//RedBoot config//** 4 KiB  |  mtd2 **//boardconfig//** 64 KiB  |
+^ <color magenta>mountpoint</color>   |         |                                |  <color magenta>''/''</color>                 ||                                     |                                     |                                   |
+^ filesystem   |                                |                                |  [[docs:techref:filesystems#mini_fo|mini_fo]]  ||                                     |                                     |                                   |
+^ Layer3       |                                |                                |          |  mtd3 **//rootfs_data//** 5184KiB   |                                     |                                     |                                   |
+^ Size in KiB  |  256 KiB                       |  896 KiB                       |  3328 KiB        |  3584 KiB                   |   60 KiB                            |  4 KiB                              |  64 KiB                           |
+^ Name         |  **//RedBoot//**               |  **//vmlinux//**               |                  |  **//rootfs_data//**        |  **//FIS directory//**              |  **//RedBoot config//**             |  **//boardconfig//**              |
+^ <color magenta>mountpoint</color>  |  //none//  |  //none//  |  <color magenta>''/rom''</color>       |  <color magenta>''/overlay''</color>   |  //none//            |  //none//                           |  //none//                         |
+^ filesystem   |  //none//                      |  //none//    |  [[docs:techref:filesystems#SquashFS]]  |  [[docs:techref:filesystems#JFFS2]]     |  //none//            |  //none//                           |  //none//                         |
+:!: Note that the relative sizes of the ''vmlinux'', ''rootfs'', and ''rootfs_data'' will vary depending on the build that is being used. The total size is 7808 KiB (64 KiB x 122).
+
+==== Installation Procedure ====
+
+Download the pre-built Backfire release images from [[http://backfire.openwrt.org/10.03.1/ar71xx/]], look for ''pb44'' in the file names. The squashfs images are generally preferred over JFFS2 (see [[:downloads]]). If you are brave, you can try out the bleeding edge firmware at [[http://downloads.openwrt.org/snapshots/trunk/]].
+
+In order to install OpenWRT, the boot process is halted to give access to the RedBoot prompt. Then the kernel and filesystem can be removed and replaced with OpenWRT images. The currently installed RedBoot does not need to be (and should not be) updated. Refer to the Installation walkthrough below for details.
+
+Use teraterm and serial port. USB to serial adapters are excellent.
+Set serial to 115200/8/N/1/None
+
+Press Ctl-C with a few seconds of power-up to halt boot and drop to RedBoot prompt.
+<code>
+RedBoot>
+</code>
+Now have a look at the current FLASH file system
+<code>
+RedBoot> fis list
+Name              FLASH addr  Mem addr    Length      Entry point
+RedBoot           0xBF000000  0xBF000000  0x00040000  0x00000000
+vmlinux           0xBF040000  0x80060000  0x00120000  0x8029E000
+filesystem        0xBF160000  0x80500000  0x00600000  0x00000000
+FIS directory     0xBF7E0000  0xBF7E0000  0x0000F000  0x00000000
+RedBoot config    0xBF7EF000  0xBF7EF000  0x00001000  0x00000000
+RedBoot>
+</code>
+The factory firmware is stored in the ''vmlinux'' (kernel) and ''filesystem'' files.
+
+Delete the factory firmware using ''fis init''
+<code>
+RedBoot> fis init
+About to initialize [format] FLASH image system - continue (y/n)? y
+*** Initialize FLASH Image System
+... Erase from 0xbf7e0000-0xbf7f0000: .
+... Program from 0x80ff0000-0x81000000 at 0xbf7e0000: .
+RedBoot> fis list
+Name              FLASH addr  Mem addr    Length      Entry point
+RedBoot           0xBF000000  0xBF000000  0x00040000  0x00000000
+FIS directory     0xBF7E0000  0xBF7E0000  0x0000F000  0x00000000
+RedBoot config    0xBF7EF000  0xBF7EF000  0x00001000  0x00000000
+RedBoot>
+</code>
+Use fis free to view available FLASH space.
+<code>
+RedBoot> fis free
+  0xBF040000 .. 0xBF7E0000
+RedBoot>
+</code>
+In the above example, there is 0xBF7E0000 - 0xBF040000 = 0x7A00000 bytes (7.625 MB) of available space.
+
+Determine start of free memory
+<code>
+RedBoot> %{FREEMEMLO}
+</code>
+The address is displayed along with an error message you can ignore. Round up to the next 0x100000 to avoid trouble. In the following, the memory address used to load the images is 0x80100000
+
+Load the OpenWRT kernel image using the ''load'' command. You can use tftp, http, xmodem, or ymodem to load the firmware. I experienced trouble with tftp and http no matter what server software was used, so I opted to use ymodem instead. This loads the file over the serial port, which takes longer, but still only a minute or two.
+<code>
+RedBoot> load -r -v -b 0x80100000 -m ymodem
+CCC
+</code>
+After issuing the above command, you will see a few "C" characters printed as part of the ymodem protocol. Now send the kernel file with ymodem using your terminal program (e.g. TeraTerm).
+<code>
+CCRaw file loaded 0x80100000-0x801dffff, assumed entry at 0x80100000
+xyzModem - CRC mode, 0(SOH)/2049(STX)/0(CAN) packets, 6 retries
+RedBoot>
+</code>
+Burn the file in memory to flash. There is no need to specifiy the start or end addresses as they will default to the values used in the load command. The memory base address and entry point are specified as 0x80060000, which is rounded up from the value returned by %{FREEMEMLO}.
+<code>
+RedBoot> fis create -b 0x80060000 -e 0x80060000 vmlinux
+... Erase from 0xbf040000-0xbf120000: ..............
+... Program from 0x80100000-0x801e0000 at 0xbf040000: ..............
+... Erase from 0xbf7e0000-0xbf7f0000: .
+... Program from 0x80ff0000-0x81000000 at 0xbf7e0000: .
+</code>
+Determine the amount of free FLASH space; when burning the filesystem, you want to use all available space.
+<code>
+RedBoot> fis free
+  0xBF120000 .. 0xBF7E0000
+</code>
+Use a hexadecimal calculator to get the difference, in this case, 0x6c0000 bytes.
+
+Load and burn the filesystem image, I recommend the squashfs image. Note the use of 0x6c0000 below.
+<code>
+RedBoot> load -r -v -b 0x80100000 -m ymodem
+CCRaw file loaded 0x80100000-0x802fffff, assumed entry at 0x80100000
+xyzModem - CRC mode, 0(SOH)/2049(STX)/0(CAN) packets, 6 retries
+RedBoot>
+RedBoot> fis create -l 0x6c0000 rootfs
+... Erase from 0xbf120000-0xbf7e0000: ............................................................................................................
+... Program from 0x80100000-0x80300000 at 0xbf120000: ................................
+... Erase from 0xbf7e0000-0xbf7f0000: .
+... Program from 0x80ff0000-0x81000000 at 0xbf7e0000: .
+RedBoot> 
+RedBoot> fis list
+Name              FLASH addr  Mem addr    Length      Entry point
+RedBoot           0xBF000000  0xBF000000  0x00040000  0x00000000
+vmlinux           0xBF040000  0x80060000  0x000E0000  0x80060000
+rootfs            0xBF120000  0x80050C00  0x006C0000  0x80050C00
+FIS directory     0xBF7E0000  0xBF7E0000  0x0000F000  0x00000000
+RedBoot config    0xBF7EF000  0xBF7EF000  0x00001000  0x00000000
+RedBoot>
+</code>
+You have the OpenWRT kernel and filesystem in FLASH. 
+
+You now must edit the configuration boot script. The default firmware uses a gzip compressed kernel image, but the OpenWRT kernel uses an lzma compressed image. So we must change the load command in the boot script to use -l (decompress lzma) not -d (decompress gzip). Do not edit any of the other parameters unless you know that they need to change. Just press enter to skip editing the other parameters.
+<code>
+RedBoot>
+RedBoot> fconfig
+Run script at boot: true
+Boot script:
+.. fis load -d vmlinux
+.. exec
+Enter script, terminate with empty line
+>> fis load -l vmlinux
+>> exec
+>>
+Boot script timeout (1000ms resolution): 3
+Use BOOTP for network configuration: false
+Gateway IP address:
+Local IP address: 192.168.1.2
+Local IP address mask: 255.255.255.0
+Default server IP address: 192.168.1.20
+Console baud rate: 115200
+GDB connection port: 9000
+Force console for special debug messages: false
+Network debug at boot time: false
+Update RedBoot non-volatile configuration - continue (y/n)? y
+... Erase from 0xbf7e0000-0xbf7f0000: .
+... Program from 0x80ff0000-0x81000000 at 0xbf7e0000: .
+RedBoot>
+</code>
+
+Now just reboot.
+<code>
+RedBoot> reset
+</code>
+
+This time, allow RedBoot to boot.
+You should see the usual OpenWRT console messages as it boots. Toward the end you will see that it is initializing the JFFS2 filesystem. This only happens on first boot. When the action stops, press enter to get to the shell BusyBox ash prompt.
+
+The LAN GbE switch does not function with the current pre-compiled [[http://downloads.openwrt.org/backfire/10.03.1/ar71xx/|stable image]]. You will need to take a few extra steps to obtain the firmware and the driver (to load the firmware) in order to make the GbE switch function.
+
+First, plug obtain an internet connection by plugging the WAN port (the single Ethernet port) into your DHCP-enabled network. The eth0 interface will automatically come up and will obtain an IP address via DHCP. Now you can download the necessary firmware file as below.
+<code>
+cd /tmp
+wget http://mirror2.openwrt.org/sources/vsc73x5-ucode.tar.bz2
+bunzip2 vsc73x5-ucode.tar.bz2
+tar xvf vsc73x5-ucode.tar
+cp vsc73x5-ucode/g5e_Plus1_2_29a_unmanaged_Atheros_v3.bin /lib/firmware/vsc7395_ucode_pb44.bin
+ls /lib/firmware
+</code>
+Verify that there is a file named ''vsc7395_ucode_pb44.bin''
+
+Install the driver package.
+<code>
+opkg update
+opkg install kmod-spi-vsc7385
+</code>
+The driver will install, then proceed to load the firmware into the GbE switch. You will see all four LAN port LEDs light momentarily after firmware is loaded. The LAN side Ethernet can now be used. 
+
+Refer to [[docs:guide-quick-start:checks_and_troubleshooting|Basic Configuration]] for tips on initial setup.
+
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+Note that due to the lack of a ''firmware'' partition in flash, it is not possible to perform a sysupgrade using the command line or LuCI. Instead, the new kernel (''vmlinux'') and squashfs or jffs2 file system (''rootfs'') must be written to flash using RedBoot, following the installation procedure as above. Be sure to manually save any configuration data that you wish to apply to the new installation as it will be wiped out.
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+==== Interfaces ====
+FIXME The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| eth0             | WAN port             | DHCP                    |
+| eth1             | LAN ports (1 to 4)   | None                    |
+
+Both wireless links are disabled by default.
+DHCP server is enabled by default on br-lan.
+
+==== VLAN Support ====
+There is no support for VLANs on the PB44. This is a limitation of the firmware and/or driver for the VSC7395 switch; the hardware itself is capable of using VLANs.
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+FIXME The PB44 has two buttons, ''RST'' and ''JPST''. Here, we merely name the buttons, so we can use them in the above Howto:
+^ BUTTON   ^ Identifier   ^
+| Reset    | BTN_0        |
+| JPST     | BTN_1        |
+
+
+===== Hardware =====
+==== Info ====
+| **[[wp>Instruction set|Architecture]]:**    | [[wp>MIPS architecture|MIPS]] |
+| **Vendor:**          | [[wp>Qualcomm Atheros]]   |
+| **[[docs:techref:bootloader]]:**     | [[docs:techref:bootloader:redboot]] |
+| **[[docs:techref:hardware:soc|System-On-Chip]]:**  | AR7161 rev 2 (MIPS 24Kc) |
+| **[[docs:techref:hardware:cpu|CPU]]/Speed**        | 24Kc 680 MHz |
+| **Flash-Chip:**      | FIXME - verify my fix of broken link-> [[http://www.amarketplaceofideas.com/wp-content/uploads/2017/08/S25FL064P_00_03_e1.pdf|ST 25P64V6P]] |
+| **Flash size:**      | 8192 KiB (NAND FLASH on SPI bus) |
+| **RAM:**             | 64 MiB DDR @ 340 MHz, 32 bit wide bus  |
+| **Wireless:**        | Atheros AR9160 w/AR2133 2.4GHz 3T3R 802.11bgn |
+| **Wireless:**        | Atheros AR9160 w/AR5133 2.4GHz&5GHz 3T3R 802.11abgn |
+| **Ethernet:**        | 4 x GbE via VSC7385 switch without VLAN support |
+| **Internet:**        | GbE WAN port  |
+| **USB:**             | Yes 2 x 2.0     |
+| **[[docs:techref:hardware:port.serial|Serial]]:**  | [[#Serial|Yes]] RS232/DB-9 connector |
+| **[[docs:techref:hardware:port.jtag|JTAG]]:**      | [[#JTAG|Yes]]  |
+
+==== Photos ====
+
+//PCB:// 250-01488-030
+
+(Mouse over devices for description)
+{{map>:media:evaluation.boards:pb44_pcb.jpg|PB44 PCB}}
+  * [[start|USB1 @ 152,18,242,87]]
+  * [[start|USB0 @ 229,18,288,87]]
+  * [[start|GbE WAN @ 299,18,376,126]]
+  * [[start|GbE LANx4 @ 385,18,652,126]]
+  * [[start|12VDC Input @ 87,18,133,87]]
+  * [[start|Power Supplies @ 20,100,245,630]]
+  * [[start|DDR0 32 MB DDR RAM @ 357,333,420,460]]
+  * [[start|DDR1 32 MB DDR RAM @ 488,333,550,460]]
+  * [[start|VSC8601 GbE PHY @ 303,152,362,211]]
+  * [[start|VSC7395 GbE Switch @ 468,158,580,270]]
+  * [[start|AR7161 SOC/CPU @ 389,502,455,570]]
+  * [[start|8 MB NAND FLASH @ 514,521,568,575]]
+  * [[start|Audio CODEC @ 654,316,727,417]]
+  * [[start|JTAG Header @ 740,682,795,784]]
+  * [[start|Serial Header @ 736,849,800,925]]
+  * [[start|SLIC (PCM) Header @ 743,423,789,664]]
+  * [[start|SPI MISO (MasterInSlaveOut) Test Point @ 723,411,747,433]]
+  * [[start|SPI MOSI (MasterOutSlaveIn) Test Point @ 720,558,742,582]]
+  * [[start|SPI Clock Test Point @ 639,540,671,569]]
+  * [[start|SPI Chip Select Test Point @ 496,533,513,553]]
+  * [[start|Reset (active low) Test Point @ 515,485,545,514]]
+  * [[start|PCI0 Power Test Points @ 60,628,170,652]]
+  * [[start|PCI1 Power Test Points @ 480,611,701,636]]
+  * [[start|Reset Button (BTN_1) @ 662,8,706,63]]
+  * [[start|JPST Button (BTN_0) @ 712,8,756,63]]
+  * [[start|MiniPCI Slot 0 @ 81,659,373,695]]
+  * [[start|MiniPCI Slot 1 @ 440,659,731,695]]
+  * [[start|MiniPCI Radio 0 @ 81,696,373,916]]
+  * [[start|MiniPCI Radio 1 @ 440,696,731,916]]
+  * [[start|Radio 0 LED (ath9k-phy0) @ 121,1016,148,1067]]
+  * [[start|Radio 1 LED (ath9k-phy1) @ 699,1016,726,1067]]
+  * [[start|Dual-color LED (pb44:amber:jump1, pb44:green:jump2) @ 468,1016,510,1067]]
+  * [[start|Power LED @ 166,1025,186,1046]]
+  * [[start|LAN Port 1 LED @ 207,1025,230,1046]]
+  * [[start|LAN Port 2 LED @ 252,1025,277,1046]]
+  * [[start|LAN Port 3 LED @ 296,1025,320,1046]]
+  * [[start|LAN Port 4 LED @ 342,1025,366,1046]]
+  * [[start|WAN Port LED @ 379,1025,406,1046]]
+{{<map}}
+
+
+==== LEDS ====
+
+The PB44 has several LEDs on board, some of which can be controlled by software, and some of which are controlled exclusively by hardware. Refer to the PCB image for locations.
+
+== Hardware Controlled ==
+The WAN Ethernet port LED is controlled by the VAC8601 Phy chip. It glows green steadily when there is a good link, and flashes when there is activity on the port. The four LAN Ethernet port LEDs are controlled by the VSC7395 switch. They glow green when there is a good link on the port, and do not flash for activity.
+
+== Software Controlled ==
+-> LEDs can be controlled via [[docs:guide-user:base-system:led_configuration|UCI System Configuration]] or [[docs:guide-user:luci:luci.essentials|LuCI]], in the system tab.
+
+A dual-color LED is provided for each mini-PCI slot, and is controlled by the card in the slot. Only the amber portion of the LED appears to be functional. Another dual-color LED is controlled via the AR7161 GPIO pins. These four LEDs are configured as:
+  * ath9k-phy0
+  * ath9k-phy1
+  * pb44:amber:jump1
+  * pb44:green:jump2
+
+All LEDs and their connections, from left to right in the PCB image:
+^ LED (PCB Marking)   ^ Color   ^ Functional?   ^ Hardware Connection                      ^ Enumerated Name    ^
+| MPCI 0              | Green   | No            | MiniPCI slot 0, Pin 11 / AR9160 GPIO 0   | -                  |
+| MPCI 0              | Amber   | Yes           | MiniPCI slot 0, Pin 12 / AR9160 GPIO 1   | ath9k-phy0         |
+| PWR                 | Green   | No            | GPIO 23 / PCF8575 pin P07                | -                  |
+| LAN1                | Green   | Yes           | controlled by VSC7395                    | -                  |
+| LAN2                | Green   | Yes           | controlled by VSC7395                    | -                  |
+| LAN3                | Green   | Yes           | controlled by VSC7395                    | -                  |
+| LAN4                | Green   | Yes           | controlled by VSC7395                    | -                  |
+| WAN                 | Green   | Yes           | controlled by VSC8601                    | -                  |
+| JPST                | Green   | Yes           | GPIO 26 / PCF8575 pin P13                | pb44:green:jump2   |
+| JPST                | Amber   | Yes           | GPIO 25 / PCF8575 pin P12                | pb44:amber:jump1   |
+| MPCI 1              | Green   | No            | MiniPCI slot 1, Pin 11 / AR9160 GPIO 0   | -                  |
+| MPCI 1              | Amber   | Yes           | MiniPCI slot 1, Pin 12 / AR9160 GPIO 1   | ath9k-phy1         |
+
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button|Hardware Buttons]] General information about making use of hardware buttons.
+
+The PB44 has two hardware buttons which can be configured to perform arbitrary actions when pressed (or released for that matter):
+  * "JPST", configured as BTN_0
+  * "RST", configured as BTN_1
+
+==== Antennas ====
+The PB44 has three dual-band antennas which connect to the Mini PCI wireless boards using standard U.FL (aka IPX, aka UMCC) connectors. They are not removable in that they are not attached with RP-SMA connectors, but they are easily replaceable if desired. The U.FL connector with the red band is the 5 GHz antenna. The other is for the 2.4 GHz band. It is possible to use the 2.4 GHz antenna at 5 GHz with reduced efficiency (gain), but the 5 GHz antenna will function quite poorly at 2.4 GHz. Keep this in mind when deciding which radio to use in each band.
+
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+The PB44 main PCB has a 2x6 pin header with TTL level serial signals, but it also includes the required RS232-level converter board. To connect with serial, use a standard straight-through male to female DB-9 serial cable. Set your serial port to 115200 baud, 8/N/1 and no flow control.
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+JTAG is available via a header on the PCB. FIXME Pinout is not known.
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Bootloader Mods =====
+  - you could read about [[docs:techref:bootloader]] in general
+
+The version of RedBoot that is pre-installed works well with OpenWRT. Unless you have a special requirement to do so, avoid modifying or upgrading the bootloader, as this may brick the router in a way that requires JTAG to recover (i.e. you probably won't recover it). As long as the RedBoot bootloader and its configuration remain intact in FLASH, you will almost always be able to recover a bricked router by flashing a fresh set of images using RedBoot.
+
+===== Hardware mods =====
+
+==== 128/256 MiB Mod ====
+
+The AR7161 CPU is capable of addressing up to 256 MB of memory. An upgrade to up to 256 MB is therefore possible at least in theory, using two 64Mx16 (1024 Mbit) DDR chips. These are very rare, especially in TSSOP form (as opposed to BGA). More realistic is an upgrade to 128 MB using two 32Mx16 (512 Mbit) DDR chips, which can occasionally be found on 512 MB SO-DIMMs. Ensure that you use 400 MHz ("PC3200") chips, capable of CAS 2.5 (or better) at 333 MHz, and CAS 3 (or better) at 400 MHz.
+
+==== Additional GPIO ====
+
+If the SLIC (FXO/FXS) PCM telecom interface and/or I<sup>2</sup>S (Stereo Audio) interface are not going to be used, then the four GPIO pins that are used for each function can be re-used as GPIO instead. These are GPIO_2 through 5 for SLIC, and GPIO_6 through 8 and 11 for I<sup>2</sup>S. Ensure that bit 17 (I<sup>2</sup>S) and bit 16 (SLIC) of the GPIO Function register (0x18040028) are set to 0 to disable the respective functionality and to enable the pins as general purpose GPIO. OpenWRT does not include drivers for either SLIC or I<sup>2</sup>S, and these should be disabled by default.
+
+The GPIO pins can be accessed using the pseudo files under /dev/class/gpio, or they may be registered by other custom device drivers for special functions such as to drive LEDs, to implement a bit-banged I<sup>2</sup>C or SPI bus, etc..
+
+Electrical access to these GPIO is possible through the three 10-pin headers marked "SLIC" and the unnamed 30-pin header at the top of the board. For GPIO 6, 7, 8, and 11, some resistors may need to be moved/populated in order to divert the signals from the on-board CODEC (ADC/DAC) to the header. These are very small SMD resistors, so only those persons skilled and equipped to do SMD rework should attempt this.
+| {{:meta:icons:tango:48px-emblem-progress.svg.png?nolink }} This has not been tested yet. |
+
+:!: Some GPIO may be limited to either input or output due to the use of a buffer IC between the AR7161 and the external device. In particular, GPIO 2 and 11 are used as inputs for SLIC and I<sup>2</sup>S respecitively, and should NEVER be configured to an output. This will cause the AR7161 and the buffer to each drive the signal, possibly to a different voltage, causing excess current and possible overheating or damage to the AR7161 or buffer IC.
+
+If you are considering a bandwidth-heavy use for GPIO (such as a I<sup>2</sup>C or SPI bus, MMC-over-SPI, LCD, etc.) then use GPIO < 16 instead of trying to use GPIO at >= 16, which are controlled by a GPIO extender accessed over an I<sup>2</sup>C bus. The extra overhead of I<sup>2</sup>C access makes those higher numbered GPIO much slower and completely unsuitable for fast operation. (They are fine for LEDs).
+
+| {{:meta:icons:tango:48px-construction.svg.png?nolink  }} Pinout of the connectors is TDB. If you have this information, please add it here. |
+
+==== Additional I2C devices ====
+
+A bit-banged I<sup>2</sup>C bus is implemented using GPIO 0 and 1. Due to the nature of I<sup>2</sup>C, more devices can easily be added. The only device on this I<sup>2</sup>C bus is the PCF8575 I/O expander at device 0x20. The PCF8575 is used to implement 16 additional GPIO (16 through 31) which are used primarily for the on-board LEDs and buttons. Any number of additional I<sup>2</sup>C devices can be added as long as addresses are unique and bus signal integrity is maintained. Various packages are available to scan the I<sup>2</sup>C bus for devices and to access the devices from the shell. Device-specific drivers can also be used, and of course custom drivers can also be developed.
+
+Electrical access to the I<sup>2</sup>C data and clock can be obtained by soldering small wires directly to the respective pins of the PCF8575, or you can attempt to visually trace the bus signals to another point on the board.
+| {{:meta:icons:tango:48px-emblem-progress.svg.png?nolink }} This has not been tested yet. |
+
+==== Additional LEDs ====
+The RS232 converter board has three LEDs on it, one of which is dual-color. The required current limiting resistors are also present. These four LEDs can be driven directly from GPIO pins 're-used' as above, or from any other active-HI signal. For example, one each could be connected to the Tx and Rx signals for the console, to give a visual indication of serial port activity.
+| {{:meta:icons:tango:48px-emblem-progress.svg.png?nolink }} This has not been tested yet. |
+
+===== Overclocking =====
+| {{:meta:icons:tango:48px-emblem-important.svg.png?nolink }} Prior to undertaking overclocking, be aware of the risks associated with operating your hardware beyond its intended/engineered parameters. Instability and data corruption may result, and permanent hardware damage is also a possibility. |
+
+| {{:meta:icons:tango:48px-emblem-important.svg.png?nolink }} Consider attaching a heatsink to the AR7161 prior to increasing the CPU or PCI bus speeds. Excessive heat not only limits the performance (hot transistors don't switch as fast as cool ones), but also shortens the lifetime of the chips. |
+
+| {{:meta:icons:tango:dialog-information.png?nolink }} This information may also apply to other routers that use the PB44 reference design and/or the AR9001AP-3NX2 chipset, and to a lesser extent, other AR71xx (AR7100) series CPUs. |
+
+| {{:meta:icons:tango:dialog-information.png?nolink }} Some of this information may also apply to other routers using the RedBoot bootloader. |
+
+
+==== CPU ====
+Overclocking the CPU and DDR memory is possible by directly manipulating the registers that control the PLL used to drive the CPU, DDR, and AHB (system bus) clocks. Note that while the base PLL clock speed can be changed, it is not possible to change the CPU/DDR ratio without also issuing a CPU reset. By default, the PLL is configured to 680 MHz, with the CPU running at 1/1 of the PLL frequency (680 MHz), the DDR running at 1/2 of the PLL Frequency (340 MHz), and the AHB running at 1/4 of the PLL frequency (170 MHz). By changing only the PLL frequency, all of these are changed simultaneously. An overclock to 720 MHz CPU speed and 360 MHz DDR speed (approximately +6%) should be easily achieved on most boards. Overclock to 760 OR 800 MHz may or may not be possible depending on individual boards.
+
+When overclocking, you may need to increase the CAS latency of the DDR RAM in order for it to continue to work normally. At 680 MHz CPU / 340 MHz DDR speed, RedBoot sets the CAS latency to 2.5. At 400 MHz CPU / 400 MHz DDR speed, the CAS latency is set to 3. Changing CAS latency on-the-fly is possible but somewhat risky. This must only be done in RedBoot (not in Linux) when RAM is not being accessed frequently. Both the DDR controller (of the AR7161) and the DDR RAM chips themselves need to be updated with the new CAS latency value. To do this, the 'DDR_CONFIG' and 'DDR_MODE_REGISTER' are updated, then the value 0x1 is written to the 'DDR_CONTROL' register to initiate a "MRS update cycle" which sends the new configuration to the DDR chips. The following will achieve this:
+<code>
+ar7100_reg_wr 0x18000000 0x77b8884e;ar7100_reg_wr 0x18000008 0x33;ar7100_reg_wr 0x18000010 0x1
+</code>
+
+Note that the serial console baud rate is based on the AHB bus speed, so changing the PLL (and thereby the AHB) speed results in the baud rate changing as a side effect. Therefore, if the PLL is adjusted using the RedBoot console command prompt, the console is rendered unusable. The workaround is to string together several commands (with ';' between each) which update the PLL, and the baud rate in a single line.
+
+Note that PCI and Ethernet interface clocks are derived from a secondary PLL, and are not affected by the adjustment of the primary (CPU) PLL.
+
+All registers associated with overclocking can be (and must be) manipulated from RedBoot prior to the Linux kernel being executed. The following is an example:
+<code>
+ar7100_reg_rd 0x18050000
+</code>
+value of 0xC0140080 is returned
+<code>
+ar7100_reg_wr 0x18050000 0x80140088
+</code>
+  - increases the PLL Feedback divider by 1, increasing PLL frequency by 40 MHz (to 720 MHz).
+  - bits 3 through 7 of this register control the PLL divisor (effectively the multiplier, x 40 MHz). e.g for 0xc0140080, bits 3..7 give b10000, which is 16. Add 1 and multiply by 40 MHz to get 680 MHz.
+:!: Running the above command will immediately cause the serial console to stop working as the baud rate will be wrong. See below for examples of correcting the baud rate.
+
+=== Pushing the limits - Overvolting ===
+| {{:meta:icons:tango:48px-dialog-error-round.svg.png?nolink  }} Don't do this |
+
+Can't get your router to work at 800 MHz but desperately want to, for some reason? Try over-volting the CPU! Actually, don't. You'll probably fry your very nice router. You've been warned.
+
+The CPU operates on 1.20 V nominal, with a maximum recommended operating voltage of 1.24 V. Identify the power supply that provides the 1.20 V for the CPU and measure it. If it is less than 1.24 V, try increasing it. If you don't know how to do that, then don't bother trying. You'll just end up destroying your router. If you have the skills to pull off this modification, then you may be able to squeeze a few more MHz from your CPU.
+
+:!: Don't even try this without a heatsink on the AR7161 CPU. Power dissipation (read: HEAT) increases with the square of voltage increase, so bumping up voltage by a measly 10% will increase power by 21%! ... and that's at the same frequency. Add the propertional increase in heat caused by increasing frequency (+10% speed = +10% heat) and you can see that heat becomes a problem very quickly. At 10% increase in voltage with a 10% increase in clock speed, produces 33% more heat!
+
+==== PCI ====
+The PCI bus of the AR7161 is specified to operate at up to 66 MHz. The AR9160 based Mini-PCI cards can also operate at 66 MHz. There are no other devices on the PCI bus. It should therefore be possible to switch the PCI bus to 66 MHz operation to increase PCI throughput. By modifying the PCI Clock Control Register, it is possible to adjust the PCI clock rate to an (almost) arbitrary value. The PCI clock is derived from the secondary PLL, which is nominally set to 1 GHz. in order to adjust the PCI clocking in RedBoot, refer to the following examples:
+
+<code>
+ar7100_reg_rd 0x1805001C
+</code>
+returns 0x000000EE which is 33 MHz (0xE+1=0xF=15 clock counts at Hi state, then 0xE->15 clock counts at Lo state, total is 30 counts, 1000 MHz / 30 = 33.33 MHz).
+
+Set to 66 MHz:
+<code>
+ar7100_reg_wr 0x1805001C 0x76
+</code>
+Sets the Hi phase clock counts to 8 (7+1) and low phase to 7 (6+1), which is 15 counts total, so at 1 Ghz, the clock period is (1000 MHz)/15 = 66.66 MHz
+
+This has the potential to have an actual positive effect on system performance, as at 300 Mbit/s on each of the two radios, up to 300/8 = 35 MB/s of PCI bandwidth may be consumed by each radio. That does not include the address cycles or any other reads/writes other than the raw transmitted and received data. It is therefore possible that the PCI bus is utilized at >75% when the radios are very busy. Increasing to 66 MHz operation will reduce the PCI bus utilization to <50% in all conditions, potentially reducing hardware and software latency in accessing data over the bus.
+
+:!: Be aware of the risk of data corruption. Do a lot of testing prior to implementing this permanently (so far I personally have seen no issues). Be aware of extra heat generated in the AR7161 due to the increased speed.
+
+==== Automatic Overclocking ====
+While it is possible to run the above commands manually at the RedBoot prompt, it would be convenient to have those commands run automatically at startup. This is possible by adding the commands to RedBoot's 'fconfig' startup script. Due to the large number of commands and the size of them, they occupy more space than is available to store the script. To work around this, aliases can becreated to significantly reduce the size of the script.
+
+First create the aliases. Answer "n" to update fconfig except after the last one.
+<code>
+alias pci "ar7100_reg_wr 0x1805001c "
+n
+alias pll "ar7100_reg_wr 0xb8050000 "
+n
+alias com "ar7100_reg_wr 0xb802000"
+n
+alias ddr "ar7100_reg_wr 0xb80000"
+n
+alias boot "fis load -l vmlinux;exec"
+y
+</code>
+
+=== 720 MHz ===
+The following 'fconfig' boot script will set the PCI to 66 MHz, set the PLL to 720 MHz (720/360/180 Mhz CPU/DDR/AHB speed), update the baud rate to 115200, and load and boot the linux kernel. DDR CAS latency remains 2.5. This configuration is stable on my router.
+<code>
+%{pci}0x76
+%{pll}0x140188;%{pll}0x80143188;%{com}c 0x80;%{com}0 98;%{com}4 0;%{com}c 0;%{com}c 3
+%{boot}
+</code>
+:!: The value of '98' above is used to set the baud rate. It is calculated as follows: AHB Speed in Hz / ( 16 * BaudRate). E.g. 180000000/(16*115200) = 97.65625 = 98
+
+=== 760 MHz ===
+The following 'fconfig' boot script will set the PCI to 66 MHz, set the DDR CAS latency to 3, set the PLL to 760 MHz (760/380/190 Mhz CPU/DDR/AHB speed), update the baud rate to 115200, and load and boot the linux kernel. (This configuration will boot but is not stable on my router).
+<code>
+%{pci}0x76
+%{ddr}00 0x77b8884e;%{ddr}08 0x33;%{ddr}10 1
+%{pll}0x140190;%{pll}0x80143190;%{com}c 0x80;%{com}0 103;%{com}4 0;%{com}c 0;%{com}c 3
+%{boot}
+</code>
+
+=== 800 MHz ===
+The following 'fconfig' boot script will set the PCI to 66 MHz, set the DDR CAS latency to 3, set the PLL to 800 MHz (800/400/200 Mhz CPU/DDR/AHB speed), update the baud rate to 115200, and load and boot the linux kernel. (This configuration will not boot on my router).
+<code>
+%{pci}0x76
+%{ddr}00 0x77b8884e;%{ddr}08 0x33;%{ddr}10 1
+%{pll}0x140198;%{pll}0x80143198;%{com}c 0x80;%{com}0 109;%{com}4 0;%{com}c 0;%{com}c 3
+%{boot}
+</code>
+
+Success? Failure? Discuss your overclocking results [[https://forum.openwrt.org/viewtopic.php?id=36585|in the OpenWrt forum]].
+
+| {{:meta:icons:tango:dialog-information.png?nolink  }} If you push the limits too high and the router crashes, then power cycle the router. When the bootloader loads, it uses the default stable configuration, but you must stop RedBoot from booting using ctl-C. Then you can update the boot script to remove/change the overclock. |
+
+
+===== Notes =====
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR7161 GigabitEthernet FastEthernet 5Port 2NIC USB 2USB MiniPCI 2WNIC ath9k 3Ant DetachableAntenna 802.11abgn 802.11abgn_simultan 64RAM 8Flash MIPS MIPS32 24Kc fxo devBoard Serial JTAG}}

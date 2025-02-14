@@ -1,0 +1,1094 @@
+====== ZyXEL NBG6515 AC750======
+~~NOTOC~~
+
+/* This template is intended to be used via https://openwrt.org/meta/create_new_device_page . */
+
+{{page>meta:infobox:construction&noheader&nofooter&noeditbtn}}
+
+Supported as WAN/LAN/WLAN router (19.07.4, 21.02.1).
+  * MEDIATEK MT7620A: CPU, WLAN
+  * MEDIATEK MT7530WU: Switch
+  * MEDIATEK MT7610EN: WLAN
+
+/*****/
+/* How to add images ========> https://openwrt.org/meta/adding_images_to_openwrt_wiki */
+/*****/
+
+{{ media:zyxel:nbg6515.png?200|NBG6515}}
+
+
+===== OpenWrt support =====
+
+Supported: WAN/LAN through plain OpenWrt; <color #ed1c24>WLAN 2.4 GHz with EEPROM information dump from original firmware, 5GHz not working, but check out [[user:jiringgot|Jiringgot]]</color> 
+  * To use with OpenWrt, you will need to open the device and access TTL Serial.
+  * Has TFTP bootloader capabilities, can be tested without flashing.
+  * <color #ed1c24>Make copies of your original firmware through a TFTP-booted instance of OpenWrt, in particular of the factory/mtd2 partition.</color>
+  * <color #ed1c24>WLAN currently works only with the EEPROM data from the factory/mtd2 contents from the original firmware, please preserve it.</color>
+  * <color #ed1c24>Currently no way to return to stock firmware; only firmware upgrade images are released from manufacturer.</color>
+  * Possible to flash with existing images (see below) via TFTP
+  * According to personal communication with the Zyxel developer team, there is no way to trigger TFTP flash through a button press/hold or alike (2021/07)
+  * TTL Serial is required (once) to upgrade from stock firmware to OpenWrt, three pins need to be soldered to three pre-made positions (easy).
+  * TTL Serial: J1 next to USB port. Order of pins from USB towards LEDs: [VCC 3.3V][GND][TX][RX]
+  * TTL Serial connection: 57600, 8N1 (e.g., ''picocom -b 57600 /dev/ttyUSB0'' with TTL-USB-adapter)
+
+===== Supporting activities =====
+//Describe if there are any ongoing activities that might lead to OpenWrt support.//
+
+  * MT76x0e driver fails: [[https://forum.openwrt.org/t/bricked-asus-rt-ac51u-and-need-an-eeprom-for-wifi/55787]]
+  * WLAN works with the RaLink driver: rt2x00 in conjunction with data from the <color #ed1c24>mtd2 partition of the original firmware</color>
+  * Fix availabe in the OpenWrt Forum: [[https://forum.archive.openwrt.org/viewtopic.php?id=59349]], to be applied in modified form after preservation of original firmware and installing OpenWrt (detailed instructions below).
+  * The overlayFS only works after flashing the sysupgrade image from inside a running OpenWrt system, e.g. one that has been started via TFTP boot.
+
+===== Experimental firmware =====
+  * [[https://downloads.openwrt.org/releases/19.07.4/targets/ramips/mt7620/openwrt-19.07.4-ramips-mt7620-mt7620a_mt7530-initramfs-kernel.bin]] (tested)
+  * [[https://downloads.openwrt.org/releases/19.07.4/targets/ramips/mt7620/openwrt-19.07.4-ramips-mt7620-mt7620a_mt7530-squashfs-sysupgrade.bin]] (tested)
+
+  * [[https://downloads.openwrt.org/releases/21.02.1/targets/ramips/mt7620/openwrt-21.02.1-ramips-mt7620-ralink_mt7620a-mt7530-evb-initramfs-kernel.bin]] (tftp boot not tested)
+  * [[https://downloads.openwrt.org/releases/21.02.1/targets/ramips/mt7620/openwrt-21.02.1-ramips-mt7620-ralink_mt7620a-mt7530-evb-squashfs-sysupgrade.bin]] (upgrade from 19.07.4 web UI tested)
+===== Stock firmware =====
+  * [[https://www.zyxel.com/support/download_landing/product/nbg6515_13.shtml?c=gb&l=en&pid=20141202160000&tab=Firmware&pname=NBG6515]]
+  * There is currently no way to put this firmware back on the device.
+  * <color #ed1c24>Your device will not return into its original state once OpenWrt has been flashed to it.</color>
+
+
+===== Hardware highlights =====
+^ CPU                        ^ Ram      ^ Flash   ^ Network     ^ WLAN   ^ USB      ^ Serial   ^ JTag   ^
+| MT7620A @ 580 MHz   |  64 MiB  |  8 MiB  |  5x 10/100/1000  |  2.4/5 GHz bgn <color #ed1c24>(supported in OpenWrt with EEPROM data from original firmware)</color>  |  1x 2.0  |   Yes    |   ?    |
+
+===== Installation =====
+Testing and installation of OpenWrt is currently only supported by the TFTP option with the TTL serial connection. It requires opening the case and soldering pins to the TTL serial port J1.
+  - Download [[https://downloads.openwrt.org/releases/19.07.4/targets/ramips/mt7620/openwrt-19.07.4-ramips-mt7620-mt7620a_mt7530-initramfs-kernel.bin]] and place on TFTP server of your computer, change name to something short without ".", e.g., nbg6515-init
+  - Download [[https://downloads.openwrt.org/releases/19.07.4/targets/ramips/mt7620/openwrt-19.07.4-ramips-mt7620-mt7620a_mt7530-squashfs-sysupgrade.bin]] and have it ready on our computer <color #ed1c24>if you would like to flash OpenWrt without wireless support; currently no way to recover to original firmware!</color>
+  - It is advisable to read the instructions until the end. This is not an automated install yet.
+
+==== Backing up original flash content and installing OpenWrt ====
+Since wireless is not working with only the free drivers in OpenWrt but requires a bit of data from the original firmware, <color #ed1c24>it is essential to it to preserve the original firmware</color>. This can be achieved by running OpenWrt from TFTP without flashing and writing out the contents of the flash memory e.g., through LuCi (flashing and backup page).	 
+
+  - Void your warranty and open the router; screws below rubber pads at the bottom.	 
+  - Solder three pins on the J1 connector (GND, RX, TX).	 
+  - Connect to TTL-USB adapter, connect the adapter to PC.	 
+  - picocom -b 57600 /dev/ttyUSB0 (or equivalent to open serial console)	 
+  - Power on the NBG6515 and check original bootlog. This ends with a Zyxel console "ELX" - no idea what one could do here.	 
+  - Power off and hold key "1": TFTP boot from image loaded to RAM	 
+  - Specify IPs: first IP being asked is the IP of the router.	 
+  - Second IP is your host PC (TFTP server).	 
+  - Connect an ethernet cable between any of the yellow LAN ports and your PC.	 
+  - Make sure to enter the exact image name you have waiting on your TFTP server (no does in filenames allowed).	 
+  - After confirming the image name (e.g., nbg6515-init) the image will load to RAM and boot.	 
+  - OpenWrt bootlog should stall; press enter to see the OpenWrt shell	 
+  - Activate DHCP on your computer, the router should provide an IP address in the 192.168.1.x range and self-assign 192.168.1.1	 
+  - Open a web browser at 192.168.1.1 to run LuCi	 
+  - Go to the backup/flash page and make backups of the mtd devices; it might be possible to flash it back and restore the original state.	 
+  - Keep the resulting downloads (in particular mtd2) safe so you can use it later.	 
+  - If you plan to permanently install OpenWrt, do so by flashing the previously downloaded "sysupgrade" image.	 
+  - The bootloader offers an alternative option "2" to directly flash an image to the internal flash memory; follow the instructions from the bootloader.
+==== Enabling wireless through information taken from the mt2 (factory) partition of the original firmware ====
+  - After booting into OpenWrt, open an ssh session and verify that you have a working overlayfs: ''ssh root@192.168.1.1'' then ''mount'' (should reveal a line about overlayfs) and ''df -h'' should reveal /dev/mtdblock6 with approx. 4 MB space.
+  - To make sure that overlayfs is functional, create a new directory by ''mkdir /root/testdir'', then ''reboot'' and verify that the directory you created is still there by ''ls -l /root''.
+  - While checking the boolog on the serial terminal you may have seen an error in the rt2800_ lines. The driver complains about missing EEPROM information.
+  - In LuCi, you will not see any wireless interface.
+  - Use scp to copy the mtd2 file you preserved from the original firmware to the /tmp/ RAMFS, e.g. from a DHCP client computer connected via LAN: e.g., ''scp mtd2.bin root@192.168.1.1:/tmp/''
+  - We will now follow the instructions from here: [[https://forum.archive.openwrt.org/viewtopic.php?id=59349]]
+  - Extract the firmware from the image: ''dd if=/tmp/mtd2.bin /lib/firmware/soc_wmac.eeprom count=1'', check with ''ls /lib/firmware/'' that there is a file called soc_wmac.eeprom with a size of 512 bytes.
+  - ''reboot'' and watch the bootlog, you should now see that the error message about the EEPROM has disappeared.
+  - After logging into LuCi, you can now use the WLAN as usual.
+
+
+/*** if info available: uncomment and fill in
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Specific configuration =====
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+</WRAP>
+***/
+
+
+/*** if info available: uncomment and fill in
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+The ZyXEL NBG6515 has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+</WRAP>
+***/
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS 24KEc                             |
+^ Vendor           | Mediatek                           |
+^ Bootloader       | Ralink UBoot ver: 4.0.1.0 / ELX UBoot ver: 4.0.1.6 (Jan 26 2015 10:16:28)|
+^ System-On-Chip   | MT7620A ver:2 eco:6 - MIPS 24K V4.12   |
+^ CPU/Speed        | MT7620A @ 580 MHz                          |
+^ Flash-Chip       | unkown                           |
+^ Flash size       | 8 MiB                            |
+^ RAM              | 64 MiB                           |
+^ Wireless         | MT7620A 2.4GHz 802.11bgn, MT7610EN 5 GHz        |
+^ Ethernet         | 10/100/1000 Mbit/s w/ vlan support    |
+^ Switch           | MT7530WU         |
+^ USB              | 1x 2.0                           |
+^ Serial           | [[#Serial|Yes]]                  |
+^ JTAG             | [[#JTAG|not yet identified]]          |
+
+
+/*** if info available: uncomment and fill in
+==== Flash Layout ====
+<WRAP BOX>
+FIXME //[[:docs:techref:flash.layout#discovery_how_to_find_out|Find out flash layout]], then add the flash layout table here (copy, paste, modify the [[docs:techref:flash.layout#partitioning_of_squashfs-images|example]]).//
+
+Please check out the article [[docs:techref:flash.layout|Flash layout]]. It contains examples and explanations that describe how to document the flash layout.
+</WRAP>
+***/
+
+
+/*==== Photos ====*/
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+/*
+**Insert photo of front of the casing**
+
+**Insert photo of back of the casing**
+
+**Insert photo of backside label**
+
+**Insert photo of PCB**
+*/
+==== Opening the case ====
+
+Screws below rubber pads at bottom of the case. Little hooks behind centers of side grids; pry open with tiny screwdriver. When removing the board, make sure not to lose the switch (Router / AP / Repeater) from the bottom. 
+
+
+==== Serial ====
+
+^ Serial connection parameters\\ for ZyXEL NBG6515 AC750 | 57600, 8N1 |
+^ Pinout J1\\ from USB to LED front | VCC (closest to USB) \\ GND\\ TX\\ RX |
+
+==== JTAG ====
+JTAG port not identified.
+
+===== Bootlogs =====
+==== TFTP dialog ====
+<WRAP bootlog>U-Boot 1.1.3 (Jan 26 2015 - 10:16:28)
+
+Board: Ralink APSoC DRAM:  64 MB
+Ralink UBoot ver: 4.0.1.0
+ELX UBoot ver: 4.0.1.6 (Jan 26 2015 10:16:28)
+Date:Jan 26 2015  Time:10:16:28
+CPU: 580 MHz, MEM: 64 MB
+
+GPIO pin 0 reset to switch
+#Reset_MT7530
+MT7620N disable wan port phy 4
+
+Please choose the operation: 1, 2, 3, 4, 9
+You choosed 1
+ 0 
+
+1: System Load Linux to SDRAM via TFTP. 
+Please Input new ones /or Ctrl-C to discard
+Input device IP (192.168.99.9) ==:192.168.99.9             
+Input server IP (192.168.99.8) ==:192.168.99.8
+Input Linux Kernel filename (uImage_NBG6515) ==:NBG6515_openWRT
+</WRAP>\\
+
+==== OEM bootlog ====
+<WRAP bootlog>U-Boot 1.1.3 (Jan 26 2015 - 10:16:28)
+
+Board: Ralink APSoC DRAM:  64 MB
+Ralink UBoot ver: 4.0.1.0
+ELX UBoot ver: 4.0.1.6 (Jan 26 2015 10:16:28)
+Date:Jan 26 2015  Time:10:16:28
+CPU: 580 MHz, MEM: 64 MB
+
+ GPIO pin 0 reset to switch
+#Reset_MT7530
+MT7620N disable wan port phy 4
+
+Please choose the operation: 1, 2, 3, 4, 9
+ 0 
+   
+3: System Boot system code via Flash.
+## Booting image at bc050000 ...
+Image Name:   Linux Kernel Image
+Image Type:   MIPS Linux Kernel Image (lzma compressed)
+Data Size:    1832129 Bytes =  1.7 MB
+Load Address: 80000000
+Entry Point:  8033ed80
+Verifying Checksum ... OK
+Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 8033ed80) ...
+## Giving linux memsize in MB, 64
+
+Starting kernel ...
+
+Linux version 3.2.9 (root@ENT-ZH1501-801) (gcc version 4.6.4 (Buildroot 2013.05) ) #3 Wed Jun 10 15:44:48 CST 2015
+PCIE: bypass PCIe DLL.
+disable all power about PCIe
+CPU revision is: 00019650 (MIPS 24Kc)
+Ralink MT7620   ver:2 eco:6 running at 580.00 MHz
+Determined physical RAM map:
+ memory: 04000000 @ 00000000 (usable)
+Initrd not found or empty - disabling initrd
+Zone PFN ranges:
+Normal   0x00000000 -> 0x00004000
+Movable zone start PFN for each node
+early_node_map[1] active PFN ranges
+0: 0x00000000 -> 0x00004000
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+Kernel command line:  console=ttyS1,57600 root=/dev/ram0 rootfstype=squashfs,jffs2
+PID hash table entries: 256 (order: -2, 1024 bytes)
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+Writing ErrCtl register=0003ff16
+Readback ErrCtl register=0003ff16
+Memory: 59464k/65536k available (3362k kernel code, 6072k reserved, 802k data, 1184k init, 0k highmem)
+SLUB: Genslabs=9, HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+NR_IRQS:128
+console [ttyS1] enabled
+Calibrating delay loop... 385.02 BogoMIPS (lpj=770048)
+pid_max: default: 32768 minimum: 301
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+MIPS: machine is Ralink MT7620
+PPLL_CFG1=0xe74000
+MT7620 PPLL lock
+PPLL_DRV =0x80080504
+start PCIe register access
+mt7620_pci_rr(MT7620_PCI_REG_PCICFG_ADDR):1000f0
+i=0,1
+registering PCI controller with io_map_base unset
+bio: create slab <bio-0> at 0
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new interface driver ethub
+usbcore: registered new device driver usb
+pci 0000:00:00.0: BAR 8: assigned [mem 0x20000000-0x201fffff]
+pci 0000:00:00.0: BAR 1: assigned [mem 0x20200000-0x2020ffff]
+pci 0000:00:00.0: BAR 1: set to [mem 0x20200000-0x2020ffff] (PCI address [0x20200000-0x2020ffff])
+pci 0000:01:00.0: BAR 0: assigned [mem 0x20000000-0x200fffff]
+pci 0000:01:00.0: BAR 0: set to [mem 0x20000000-0x200fffff] (PCI address [0x20000000-0x200fffff])
+pci 0000:01:00.1: BAR 0: assigned [mem 0x20100000-0x201fffff]
+pci 0000:01:00.1: BAR 0: set to [mem 0x20100000-0x201fffff] (PCI address [0x20100000-0x201fffff])
+pci 0000:00:00.0: PCI bridge to [bus 01-01]
+pci 0000:00:00.0:   bridge window [mem 0x20000000-0x201fffff]
+Switching to clocksource MIPS
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+UDP hash table entries: 256 (order: 0, 4096 bytes)
+UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+NET: Registered protocol family 1
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+JFFS2 version 2.2 (NAND) (SUMMARY) (ZLIB) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+fuse init (API version 7.17)
+msgmni has been set to 116
+io scheduler noop registered
+io scheduler deadline registered
+io scheduler cfq registered (default)
+Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x10000500 (irq = 13) is a 16550A
+serial8250: ttyS1 at MMIO 0x10000c00 (irq = 20) is a 16550A
+loop: module loaded
+deice id : c2 20 17 c2 20 (2017c220)
+MX25L6405D(c2 2017c220) (8192 Kbytes)
+mtd .name = raspi, .size = 0x00800000 (8M) .erasesize = 0x00001000 (4K) .numeraseregions = 0
+Creating 10 MTD partitions on "raspi":
+0x000000000000-0x000000800000 : "ALL"
+0x000000000000-0x000000030000 : "Bootloader"
+0x000000030000-0x000000040000 : "Config"
+0x000000040000-0x000000048000 : "Factory"
+0x000000048000-0x000000050000 : "iNIC_rf"
+0x000000050000-0x000000724000 : "Kernel"
+0x000000210000-0x000000724000 : "user"
+0x000000724000-0x0000007ba000 : "manufacture"
+0x0000007ba000-0x0000007ca000 : "backup"
+0x0000007ca000-0x000000800000 : "storage"
+rdm_major = 253
+IMQ driver loaded successfully. (numdevs = 2, numqueues = 1)
+Hooking IMQ after NAT on PREROUTING.
+Hooking IMQ before NAT on POSTROUTING.
+SMACCR1 -- : 0x000000aa
+SMACCR0 -- : 0xbbccdd10
+Ralink APSoC Ethernet Driver Initilization. v3.1  512 rx/tx descriptors allocated, mtu = 1500!
+SMACCR1 -- : 0x000000aa
+SMACCR0 -- : 0xbbccdd10
+PROC INIT OK!
+PPP generic driver version 2.4.2
+PPP BSD Compression module registered
+PPP Deflate Compression module registered
+PPP MPPE Compression module registered
+NET: Registered protocol family 24
+ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+mt7620-ehci mt7620-ehci: Ralink MT7620 built-in EHCI controller
+mt7620-ehci mt7620-ehci: new USB bus registered, assigned bus number 1
+mt7620-ehci mt7620-ehci: irq 26, io mem 0x101c0000
+mt7620-ehci mt7620-ehci: USB 2.0 started, EHCI 1.00
+usb usb1: New USB device found, idVendor=1d6b, idProduct=0002
+usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+usb usb1: Product: Ralink MT7620 built-in EHCI controller
+usb usb1: Manufacturer: Linux 3.2.9 ehci_hcd
+usb usb1: SerialNumber: mt7620-ehci
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+usbcore: registered new interface driver usblp
+usbcore: registered new interface driver uas
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+usbcore: registered new interface driver libusual
+Registered button device:reset, gpio:1,code:408,index:10
+Registered button device:wps, gpio:2,code:529,index:11
+Registered button device:wifi_sw, gpio:8,code:262,index:6
+Registered button device:op_mode_1, gpio:45,code:263,index:7
+Registered button device:op_mode_2, gpio:37,code:264,index:8
+Netfilter messages via NETLINK v0.30.
+nf_conntrack version 0.5.0 (2500 buckets, 19800 max, 200 max0, 20000 reserved)
+xt_time: kernel timezone is -0000
+ip_tables: (C) 2000-2006 Netfilter Core Team
+TCP westwood registered
+NET: Registered protocol family 10
+ip6_tables: (C) 2000-2006 Netfilter Core Team
+IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+L2TP core driver, V2.0
+8021q: 802.1Q VLAN Support v1.8
+Freeing unused kernel memory: 1184k freed
+System Init version: 1.1 date: 1
+Setting up file systems ...
+Setting up /mnt/tmpfs directory with tmpfs/16384KB
+Setting up FLASH storage partition ...
+JFFS2 notice: (393) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+Setting up /apps directory ...apps is in FLASH ...
+Setting up loopback device ...
+FINISHED
+Start Normal Operation Mode ...
+************************************************************************
+*                                ---ELX---                             *
+************************************************************************
+
+KernelApp version: 1.0.0 build date: 2015/06/10 build time: 15:36:26
+cmd> ln: /sbin/./start_all: File exists
+nat_session_manager: module license 'unspecified' taints kernel.
+Disabling lock debugging due to kernel taint
+Start nat_session_reservation_init_driver
+Raeth v3.1 (Tasklet)
+
+phy_tx_ring = 0x0333e000, tx_ring = 0xa333e000
+
+phy_rx_ring0 = 0x03360000, rx_ring0 = 0xa3360000
+SMACCR1 -- : 0x000000aa
+SMACCR0 -- : 0xbbccdd10
+ESW: Link Status Changed - Port5 Link UP
+CDMA_CSG_CFG = 81000000
+GDMA1_FWD_CFG = 20710000
+device eth2 entered promiscuous mode
+ADDRCONF(NETDEV_UP): br0: link is not ready
+device eth2.1 entered promiscuous mode
+br0: port 1(eth2.1) entering forwarding state
+br0: port 1(eth2.1) entering forwarding state
+rt635x_tssi0_dc is 0x00000002
+rt635x_tssi1_dc is 0xfffffff9
+rt635x_tssi0_dc is 0x00000002
+rt635x_tssi1_dc is 0xfffffff9
+rt635x_tssi0_dc is 0x00000002
+rt635x_tssi1_dc is 0xfffffff9
+0x1300 = 00064300
+device ra0 entered promiscuous mode
+br0: port 2(ra0) entering forwarding state
+br0: port 2(ra0) entering forwarding state
+rt635x_tssi0_dc is 0x00000002
+rt635x_tssi1_dc is 0xfffffff9
+rt635x_tssi0_dc is 0x00000002
+rt635x_tssi1_dc is 0xfffffff9
+PCI: Enabling device 0000:01:00.0 (0000 -> 0002)
+pAd->chipCap.MCUType=2
+load fw spent 12ms
+0x1300 = 00064300
+device rai0 entered promiscuous mode
+br0: port 3(rai0) entering forwarding state
+br0: port 3(rai0) entering forwarding state
+ln: /etc/wsc_xml/WFAWLANConfigSCPD.xml: File exists
+route: SIOCADDRT: File exists
+
+
+
+
+
+
+
+
+
+
+
+
+sh: can't create /proc/rtk_switch: nonexistent directory
+cp: can't stat '/etc/resolv.conf': No such file or directory
+cat: can't open '/tmp/resolv.conf': No such file or directory
+Ebtables v2.0 registered
+route: SIOCADDRT: File exists
+Ralink HW NAT Module Enabled
+
+
+Start wps_led driver
+br0: port 1(eth2.1) entering forwarding state
+
+sh: can't create /proc/rtk_switch: nonexistent directory
+rt635x_tssi0_dc is 0x00000002
+rt635x_tssi1_dc is 0xfffffff9
+rt635x_tssi0_dc is 0x00000002
+rt635x_tssi1_dc is 0xfffffff9
+
+br0: port 2(ra0) entering forwarding state
+
+br0: port 3(rai0) entering forwarding state
+
+
+
+c
+************************************************************************
+*                                ---ELX---                             *
+************************************************************************
+
+KernelApp version: 1.0.0 build date: 2015/06/10 build time: 15:36:26
+cmd> 
+
+</WRAP>\\
+
+==== OpenWrt bootlog without WLAN firmware patch ====
+<WRAP bootlog>root@OpenWrt:/# dmesg
+[    0.000000] Linux version 4.14.195 (builder@buildhost) (gcc version 7.5.0 (OpenWrt GCC 7.5.0 r11208-ce6496d796)) #0 Sun Sep 6 16:19:39 2020
+[    0.000000] Board has DDR2
+[    0.000000] Analog PMU set to hw control
+[    0.000000] Digital PMU set to hw control
+[    0.000000] SoC Type: MediaTek MT7620A ver:2 eco:6
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019650 (MIPS 24KEc)
+[    0.000000] MIPS: machine is Ralink MT7620a + MT7530 evaluation board
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 8047e5d0, node_mem_map 81000040
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16384 pages, LIFO batch:3
+[    0.000000] random: get_random_bytes called from 0x80481740 with crng_init=0
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,57600 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00004ff0
+[    0.000000] Readback ErrCtl register=00004ff0
+[    0.000000] Memory: 58812K/65536K available (3918K kernel code, 185K rwdata, 500K rodata, 1212K init, 215K bss, 6724K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 256
+[    0.000000] CPU Clock: 580MHz
+[    0.000000] clocksource: systick: mask: 0xffff max_cycles: 0xffff, max_idle_ns: 583261500 ns
+[    0.000000] systick: enable autosleep mode
+[    0.000000] systick: running - mult: 214748, shift: 32
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 6590553264 ns
+[    0.000012] sched_clock: 32 bits at 290MHz, resolution 3ns, wraps every 7405115902ns
+[    0.015488] Calibrating delay loop... 385.84 BogoMIPS (lpj=1929216)
+[    0.087729] pid_max: default: 32768 minimum: 301
+[    0.097146] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.110175] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.130222] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.149706] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.161874] pinctrl core: initialized pinctrl subsystem
+[    0.173481] NET: Registered protocol family 16
+[    0.439829] PCI host bridge /pcie@10140000 ranges:
+[    0.449232]  MEM 0x0000000020000000..0x000000002fffffff
+[    0.459603]   IO 0x0000000010160000..0x000000001016ffff
+[    0.486505] rt2880_gpio 10000600.gpio: registering 24 gpios
+[    0.497539] rt2880_gpio 10000600.gpio: registering 24 irq handlers
+[    0.510639] PCI host bridge to bus 0000:00
+[    0.518639] pci_bus 0000:00: root bus resource [mem 0x20000000-0x2fffffff]
+[    0.532354] pci_bus 0000:00: root bus resource [io  0xffffffff]
+[    0.544084] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.557584] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.573376] pci 0000:00:00.0: [1814:0801] type 01 class 0x060400
+[    0.573419] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    0.573436] pci 0000:00:00.0: reg 0x14: [mem 0x20200000-0x2020ffff]
+[    0.573522] pci 0000:00:00.0: supports D1
+[    0.573533] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    0.573966] pci 0000:01:00.0: [14c3:7650] type 00 class 0x028000
+[    0.574017] pci 0000:01:00.0: reg 0x10: [mem 0x00000000-0x000fffff]
+[    0.574161] pci 0000:01:00.0: PME# supported from D0 D3hot D3cold
+[    0.574381] pci 0000:01:00.1: [14c3:8650] type 00 class 0x0d1100
+[    0.574426] pci 0000:01:00.1: reg 0x10: [mem 0x00000000-0x000fffff]
+[    0.574563] pci 0000:01:00.1: supports D1
+[    0.574574] pci 0000:01:00.1: PME# supported from D0 D1 D3hot D3cold
+[    0.574789] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    0.574809] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 01
+[    0.574859] pci 0000:00:00.0: BAR 0: no space for [mem size 0x80000000]
+[    0.587921] pci 0000:00:00.0: BAR 0: failed to assign [mem size 0x80000000]
+[    0.601727] pci 0000:00:00.0: BAR 8: assigned [mem 0x20000000-0x201fffff]
+[    0.615227] pci 0000:00:00.0: BAR 1: assigned [mem 0x20200000-0x2020ffff]
+[    0.628735] pci 0000:01:00.0: BAR 0: assigned [mem 0x20000000-0x200fffff]
+[    0.642232] pci 0000:01:00.1: BAR 0: assigned [mem 0x20100000-0x201fffff]
+[    0.655728] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    0.665579] pci 0000:00:00.0:   bridge window [mem 0x20000000-0x201fffff]
+[    0.683107] clocksource: Switched to clocksource systick
+[    0.694778] NET: Registered protocol family 2
+[    0.704334] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.718115] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.730704] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.743475] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.754996] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.767683] NET: Registered protocol family 1
+[    0.776312] PCI: CLS 0 bytes, default 32
+[    0.778978] rt-timer 10000100.timer: maximum frequency is 1220Hz
+[    0.791702] Crashlog allocated RAM at address 0x3f00000
+[    0.803778] workingset: timestamp_bits=30 max_order=14 bucket_order=0
+[    0.822508] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.834011] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.863709] io scheduler noop registered
+[    0.871353] io scheduler deadline registered (default)
+[    0.882534] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.897900] console [ttyS0] disabled
+[    0.904959] 10000c00.uartlite: ttyS0 at MMIO 0x10000c00 (irq = 20, base_baud = 2500000) is a Palmchip BK-3103
+[    0.924629] console [ttyS0] enabled
+[    0.938443] bootconsole [early0] disabled
+[    0.961999] spi spi0.0: force spi mode3
+[    0.970510] m25p80 spi0.0: mx25l6405d (8192 Kbytes)
+[    0.980334] 4 fixed-partitions partitions found on MTD device spi0.0
+[    0.993001] Creating 4 MTD partitions on "spi0.0":
+[    1.002577] 0x000000000000-0x000000030000 : "u-boot"
+[    1.013501] 0x000000030000-0x000000040000 : "u-boot-env"
+[    1.024998] 0x000000040000-0x000000050000 : "factory"
+[    1.035971] 0x000000050000-0x000000800000 : "firmware"
+[    1.049943] 2 uimage-fw partitions found on MTD device firmware
+[    1.061807] Creating 2 MTD partitions on "firmware":
+[    1.071721] 0x000000000000-0x00000017e374 : "kernel"
+[    1.082514] 0x00000017e374-0x0000007b0000 : "rootfs"
+[    1.093338] mtd: device 5 (rootfs) set to be root filesystem
+[    1.106177] 1 squashfs-split partitions found on MTD device rootfs
+[    1.118567] 0x0000003be000-0x0000007b0000 : "rootfs_data"
+[    1.131034] libphy: Fixed MDIO Bus: probed
+[    1.147622] mtk_soc_eth 10100000.ethernet: generated random MAC address 62:39:05:92:af:55
+[    1.164160] libphy: mdio: probed
+[    1.175357] mtk_soc_eth 10100000.ethernet: using fixed link parameters
+[    1.190424] mtk_soc_eth 10100000.ethernet: loaded mt7620 driver
+[    1.214192] mtk_soc_eth 10100000.ethernet: loaded mt7530 driver
+[    1.226652] mtk_soc_eth 10100000.ethernet eth0: mediatek frame engine at 0xb0100000, irq 5
+[    1.243668] rt2880_wdt 10000120.watchdog: Initialized
+[    1.255125] NET: Registered protocol family 10
+[    1.269100] Segment Routing with IPv6
+[    1.276593] NET: Registered protocol family 17
+[    1.285533] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.311375] 8021q: 802.1Q VLAN Support v1.8
+[    1.337232] VFS: Mounted root (squashfs filesystem) readonly on device 31:5.
+[    1.357951] Freeing unused kernel memory: 1212K
+[    1.366998] This architecture does not have kernel memory protection.
+[    2.713064] random: fast init done
+[    3.104243] init: Console is alive
+[    3.111264] init: - watchdog -
+[    4.593177] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    4.686376] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    4.705068] init: - preinit -
+[    6.262960] mtk_soc_eth 10100000.ethernet eth0: port 5 link up (1000Mbps/Full duplex)
+[    6.279302] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[    6.290979] 8021q: adding VLAN 0 to HW filter on device eth0
+[    6.302535] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    8.032533] jffs2: notice: (387) jffs2_build_xattr_subsystem: complete building xattr subsystem, 14 of xdatum (3 unchecked, 11 orphan) and 41 of xref (12 dead, 0 orphan) found.
+[    8.082799] mount_root: switching to jffs2 overlay
+[    8.119030] overlayfs: upper fs does not support tmpfile.
+[    8.996876] urandom-seed: Seeding with /etc/urandom.seed
+[    9.142532] mtk_soc_eth 10100000.ethernet eth0: port 5 link down
+[    9.172376] procd: - early -
+[    9.178330] procd: - watchdog -
+[    9.586306] procd: - watchdog -
+[    9.592941] procd: - ubus -
+[    9.837691] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.930367] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.943679] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.957560] procd: - init -
+[   11.203502] urngd: jent-rng init failed, err: 2
+[   12.588828] kmodloader: loading kernel modules from /etc/modules.d/*
+[   12.853704] usbcore: registered new interface driver usbfs
+[   12.864823] usbcore: registered new interface driver hub
+[   12.875584] usbcore: registered new device driver usb
+[   12.980752] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   13.012167] Loading modules backported from Linux version v4.19.137-0-gc076c79e03c6
+[   13.027498] Backport generated by backports.git v4.19.137-1-0-g60c3a249
+[   13.048653] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   13.291015] nf_conntrack version 0.5.0 (1024 buckets, 4096 max)
+[   13.380849] xt_time: kernel timezone is -0000
+[   13.887839] PPP generic driver version 2.4.2
+[   13.899361] NET: Registered protocol family 24
+[   14.055162] usbcore: registered new interface driver rtl8xxxu
+[   14.455808] mt76x0e 0000:01:00.0: card - bus=0x1, slot = 0x0 irq=4
+[   14.468367] mt76x0e 0000:01:00.0: ASIC revision: 76100002
+[   14.845220] mt76x0e 0000:01:00.0: Firmware Version: 0.1.00
+[   14.981608] mt76x0e 0000:01:00.0: driver does not support default EEPROM
+[   14.995117] mt76x0e: probe of 0000:01:00.0 failed with error -22
+[   15.018530] usbcore: registered new interface driver mt76x0u
+[   15.054757] ieee80211 phy1: rt2x00lib_request_eeprom_file: Info - Loading EEPROM data from 'soc_wmac.eeprom'.
+[   15.074744] rt2800_wmac 10180000.wmac: Direct firmware load for soc_wmac.eeprom failed with error -2
+[   15.092964] rt2800_wmac 10180000.wmac: Falling back to user helper
+[   15.335610] firmware soc_wmac.eeprom: firmware_loading_store: map pages failed
+[   15.350278] ieee80211 phy1: rt2x00lib_request_eeprom_file: Error - Failed to request EEPROM.
+[   15.367199] rt2800_wmac: probe of 10180000.wmac failed with error -11
+[   15.408115] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   27.687271] mtk_soc_eth 10100000.ethernet eth0: port 5 link up (1000Mbps/Full duplex)
+[   27.703399] 8021q: adding VLAN 0 to HW filter on device eth0
+[   27.792529] device eth0 entered promiscuous mode
+[   27.861629] br-lan: port 1(eth0.1) entered blocking state
+[   27.872452] br-lan: port 1(eth0.1) entered disabled state
+[   27.883586] device eth0.1 entered promiscuous mode
+[   28.002061] br-lan: port 1(eth0.1) entered blocking state
+[   28.012889] br-lan: port 1(eth0.1) entered forwarding state
+[   28.024433] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   28.751664] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   64.510188] random: crng init done
+[   64.516976] random: 7 urandom warning(s) missed due to ratelimiting
+</WRAP>\\
+
+==== OpenWrt bootlog with WLAN firmware patch ====
+<WRAP bootlog>
+[    0.000000] Linux version 4.14.195 (builder@buildhost) (gcc version 7.5.0 (OpenWrt GCC 7.5.0 r11208-ce6496d796)) #0 Sun Sep 6 16:19:39 2020
+[    0.000000] Board has DDR2
+[    0.000000] Analog PMU set to hw control
+[    0.000000] Digital PMU set to hw control
+[    0.000000] SoC Type: MediaTek MT7620A ver:2 eco:6
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019650 (MIPS 24KEc)
+[    0.000000] MIPS: machine is Ralink MT7620a + MT7530 evaluation board
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 8047e5d0, node_mem_map 81000040
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16384 pages, LIFO batch:3
+[    0.000000] random: get_random_bytes called from 0x80481740 with crng_init=0
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,57600 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00004ff0
+[    0.000000] Readback ErrCtl register=00004ff0
+[    0.000000] Memory: 58812K/65536K available (3918K kernel code, 185K rwdata, 500K rodata, 1212K init, 215K bss, 6724K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 256
+[    0.000000] CPU Clock: 580MHz
+[    0.000000] clocksource: systick: mask: 0xffff max_cycles: 0xffff, max_idle_ns: 583261500 ns
+[    0.000000] systick: enable autosleep mode
+[    0.000000] systick: running - mult: 214748, shift: 32
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 6590553264 ns
+[    0.000012] sched_clock: 32 bits at 290MHz, resolution 3ns, wraps every 7405115902ns
+[    0.015488] Calibrating delay loop... 385.84 BogoMIPS (lpj=1929216)
+[    0.087718] pid_max: default: 32768 minimum: 301
+[    0.097135] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.110164] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.130211] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.149695] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.161863] pinctrl core: initialized pinctrl subsystem
+[    0.173470] NET: Registered protocol family 16
+[    0.439819] PCI host bridge /pcie@10140000 ranges:
+[    0.449221]  MEM 0x0000000020000000..0x000000002fffffff
+[    0.459592]   IO 0x0000000010160000..0x000000001016ffff
+[    0.486491] rt2880_gpio 10000600.gpio: registering 24 gpios
+[    0.497525] rt2880_gpio 10000600.gpio: registering 24 irq handlers
+[    0.510624] PCI host bridge to bus 0000:00
+[    0.518625] pci_bus 0000:00: root bus resource [mem 0x20000000-0x2fffffff]
+[    0.532340] pci_bus 0000:00: root bus resource [io  0xffffffff]
+[    0.544070] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.557570] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.573362] pci 0000:00:00.0: [1814:0801] type 01 class 0x060400
+[    0.573405] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    0.573422] pci 0000:00:00.0: reg 0x14: [mem 0x20200000-0x2020ffff]
+[    0.573508] pci 0000:00:00.0: supports D1
+[    0.573519] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    0.573952] pci 0000:01:00.0: [14c3:7650] type 00 class 0x028000
+[    0.574004] pci 0000:01:00.0: reg 0x10: [mem 0x00000000-0x000fffff]
+[    0.574149] pci 0000:01:00.0: PME# supported from D0 D3hot D3cold
+[    0.574369] pci 0000:01:00.1: [14c3:8650] type 00 class 0x0d1100
+[    0.574415] pci 0000:01:00.1: reg 0x10: [mem 0x00000000-0x000fffff]
+[    0.574552] pci 0000:01:00.1: supports D1
+[    0.574563] pci 0000:01:00.1: PME# supported from D0 D1 D3hot D3cold
+[    0.574778] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    0.574798] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 01
+[    0.574848] pci 0000:00:00.0: BAR 0: no space for [mem size 0x80000000]
+[    0.587910] pci 0000:00:00.0: BAR 0: failed to assign [mem size 0x80000000]
+[    0.601716] pci 0000:00:00.0: BAR 8: assigned [mem 0x20000000-0x201fffff]
+[    0.615216] pci 0000:00:00.0: BAR 1: assigned [mem 0x20200000-0x2020ffff]
+[    0.628725] pci 0000:01:00.0: BAR 0: assigned [mem 0x20000000-0x200fffff]
+[    0.642222] pci 0000:01:00.1: BAR 0: assigned [mem 0x20100000-0x201fffff]
+[    0.655717] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    0.665568] pci 0000:00:00.0:   bridge window [mem 0x20000000-0x201fffff]
+[    0.683096] clocksource: Switched to clocksource systick
+[    0.694767] NET: Registered protocol family 2
+[    0.704324] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.718104] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.730693] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.743464] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.754984] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.767672] NET: Registered protocol family 1
+[    0.776300] PCI: CLS 0 bytes, default 32
+[    0.778966] rt-timer 10000100.timer: maximum frequency is 1220Hz
+[    0.791690] Crashlog allocated RAM at address 0x3f00000
+[    0.803766] workingset: timestamp_bits=30 max_order=14 bucket_order=0
+[    0.822496] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.833997] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.863692] io scheduler noop registered
+[    0.871335] io scheduler deadline registered (default)
+[    0.882517] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.897883] console [ttyS0] disabled
+[    0.904941] 10000c00.uartlite: ttyS0 at MMIO 0x10000c00 (irq = 20, base_baud = 2500000) is a Palmchip BK-3103
+[    0.924612] console [ttyS0] enabled
+[    0.938426] bootconsole [early0] disabled
+[    0.961981] spi spi0.0: force spi mode3
+[    0.970492] m25p80 spi0.0: mx25l6405d (8192 Kbytes)
+[    0.980316] 4 fixed-partitions partitions found on MTD device spi0.0
+[    0.992985] Creating 4 MTD partitions on "spi0.0":
+[    1.002562] 0x000000000000-0x000000030000 : "u-boot"
+[    1.013484] 0x000000030000-0x000000040000 : "u-boot-env"
+[    1.024979] 0x000000040000-0x000000050000 : "factory"
+[    1.035952] 0x000000050000-0x000000800000 : "firmware"
+[    1.049923] 2 uimage-fw partitions found on MTD device firmware
+[    1.061787] Creating 2 MTD partitions on "firmware":
+[    1.071700] 0x000000000000-0x00000017e374 : "kernel"
+[    1.082493] 0x00000017e374-0x0000007b0000 : "rootfs"
+[    1.093316] mtd: device 5 (rootfs) set to be root filesystem
+[    1.106153] 1 squashfs-split partitions found on MTD device rootfs
+[    1.118542] 0x0000003be000-0x0000007b0000 : "rootfs_data"
+[    1.131009] libphy: Fixed MDIO Bus: probed
+[    1.147591] mtk_soc_eth 10100000.ethernet: generated random MAC address 6e:6f:85:47:33:b6
+[    1.164128] libphy: mdio: probed
+[    1.175328] mtk_soc_eth 10100000.ethernet: using fixed link parameters
+[    1.190394] mtk_soc_eth 10100000.ethernet: loaded mt7620 driver
+[    1.214166] mtk_soc_eth 10100000.ethernet: loaded mt7530 driver
+[    1.226626] mtk_soc_eth 10100000.ethernet eth0: mediatek frame engine at 0xb0100000, irq 5
+[    1.243642] rt2880_wdt 10000120.watchdog: Initialized
+[    1.255099] NET: Registered protocol family 10
+[    1.269075] Segment Routing with IPv6
+[    1.276570] NET: Registered protocol family 17
+[    1.285509] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.311352] 8021q: 802.1Q VLAN Support v1.8
+[    1.337209] VFS: Mounted root (squashfs filesystem) readonly on device 31:5.
+[    1.357927] Freeing unused kernel memory: 1212K
+[    1.366974] This architecture does not have kernel memory protection.
+[    2.713052] random: fast init done
+[    3.103997] init: Console is alive
+[    3.111023] init: - watchdog -
+[    4.592613] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    4.685936] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    4.704623] init: - preinit -
+[    6.262618] mtk_soc_eth 10100000.ethernet eth0: port 5 link up (1000Mbps/Full duplex)
+[    6.278960] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[    6.290636] 8021q: adding VLAN 0 to HW filter on device eth0
+[    6.302192] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    8.031982] jffs2: notice: (387) jffs2_build_xattr_subsystem: complete building xattr subsystem, 18 of xdatum (3 unchecked, 15 orphan) and 45 of xref (16 dead, 0 orphan) found.
+[    8.082240] mount_root: switching to jffs2 overlay
+[    8.120971] overlayfs: upper fs does not support tmpfile.
+[    9.000096] urandom-seed: Seeding with /etc/urandom.seed
+[    9.145810] mtk_soc_eth 10100000.ethernet eth0: port 5 link down
+[    9.175467] procd: - early -
+[    9.181324] procd: - watchdog -
+[    9.588595] procd: - watchdog -
+[    9.595279] procd: - ubus -
+[    9.860215] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.952861] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.966179] random: ubusd: uninitialized urandom read (4 bytes read)
+[    9.980017] procd: - init -
+[   11.155509] urngd: jent-rng init failed, err: 2
+[   12.622450] kmodloader: loading kernel modules from /etc/modules.d/*
+[   12.863777] usbcore: registered new interface driver usbfs
+[   12.874895] usbcore: registered new interface driver hub
+[   12.885651] usbcore: registered new device driver usb
+[   12.984310] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   13.010984] Loading modules backported from Linux version v4.19.137-0-gc076c79e03c6
+[   13.026310] Backport generated by backports.git v4.19.137-1-0-g60c3a249
+[   13.049482] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   13.280791] nf_conntrack version 0.5.0 (1024 buckets, 4096 max)
+[   13.369134] xt_time: kernel timezone is -0000
+[   13.900110] PPP generic driver version 2.4.2
+[   13.911621] NET: Registered protocol family 24
+[   14.093568] usbcore: registered new interface driver rtl8xxxu
+[   14.459654] mt76x0e 0000:01:00.0: card - bus=0x1, slot = 0x0 irq=4
+[   14.472224] mt76x0e 0000:01:00.0: ASIC revision: 76100002
+[   14.873056] mt76x0e 0000:01:00.0: Firmware Version: 0.1.00
+[   15.011523] mt76x0e 0000:01:00.0: driver does not support default EEPROM
+[   15.025030] mt76x0e: probe of 0000:01:00.0 failed with error -22
+[   15.049504] usbcore: registered new interface driver mt76x0u
+[   15.086883] ieee80211 phy1: rt2x00lib_request_eeprom_file: Info - Loading EEPROM data from 'soc_wmac.eeprom'.
+[   15.113007] ieee80211 phy1: rt2x00_set_rt: Info - RT chipset 6352, rev 0500 detected
+[   15.128528] ieee80211 phy1: rt2x00_set_rf: Info - RF chipset 7620 detected
+[   15.142954] ieee80211 phy1: Selected rate control algorithm 'minstrel_ht'
+[   15.243735] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   28.402694] mtk_soc_eth 10100000.ethernet eth0: port 5 link up (1000Mbps/Full duplex)
+[   28.418831] 8021q: adding VLAN 0 to HW filter on device eth0
+[   28.501159] device eth0 entered promiscuous mode
+[   28.548797] br-lan: port 1(eth0.1) entered blocking state
+[   28.559786] br-lan: port 1(eth0.1) entered disabled state
+[   28.570969] device eth0.1 entered promiscuous mode
+[   28.659351] br-lan: port 1(eth0.1) entered blocking state
+[   28.670184] br-lan: port 1(eth0.1) entered forwarding state
+[   28.681537] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   29.391607] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   61.688643] random: crng init done
+[   61.695432] random: 7 urandom warning(s) missed due to ratelimiting
+[   95.616200] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[   95.632795] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[   97.508019] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[   97.527328] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[   97.555281] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= f, phase=3e)
+[   97.574410] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[   97.602338] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= f, phase=3d)
+[   97.620582] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[   97.830653] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=7
+[   97.855904] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=8
+[   97.880471] IPv6: ADDRCONF(NETDEV_UP): wlan1: link is not ready
+[   97.899382] br-lan: port 2(wlan1) entered blocking state
+[   97.910047] br-lan: port 2(wlan1) entered disabled state
+[   97.921036] device wlan1 entered promiscuous mode
+[   97.941693] IPv6: ADDRCONF(NETDEV_CHANGE): wlan1: link becomes ready
+[   97.954623] br-lan: port 2(wlan1) entered blocking state
+[   97.965254] br-lan: port 2(wlan1) entered forwarding state
+[  121.271763] device wlan1 left promiscuous mode
+[  121.280828] br-lan: port 2(wlan1) entered disabled state
+[  129.564774] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  129.581359] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  131.465078] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  131.484482] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  131.512413] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  131.531553] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  131.559474] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 1, phase=3d)
+[  131.577708] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  131.607195] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=6
+[  131.635057] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  131.659510] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  132.890822] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  132.907401] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  134.783354] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  134.802757] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  134.830688] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  134.849820] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  134.877827] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= f, phase=3d)
+[  134.896077] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  134.925321] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=6
+[  134.952984] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  134.977497] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  136.504040] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  136.520623] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  138.394738] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  138.414145] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  138.442076] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 0, phase=3e)
+[  138.461215] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  138.489137] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 1, phase=3d)
+[  138.507371] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  138.539376] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  138.564611] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  138.589084] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  139.773041] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  139.789624] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  141.661841] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  141.681238] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  141.709180] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  141.728309] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  141.756238] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 0, phase=3d)
+[  141.774472] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  141.803854] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  141.831512] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  141.855927] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  143.122736] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  143.139356] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  145.014361] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  145.033764] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  145.061767] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  145.080900] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  145.108890] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 1, phase=3d)
+[  145.127131] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  145.156544] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  145.184212] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  145.208693] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  146.735701] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  146.752282] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  148.628171] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  148.647475] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  148.675419] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 0, phase=3e)
+[  148.694549] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  148.722472] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 0, phase=3d)
+[  148.740708] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  148.769951] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  148.797608] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=10
+[  148.821677] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  150.024141] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  150.040725] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  151.923387] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  151.942772] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  151.970722] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  151.989852] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  152.017783] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 0, phase=3d)
+[  152.036025] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  152.067790] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  152.093017] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  152.117631] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  153.398691] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  153.415284] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  155.304813] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  155.324119] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  155.352062] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 0, phase=3e)
+[  155.371192] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  155.399119] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 0, phase=3d)
+[  155.417355] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  155.446588] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  155.474246] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=10
+[  155.498313] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  156.995059] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  157.011679] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  158.884264] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  158.903699] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  158.931644] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  158.950777] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  158.978707] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= f, phase=3d)
+[  158.996942] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  159.026169] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  159.053823] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  159.078359] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  160.112041] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  160.128622] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  162.074118] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  162.093617] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  162.121554] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  162.140686] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  162.168608] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 0, phase=3d)
+[  162.186845] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  162.216092] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  162.243757] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  162.268223] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  163.684614] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  163.701193] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  165.569187] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  165.588496] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  165.616442] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  165.635584] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  165.663507] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= f, phase=3d)
+[  165.681743] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  165.711087] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  165.738739] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  165.763228] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  167.222927] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  167.239511] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  169.114664] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  169.133970] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  169.161915] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  169.181043] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  169.208971] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 1, phase=3d)
+[  169.227206] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  169.258934] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=6
+[  169.284164] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=10
+[  169.308293] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  170.546166] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  170.562755] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  172.439144] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  172.458461] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  172.486405] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 0, phase=3e)
+[  172.505534] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  172.533458] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 0, phase=3d)
+[  172.551694] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  172.580935] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=6
+[  172.608593] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=10
+[  172.632653] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  173.873940] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  173.890522] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  175.769780] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  175.789101] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  175.817040] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= 1, phase=3e)
+[  175.836168] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  175.864090] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 0, phase=3d)
+[  175.882325] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  175.912156] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=5
+[  175.939993] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=10
+[  175.964787] IPv6: ADDRCONF(NETDEV_UP): tmp.radio0: link is not ready
+[  183.804523] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration start
+[  183.821102] ieee80211 phy1: rt2800_rf_self_txdc_cal: Info - RF Tx self calibration end
+[  185.692308] ieee80211 phy1: rt2800_loft_iq_calibration: Info - LOFT Calibration Done!
+[  185.711614] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  185.739555] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 0, (gain= f, phase=3e)
+[  185.758684] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Start!
+[  185.786606] ieee80211 phy1: rt2800_iq_search: Info - IQCalibration Done! CH = 1, (gain= 1, phase=3d)
+[  185.804841] ieee80211 phy1: rt2800_loft_iq_calibration: Info - TX IQ Calibration Done!
+[  186.019679] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=6
+[  186.047339] ieee80211 phy1: rt2800_rxiq_calibration: Info - RXIQ G_imb=0, Ph_rx=9
+[  186.071960] IPv6: ADDRCONF(NETDEV_UP): wlan1: link is not ready
+[  186.090084] br-lan: port 2(wlan1) entered blocking state
+[  186.100766] br-lan: port 2(wlan1) entered disabled state
+[  186.111731] device wlan1 entered promiscuous mode
+[  186.132574] IPv6: ADDRCONF(NETDEV_CHANGE): wlan1: link becomes ready
+[  186.145498] br-lan: port 2(wlan1) entered blocking state
+[  186.156141] br-lan: port 2(wlan1) entered forwarding state
+</WRAP>\\
+===== Notes =====
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>MT7620A 8Flash 64RAM 5port GigabitEthernet 1USB USB2.0 WIP}}

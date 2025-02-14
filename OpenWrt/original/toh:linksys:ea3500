@@ -1,0 +1,1074 @@
+====== Linksys EA3500 ======
+{{:media:linksys:ea3500.png?350|}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^Linksys$", "model": "^EA3500$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^Linksys$", "model": "^EA3500$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^EA3500$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+==== Introduction ====
+
+The EA3500 is very similar to the [[toh:linksys:ea4500| Linksys EA4500]] in design, but it has less horsepower under the hood. 
+
+==== Dual firmware ==== 
+
+Like several other Linksys devices, the EA3500 has a dual firmware layout: working and backup partitions. Unless you manually choose which partition by doing a manual uboot/tftp install, firmware flashes occur on the backup partition and the EA3500 shall reboot from the backup partition following from a firmware flash. The backup partition becomes the new working partition when the reboot was successful. The former working partition becomes the new backup partition. There is a useful Luci app that show which partition is currently booted: luci-app-advanced-reboot, see the [[https://github.com/openwrt/luci/blob/master/applications/luci-app-advanced-reboot/README.md | readme]] for more information.
+
+<del>As of LEDE 17.01 no special build is needed. However the LEDE 17.01 and later releases cannot directly be uploaded to the stock firmware. This [[https://archive.openwrt.org/snapshots/trunk/kirkwood/generic/openwrt-kirkwood-linksys-audi-squashfs-factory.bin | OpenWRT version 15.05]] needs to be uploaded first, see [[https://bugs.openwrt.org/index.php?do=details&task_id=505| this LEDE forum post]].</del>
+
+Current snapshot (Oct 23 2019) factory image can be flashed from stock firmware's web interface.
+
+Note that the 17.01 does not have the kmod-gpio-button-hotplug package included by default, making it impossible to activate fail safe mode. It is therefore highly recommended to install kmod-gpio-button-hotplug. Later versions have this package included by default.
+
+Below all firmware versions that have worked to some degree on the EA3500 are listed for historical purposes.  
+
+==== Versions ====
+
+<tabbox Trunk Manual build - Deprecated>
+  * Fully supported as of [[https://dev.openwrt.org/changeset/47458|r47458]]
+  * Build yourself or use snapshots
+  * Squashfs supported
+  * Flash from Linksys interface with ''factory.bin''
+  * Upgrade from Openwrt image with ''sysupgrade.tar'' <color #B35812>**//See Below!//**</color>   
+
+Build
+
+This model is identified by the board codename "Audi."
+
+Build with:
+
+  * Target System -> "Marvell Kirkwood"
+  * Target Profile -> "Generic" or "Linksys EA3500 (Audi)"
+  * Target Images -> squashfs
+
+This will produce the images:
+  openwrt-kirkwood-linksys-audi-squashfs-factory.bin
+  openwrt-kirkwood-linksys-audi-squashfs-sysupgrade.tar
+  
+The ''factory.bin'' image can be flashed from the Linksys interface. Upgrading between OpenWrt images is done with the ''sysupgrade.tar'' image. Of course TFTP is always an option :-)
+
+<tabbox Chaos Calmer - Deprecated>
+  * Not fully supported
+  * Build required
+  * Must use USB-TTL serial cable or pre-configured image (see [[http://www.wolfteck.com/projects/candyhouse/openwrt/|Candyhouse Project]]) loaded from USB at boot
+  * Uses ramdisk/uImage
+  * Requires flashing kernel and rootfs separately
+  * Issues with extroot and overlay
+
+<tabbox Candy House - Deprecated>
+ *.ssa is basically a package of all ubifs, ramdisk, etc... It is what the factory Linksys interface uses. Based on UBIFS
+  * From Wolfteck Candyhouse Project, the first to release a working image for the EA3500/EA4500
+  * As stated on [[http://www.wolfteck.com/projects/candyhouse/openwrt/|his website]], the candyhouse .ssa images are no longer maintanied and not reccommended.
+
+<color #B35812>//If upgrading from Chaos Calmer or older uImage format to trunk (squashfs) see **__Upgrading from Chaos Calmer__**//</color>
+
+<tabbox Chaos Calmer using Serial - Deprecated>
+
+Chaos Calmer using Serial
+Chaos Calmer appears to be missing the necessary ramdisk image, so you'll need to build that in order to install using this method.
+
+In menuconfig you select:
+
+  * Target System -> Marvell Kirkwood
+  * Target Profile -> Linksys EA3500
+  * Target Images -> ramdisk, ubifs (you need both for installation)
+
+Now you "make" it and expose following files:
+
+  * openwrt-kirkwood-ea3500-uImage-initramfs via tftp
+  * openwrt-kirkwood-ea3500-uImage via http
+  * openwrt-kirkwood-ea3500-rootfs.ubi via http
+
+Connect to EA3500 via serial console and power it on. Break u-boot pressing any key during startup. Run "printenv" and adjust your ip and tftp server ip if needed. Then boot initramfs:
+''
+Audi>> tftpboot ${loadaddr} openwrt-kirkwood-ea3500-uImage-initramfs; setenv bootargs $(console) root=/dev/ram rw; bootm ${loadaddr}
+''
+
+Now in booted OpenWrt, we need to flash OpenWrt into NAND. You need to get the network working first. Then you do:
+<code>
+# cd /tmp
+# wget http://yourserver/openwrt-kirkwood-ea3500-rootfs.ubi
+# wget http://yourserver/openwrt-kirkwood-ea3500-uImage
+# ubiformat /dev/mtd3
+# ubiformat /dev/mtd3 -f openwrt-kirkwood-ea3500-rootfs.ubi
+# mtd erase kernel
+# mtd write openwrt-kirkwood-ea3500-uImage kernel
+</code>
+
+After this you reboot the device, break u-boot again and set u-boot to boot OpenWrt from NAND:
+<code>
+Audi>> setenv owrt_bootargs_root ubi.mtd=3 root=ubi0:rootfs rootfstype=ubifs rw
+Audi>> setenv owrt_boot nand read.e \${loadaddr} 0x200000 0x200000 \; setenv bootargs \$(console) \$(owrt_bootargs_root) \; bootm \${loadaddr}
+Audi>> setenv bootcmd run owrt_boot
+Audi>> setenv auto_recovery no
+Audi>> saveenv
+</code>
+
+Boot and the new image should load from NAND.
+
+<tabbox Chaos Calmer using USB  - Deprecated>
+
+There is another way to flash your device, without using a serial connection.
+
+Prepare:
+  * Get the right image for your device from [[http://www.wolfteck.com/projects/candyhouse/openwrt/|Candyhouse Project]]
+  * Build an initramfs image from OpenWrts buildroot or download one from [[http://cloud.directupload.net/1AhK|Here]]
+  * Download ''openwrt-kirkwood-ea3500-rootfs.ubi'' and ''openwrt-kirkwood-ea3500-uImage'' from [[https://downloads.openwrt.org/chaos_calmer/15.05/kirkwood/generic/|Here]]
+  * Take a fat formatted usb pendrive, mount it.
+  * Put ''uImage'', ''openwrt-kirkwood-ea4500-rootfs.ubi'' and ''openwrt-kirkwood-ea4500-uImage'' on that usb stick. Cleanly unmount it!
+
+The flashing process:
+  * Flash your EA3500 with the candyhouse image.
+  * After reboot candyhouse OpenWrt will be up, login using telnet/ssh
+  * Plug in the prepared pen drive and run the following commands:
+<code>
+fw_setenv bootcmd 'run owrt_usb; run nandboot'
+fw_setenv owrt_usb 'usb start; sleep 5;fatload usb 0:1 ${loadaddr} /uImage; setenv bootargs $(console) $(mtdparts) root=/dev/ram rw; bootm ${loadaddr}'
+mkdir /sda1 && mount /dev/sda1 /sda1           (no mistake it does not boot without it)
+reboot
+</code>
+  * OpenWrt initramfs will now boot from this pen drive. Login using telnet/ssh and run commands:
+<code>
+mkdir /sda1 && mount /dev/sda1 /sda1 && cd /sda1
+ubiformat /dev/mtd3 && ubiformat /dev/mtd3 -f openwrt-kirkwood-ea3500-rootfs.ubi
+</code>
+  * Only if ubiformat and mount didn't produce any errors continue with: (otherwise you'll need to fix issues, you will still be able to boot from the usb drive)
+<code>
+mtd erase kernel
+mtd write openwrt-kirkwood-ea3500-uImage kernel
+# fix the config file so fw_setenv will work by editing /etc/fw_env.config so it contains the followin line without the #
+# /dev/mtd1 0x0 0x4000 0x20000 
+fw_setenv bootcmd 'run owrt_usb; run owrt_boot'
+fw_setenv owrt_usb 'usb start; sleep 5;ext2load usb 0:1 ${loadaddr} /uImage; setenv bootargs $(console) root=/dev/ram rw; bootm ${loadaddr}'
+fw_setenv owrt_boot 'nand read.e ${loadaddr} 0x200000 0x200000; setenv bootargs $(console) ubi.mtd=3 root=ubi0:rootfs rootfstype=ubifs rw; bootm ${loadaddr}'
+fw_setenv auto_recovery no
+reboot
+</code>
+
+Now you are done. With the usb stick connected and uImage on it, the router will boot this image, otherwise it boots from nand.
+
+<tabbox Candyhouse .ssa - Deprecated>
+
+//Deprecated//
+As of 8/2015, the easiest way to install is to visit the [[http://www.wolfteck.com/projects/candyhouse/openwrt/|Candyhouse Project]].  They have a firmware (.ssa) you can install from the original firmware.
+
+<tabbox Upgrading from Chaos Calmer - Deprecated>
+
+//**This step is only required if you used [[toh:linksys:ea3500#chaos_calmer_using_serial | Chaos Calmer Using Serial]] method to flash before the firmware was fully supported!**//
+
+A lot of Chaos Calmer images did not support sysupgrade. Also, if you formatted the flash layout differently, as is required in the above steps, just reflashing via serial will not work either. The fully supported images are expecting a factory-like MTD flash layout from u-boot to boot correctly. You need to change the environmental variables you previously set which formatted a new ubi volume and defined a different rootfs variable. If this applies to you, your ''printenv'' output in u-boot will include these variables:
+
+''
+owrt_bootargs_root=ubi.mtd=3 root=ubi0:rootfs rootfstype=ubifs rw
+owrt_boot=nand read.e ${loadaddr} 0x200000 0x200000; setenv bootargs $(console) $(owrt_bootargs_root); bootm ${loadaddr}
+bootcmd=run owrt_boot
+''
+
+If so, then you can either delete the //owrt_bootargs_root, owrt_boot// from the environmental variables and ensure //nandboot// is selected for //bootcmd// after reflash; or do the following:
+
+1.Load your ''openwrt-kirkwood-linksys-audi-squashfs-factory.bin'' into a tftp server with all necessary network configurations
+
+2.In Uboot do:
+''
+Audi>>tftpboot ${loadaddr} openwrt-r48470-kirkwood-linksys-audi-squashfs-factory.bin
+Audi>>nand erase 0x200000 0x1400000
+Audi>>nand write.e ${loadaddr} 0x200000 ${filesize}
+Audi>>setenv 'owrt_bootargs_root=root=/dev/mtdblock4 ro rootfstype=jffs2'
+Audi>>saveenv
+Audi>>boot
+''
+
+-Make sure boot_part is set to 1 in uboot
+-This should get everything working, now with squashfs support.
+
+<tabbox Upgrading from before r47429 (2015/11/10 builds) - Deprecated>
+
+The patch "kirkwood: rework Linksys EA[34]500 DTS" that was merged in r47429 on 2015/11/10 changed the partition layout.  If you restored a backed-up configuration from a build before r47429 it'll come with an /etc/fw_env.config file containing the old partition information which will prevent you from changing firmware variables or flashing new ROMs.  You can delete the file out of your your backed-up configuration for future flashes/restores (it'll get recreated with correct variables), but to fix your currently broken system change the fw_env.config to match this:
+<code>
+/dev/mtd1 0x0 0x4000 0x4000
+</code>
+
+</tabbox>
+==== TFTP Flash ====
+
+If you don't have the web ui (bricked,old CC version without sysupgrade, etc...); or you simply prefer having more control over the flashing process, then flashing using TFTP is your answer. It is pretty straight forward and, especially now that the EA3500 is supported, easy without requiring a bunch of custom uboot environmental variables.
+
+For more info about TFTP flashing see ->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+[[#serial|Below]] is an image showing the pinouts to solder your cable for the USB/TTL serial connection. The serial port is marked **J7**, and Rx,Tx,and Ground is all that's needed (no +3.3v). If you choose, you can install a permanent serial port jack (like the 3.5mm minijack in the pictures below) to the router for quick access. Simply pushing the wires/header pins in temporarily in the pinouts will work as well; provided you get good continuity.   
+
+To connect to the router with a serial terminal such as screen or GTKterm, use the settings:
+  -BAUD Rate: 115200
+  -Data Bits: 8
+  -Stop Bits: 1
+
+Once connected, plug in the router and break uboot by pressing any key immediately at boot. Have a tftp server running on a machine with the //openwrt_image_factory.bin// in the correct directory for sharing via TFTP. Connect it up to a **lan** port on the router, set all the correct variables in uboot (usually just //setenv ipaddr// and //setenv serverip//) for retrieving the firmware. Flash with the commands below, they are assuming you are using fully supported firmware version: 
+
+To flash the 1st boot partition, make sure //boot_part '1'// and //bootcmd 'run nandboot'// is set and use:
+
+<code>
+Audi>>tftpboot ${loadaddr} openwrt-kirkwood-linksys-audi-squashfs-factory.bin
+Audi>>nand erase 0x200000 0x1400000
+Audi>>nand write.e ${loadaddr} 0x200000 ${filesize}
+</code>
+
+Flash with Bad Blocks Method
+
+There is a (small) possibility that the above method will not work, which happens in cases where the flash contains a bad block in the kernel area.  This causes the bad block(s) to be skipped, the rootfs image will actually be written a block or more after the expected location, and the boot process will panic due to a missing root.  A message like "UBI error: no valid UBI magic found inside mtd4" (or mtd6) will appear shortly before the panic.
+
+In this case, you need to flash the kernel and root partitions separately, so that the root will be in the expected location.  Assuming your bootcmd is set to nandboot (boot_part=1), in the serial console type:
+
+<code>Audi>>tftpboot 0x2000000 openwrt-kirkwood-linksys-audi-squashfs-factory.bin
+Audi>>nand erase 0x200000 0x290000
+Audi>>nand write.e 0x2000000 0x200000 0x290000
+Audi>>nand erase 0x490000 ${filesize}
+Audi>>nand write.e 0x2290000 0x200000 ${filesize}
+</code>
+
+Again, this is not common and will likely not happen unless you have previously performed several flashes.  The router's auto_recovery feature should return you to factory firmware if this happens, so don't let the potential problem keep you from trying out OpenWrt.  Once the initial flash is complete, a normal sysupgrade (with the -sysupgrade tarball, not the -factory bin!) will always work without problems.
+
+==== Flash Layout ====
+
+The stock layout (of the 64MiB flash chip):
+
+^ Offset      ^ Size        ^ Name         ^
+| 0x0         | 0x80000     | uboot        |
+| 0x80000     | 0x4000      | u_env        |
+| 0x84000     | 0x4000      | s_env        |
+| 0x200000    | 0x294000    | kernel       |
+| 0x494000    | 0xf6c000    | rootfs       |
+| 0x1600000   | 0x294000    | alt_kernel   |
+| 0x1894000   | 0xf6c000    | alt_rootfs   |
+| 0x1600000   | 0x2a00000   | syscfg       |
+
+**Note**: The marvell uboot has some tweaks that let it dynamically determine where the kernel / alt_kernel end, and automatically
+adjusts the start point of the rootfs / alt_rootfs accordingly, within a shared allocation of 20MiB.
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| eth0             | LAN ports (1 to 4)   | None                    |
+| eth1             | WAN port             | DHCP                    |
+| wlan0            | WiFi (2.4GHz)        | Disabled                |
+| wlan1            | WiFi (5GHz)          | Disabled                |
+
+
+==== Port Map ====
+
+Switch Ports:
+| 0   | LAN1   |
+| 1   | LAN2   |
+| 2   | LAN3   |
+| 3   | LAN4   |
+| 4   | WAN    |
+| 5   | eth0   |
+| 6   | eth1   |
+
+==== Failsafe mode ====
+In order to be able to enter failsafe mode with any button the package kmod-gpio-button-hotplug must be installed.
+(source [https://forum.openwrt.org/viewtopic.php?id=65853])
+
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The Linksys EA3500 has two buttons. They are Reset and WPS. Here, we merely name the buttons, so we can use them in the above Howto:
+^ BUTTON          ^ Event   ^
+| Reset           | reset   |
+| WPS PIN Setup   | wps     |
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set]]               | [[wp>ARM architecture|ARM]]  |
+^ Vendor                               | [[wp>Marvell Technology Group|Marvell]]  |
+^ [[docs:techref:bootloader]]          | [[docs:techref:bootloader:uboot|U-Boot]] |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | Feroceon 88F6282 |
+^ [[docs:techref:hardware:cpu|CPU]] @Frq        | Feroceon A88FR131 @800MHz |
+^ Flash size                 | 64 MiB |
+^ Flash Chip                 | Hynix NAND 64MiB 3,3V 8-bit |
+^ RAM size                   | 64 MiB   |
+^ RAM Chip                   |   |
+^ Wireless No1               | Marvell 88W8366 v48 for 2Ghz |
+^ Wireless No2               | Marvell 88W8366 v48 for 5Ghz |
+^ [[docs:techref:hardware:switch]]    | Marvell 643xx (Gigabit, VLAN)  |
+^ USB                        | Yes 1 x 2.0 |
+^ [[docs:techref:hardware:port.serial|Serial]]  | [[#Serial|Yes]] |
+^ [[docs:techref:hardware:port.jtag|JTAG]]      | [[#JTAG|Yes]]   |
+
+==== Photos ====
+Model Number
+
+//Front://
+
+**Photo of front of the casing**
+
+//Back://
+
+**Photo of back of the casing**
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+There are 3 screws on the bottom of the case, hidden under glued on rubber parts.  Pry up the rubber with a small screwdriver
+and remove the screws, then just pull the top off.
+
+//Main PCB//
+
+**Photo of PCB**
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+The serial port is located at J7.
+
+{{media:linksys:ea3500_serial_console.jpg?400| Serial port connections}}
+
+^ PIN   ^ ID         ^
+| 1     | Vcc 3.3V   |
+| 2     |            |
+| 3     | RX         |
+| 4     |            |
+| 5     | TX         |
+| 6     | GND        |
+
+Note: Not positive I have the RX/TX terminology right, but the TX pin on the board should be connected
+to the RX pin of the serial console in order to see what the board is transmitting.
+
+====Hardware Mods====
+
+==External Serial Connection== 
+
+Below is an illustration of a standard 3.5mm minijack being used as an external serial port connection. It fits nicely in a space by the power supply input on the back. I just picked up the female connection and a male connector at Radio Shack, however much better deals can be found online.
+
+{{ media:linksys:ea3500_serial-connector.png }}
+
+==External Antennas== 
+
+Each radio has 3 internal antennas with UFL jacks so adding some pigtails with RP-SMA jacks on the outside is straightforward. Here is the best location I found to mount them. Everything fist nicely.
+ 
+{{media:linksys:ea3500_board-mods.png }}
+{{media:linksys:ea3500_external-ant-mod.png }}
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+J8 sure looks like a JTAG port, but it hasn't been tried.
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+A useful method to un-brick this router is to:
+    1. Fully shut off the router by unplugging the unit. 
+    2. Plug the unit in and wait until the rapid flashing of the power light turns off.
+    3. Repeat the top steps three times, and when the power light no longer turns off during boot up, the device should be reset to default firmware/ settings.
+
+Source: [[https://forum.openwrt.org/viewtopic.php?id=66803]]
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>         __  __                      _ _
+        |  \/  | __ _ _ ____   _____| | |
+        | |\/| |/ _` | '__\ \ / / _ \ | |
+        | |  | | (_| | |   \ V /  __/ | |
+        |_|  |_|\__,_|_|    \_/ \___|_|_|
+ _   _     ____              _
+| | | |   | __ )  ___   ___ | |_ 
+| | | |___|  _ \ / _ \ / _ \| __| 
+| |_| |___| |_) | (_) | (_) | |_ 
+ \___/    |____/ \___/ \___/ \__| 
+ ** WNC BOARD: audi R2.2 LE **
+
+U-Boot 1.1.4 (Jan  2 2012 - 19:59:08) Marvell version: 3.5.9
+
+U-Boot code: 00600000 -> 0067FFF0  BSS: -> 006CFB20
+
+Soc: 88F6282 A1CPU running @ 800Mhz L2 running @ 400Mhz
+SysClock = 400Mhz , TClock = 200Mhz 
+
+DRAM (DDR2) CAS Latency = 5 tRP = 6 tRAS = 18 tRCD=6
+DRAM CS[0] base 0x00000000   size  64MB 
+DRAM Total size  64MB  16bit width
+Addresses 8M - 0M are saved for the U-Boot usage.
+Mem malloc Initialization (8M - 7M): Done
+NAND:64 MB
+Flash:  0 kB
+
+CPU : Marvell Feroceon (Rev 1)
+Bad Block Found: 00088000
+u_env Offset: 00080000
+s_env Offset: 00084000
+
+Streaming disabled 
+Write allocate disabled
+
+Module 0 is RGMII
+
+USB 0: host mode
+PEX 0: PCI Express Root Complex Interface
+PEX interface detected Link X1
+PEX 1: PCI Express Root Complex Interface
+PEX interface detected Link X1
+Net:   egiga0 [PRIME], egiga1
+Hit any key to stop autoboot:  0 
+
+NAND read: device 0 offset 0x200000, size 0x300000
+
+
+Reading data from 0x200000 --   0% complete.
+Reading data from 0x207a00 --   1% complete.
+Reading data from 0x20f400 --   2% complete.
+Reading data from 0x217000 --   3% complete.
+Reading data from 0x21ea00 --   4% complete.
+Reading data from 0x226600 --   5% complete.
+Reading data from 0x22e000 --   6% complete.
+Reading data from 0x235c00 --   7% complete.
+Reading data from 0x23d600 --   8% complete.
+Reading data from 0x245000 --   9% complete.
+Reading data from 0x24cc00 --  10% complete.
+Reading data from 0x254600 --  11% complete.
+Reading data from 0x25c200 --  12% complete.
+Reading data from 0x263c00 --  13% complete.
+Reading data from 0x26b800 --  14% complete.
+Reading data from 0x273200 --  15% complete.
+Reading data from 0x27ae00 --  16% complete.
+Reading data from 0x282800 --  17% complete.
+Reading data from 0x28a200 --  18% complete.
+Reading data from 0x291e00 --  19% complete.
+Reading data from 0x299800 --  20% complete.
+Reading data from 0x2a1400 --  21% complete.
+Reading data from 0x2a8e00 --  22% complete.
+Reading data from 0x2b0a00 --  23% complete.
+Reading data from 0x2b8400 --  24% complete.
+Reading data from 0x2bfe00 --  25% complete.
+Reading data from 0x2c7a00 --  26% complete.
+Reading data from 0x2cf400 --  27% complete.
+Reading data from 0x2d7000 --  28% complete.
+Reading data from 0x2dea00 --  29% complete.
+Reading data from 0x2e6600 --  30% complete.
+Reading data from 0x2ee000 --  31% complete.
+Reading data from 0x2f5c00 --  32% complete.
+Reading data from 0x2fd600 --  33% complete.
+Reading data from 0x305000 --  34% complete.
+Reading data from 0x30cc00 --  35% complete.
+Reading data from 0x314600 --  36% complete.
+Reading data from 0x31c200 --  37% complete.
+Reading data from 0x323c00 --  38% complete.
+Reading data from 0x32b800 --  39% complete.
+Reading data from 0x333200 --  40% complete.
+Reading data from 0x33ae00 --  41% complete.
+Reading data from 0x342800 --  42% complete.
+Reading data from 0x34a200 --  43% complete.
+Reading data from 0x351e00 --  44% complete.
+Reading data from 0x359800 --  45% complete.
+Reading data from 0x361400 --  46% complete.
+Reading data from 0x368e00 --  47% complete.
+Reading data from 0x370a00 --  48% complete.
+Reading data from 0x378400 --  49% complete.
+Reading data from 0x37fe00 --  50% complete.
+Reading data from 0x387a00 --  51% complete.
+Reading data from 0x38f400 --  52% complete.
+Reading data from 0x397000 --  53% complete.
+Reading data from 0x39ea00 --  54% complete.
+Reading data from 0x3a6600 --  55% complete.
+Reading data from 0x3ae000 --  56% complete.
+Reading data from 0x3b5c00 --  57% complete.
+Reading data from 0x3bd600 --  58% complete.
+Reading data from 0x3c5000 --  59% complete.
+Reading data from 0x3ccc00 --  60% complete.
+Reading data from 0x3d4600 --  61% complete.
+Reading data from 0x3dc200 --  62% complete.
+Reading data from 0x3e3c00 --  63% complete.
+Reading data from 0x3eb800 --  64% complete.
+Reading data from 0x3f3200 --  65% complete.
+Reading data from 0x3fae00 --  66% complete.
+Reading data from 0x402800 --  67% complete.
+Reading data from 0x40a200 --  68% complete.
+Reading data from 0x411e00 --  69% complete.
+Reading data from 0x419800 --  70% complete.
+Reading data from 0x421400 --  71% complete.
+Reading data from 0x428e00 --  72% complete.
+Reading data from 0x430a00 --  73% complete.
+Reading data from 0x438400 --  74% complete.
+Reading data from 0x43fe00 --  75% complete.
+Reading data from 0x447a00 --  76% complete.
+Reading data from 0x44f400 --  77% complete.
+Reading data from 0x457000 --  78% complete.
+Reading data from 0x45ea00 --  79% complete.
+Reading data from 0x466600 --  80% complete.
+Reading data from 0x46e000 --  81% complete.
+Reading data from 0x475c00 --  82% complete.
+Reading data from 0x47d600 --  83% complete.
+Reading data from 0x485000 --  84% complete.
+Bad block at 0x488000 in erase block from 0x488000 will be skipped
+
+Reading data from 0x490c00 --  85% complete.
+Reading data from 0x498600 --  86% complete.
+Reading data from 0x4a0200 --  87% complete.
+Reading data from 0x4a7c00 --  88% complete.
+Reading data from 0x4af800 --  89% complete.
+Reading data from 0x4b7200 --  90% complete.
+Reading data from 0x4bee00 --  91% complete.
+Reading data from 0x4c6800 --  92% complete.
+Reading data from 0x4ce200 --  93% complete.
+Reading data from 0x4d5e00 --  94% complete.
+Reading data from 0x4dd800 --  95% complete.
+Reading data from 0x4e5400 --  96% complete.
+Reading data from 0x4ece00 --  97% complete.
+Reading data from 0x4f4a00 --  98% complete.
+Reading data from 0x4fc400 --  99% complete.
+Reading data from 0x503e00 -- 100% complete.
+ 3145728 bytes read: OK
+## Booting image at 02000000 ...
+   Image Name:   Linux-2.6.35.8
+   Created:      2011-12-24   1:46:58 UTC
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    2678192 Bytes =  2.6 MB
+   Load Address: 00008000
+   Entry Point:  00008000
+   Verifying Checksum ... OK
+OK
+
+Starting kernel ...
+
+Uncompressing Linux... done, booting the kernel.
+Linux version 2.6.35.8 (root@ubuntu) (gcc version 4.2.0 20070413 (prerelease) (CodeSourcery Sourcery G++ Lite 2007q1-21)) #1 Fri Dec 23 17:46:50 PST 2011
+CPU: Feroceon 88FR131 [56251311] revision 1 (ARMv5TE), cr=00053977
+CPU: VIVT data cache, VIVT instruction cache
+Machine: Feroceon-KW
+Using UBoot passing parameters structure
+Memory policy: ECC disabled, Data cache writeback
+Built 1 zonelists in Zone order, mobility grouping off.  Total pages: 16256
+Kernel command line: console=ttyS0,115200 mtdparts=nand_mtd:512k(uboot)ro,16k@512k(u_env),16k@528k(s_env),20m@2m(kernel),20m@2m(rootfs)fs,20m@22m(alt_kernel),20m@22m(alt_rootfs)fs,22m@42m(syscfg) root=/dev/mtdblock4 ro rootfstype=jffs2 serial_number=12C10603236887 uuid=329F9C5BB92516C2039F54D9358222F5 hw_version=RGWM-C5_0GA device_mac=20:AA:4B:8B:FC:18 factory_date=2012/03/22 wps_pin=75147495
+PID hash table entries: 256 (order: -2, 1024 bytes)
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Memory: 64MB = 64MB total
+Memory: 51744k/51744k available, 13792k reserved, 0K highmem
+Virtual kernel memory layout:
+    vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+    fixmap  : 0xfff00000 - 0xfffe0000   ( 896 kB)
+    DMA     : 0xffc00000 - 0xffe00000   (   2 MB)
+    vmalloc : 0xc4800000 - 0xe8000000   ( 568 MB)
+    lowmem  : 0xc0000000 - 0xc4000000   (  64 MB)
+    modules : 0xbf000000 - 0xc0000000   (  16 MB)
+      .init : 0xc0008000 - 0xc0027000   ( 124 kB)
+      .text : 0xc0027000 - 0xc04d9000   (4808 kB)
+      .data : 0xc04fc000 - 0xc0528e60   ( 180 kB)
+Hierarchical RCU implementation.
+  RCU-based detection of stalled CPUs is disabled.
+  Verbose stalled-CPUs detection is disabled.
+NR_IRQS:128
+Console: colour dummy device 80x30
+Calibrating delay loop... 799.53 BogoMIPS (lpj=3997696)
+pid_max: default: 32768 minimum: 301
+Mount-cache hash table entries: 512
+CPU: Testing write buffer coherency: ok
+NET: Registered protocol family 16
+Feroceon L2: Enabling L2
+Feroceon L2: Cache support initialised.
+
+CPU Interface
+-------------
+SDRAM_CS0 ....base 00000000, size  64MB 
+SDRAM_CS1 ....disable
+SDRAM_CS2 ....disable
+SDRAM_CS3 ....disable
+PEX0_MEM ....base e0000000, size 128MB 
+PEX0_IO ....base f2000000, size   1MB 
+PEX1_MEM ....base e8000000, size 128MB 
+PEX1_IO ....base f2100000, size   1MB 
+INTER_REGS ....base f1000000, size   1MB 
+NFLASH_CS ....base fa000000, size   2MB 
+SPI_CS ....base f4000000, size  16MB 
+BOOT_ROM_CS ....no such
+DEV_BOOTCS ....no such
+CRYPT_ENG ....base f0000000, size   2MB 
+
+  Marvell Development Board (LSP Version KW_LSP_6.0.0)-- audi  Soc: MV88F6282 Rev 1 LE
+
+ Detected Tclk 200000000 and SysClk 400000000 
+MV Buttons Device Load
+Marvell USB EHCI Host controller #0: c2041800
+PEX0 interface detected Link X1
+PEX1 interface detected Link X1
+PCI: bus0: Fast back to back transfers disabled
+PCI: bus1: Fast back to back transfers disabled
+pci 0000:01:01.0: BAR 0: assigned [mem 0xe8000000-0xe800ffff 64bit]
+pci 0000:01:01.0: BAR 0: set to [mem 0xe8000000-0xe800ffff 64bit] (PCI address [0xe8000000-0xe800ffff]
+pci 0000:01:01.0: BAR 2: assigned [mem 0xe8010000-0xe801ffff 64bit]
+pci 0000:01:01.0: BAR 2: set to [mem 0xe8010000-0xe801ffff 64bit] (PCI address [0xe8010000-0xe801ffff]
+pci 0000:00:01.0: BAR 0: assigned [mem 0xe0000000-0xe000ffff 64bit]
+pci 0000:00:01.0: BAR 0: set to [mem 0xe0000000-0xe000ffff 64bit] (PCI address [0xe0000000-0xe000ffff]
+pci 0000:00:01.0: BAR 2: assigned [mem 0xe0010000-0xe001ffff 64bit]
+pci 0000:00:01.0: BAR 2: set to [mem 0xe0010000-0xe001ffff 64bit] (PCI address [0xe0010000-0xe001ffff]
+bio: create slab <bio-0> at 0
+vgaarb: loaded
+cfg80211: Calling CRDA to update world regulatory domain
+Switching to clocksource kw_clocksource
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+UDP hash table entries: 256 (order: 0, 4096 bytes)
+UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+NET: Registered protocol family 1
+RPC: Registered udp transport module.
+RPC: Registered tcp transport module.
+RPC: Registered tcp NFSv4.1 backchannel transport module.
+RTC has been updated!!!
+rtc mv_rtc: rtc core: registered kw-rtc as rtc0
+RTC registered
+cpufreq: Init kirkwood cpufreq driver
+Warning: TS unit is powered off.
+MV Buttons Driver Load
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+NTFS driver 2.1.29 [Flags: R/W].
+JFFS2 version 2.2. (NAND) © 2001-2006 Red Hat, Inc.
+msgmni has been set to 101
+io scheduler noop registered (default)
+HDLC line discipline maxframe=4096
+N_HDLC line discipline registered.
+Serial: 8250/16550 driver, 4 ports, IRQ sharing disabled
+serial8250.0: ttyS0 at MMIO 0xf1012000 (irq = 33) is a 16550A
+console [ttyS0] enabled
+serial8250.0: ttyS1 at MMIO 0xf1012100 (irq = 34) is a 16550A
+Using Hamming 1-bit ECC for NAND device
+NAND device: Manufacturer ID: 0xad, Chip ID: 0x76 (Hynix NAND 64MiB 3,3V 8-bit)
+Scanning device for bad blocks
+Bad eraseblock 34 at 0x000000088000
+Bad eraseblock 290 at 0x000000488000
+Bad eraseblock 546 at 0x000000888000
+Bad eraseblock 802 at 0x000000c88000
+Bad eraseblock 1058 at 0x000001088000
+Bad eraseblock 1314 at 0x000001488000
+Bad eraseblock 1570 at 0x000001888000
+Bad eraseblock 1826 at 0x000001c88000
+8 cmdlinepart partitions found on MTD device nand_mtd
+Using command line partition definition
+Creating 8 MTD partitions on "nand_mtd":
+0x000000000000-0x000000080000 : "uboot"
+0x000000080000-0x000000084000 : "u_env"
+0x000000084000-0x000000088000 : "s_env"
+0x000000200000-0x000001600000 : "kernel"
+0x000000494000-0x000001600000 : "rootfs"
+0x000001600000-0x000002a00000 : "alt_kernel"
+0x000001600000-0x000002a00000 : "alt_rootfs"
+0x000002a00000-0x000004000000 : "syscfg"
+Loading Marvell Ethernet Driver:
+  o Cached descriptors in DRAM
+  o DRAM SW cache-coherency
+  o 2 Giga ports supported
+  o Multi RX Queue support - 4 RX queues
+  o Multi TX Queue support - 2 TX Queues
+  o TCP segmentation offload (TSO) supported
+  o Large Receive offload (LRO) supported
+  o Receive checksum offload supported
+  o Transmit checksum offload supported
+  o Driver ERROR statistics enabled
+  o Driver INFO statistics enabled
+  o Proc tool API enabled
+  o SKB Reuse supported - (Disabled)
+  o SKB Recycle supported - (Disabled)
+  o Rx descripors: q0=128 q1=128 q2=128 q3=128
+  o Tx descripors: q0=532 q1=532
+  o Loading network interface(s):
+     o register under mv88fx_eth platform
+     o eth0, ifindex = 2, GbE port = 0
+     o eth1, ifindex = 3, GbE port = 1
+  o Loading Switch QuarterDeck driver
+    o Setting Switch CPU port (port #5) for 1000 Full with FC
+    o Setting Switch CPU port (port #6) for 1000 Full with FC
+ init switch 6171R 
+
+PPP generic driver version 2.4.2
+PPP MPPE Compression module registered
+NET: Registered protocol family 24
+SLIP: version 0.8.4-NET3.019-NEWTTY (dynamic channels, max=256).
+mice: PS/2 mouse device common for all mice
+i2c /dev entries driver
+sdhci: Secure Digital Host Controller Interface driver
+sdhci: Copyright(c) Pierre Ossman
+NET: Registered protocol family 26
+u32 classifier
+    Actions configured
+Netfilter messages via NETLINK v0.30.
+nf_conntrack version 0.5.0 (808 buckets, 3232 max)
+ctnetlink v0.93: registering with nfnetlink.
+nf_conntrack_rtsp v0.6.21 loading
+IPv4 over IPv4 tunneling driver
+nf_nat_rtsp v0.6.21 loading
+ip_tables: (C) 2000-2006 Netfilter Core Team
+TCP cubic registered
+NET: Registered protocol family 10
+ip6_tables: (C) 2000-2006 Netfilter Core Team
+IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+Bridge firewalling registered
+Ebtables v2.0 registered
+L2TP core driver, V2.0
+PPPoL2TP kernel driver, V2.0
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+lib80211: common routines for IEEE802.11 drivers
+rtc mv_rtc: setting system clock to 2000-01-01 00:00:00 UTC (946684800)
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41ae4: 0x0001 instead
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41ae8: 0x0201 instead
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41af0: 0x0003 instead
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41af4: 0x2700 instead
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41af8: 0x433d instead
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41afc: 0x6f63 instead
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41b00: 0x7473 instead
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41b04: 0x3b73 instead
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41b08: 0x563d instead
+jffs2_scan_eraseblock(): Magic bitmask 0x1985 not found at 0x00f41b0c: 0x7265 instead
+Further such events for this erase block will not be printed
+VFS: Mounted root (jffs2 filesystem) readonly on device 31:4.
+Freeing init memory: 124K
+*******************************************************************
+
+                   |           |
+                 .|||.       .|||.
+             ..:|||||||:...:|||||||:..
+             C i s c o   S y s t e m s
+
+   Copyright (c) 2011 by Cisco Systems, Inc. All Rights Reserved.   
+   Booting audi (firmware version 1.0.30.126544) 
+*******************************************************************
+[utopia][init] System Initialization
+No MTD partition located for /tmp, using tmpfs
+bdutil board utility kernel module, version 1.1
+bdutil board utility kernel module boardId (17)
+bdutil board utility gpio kernel module, version 1.1
+bdutil board utility buttons kernel module, version 1.0
+bdutil board utility LEDs kernel module, version 1.1
+bdutil board utility pwm LED kernel module, version 1.1
+bdutil board utility eeprom kernel module, version 1.0
+orion_wdt module load (249)
+Orion Watchdog Timer: Initial timeout 21 sec
+[utopia][init] Using persistent syscfg data from /var/config/syscfg
+[utopia][init] Starting system logging
+[utopia][init] Starting sysevent subsystem
+[utopia][init] Late loading kernel modules
+[utopia][init] Setting any unset system values to default
+0x9000000 0x1000000
+system_state-normal|/etc/led/solid.sh ; system_state-error|/etc/led/blink_15_sec.sh ; system_state-heartbeat|/etc/led/blink.sh ; fwupd-start|/etc/led/blink.sh ; fwupd-success|/etc/led/solid.sh ; fwupd-failed|/etc/led/blink_15_sec.sh ; wps-running|/etc/led/blink.sh ; wps-success|/etc/led/solid.sh ; wps-failed|/etc/led/blink_15_sec.sh ; wps-stopped|/etc/led/solid.sh ; led_ethernet_on|/etc/led/rear_all_default.sh ; led_ethernet_off|/etc/led/rear_all_off.sh ;\
+0xa000000 0x1000000
+0xb000000 0x1000000
+0xc000000 0x1000000
+0xd000000 0x1000000
+0xe000000 0x1000000
+0xf000000 0x1000000
+0x10000000 0x1000000
+0x11000000 0x1000000
+0x12000000 0x1000000
+0x13000000 0x1000000
+0x14000000 0x1000000
+0x15000000 0x1000000
+0x16000000 0x1000000
+file sharing waiting for lan startup
+[utopia][init] Starting bdutil daemon
+[utopia][init] Starting HBT kernel daemon
+[utopia][init] Starting WDT kernel daemon
+Channel list is available. Do nothing
+Wed Dec 21 06:00:00 UTC 2011
+
+
+(none) login: Loading /lib/modules/2.6.35.8/ap8x.ko with GPL
+Loading /etc/24G_power_table_FCC to wdev0
+Loading /etc/5G_power_table_FCC to wdev1
+Set 2.4G radio to 2TX(2x3 mode)
+Device is Router
+LUA does not exist: copy lighttpd.conf to /etc folder
+Setting regioncode 0x10 to wdev0
+TSLIIHauhEfGE
+Setting regioncode 0x10 to wdev1
+Registering Service myrouter._http._tcp.local port 80
+Fire up the user vap
+Got a reply for myrouter._http._tcp.local.: Name now registered and active
+Configuration file: /tmp/hostapd-wdev0ap0.conf
+Using interface wdev0ap0 with hwaddr 20:aa:4b:8b:fc:1a and ssid 'Cisco36887'
+WPS: Converting display to virtual_display for WPS 2.0 compliance
+WPS: Converting push_button to virtual_push_button for WPS 2.0 compliance
+l2_packet_receive - recvfrom: Network is down
+Failed to modify password entry for user guest
+killall: nmbd: no process killed
+ls: /mnt/: No such file or directory
+ls: /mnt/: No such file or directory
+find: /mnt/: No such file or directory
+find: /mnt/: No such file or directory
+find: /mnt/: No such file or directory
+total smb count 0
+total ftp count 0
+total med count 0
+ls: /mnt/: No such file or directory
+ls: /mnt/: No such file or directory
+find: /mnt/: No such file or directory
+find: /mnt/: No such file or directory
+find: /mnt/: No such file or directory
+total smb count 0
+total ftp count 0
+total med count 0
+file_sharing waiting a while for system resources before starting
+Configuration file: /tmp/hostapd-wdev1ap0.conf
+Using interface wdev1ap0 with hwaddr 20:aa:4b:8b:fc:1c and ssid 'Cisco36887'
+WPS: Converting display to virtual_display for WPS 2.0 compliance
+WPS: Converting push_button to virtual_push_button for WPS 2.0 compliance
+l2_packet_receive - recvfrom: Network is down
+Failed to modify password entry for user guest
+Starting smbd ...</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>## Booting image at 02000000 ...
+   Image Name:   ARM OpenWrt Linux-3.14.18
+   Created:      2014-10-15  21:12:01 UTC
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    3121724 Bytes =  3 MB
+   Load Address: 00008000
+   Entry Point:  00008000
+   Verifying Checksum ... OK
+OK
+
+Starting kernel ...
+
+Uncompressing Linux... done, booting the kernel.
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 3.14.18 (dwalters@ubuntu) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r42926) ) #2 Wed Oct 15 16:11:49 COT 2014
+[    0.000000] CPU: Feroceon 88FR131 [56251311] revision 1 (ARMv5TE), cr=00053977
+[    0.000000] CPU: VIVT data cache, VIVT instruction cache
+[    0.000000] Machine model: Linksys EA3500
+[    0.000000] Memory policy: Data cache writeback
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyS0,115200
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Memory: 55568K/65536K available (3222K kernel code, 150K rwdata, 912K rodata, 4828K init, 181K bss, 9968K reserved)
+[    0.000000] Virtual kernel memory layout:
+[    0.000000]     vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+[    0.000000]     fixmap  : 0xfff00000 - 0xfffe0000   ( 896 kB)
+[    0.000000]     vmalloc : 0xc4800000 - 0xff000000   ( 936 MB)
+[    0.000000]     lowmem  : 0xc0000000 - 0xc4000000   (  64 MB)
+[    0.000000]     modules : 0xbf000000 - 0xc0000000   (  16 MB)
+[    0.000000]       .text : 0xc0008000 - 0xc0411d5c   (4136 kB)
+[    0.000000]       .init : 0xc0412000 - 0xc08c908c   (4829 kB)
+[    0.000000]       .data : 0xc08ca000 - 0xc08ef974   ( 151 kB)
+[    0.000000]        .bss : 0xc08ef974 - 0xc091cdd8   ( 182 kB)
+[    0.000000] NR_IRQS:114
+[    0.000017] sched_clock: 32 bits at 200MHz, resolution 5ns, wraps every 21474836475ns
+[    0.000165] Calibrating delay loop... 795.44 BogoMIPS (lpj=3977216)
+[    0.040094] pid_max: default: 32768 minimum: 301
+[    0.040225] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.040248] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.042801] CPU: Testing write buffer coherency: ok
+[    0.043149] Setting up static identity map for 0x11168 - 0x111a4
+[    0.045074] pinctrl core: initialized pinctrl subsystem
+[    0.046099] regulator-dummy: no parameters
+[    0.046631] NET: Registered protocol family 16
+[    0.046968] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.049671] cpuidle: using governor ladder
+[    0.049715] Kirkwood: MV88F6282-Rev-A1.
+[    0.049894] Feroceon L2: Enabling L2
+[    0.049940] Feroceon L2: Cache support initialised.
+[    0.050495] [Firmware Info]: /ocp@f1000000/ethernet-controller@72000/ethernet0-port@0: local-mac-address is not set
+[    0.050554] [Firmware Info]: /ocp@f1000000/ethernet-controller@76000/ethernet1-port@0: local-mac-address is not set
+[    0.066809] bio: create slab <bio-0> at 0
+[    0.068295] SCSI subsystem initialized
+[    0.069297] usbcore: registered new interface driver usbfs
+[    0.069493] usbcore: registered new interface driver hub
+[    0.069712] usbcore: registered new device driver usb
+[    0.071686] Switched to clocksource orion_clocksource
+[    0.074014] NET: Registered protocol family 2
+[    0.074998] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.075031] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.075057] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.075114] TCP: reno registered
+[    0.075130] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.075155] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.075355] NET: Registered protocol family 1
+[    0.141096] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.141635] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.141649] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.141978] msgmni has been set to 108
+[    0.142837] io scheduler noop registered
+[    0.142851] io scheduler deadline registered (default)
+[    0.144736] kirkwood-pinctrl f1010000.pinctrl: registered pinctrl driver
+[    0.145606] mvebu-pcie pcie-controller.1: PCI host bridge to bus 0000:00
+[    0.145632] pci_bus 0000:00: root bus resource [io  0x1000-0xfffff]
+[    0.145649] pci_bus 0000:00: root bus resource [mem 0xe0000000-0xf0000000]
+[    0.145666] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    0.146383] PCI: bus0: Fast back to back transfers disabled
+[    0.146403] pci 0000:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    0.146422] pci 0000:00:02.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    0.147205] PCI: bus1: Fast back to back transfers disabled
+[    0.148011] PCI: bus2: Fast back to back transfers disabled
+[    0.148145] pci 0000:00:01.0: BAR 8: assigned [mem 0xe0000000-0xe00fffff]
+[    0.148167] pci 0000:00:02.0: BAR 8: assigned [mem 0xe0100000-0xe01fffff]
+[    0.148190] pci 0000:01:00.0: BAR 0: assigned [mem 0xe0000000-0xe000ffff 64bit]
+[    0.148224] pci 0000:01:00.0: BAR 2: assigned [mem 0xe0010000-0xe001ffff 64bit]
+[    0.148253] pci 0000:00:01.0: PCI bridge to [bus 01]
+[    0.148271] pci 0000:00:01.0:   bridge window [mem 0xe0000000-0xe00fffff]
+[    0.148296] pci 0000:02:00.0: BAR 0: assigned [mem 0xe0100000-0xe010ffff 64bit]
+[    0.148328] pci 0000:02:00.0: BAR 2: assigned [mem 0xe0110000-0xe011ffff 64bit]
+[    0.148356] pci 0000:00:02.0: PCI bridge to [bus 02]
+[    0.148374] pci 0000:00:02.0:   bridge window [mem 0xe0100000-0xe01fffff]
+[    0.245546] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    0.247293] f1012000.serial: ttyS0 at MMIO 0xf1012000 (irq = 33, base_baud = 12500000) is a 16550A
+[    0.744495] console [ttyS0] enabled
+[    0.750363] nand: device found, Manufacturer ID: 0xad, Chip ID: 0x76
+[    0.756775] nand: Hynix NAND 64MiB 3,3V 8-bit
+[    0.761152] nand: 64MiB, SLC, page size: 512, OOB size: 16
+[    0.766689] Scanning device for bad blocks
+[    0.774474] Bad eraseblock 34 at 0x000000088000
+[    0.806057] Bad eraseblock 290 at 0x000000488000
+[    0.837726] Bad eraseblock 546 at 0x000000888000
+[    0.869416] Bad eraseblock 802 at 0x000000c88000
+[    0.901083] Bad eraseblock 1058 at 0x000001088000
+[    0.932844] Bad eraseblock 1314 at 0x000001488000
+[    0.964599] Bad eraseblock 1570 at 0x000001888000
+[    0.996348] Bad eraseblock 1826 at 0x000001c88000
+[    1.241020] 4 ofpart partitions found on MTD device orion_nand
+[    1.246896] Creating 4 MTD partitions on "orion_nand":
+[    1.252084] 0x000000000000-0x000000080000 : "u-boot"
+[    1.258408] 0x000000080000-0x0000000a0000 : "u-boot environment"
+[    1.265691] 0x000000200000-0x000000400000 : "kernel"
+[    1.271915] 0x000000400000-0x000001600000 : "root"
+[    1.278940] libphy: orion_mdio_bus: probed
+[    1.283367] mv643xx_eth: MV-643xx 10/100/1000 ethernet driver version 1.4
+[    1.292030] mv643xx_eth_port mv643xx_eth_port.0 eth0: port 0 with MAC address 20:aa:4b:8b:fc:18
+[    1.301722] mv643xx_eth_port mv643xx_eth_port.1 eth1: port 0 with MAC address 20:aa:4b:8b:fc:19
+[    1.310632] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    1.317210] ehci-pci: EHCI PCI platform driver
+[    1.321889] ehci-platform: EHCI generic platform driver
+[    1.327383] ehci-orion: EHCI orion driver
+[    1.331546] orion-ehci f1050000.ehci: EHCI Host Controller
+[    1.337119] orion-ehci f1050000.ehci: new USB bus registered, assigned bus number 1
+[    1.345742] orion-ehci f1050000.ehci: irq 24, io mem 0xf1050000
+[    1.371708] orion-ehci f1050000.ehci: USB 2.0 started, EHCI 1.00
+[    1.378729] hub 1-0:1.0: USB hub found
+[    1.382564] hub 1-0:1.0: 1 port detected
+[    1.387243] usbcore: registered new interface driver usb-storage
+[    1.395424] TCP: cubic registered
+[    1.398759] NET: Registered protocol family 17
+[    1.403572] 8021q: 802.1Q VLAN Support v1.8
+[    1.409077] regulator-dummy: disabling
+[    1.413465] drivers/rtc/hctosys.c: unable to open rtc device (rtc0)
+[    1.434734] Freeing unused kernel memory: 4828K (c0412000 - c08c9000)
+procd: Console is alive
+procd: - preinit -
+[    1.522086] random: mktemp urandom read with 1 bits of entropy available
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+procd: - early -
+procd: - ubus -
+procd: - init -
+Please press Enter to activate this console.
+[    9.217811] NET: Registered protocol family 10
+[    9.235483] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    9.259362] Loading modules backported from Linux version master-2014-09-26-0-g25e3efa
+[    9.267357] Backport generated by backports.git backports-20140905-1-gde42785
+[    9.293369] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    9.321951] nf_conntrack version 0.5.0 (943 buckets, 3772 max)
+[    9.462006] xt_time: kernel timezone is -0000
+[    9.492581] cfg80211: Calling CRDA to update world regulatory domain
+[    9.526897] cfg80211: World regulatory domain updated:
+[    9.532101] cfg80211:  DFS Master region: unset
+[    9.536480] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[    9.546286] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[    9.554347] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[    9.562405] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[    9.570447] cfg80211:   (5170000 KHz - 5250000 KHz @ 160000 KHz), (N/A, 2000 mBm), (N/A)
+[    9.578590] cfg80211:   (5250000 KHz - 5330000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[    9.586734] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[    9.594875] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[    9.602935] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[    9.624466] Marvell TOPDOG(R) 802.11 Wireless Network Driver version 0.13
+[    9.631303] PCI: enabling device 0000:00:01.0 (0140 -> 0143)
+[    9.661842] PCI: enabling device 0000:00:02.0 (0140 -> 0143)
+[    9.707016] PPP generic driver version 2.4.2
+[    9.723047] NET: Registered protocol family 24
+[   10.824405] ieee80211 phy0: Command RF_ANTENNA error 0x2
+[   10.829768] ieee80211 phy0: failed to set # of RX antennas
+[   10.839374] ieee80211 phy0: Command RF_ANTENNA error 0x2
+[   10.844754] ieee80211 phy0: failed to set # of TX antennas
+[   10.850283] ieee80211 phy0: 88w8366 v48, 20aa4b8bfc1a, STA firmware 4.1.0.3
+[   10.876504] ieee80211 phy1: Command RF_ANTENNA error 0x2
+[   10.881892] ieee80211 phy1: failed to set # of RX antennas
+[   10.921760] ieee80211 phy1: Command RF_ANTENNA error 0x2
+[   10.927112] ieee80211 phy1: failed to set # of TX antennas
+[   10.932658] ieee80211 phy1: 88w8366 v48, 20aa4b8bfc1c, STA firmware 4.1.0.3
+procd: - init complete -
+[   15.864030] mv643xx_eth_port mv643xx_eth_port.0 eth0: link up, 1000 Mb/s, full duplex, flow control disabled
+[   15.887907] device eth0 entered promiscuous mode
+[   15.906149] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   15.964582] mv643xx_eth_port mv643xx_eth_port.1 eth1: link up, 1000 Mb/s, full duplex, flow control disabled
+[   16.861782] br-lan: port 1(eth0) entered forwarding state
+[   16.867268] br-lan: port 1(eth0) entered forwarding state
+[   16.891806] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   18.861701] br-lan: port 1(eth0) entered forwarding state
+
+
+
+BusyBox v1.22.1 (2014-10-15 16:01:50 COT) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ CHAOS CALMER (Bleeding Edge, r42926)
+ -----------------------------------------------------
+  * 1 1/2 oz Gin            Shake with a glassful
+  * 1/4 oz Triple Sec       of broken ice and pour
+  * 3/4 oz Lime Juice       unstrained into a goblet.
+  * 1 1/2 oz Orange Juice
+  * 1 tsp. Grenadine Syrup
+ -----------------------------------------------------
+root@OpenWrt:/# </nowiki>
+</WRAP>\\
+
+
+===== Notes =====
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>kirkwood 64Flash 64RAM GigabitEthernet FastEthernet 4NIC 2WNIC 5Port USB ARM dual_firmware}}

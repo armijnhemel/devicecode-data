@@ -1,0 +1,1770 @@
+====== Arcadyan VRV752DHW22 (Vodafone EasyBox 903) ======
+
+The internal Aradyan model number is VRV752DHW22, though it is better known as "Vodafone EasyBox 903".
+
+===== OpenWrt support =====
+
+<color red>**Not supported.**</color>
+
+===== Hardware info =====
+^ Architecture  | MIPS |
+^ Target        | lantiq |
+^ Vendor        | [[toh:arcadyan:|Arcadyan]] |
+^ Bootloader    | [[docs:techref:bootloader:brnboot]]  1.05.04|
+^ System-On-Chip  | Infineon/[[docs:techref:hardware:soc:soc.lantiq|Lantiq]] VINAX |
+^ CPU Speed     | 333 MHz (dual core) |
+^ Flash chip    | [[http://www.macronix.com/QuickPlace/hq/PageLibrary4825740B00298A3B.nsf/h_Index/6F878CF760C559BD482576E00022E6CC/?OpenDocument&EPN=MX29GL128E|MXIC MX29GL128EL]] parallel NOR flash, 128*128KB blocks |
+^ Flash size    | 16 MiB / 128 Mibit |
+^ RAM chip      | [[http://www.etron.com/en/products/specialtydram_detial.php?Product_ID=33|EtronTech EM68B16CWQD-25H]] DDR2 SDRAM (probably running at 250MHz), 32Mi*16bit blocks |
+^ RAM size      | 64 MiB / 512 Mibit |
+^ WAN           | 1x RJ46 |
+^ Modem         | Infineon/Lantiq [[http://www.lantiq.com/uploads/tx_abzlantiqproducts/PB-e-0027-v2_lres.pdf|XWAY VRX208]] \\ Lantiq PSB6970V phy |
+^ Ethernet      | Lantiq PSB 6970 4x Ethernet 100MBit/s |
+^ Wireless      | [[http://www.mediatek.com/_en/01_products/04_pro.php?sn=1047|Ralink/Mediatek RT3062F]], 802.11b/g/n 300MBit/s |
+^ Phone         | [[http://www.lantiq.com/products/voice-customer-premises-equipment/slictm/xwaytm-slic100/xwaytm-slic120/|Lantiq XWAY SLIC120 (PEF 42068 V V1.2)]], 3x FXS (TAE ports which provide POTS via a SIP gateway) |
+^ Serial        | yes (3.3V, reachable through ventilation slots) |
+^ JTAG          | supported by SOC but no pads found on PCB yet |
+^ Buttons       | power switch, WPS button, reset button |
+^ Power         | external PSU, 15V DC, 1.2A, 18W, polarity: -(+) |
+
+===== Photos =====
+
+===== Serial console =====
+The pin headers of the serial console can be reached through the second ventilation below the lower right corner of the sticker on the backside of the device.
+Pin 1 is on the right, marked with a white arrow on the PCB, so the pin numbers are counted from right to left. The voltage is 3.3V. Please do *not* connect the VCC pin of the PCB to the VCC pin of you serial interface as this may destroy both of the devices. The pinout is as follows:
+
+// For my device, I can only get a connection, if I also connect the VCC pin. May this is a "copy- & paste-error"? //
+
+| **Pin number**   |   4   |  3   |  2   |      1       |
+| **Function**     |  GND  |  RX  |  TX  |  VCC (3.3V)  |
+
+Hooking up to the serial with 115200/8N1 enables you to access the [[docs:techref:bootloader:brnboot]] bootloader and save or overwrite the flash contents along with the option to change some settings like MAC address and serial number. You have to enter three spaces immediately after powerup and then enter one exclamation mark (!) to get to the more advanced "Administrator menu".
+
+===== Flash layout =====
+====Default flash layout====
+This is the default flash layout as reported by the bootloader:
+<code>---------------------------------------
+    Area            Address      Length 
+---------------------------------------
+[0] Boot            0xB0000000     256K
+[1] Configuration   0xB0040000     256K
+[2] Certificate     0xB0080000     128K
+[3] Special Area    0xB00A0000     128K
+[4] Primary Setting 0xB00C0000     128K
+[5] Code Image 0    0xB00E0000    7680K
+[6] Code Image 1    0xB0860000    7680K
+[7] Boot Params     0xB0FE0000     128K
+[8] Flash Image     0xB0000000    16384K
+---------------------------------------</code>
+
+Please note that area/partition "[8] Flash Image" is the complete flash, so do **never** try to erase or reflash this area. Also don't mess with areas 0, 1, 2, 3, 4 and 7 as you might brick your device.
+
+===== U-Boot support =====
+<WRAP bootlog>
+<nowiki>From 951f75eb4e53fcbbd5f5de39d69ee4424038c89d Mon Sep 17 00:00:00 2001
+From: Daniel Golle <daniel@makrotopia.org>
+Date: Tue, 30 Dec 2014 06:18:11 +0100
+Subject: [PATCH] uboot-lantiq: add support for Arcadyan VRV752DHW22
+
+U-Boot can load and boot a kernel on the Lantiq VINAX, however, some
+bits for the Ethernet support are apparently still missing...
+
+Signed-off-by: Daniel Golle <daniel@makrotopia.org>
+---
+ package/boot/uboot-lantiq/Makefile                 |  20 ++
+ ...dd-board-support-for-Arcadyan-VRV752DHW22.patch | 267 +++++++++++++++++++++
+ 2 files changed, 287 insertions(+)
+ create mode 100644 package/boot/uboot-lantiq/patches/0042-MIPS-add-board-support-for-Arcadyan-VRV752DHW22.patch
+
+diff --git a/package/boot/uboot-lantiq/Makefile b/package/boot/uboot-lantiq/Makefile
+index d2b868f..e2595ca 100644
+--- a/package/boot/uboot-lantiq/Makefile
++++ b/package/boot/uboot-lantiq/Makefile
+@@ -150,6 +150,25 @@ define uboot/arv752dpw22_brn
+   DEPS:=@TARGET_lantiq_xway_ARV752DPW22
+ endef
+ 
++define uboot/vrv752dhw22_ram
++  TITLE:=U-Boot for Arcadyan vrv752dhw22 (RAM)
++  SOC:=danube
++  DDR_SETTINGS:=board/arcadyan/vrv752dhw22/ddr_settings.h
++  DEPS:=@TARGET_lantiq_xrx200_VRV752DHW22
++endef
++
++define uboot/vrv752dhw22_nor
++  TITLE:=U-Boot for Arcadyan vrv752dhw22 (NOR)
++  SOC:=danube
++  DEPS:=@TARGET_lantiq_xrx200_VRV752DHW22
++endef
++
++define uboot/vrv752dhw22_brn
++  TITLE:=U-Boot for Arcadyan vrv752dhw22 (BRN)
++  SOC:=danube
++  DEPS:=@TARGET_lantiq_xrx200_VRV752DHW22
++endef
++
+ define uboot/gigasx76x_ram
+   TITLE:=U-Boot for Siemens Gigaset sx76x (RAM)
+   SOC:=danube
+@@ -265,6 +284,7 @@ UBOOTS:= \
+ 	arv7518pw_ram arv7518pw_nor arv7518pw_brn \
+ 	arv752dpw_ram arv752dpw_nor arv752dpw_brn \
+ 	arv752dpw22_ram arv752dpw22_nor arv752dpw22_brn \
++	vrv752dhw22_ram vrv752dhw22_nor vrv752dhw22_brn \
+ 	gigasx76x_ram gigasx76x_nor \
+ 	acmp252_ram acmp252_nor \
+ 	easy50712_ram easy50712_nor easy50712_norspl \
+diff --git a/package/boot/uboot-lantiq/patches/0042-MIPS-add-board-support-for-Arcadyan-VRV752DHW22.patch b/package/boot/uboot-lantiq/patches/0042-MIPS-add-board-support-for-Arcadyan-VRV752DHW22.patch
+new file mode 100644
+index 0000000..de8d6bd
+--- /dev/null
++++ b/package/boot/uboot-lantiq/patches/0042-MIPS-add-board-support-for-Arcadyan-VRV752DHW22.patch
+@@ -0,0 +1,267 @@
++From 3bdc59670fe30c3f3297fbb9abc4530151e57288 Mon Sep 17 00:00:00 2001
++From: Daniel Golle <daniel@makrotopia.org>
++Date: Tue, 30 Dec 2014 02:00:56 +0100
++Subject: MIPS: add board support for Arcadyan VRV752DHW22 board
++
++Signed-off-by: Daniel Golle <daniel@makrotopia.org>
++
++diff --git a/board/arcadyan/vrv752dhw22/Makefile b/board/arcadyan/vrv752dhw22/Makefile
++new file mode 100644
++index 0000000..3a547c2
++--- /dev/null
+++++ b/board/arcadyan/vrv752dhw22/Makefile
++@@ -0,0 +1,27 @@
+++#
+++# Copyright (C) 2000-2011 Wolfgang Denk, DENX Software Engineering, wd@denx.de
+++#
+++# SPDX-License-Identifier:	GPL-2.0+
+++#
+++
+++include $(TOPDIR)/config.mk
+++
+++LIB	= $(obj)lib$(BOARD).o
+++
+++COBJS	= $(BOARD).o
+++
+++SRCS	:= $(SOBJS:.o=.S) $(COBJS:.o=.c)
+++OBJS	:= $(addprefix $(obj),$(COBJS))
+++SOBJS	:= $(addprefix $(obj),$(SOBJS))
+++
+++$(LIB):	$(obj).depend $(OBJS) $(SOBJS)
+++	$(call cmd_link_o_target, $(OBJS) $(SOBJS))
+++
+++#########################################################################
+++
+++# defines $(obj).depend target
+++include $(SRCTREE)/rules.mk
+++
+++sinclude $(obj).depend
+++
+++#########################################################################
++diff --git a/board/arcadyan/vrv752dhw22/config.mk b/board/arcadyan/vrv752dhw22/config.mk
++new file mode 100644
++index 0000000..9d8953b
++--- /dev/null
+++++ b/board/arcadyan/vrv752dhw22/config.mk
++@@ -0,0 +1,7 @@
+++#
+++# Copyright (C) 2011-2013 Daniel Schwierzeck, daniel.schwierzeck@gmail.com
+++#
+++# SPDX-License-Identifier:	GPL-2.0+
+++#
+++
+++PLATFORM_CPPFLAGS += -I$(TOPDIR)/board/$(BOARDDIR)
++diff --git a/board/arcadyan/vrv752dhw22/ddr_settings.h b/board/arcadyan/vrv752dhw22/ddr_settings.h
++new file mode 100644
++index 0000000..af77d99
++--- /dev/null
+++++ b/board/arcadyan/vrv752dhw22/ddr_settings.h
++@@ -0,0 +1,53 @@
+++/*
+++ * Copyright (C) 2014 Daniel Golle <daniel@makrotopia.org>
+++ *
+++ * SPDX-License-Identifier:	GPL-2.0+
+++ */
+++
+++#define MC_DC00_VALUE	0x1B1B
+++#define MC_DC01_VALUE	0xC0
+++#define MC_DC02_VALUE	0x0
+++#define MC_DC03_VALUE	0x100
+++#define MC_DC04_VALUE	0xD0F
+++#define MC_DC05_VALUE	0x204
+++#define MC_DC06_VALUE	0x605
+++#define MC_DC07_VALUE	0x303
+++#define MC_DC08_VALUE	0x102
+++#define MC_DC09_VALUE	0x70A
+++#define MC_DC10_VALUE	0x203
+++#define MC_DC11_VALUE	0xC02
+++#define MC_DC12_VALUE	0x1C8
+++#define MC_DC13_VALUE	0x1
+++#define MC_DC14_VALUE	0x0
+++#define MC_DC15_VALUE	0x134
+++#define MC_DC16_VALUE	0xC800
+++#define MC_DC17_VALUE	0xD
+++#define MC_DC18_VALUE	0x301
+++#define MC_DC19_VALUE	0x200
+++#define MC_DC20_VALUE	0xA03
+++#define MC_DC21_VALUE	0x1843
+++#define MC_DC22_VALUE	0x1818
+++#define MC_DC23_VALUE	0x0
+++#define MC_DC24_VALUE	0x5A
+++#define MC_DC25_VALUE	0x0
+++#define MC_DC26_VALUE	0x0
+++#define MC_DC27_VALUE	0x2040
+++#define MC_DC28_VALUE	0x510
+++#define MC_DC29_VALUE	0x4E20
+++#define MC_DC30_VALUE	0x8235
+++#define MC_DC31_VALUE	0x0
+++#define MC_DC32_VALUE	0x0
+++#define MC_DC33_VALUE	0x0
+++#define MC_DC34_VALUE	0x0
+++#define MC_DC35_VALUE	0x0
+++#define MC_DC36_VALUE	0x0
+++#define MC_DC37_VALUE	0x0
+++#define MC_DC38_VALUE	0x0
+++#define MC_DC39_VALUE	0x0
+++#define MC_DC40_VALUE	0x0
+++#define MC_DC41_VALUE	0x0
+++#define MC_DC42_VALUE	0x0
+++#define MC_DC43_VALUE	0x0
+++#define MC_DC44_VALUE	0x0
+++#define MC_DC45_VALUE	0x500
+++#define MC_DC46_VALUE	0x0
++diff --git a/board/arcadyan/vrv752dhw22/vrv752dhw22.c b/board/arcadyan/vrv752dhw22/vrv752dhw22.c
++new file mode 100644
++index 0000000..58e9a46
++--- /dev/null
+++++ b/board/arcadyan/vrv752dhw22/vrv752dhw22.c
++@@ -0,0 +1,60 @@
+++/*
+++ * Copyright (C) 2014 Daniel Golle <daniel@makrotopia.org>
+++ *
+++ * SPDX-License-Identifier:	GPL-2.0+
+++ */
+++
+++#include <common.h>
+++#include <switch.h>
+++#include <asm/gpio.h>
+++#include <asm/lantiq/eth.h>
+++#include <asm/lantiq/reset.h>
+++#include <asm/lantiq/chipid.h>
+++
+++int board_early_init_f(void)
+++{
+++	/* Switch on Power LED */
+++	// gpio_direction_output(2, 0);
+++	// gpio_set_value(2, 0);
+++
+++	return 0;
+++}
+++
+++int checkboard(void)
+++{
+++	puts("Board: " CONFIG_BOARD_NAME "\n");
+++	ltq_chip_print_info();
+++
+++	return 0;
+++}
+++
+++static const struct ltq_eth_port_config eth_port_config[] = {
+++	/* MAC0: Lantiq Tantos switch */
+++	{ 0, 0x0, LTQ_ETH_PORT_SWITCH, PHY_INTERFACE_MODE_RMII },
+++};
+++
+++static const struct ltq_eth_board_config eth_board_config = {
+++	.ports = eth_port_config,
+++	.num_ports = ARRAY_SIZE(eth_port_config),
+++};
+++
+++int board_eth_init(bd_t *bis)
+++{
+++	return ltq_eth_initialize(&eth_board_config);
+++}
+++
+++static struct switch_device psb697x_dev = {
+++	.name = "psb697x",
+++	.cpu_port = 5,
+++	.port_mask = 0xF,
+++};
+++
+++int board_switch_init(void)
+++{
+++	printf("%s\n", __func__);
+++
+++	ltq_reset_once(LTQ_RESET_HARD, 200000);
+++	__udelay(50000);
+++
+++	return switch_device_register(&psb697x_dev);
+++}
++diff --git a/boards.cfg b/boards.cfg
++index 51ed720..155674b 100644
++--- a/boards.cfg
+++++ b/boards.cfg
++@@ -533,6 +533,9 @@ Active  mips        mips32         danube      arcadyan        arv752dpw
++ Active  mips        mips32         danube      arcadyan        arv752dpw22         arv752dpw22_brn                      arv752dpw22:SYS_BOOT_BRN                                                                                                          -
++ Active  mips        mips32         danube      arcadyan        arv752dpw22         arv752dpw22_nor                      arv752dpw22:SYS_BOOT_NOR                                                                                                          -
++ Active  mips        mips32         danube      arcadyan        arv752dpw22         arv752dpw22_ram                      arv752dpw22:SYS_BOOT_RAM                                                                                                          -
+++Active  mips        mips32         danube      arcadyan        vrv752dhw22         vrv752dhw22_brn                      vrv752dhw22:SYS_BOOT_BRN                                                                                                          Daniel Golle <daniel.golle@gmail.com>
+++Active  mips        mips32         danube      arcadyan        vrv752dhw22         vrv752dhw22_nor                      vrv752dhw22:SYS_BOOT_NOR                                                                                                          Daniel Golle <daniel.golle@gmail.com>
+++Active  mips        mips32         danube      arcadyan        vrv752dhw22         vrv752dhw22_ram                      vrv752dhw22:SYS_BOOT_RAM                                                                                                          Daniel Golle <daniel.golle@gmail.com>
++ Active  mips        mips32         danube      audiocodes      acmp252             acmp252_nor                          acmp252:SYS_BOOT_NOR                                                                                                              Daniel Golle <daniel.golle@gmail.com>
++ Active  mips        mips32         danube      audiocodes      acmp252             acmp252_ram                          acmp252:SYS_BOOT_RAM                                                                                                              Daniel Golle <daniel.golle@gmail.com>
++ Active  mips        mips32         danube      gigaset         sx76x               gigasx76x_nor                        sx76x:SYS_BOOT_NOR                                                                                                                Luka Perkov <luka@openwrt.org>
++diff --git a/include/configs/vrv752dhw22.h b/include/configs/vrv752dhw22.h
++new file mode 100644
++index 0000000..0dbd0d5
++--- /dev/null
+++++ b/include/configs/vrv752dhw22.h
++@@ -0,0 +1,66 @@
+++/*
+++ * Copyright (C) 2013 Daniel Schwierzeck, daniel.schwierzeck@gmail.com
+++ *
+++ * SPDX-License-Identifier:	GPL-2.0+
+++ */
+++
+++#ifndef __CONFIG_H
+++#define __CONFIG_H
+++
+++#define CONFIG_MACH_TYPE	"VRV752DHW22"
+++#define CONFIG_IDENT_STRING	" "CONFIG_MACH_TYPE
+++#define CONFIG_BOARD_NAME	"EasyBox 903"
+++
+++#define CONFIG_LTQ_SUPPORT_NOR_FLASH	/* Have a parallel NOR flash */
+++
+++/* Configure SoC */
+++#define CONFIG_LTQ_SUPPORT_UART		/* Enable ASC and UART */
+++
+++#define CONFIG_LTQ_SUPPORT_ETHERNET	/* Enable ethernet */
+++
+++/* Switch devices */
+++#define CONFIG_SWITCH_MULTI
+++#define CONFIG_SWITCH_PSB697X
+++
+++/* Environment */
+++#if defined(CONFIG_SYS_BOOT_NOR)
+++#define CONFIG_ENV_IS_IN_FLASH
+++#define CONFIG_ENV_OVERWRITE
+++#define CONFIG_ENV_OFFSET		(256 * 1024)
+++#define CONFIG_ENV_SECT_SIZE		(128 * 1024)
+++#else
+++#define CONFIG_ENV_IS_NOWHERE
+++#endif
+++
+++#define CONFIG_ENV_SIZE			(8 * 1024)
+++#define CONFIG_LOADADDR			CONFIG_SYS_LOAD_ADDR
+++
+++/* Burnboot loadable image */
+++#if defined(CONFIG_SYS_BOOT_BRN)
+++#define CONFIG_SYS_TEXT_BASE		0x80002000
+++#define CONFIG_SKIP_LOWLEVEL_INIT
+++#define CONFIG_SYS_DISABLE_CACHE
+++#define CONFIG_ENV_OVERWRITE 1
+++#endif
+++
+++/* Console */
+++#define CONFIG_LTQ_ADVANCED_CONSOLE
+++#define CONFIG_BAUDRATE			115200
+++#define CONFIG_CONSOLE_ASC		1
+++#define CONFIG_CONSOLE_DEV		"ttyLTQ1"
+++
+++/* Pull in default board configs for Lantiq XWAY Danube */
+++#include <asm/lantiq/config.h>
+++#include <asm/arch/config.h>
+++
+++/* Pull in default OpenWrt configs for Lantiq SoC */
+++#include "openwrt-lantiq-common.h"
+++
+++#define CONFIG_ENV_UPDATE_UBOOT_SF					\
+++	"update-uboot-sf=run load-uboot-sfspl-lzo write-uboot-sf\0"
+++
+++#define CONFIG_EXTRA_ENV_SETTINGS	\
+++	CONFIG_ENV_LANTIQ_DEFAULTS	\
+++	CONFIG_ENV_UPDATE_UBOOT_SF
+++
+++#endif /* __CONFIG_H */
++-- 
++2.2.1
++
+-- 
+2.2.1</nowiki>
+</WRAP>\\
+
+
+===== Bootlog =====
+==== Vendor firmware bootlog ====
+<WRAP bootlog>
+<nowiki>ROM VER: 1.0.3
+CFG 01
+Readà
+ROM VER: 1.0.3
+CFG 01
+Read EEPROMX
+ X
+
+Flash Checking Treat it as AMD compatible flash.
+Manu-ID = 0x00C2, Chip-ID=0x227E, v1/2/3=0x04X/0x04X/0x04X
+[0] Passed.
+Image[1] at 0xb00e0000, len:2123756, type:0
+Image[2] at 0xb02e6c00, len:967031, type:10
+Image[3] at 0xb03d3000, len:270715, type:11
+Image[4] at 0xb0415400, len:258184, type:12
+Image[5] at 0xb0454800, len:163864, type:60
+Image[6] at 0xb047cc00, len:460096, type:90
+Image[7] at 0xb04ed400, len:181921, type:120
+Firmware image at 0, ART image at -1
+
+Run-up ART Firmware... Fail
+Back to run-up Normal Firmware...
+
+Unzipping firmware [0(5)] at 0x80002000 ... [ZIP 3] [ZIP 1]  done
+Run-time code running ...
+
+In c_entry() function ...
+install_exception 
+Co config = 80008483
+[INIT] Interrupt ...
+
+
+ DANUBE_BCU_CON:0x4009FFFF
+ DANUBE_BCU_ECON:0x00000000
+ DANUBE_BCU_EADD:0x00000000
+ DANUBE_BCU_ECON:0x00000000
+
+ DANUBE_SLAVE_BCU_CON:0x4009FFFF
+ DANUBE_SLAVE_BCU_ECON:0x00000000
+ DANUBE_SLAVE_BCU_EADD:0x00000000
+ DANUBE_SLAVE_BCU_EDAT:0x00000000##### _ftext      = 0x80008000
+##### _fdata      = 0x80827570
+##### __bss_start = 0x808D4CA0
+##### end         = 0x83824A24
+allocate_memory_after_end> len 710448, ptr 0x8382ca30
+##### Backup Data from 0x80827570 to 0x8382CA24~0x838DA154 len 710448
+##### Backup Data completed
+##### Backup Data verified
+Treat it as AMD compatible flash.
+Manu-ID = 0x00C2, Chip-ID=0x227E, v1/2/3=0x04X/0x04X/0x04X
+platform VRV752DHW22
+[GPIO FLOW] SetGpio() Begin ..
+ISDN_PSTN_Relay : PSTN
+gptu: totally 6 16-bit timers/counters
+Init timer = 0
+************************ LED all ON
+************************ LED all OFF
+[GPIO FLOW] SetGpio() End.
+[INIT] System Log Pool startup ...
+[INIT] MTinitialize ..
+[INIT] usrclk
+CPU Clock 333333334 Hz
+mips_counter_frequency:166666667
+r4k_offset: 00028b0a(166666)
+init_US_counter : time1 = 260448 , time2 = 32260480, diff 32000032
+US_counter = 59
+ cnt1 32988451 cnt2 32991200, diff 2749
+Runtime code version: 30.05.707
+System startup...
+[INIT] Memory COLOR 0, 5000000 bytes ..
+[INIT] Memory COLOR 1, 262144 bytes ..
+[INIT] Memory COLOR 2, 9613728 bytes ..
+danube pci startup...
+PCI clock 33.3MHz
+cut-off PCI internal clock
+DANUBE_GPIO_P1_ALTSEL0=65c7
+DANUBE_GPIO_P1_ALTSEL1=0
+DANUBE_GPIO_P1_DIR=c1fe
+[PCI-SCAN] get PCI dev-0e, func-00(0x70), class:0x0280, vid:0x1814, did:0x3592
+[PCI-SCAN] get PCI dev-0f, func-00(0x78), class:0x0c03, vid:0x1106, did:0x3038
+[PCI-SCAN] get PCI dev-0f, func-01(0x79), class:0x0c03, vid:0x1106, did:0x3038
+[PCI-SCAN] get PCI dev-0f, func-02(0x7a), class:0x0c03, vid:0x1106, did:0x3104
+Scanning bus 00
+Found 00:70 [1814/3592] 000280 00
+Found 00:78 [1106/3038] 000c03 00
+Found 00:79 [1106/3038] 000c03 00
+Found 00:7a [1106/3104] 000c03 00
+Fixups for bus 00
+Bus scan for 00 returning with max=00
+[pcibios_init] PCI slot 0e, function 00...
+35921814 04000007 02800000 00008000 18000000 00000000 00000000 00000000 
+00000000 00000000 00000000 35921814 00000000 00000040 00000000 04020100 
+
+[pcibios_init] PCI slot 0f, function 00...
+30381106 02100000 0c030062 00801600 00000000 00000000 00000000 00000000 
+1ae00001 00000000 00000000 30381106 00000000 00000080 00000000 00000100 
+
+[pcibios_init] PCI slot 0f, function 01...
+30381106 02100000 0c030062 00801600 00000000 00000000 00000000 00000000 
+1ae00021 00000000 00000000 30381106 00000000 00000080 00000000 00000200 
+
+[pcibios_init] PCI slot 0f, function 02...
+31041106 02100000 0c032065 00801600 18010000 00000000 00000000 00000000 
+00000000 00000000 00000000 31041106 00000000 00000080 00000000 00000300 
+
+interrupt pin 2 not supported!
+wrong interrupt pin 2
+interrupt pin 3 not supported!
+wrong interrupt pin 3
+Treat it as AMD compatible flash.
+Manu-ID = 0x00C2, Chip-ID=0x227E, v1/2/3=0x04X/0x04X/0x04X
+Set flash memory layout to Boot Parameters found !!!
+Bootcode version: V1.05.04
+Serial number: R1321438089
+Hardware version: 01
+13.12.2011-18:52:26
+[BUILD:PIN] PIN:R1321438089, MAC:74317011AB20, Key:dHXHpc3ec
+[BUILD-WPA]: Key:dHXHpc3ec
+[BUILD-PIN]: PIN:45493829, len=8
+Treat it as AMD compatible flash.
+Manu-ID = 0x00C2, Chip-ID=0x227E, v1/2/3=0x04X/0x04X/0x04X
+Treat it as AMD compatible flash.
+Manu-ID = 0x00C2, Chip-ID=0x227E, v1/2/3=0x04X/0x04X/0x04X
+read_config_from_flash> unknown config
+[CONFIG] read_config_from_flash ret=0
+Treat it as AMD compatible flash.
+Manu-ID = 0x00C2, Chip-ID=0x227E, v1/2/3=0x04X/0x04X/0x04X
+
+
+nLen:98, Magic:0x33343536
+
+my CFGVersionMagic = 33343536, old CFGVersionMagic on flash = 33343536
+my CFGsize = 234112, my CFGDescSize = 38079
+my Version = 30.05.707, Version on flash= 30.05.707
+[CONFIG] old cfg version:[30.05.707], [3.0.5.7.7.100]
+source CFGsize = 234112, CFGDescSize = 38079
+Treat it as AMD compatible flash.
+Manu-ID = 0x00C2, Chip-ID=0x227E, v1/2/3=0x04X/0x04X/0x04X
+OldCfgHexSize:12404
+Unzipping from 81524B90 to 8151B6C0 ... [ZIP 2] allocate_memory_after_end> len 81516, ptr 0x838da170
+done
+Uncompressed size = 38077
+Tail1 : END_III_Config_t
+
+Size of Old CFG_DESC is :38077!!!
+useCfgDesc:1
+MyCfgHexSize:12404
+Unzipping from 81518634 to 8150F164 ... [ZIP 2] done
+Uncompressed size = 38077
+My CFGDescSize:38079
+useCfgDesc:1
+Tail : END_III_Config_t
+
+useCfgDesc:3
+
+Restore Config file from ver:30.05.707!!!
+
+[CONFIG] DS_Tail:[t_ARV752DPW]
+[CONFIG] load_config ret=1
+[updateConfig] flash version:[30.05.707], [3.0.5.7.7.100]
+[updateConfig] code version:[30.05.707], [3.0.5.7.7.100]
+##@@!! voip_generate_LACDN> accountidx=0, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+##@@!! voip_generate_LACDN> accountidx=1, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+##@@!! voip_generate_LACDN> accountidx=2, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+##@@!! voip_generate_LACDN> accountidx=3, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+##@@!! voip_generate_LACDN> accountidx=4, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+##@@!! voip_generate_LACDN> accountidx=5, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+##@@!! voip_generate_LACDN> accountidx=6, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+##@@!! voip_generate_LACDN> accountidx=7, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+##@@!! voip_generate_LACDN> accountidx=8, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+##@@!! voip_generate_LACDN> accountidx=9, outboundProxy = 
+##@@!! userId = 
+##@@!! local_area = 
+##@@!! destination_number = 
+default route: 0.0.0.0
+[CheckUSBBackConf]Erase the garbage config in usbBackConf_s
+BufferInit:
+BUF_HDR_SZ=160 BUF_ALIGN_SZ=4 BUFFER_OFFSET=416
+BUF_BUFSZ0=576 BUF_BUFSZ1=4352
+NUM_OF_B0=0 NUM_OF_B1=2000
+BUF_POOL0_SZ=0 BUF_POOL1_SZ=9024000
+sizeof(BUFFER0)=736,sizeof(BUFFER1)=4512
+*BUF0=0x82769204 *BUF1=0x81ecdfe4
+Altgn *BUF0=0x82769220 *BUF1=0x81ece000
+End at BUF0:0x82769220, BUF1:0x82769200
+
+BUF0[0]=0x82769220 BUF1[0]=0x81ece000
+
+buffer0 pointer init OK!
+buffer1 pointer init OK!
+[qm_lnk_init] CLOCKHZ=1000 ...
+[qm_lnk_init] VC_Bandwidth=10542 kbps
+[qm_lnk_init] update_iptv_total_bw(100000000)
+[qm_lnk_init] add if 3 into QM link 0
+[qm_cbq_enable] no QM attached
+[qm_cbq_detach] no QM is attached at link 0
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=99000/100000, ns_per_byte=765656/1000
+ptime=189500000/1000, cptime=1914139/1000, offtime=3858660/1000
+New cls: id=0, bw=765 ns/byte, maxd=0 ms,
+         maxb=32, minb=2, avgpktsz=250, maxpktsz=1600,
+         offtime=3, parent=0, borrow=0
+         pri=0, maxidle=2, minidle=-2450,
+         maxq=96, clsfg=17
+pkt_avgsz=1600, pkt_maxsz=1600, mtu=1600
+f=989/100000, ns_per_byte=76565656/1000
+ptime=1212800000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=1, bw=76565 ns/byte, maxd=0 ms,
+         maxb=16, minb=1, avgpktsz=1600, maxpktsz=1600,
+         offtime=121292, parent=838226f0, borrow=838226f0
+         pri=5, maxidle=32319, minidle=-245010,
+         maxq=48, clsfg=21
+qm_cbq_attach(): cbqp->cbq_res=104
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=98010/100000, ns_per_byte=773390/1000
+ptime=189500000/1000, cptime=3847610/1000, offtime=15760762/1000
+New cls: id=2, bw=773 ns/byte, maxd=0 ms,
+         maxb=32, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=15, parent=838226f0, borrow=838226f0
+         pri=5, maxidle=2, minidle=-2474,
+         maxq=48, clsfg=21
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=189500000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=3, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1373695, parent=838210f0, borrow=838210f0
+         pri=6, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=20
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=189500000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=4, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1373695, parent=838210f0, borrow=838210f0
+         pri=0, maxidle=0, minidle=-4294966,
+         maxq=96, clsfg=21
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=189500000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=5, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1373695, parent=838210f0, borrow=838210f0
+         pri=1, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=23
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=189500000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=6, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1373695, parent=838210f0, borrow=838210f0
+         pri=2, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=23
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=189500000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=7, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1373695, parent=838210f0, borrow=838210f0
+         pri=3, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=23
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=189500000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=8, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1373695, parent=838210f0, borrow=838210f0
+         pri=4, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=23
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=98010/100000, ns_per_byte=773390/1000
+ptime=189500000/1000, cptime=3847610/1000, offtime=15760762/1000
+New cls: id=9, bw=773 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=15, parent=838210f0, borrow=838210f0
+         pri=6, maxidle=2, minidle=-2474,
+         maxq=48, clsfg=20
+CLOCKHZ=1000
+gConfig.Interface[0].IP_Addr = 127.0.0.1
+gConfig.Interface[0].Subnet_Mask = 255.255.255.255
+***** [iput_IpLinkUp] ifno=0, link_type:12
+TRAP(linkUp) : send ok!
+Interface 0 ip = 127.0.0.1
+
+gConfig.Interface[1].IP_Addr = 192.168.2.1
+gConfig.Interface[1].Subnet_Mask = 255.255.255.0
+mac_0_init: ifno=1
+ifno=1, vlan=1, vid=1, port_mask=0xf
+DANUBE_RCU_RST_STAT Watchdog 0 reset cause flag 0 Watchdog 1 reset cause flag 0
+DMA g_desc_list=0x81509F20
+danube_sw_chip_init: in MII mode
+Probe switch chip....RTL8306 ver.series 0 ver.chipid 0 ver.revision 0
+
+Tantos Identifying Version=0x2, Product ID=0x2599Lantiq Tantos 0G detected
+init switch chip deriver[VLAN] port: 0x001e, ifCount=1
+------->add physical port 1 to vlan 1
+------->add physical port 2 to vlan 1
+------->add physical port 3 to vlan 1
+------->add physical port 4 to vlan 1
+mac_0_init: interface 1 registered to VLAN 1, port_mask=f
+MAC Address: 74:31:70:11:ab:20
+
+Setting All WAN-Eth/LAN PHY100CR SELAB to all-0's
+tantos_getPHY100_SELAB phy 0,regdata 0x8026 
+tantos_getPHY100_SELAB after set phy 0,regdata 0x8020 
+tantos_getPHY100_SELAB phy 1,regdata 0x8026 
+tantos_getPHY100_SELAB after set phy 1,regdata 0x8020 
+tantos_getPHY100_SELAB phy 2,regdata 0x8026 
+tantos_getPHY100_SELAB after set phy 2,regdata 0x8020 
+tantos_getPHY100_SELAB phy 3,regdata 0x8026 
+tantos_getPHY100_SELAB after set phy 3,regdata 0x8020 
+tantos_getPHY100_SELAB phy 4,regdata 0x8026 
+tantos_getPHY100_SELAB after set phy 4,regdata 0x8020 
+***** [iput_IpLinkUp] ifno=1, link_type:12
+TRAP(linkUp) : send ok!
+Interface 1 ip = 192.168.2.1
+
+gConfig.Interface[2].IP_Addr = 0.0.0.0
+gConfig.Interface[2].Subnet_Mask = 0.0.0.0
+[HWLAN] ifno=2 irno=7 port=0x00000000
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+===> rt2860_probe
+PCI: Enabling device 00:0e.0 (0007 -> 0006)
+pcibios_set_master> lat=0x80
+--> RTMPAllocAdapterBlock
+RTMP_ADAPTER_mem : 80b6e8bc, sizeof(RTMP_ADAPTER) 416464
+
+
+=== pAd = FFFFFFFF80B6E8BC, size = 416464 ===
+
+<-- RTMPAllocAdapterBlock, Status=0
+pAd->CSRBaseAddress =0xffffffffb8000000
+AP Driver version-2.2.5.0
+NVM is EEPROM
+Allocate a net device with private data size=0!
+RtmpOSNetDevAttach()--->
+<---RtmpOSNetDevAttach(), ret=0
+<=== rt2860_probe
+***** [iput_IpLinkUp] ifno=2, link_type:12
+TRAP(linkUp) : send ok!
+Interface 2 ip = 192.168.2.1
+
+gConfig.Interface[3].IP_Addr = 0.0.0.0
+gConfig.Interface[3].Subnet_Mask = 0.0.0.0
+ppe: ATM init succeeded (firmware version 1.1.0.2.1.13)
+ATM_UBR
+Init SAR ifno:3 g_atm_vcc[0] CONN:1 VPI/VCI:1/32
+MAC Address: 74:31:70:11:ab:21
+Interface 3 ip = 0.0.0.0
+
+gConfig.Interface[11].IP_Addr = 0.0.0.0
+gConfig.Interface[11].Subnet_Mask = 0.0.0.0
+IFLNK_PPPOE init : (Linkp)ifno = 11 idx = 2
+IFLNK_PPPOE init : (Driverp)ifno = 11 idx = 3
+pppInit> set (PPPShutdownRequest[ifno] = 0)
+[pppoe_init]
+Interface 11 ip = 0.0.0.0
+
+gConfig.Interface[20].IP_Addr = 0.0.0.0
+gConfig.Interface[20].Subnet_Mask = 0.0.0.0
+[HWLAN] ifno=20 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=20, link_type:12
+TRAP(linkUp) : send ok!
+Interface 20 ip = 192.168.2.1
+
+gConfig.Interface[21].IP_Addr = 0.0.0.0
+gConfig.Interface[21].Subnet_Mask = 0.0.0.0
+[HWLAN] ifno=21 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=21, link_type:12
+TRAP(linkUp) : send ok!
+Interface 21 ip = 192.168.2.1
+
+gConfig.Interface[22].IP_Addr = 0.0.0.0
+gConfig.Interface[22].Subnet_Mask = 0.0.0.0
+[HWLAN] ifno=22 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=22, link_type:12
+TRAP(linkUp) : send ok!
+Interface 22 ip = 192.168.2.1
+
+gConfig.Interface[23].IP_Addr = 0.0.0.0
+gConfig.Interface[23].Subnet_Mask = 0.0.0.0
+[HWLAN] ifno=23 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=23, link_type:12
+TRAP(linkUp) : send ok!
+Interface 23 ip = 192.168.2.1
+
+gConfig.Interface[24].IP_Addr = 0.0.0.0
+gConfig.Interface[24].Subnet_Mask = 0.0.0.0
+mac_0_init: ifno=24
+ifno=24, vlan=1, vid=2, port_mask=0x30
+[VLAN] port: 0x0021, ifCount=2
+------->add physical port 0 to vlan 2
+------->add physical port 5 to vlan 2
+mac_0_init: interface 24 registered to VLAN 2, port_mask=30
+MAC Address: 74:31:70:11:ab:20
+
+Tantos WAN Eth uplink port 0 learning disable!!
+Setting All WAN-Eth/LAN PHY100CR SELAB to all-0's
+tantos_getPHY100_SELAB phy 0,regdata 0x8020 
+tantos_getPHY100_SELAB after set phy 0,regdata 0x8020 
+tantos_getPHY100_SELAB phy 1,regdata 0x8020 
+tantos_getPHY100_SELAB after set phy 1,regdata 0x8020 
+tantos_getPHY100_SELAB phy 2,regdata 0x8020 
+tantos_getPHY100_SELAB after set phy 2,regdata 0x8020 
+tantos_getPHY100_SELAB phy 3,regdata 0x8020 
+tantos_getPHY100_SELAB after set phy 3,regdata 0x8020 
+tantos_getPHY100_SELAB phy 4,regdata 0x8020 
+tantos_getPHY100_SELAB after set phy 4,regdata 0x8020 
+***** [iput_IpLinkUp] ifno=24, link_type:12
+TRAP(linkUp) : send ok!
+iput_IpLinkUp(ifno=24)> ifp->add_default_route:0
+Init NAT data structure
+Interface 24 ip = 0.0.0.0
+
+gConfig.Interface[25].IP_Addr = 0.0.0.0
+gConfig.Interface[25].Subnet_Mask = 0.0.0.0
+pppInit> set (PPPShutdownRequest[ifno] = 0)
+if_umts_init() WAN interface 25, UMTS-COM1: baudrate=115200 
+if_umts_init() MAC:74:31:70:11:AB:21
+umtsReceQueueInit() Host controller disable, bypass queue init...
+RUNTASK id=2 umtsReceQueueTsk...
+RUNTASK id=3 umtsReceTsk...
+RUNTASK id=4 umtsWritTsk...
+Interface 25 ip = 0.0.0.0
+
+ruleCheck()> Group: 0,  Error: Useless rule index will be truncated, from idx:1
+ruleCheck()> Group: 1,  Error: Useless rule index will be truncated, from idx:27
+ruleCheck()> Group: 2,  Error: Useless rule index will be truncated, from idx:0
+CBAC rule format check succeed !!
+reqCBACBuf()> init match pool, Have: 1000
+Memory Address: 0xffffffff837be2cc ~ 0xffffffff837c5048
+reqCBACBuf()> init timeGap pool, Have: 10000
+Memory Address: 0xffffffff837c5048 ~ 0xffffffff837f5d9c
+reqCBACBuf()> init sameHost pool, Have: 2000
+Memory Address: 0xffffffff837f5d9c ~ 0xffffffff838057bc
+CBAC rule pool initialized !!
+[init_if] local_if_mask=0xf80007
+[init_if] local_wiredif_mask=0x80002
+[init_if] local_wirelessif_mask=0xf00004
+[init_if] localorVPN_if_mask=0xf80007
+Init NAT data structure
+No default route, no need to reinit the NAT data structure
+RUNTASK id=5 if_task if0...
+RUNTASK id=6 if_task if1...
+RUNTASK id=7 if_task if2...
+RUNTASK id=8 if_task if3...
+RUNTASK id=9 if_task if20...
+RUNTASK id=10 if_task if21...
+RUNTASK id=11 if_task if22...
+RUNTASK id=12 if_task if23...
+RUNTASK id=13 if_task if24...
+RUNTASK id=14 if_task if25...
+RUNTASK id=15 timer_task...
+RUNTASK id=16 conn_mgr...
+RUNTASK id=17 main_8021x...
+Build Day = Dec 13 2011
+RUNTASK id=18 saveRandomSeedTask...
+[VFS_init] Start...
+[VFS_init] vfsState:1
+vfs_codepage_init() TimeZone:23, vfs_cp_idx:23, vfs_cp_ID:5
+fat_codePageInit() TimeZone:23, codePage:CP850, cPID:5, cpSize:256, toUpSize:30
+ntfs_codepage timezone:23, lan= 0
+ntfs_codePageInit() TimeZone:23, codePage:5
+==[vfs_register_filesystem]============================
+list size:7,  Method:0x8082aa58
+  1) Type:0x01, Name:FAT12
+  2) Type:0x04, Name:FAT16
+  3) Type:0x06, Name:FAT16
+  4) Type:0x0b, Name:FAT32
+  5) Type:0x0c, Name:FAT32
+  6) Type:0x0e, Name:FAT16
+  7) Type:0x81, Name:Minix
+=================================================================
+[VFS_init] FAT init OK
+==[vfs_register_filesystem]============================
+list size:1,  Method:0x8082b614
+  1) Type:0x07, Name:NTFS/HPFS
+=================================================================
+[VFS_init] NTFS init OK
+[VFS_init]-[vfs_mount_root] Start...
+[VFS_init]-[vfs_mount_root] Init <root> OK...
+[VFS_init]-[vfs_mount_root] Init <dev> OK...
+[VFS_init]-[vfs_mount_root] Init <mnt> OK...
+[0-START]=========================================
+  Node 000,  DIR, MountFlag:0x00
+[0-END]===========================================
+  [1-START]=========================================
+    Node 001,  DIR, MountFlag:0x00
+  [1-END]===========================================
+  [1-START]=========================================
+    Node 002,  DIR, MountFlag:0x00
+  [1-END]===========================================
+dump_inode() freeCnt:77, usedCnt:3
+[USB-INIT] main() ====== call UsbSysInit() ... 
+[USB] UsbSPoolArray: 80C8DFA4H ~ 80E063A3, UsbSPool:80C8E000
+[USB] UsbMPoolArray: 80E063A4H ~ 80EF47A3, UsbMPool:80E06400
+[USB] UsbLPoolArray: 80EF47A4H ~ 80F4C823, UsbLPool:80EF4800
+[USB] Small  Un-Cached Memory(8025): 80C8E000 ~ 80E062BF
+[USB] Medium Un-Cached Memory(230): 80E06400 ~ 80EF36FF
+[USB] Large  Un-Cached Memory(21): 80EF4800 ~ 80F487FF
+35921814 04000006 02800000 00008000 18000000 00000000 00000000 00000000 
+00000000 00000000 00000000 35921814 00000000 00000040 00000000 04020116 
+00030001 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+
+30381106 02100000 0c030062 00801600 00000000 00000000 00000000 00000000 
+1ae00001 00000000 00000000 30381106 00000000 00000080 00000000 00000116 
+00031040 00000000 00000800 00000000 00000000 00000000 00000000 00000000 
+00000010 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+7e0a0001 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00002000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 03000000 00000000 00000000 
+
+pci_find_slot bus 0 devfn 78
+dev->bus->number 0 dev->devfn 70
+dev->bus->number 0 dev->devfn 78
+setUsbPciInfo() cpu_to_usb_addr_shift[0]:0x60000000, usb_to_cpu_addr_shift[0]:0xa0000000
+usb_pci_probe() Found VIA UHCI-1 device in PCI slot 0x78, function 0, baseAddr:0xbae00000
+30381106 02100000 0c030062 00801600 00000000 00000000 00000000 00000000 
+1ae00021 00000000 00000000 30381106 00000000 00000080 00000000 00000200 
+00031040 00000000 00000800 00000000 00000000 00000000 00000000 00000000 
+00000010 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+7e0a0001 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00002000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 03000000 00000000 00000000 
+
+pci_find_slot bus 0 devfn 79
+dev->bus->number 0 dev->devfn 70
+dev->bus->number 0 dev->devfn 78
+dev->bus->number 0 dev->devfn 79
+setUsbPciInfo() cpu_to_usb_addr_shift[1]:0x60000000, usb_to_cpu_addr_shift[1]:0xa0000000
+usb_pci_probe() Found VIA UHCI-2 device in PCI slot 0x79, function 1, baseAddr:0xbae00020
+31041106 02100000 0c032065 00801600 18010000 00000000 00000000 00000000 
+00000000 00000000 00000000 31041106 00000000 00000080 00000000 00000300 
+000b0000 00000000 090020a0 ffff0000 80005a00 00000000 88880b04 00000033 
+00012020 00000000 00000001 80000000 00000000 00000000 00000000 00000000 
+7e0a0001 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 03000000 00000000 00000000 
+
+pci_find_slot bus 0 devfn 7a
+dev->bus->number 0 dev->devfn 70
+dev->bus->number 0 dev->devfn 78
+dev->bus->number 0 dev->devfn 79
+dev->bus->number 0 dev->devfn 7a
+setUsbPciInfo() cpu_to_usb_addr_shift[2]:0x60000000, usb_to_cpu_addr_shift[2]:0xa0000000
+usb_pci_probe() Found VIA EHCI device in PCI slot 0x7a, function 2, baseAddr:0xb8010000
+setUsbPciInfo() cpu_to_usb_addr_shift[3]:0x00000000, usb_to_cpu_addr_shift[3]:0x00000000
+usb_pci_probe() Found Synopsis OTG, baseAddr:0xbe101000
+usb_power_set() isOn:1
+usb_power_set() Previous power off:0, current time:0
+usb_power_set(1) min time delay:6000, current delay:0
+usb_power_set() Need delay:6500 **********
+usb_power_set(2) min time delay:6000, current delay:0
+usb_hcd_init() func(0):1
+localhc_init() install uhci driver(self->driver = 0x808ACFA0, uhci_driver=0x808ACFA0).
+usb_pci_attach_device() Enable PCI device...PCI: Enabling device 00:0f.0 (0000 -> 0001)
+OK
+usb_pci_attach_device() Set latency timer...OK
+usb_pci_attach_device() Set bus master...PCI: Enabling bus mastering for device 00:0f.0
+pcibios_set_master> lat=0x16
+OK
+usb_pci_attach_device() Set VIA-UHCI special parameters...OK
+usb_pci_attach_device(UHCI) Attach succ...
+30381106 02100005 0c030062 00801600 00000000 00000000 00000000 00000000 
+1ae00001 00000000 00000000 30381106 00000000 00000080 00000000 00000116 
+00030040 00000000 00000800 00000000 00000000 00000000 00000000 00000000 
+00000010 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+7e0a0001 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00002000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 03000000 00000000 00000000 
+
+usb_hcd_init() func(1):1
+localhc_init() install uhci driver(self->driver = 0x808ACFA0, uhci_driver=0x808ACFA0).
+usb_pci_attach_device() Enable PCI device...PCI: Enabling device 00:0f.1 (0000 -> 0001)
+OK
+usb_pci_attach_device() Set latency timer...OK
+usb_pci_attach_device() Set bus master...PCI: Enabling bus mastering for device 00:0f.1
+pcibios_set_master> lat=0x16
+OK
+usb_pci_attach_device() Set VIA-UHCI special parameters...OK
+usb_pci_attach_device(UHCI) Attach succ...
+30381106 02100005 0c030062 00801600 00000000 00000000 00000000 00000000 
+1ae00021 00000000 00000000 30381106 00000000 00000080 00000000 00000200 
+00030040 00000000 00000800 00000000 00000000 00000000 00000000 00000000 
+00000010 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+7e0a0001 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00002000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 03000000 00000000 00000000 
+
+usb_hcd_init() func(2):1
+localhc_init() install ehci driver(self->driver = 0x808ACF74, ehci_driver=0x808ACF74).
+usb_pci_attach_device() Enable PCI device...PCI: Enabling device 00:0f.2 (0000 -> 0002)
+OK
+usb_pci_attach_device() Set latency timer...OK
+usb_pci_attach_device() Set bus master...PCI: Enabling bus mastering for device 00:0f.2
+pcibios_set_master> lat=0x16
+OK
+usb_pci_attach_device() Set write invalidate...OK
+usb_pci_attach_device() Set VIA-EHCI special parameters...OK
+usb_pci_attach_device(EHCI) Attach succ...
+31041106 02100016 0c032065 00801600 18010000 00000000 00000000 00000000 
+00000000 00000000 00000000 31041106 00000000 00000080 00000000 00000300 
+000b0000 00000000 290020a0 ffff0000 80005a00 00000000 88880b04 00000033 
+00012020 00000000 00000001 c0000000 00000000 00000000 00000000 00000000 
+7e0a0001 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 00000000 03000000 00000000 00000000 
+
+usb_hcd_init() func(3):1
+localhc_init() install otg driver(self->driver = 0x808ACF48, otg_driver=0x808ACF48).
+usb_hcd_init(): succ.
+[USB-INIT] main() ====== after call UsbSysInit() 
+InitCommSys: RESOURCE_BASE = 114, NUMRES = 640
+InitCommSys: EVENT_BASE = 239, NUMEVT = 768
+InitCommSys: MAILBOX_BASE = 6, NUMMBX = 64
+RUNTASK id=20 period_task...
+
+========== ADSL Modem initialization OK ! ======
+
+[Dhcpd_Start]
+RUNTASK id=21 dhcp_daemon...
+main()> usb:1, ftp:0
+Treat it as AMD compatible flash.
+Manu-ID = 0x00C2, Chip-ID=0x227E, v1/2/3=0x04X/0x04X/0x04X
+Primary image: 0, flash area 5
+found signature: 78h 56h 34h 12h
+ulImgLens=2123756, LENGTH[5]-12=7864308, type:0
+length checking OK
+[0]2 find End at 0xFFFFFFFFB02E6800 len=2123756, type=0
+found signature: 78h 56h 34h 12h
+ulImgLens=967031, LENGTH[5]-12=7864308, type:10
+length checking OK
+[1]2 find End at 0xFFFFFFFFB03D2C00 len=967031, type=10
+found signature: 78h 56h 34h 12h
+ulImgLens=270715, LENGTH[5]-12=7864308, type:11
+length checking OK
+[2]2 find End at 0xFFFFFFFFB0415000 len=270715, type=11
+found signature: 78h 56h 34h 12h
+ulImgLens=258184, LENGTH[5]-12=7864308, type:12
+length checking OK
+[3]2 find End at 0xFFFFFFFFB0454400 len=258184, type=12
+---[ LZMA head start in 0xFFFFFFFFB0454800 ]---
+found signature: 78h 56h 34h 12h
+ulImgLens=163864, LENGTH[5]-12=7864308, type:60
+length checking OK
+[4]2 find End at 0xFFFFFFFFB047C800 len=163864, type=60
+---[ LZMA head start in 0xFFFFFFFFB047CC00 ]---
+found signature: 78h 56h 34h 12h
+ulImgLens=460096, LENGTH[5]-12=7864308, type:90
+length checking OK
+[5]2 find End at 0xFFFFFFFFB04ED000 len=460096, type=90
+---[ LZMA head start in 0xFFFFFFFFB04ED400 ]---
+found signature: 78h 56h 34h 12h
+ulImgLens=181921, LENGTH[5]-12=7864308, type:120
+length checking OK
+[6]2 find End at 0xFFFFFFFFB0519800 len=181921, type=120
+Image[1] at 0xB00E0000, len=2123756, type=0
+Image[2] at 0xB02E6C00, len=967031, type=10
+Image[3] at 0xB03D3000, len=270715, type=11
+Image[4] at 0xB0415400, len=258184, type=12
+Image[5] at 0xB0454800, len=163864, type=60
+Image[6] at 0xB047CC00, len=460096, type=90
+Image[7] at 0xB04ED400, len=181921, type=120
+[get_web_address] Web-0:  addr:0xb02e6c00, len:967031, type:10
+[get_web_address] Web-1:  addr:0xb03d3000, len:270715, type:11
+[get_web_address] Web-2:  addr:0xb0415400, len:258184, type:12
+getUnZipFileLength: [ZIP 3]
+getUnZipFileLength: [ZIP 1]
+Unzipping from B02E6C00 to 83D88800 ... [ZIP 3] [ZIP 2] done
+Uncompressed size = 1471846
+getUnZipFileLength: [ZIP 3]
+getUnZipFileLength: [ZIP 1]
+[absread] flash_init: pfs image found at ffffffffb03d3000, size is 1511591 bytes
+Unzipping from B03D3000 to 83C17400 ... [ZIP 3] [ZIP 2] done
+Uncompressed size = 1511591
+RUNTASK httpd...
+RUNTASK id=24 SSLClient ...
+g_Client_Cert_Array=0x81e95fc0
+RUNTASK id=25 dnsproxy...
+RUNTASK id=26 snmp_task...
+startNBIOSTask()...
+RUNTASK id=27 nbios_main...
+RUNTASK id=28 padmin_task_entry...
+RUNTASK id=29 dhcpd_mgmt_task...
+runDDNS(0) ddns_enable:0, DDNSTaskRun:0, needReRunDDNS:1
+runDDNS(1) ddns_enable:0, DDNSTaskRun:0, needReRunDDNS:1
+UPnP task run-up... upnpFunc:1
+UPNP Device initialize success! slot=30
+update_device_OUI: OUI_str=743170
+[0] Allocate mailbox 6
+[0] Allocate mailbox 7
+FirstUseDate:0000-00-00T00:00:00
+RUNTASK id=33 push_daemon...
+RUNTASK id=34 wscmain...
+RUNTASK id=35 wsc_Send_eap_packet...
+RUNTASK id=36 wsc_Send_UPNP_packet...
+RUNTASK id=37 WSC_WaitUserAction_Task...
+UART RX Output
+
+rzMemory start: 0x81D367B0, end 0x81E95FB0, size 1439744[0] Allocate resource 114, FreeResource = 1
+fpiclk=83333333, rmc=16, fpiclk/rmc=5208333
+ifx_ssc_clock = 5208333, baud=2000000
+ifx_ssc_set_baud: br = 0
+
+call ifx_ssc_init() = 0
+call ifx_ssc_open() = 0
+SPI_Init!
+RUNTASK id=40 apAppInit...
+RUNTASK id=42 isdn_main...
+RUNTASK id=43 vinax_task ...
+RUNTASK id=44 pppFailBackPeriodCheckTask()...
+RUNTASK id=45 detect_acs_connect_task...
+RUNTASK id=46 pid_cc_err_stats_task...
+start http redir.
+RUNTASK id=47 hr_daemon...
+RUNTASK id=48 hr_misc_daemon...
+RUNTASK id=49 ncidd_main...,  in run_project_task()
+RUNTASK id=50 autoWanDetectTask903...
+Starting Multitask...
+phy_change_check... pass
+enter adsl_disable_annex_j_b43_carrier_set()
+ADSL_Annex_J_Relay : Disable
+Danube MEI version:1.00.07
+dsl_relay_adsl: switch to ADSL mode!
+Image[1] at 0xB00E0000, len=2123756, type=0
+Image[2] at 0xB02E6C00, len=967031, type=10
+Image[3] at 0xB03D3000, len=270715, type=11
+Image[4] at 0xB0415400, len=258184, type=12
+Image[5] at 0xB0454800, len=163864, type=60
+Image[6] at 0xB047CC00, len=460096, type=90
+Image[7] at 0xB04ED400, len=181921, type=120
+[get_datapump_address] Datapump for Annex A0:-1, B0:4, C0:-1
+[get_datapump_address] Datapump for Annex A1:-1, B1:-1, C1:-1
+[get_datapump_address] r_img=4, t_img=7
+Unzip DSP firmware ...
+
+--> vinax_task() started ...
+<6>ADM5120 Board Driver, Version 0.0.4.1
+<6>(c) Copyright 2003, Infineon Technologies AG
+Initializes the MultiPort Memory Controller for the VDSL2 DFE
+##### [before vinax reset]
+0xb4000080 = 2010005
+0xb4000084 = 0
+
+##### [after vinax reset]
+0xb4000080 = 2010005
+0xb4000084 = 0
+Board_InitIrq!
+Initializes the MultiPort Memory Controller for the VDSL2 DFEBoard_InitIrq!
+--> drv_danube_rb_init() finished ...
+VINAX Driver, Version 1.6.9
+(c) Copyright 2005, Infineon Technologies AG
+### VINAX - VINAX - VINAX - VINAX ###
+--> drv_vinax_init() finished ...
+xSpeedtsk priority is 80
+Unzipping from B0454800 to 83479800 ... [ZIP 2] --> DSL_ModuleInit() finished ...
+-->VINAX control device open finished ...
+T >> init dev: base address = 0xB4000080
+T >> parse: opt value = 99
+T >> open device: /dev/vinax/0.
+T >> ioct(FIO_VINAX_DEV_INIT): baseaddr = 0xB4000080, IRQ = 99
+signal evt=119
+##### [IFXOS_ThreadInit] name <VnxCtrl>, tid 54
+T >> MEI DBG WrOff: 0x000E2000
+T >> MEI DBG Dest: 0x00000002
+T >> Value: 0x00000001
+T >> open device: /dev/vinax/0.
+T >> ioct(.., FIO_VINAX_DBG_WRITE, ..): off=0x000E2000, des=2, count=1
+T >> DBG Dest[2] Write[0x000E2000] = 0x81468CC0
+T >> DONE - ioct(.., FIO_VINAX_DBG_WRITE, ..)
+--> drv_vinax_cfg() finished ...
+[DSL_CPE_ArgParse] fw1 name=
+Unzip VDSL2 firmware ...
+done
+Uncompressed size = 327184
+Unzipping from B04ED400 to 83648000 ... [ZIP 2] update_img_hdr = FFFFFFFFA3479800
+idx=0 mem_ptr=0xA3479800 size=65536
+idx=1 mem_ptr=0xA3489800 size=65536
+idx=2 mem_ptr=0xA3499800 size=65536
+idx=3 mem_ptr=0xA34A9800 size=65536
+idx=4 mem_ptr=0xA34B9800 size=65040
+done
+Uncompressed size = 667000
+[43] Allocate resource 115, FreeResource = 2
+[43] Allocate resource 116, FreeResource = 3
+[43] Allocate resource 117, FreeResource = 4
+[43] Allocate resource 118, FreeResource = 5
+signal oam evt=120
+[DSL_CPE_DeviceInit] XTSE= 00_00_00_00_00_00_00_04
++++++[DSL_DRV_VNX_InitDeviceDrv] fioVinaxDrvCfg.currDrvState = 3
+[43] Allocate resource 119, FreeResource = 6
++++++[DSL_DRV_Init] pFirmware 0, pFirmware2 0
++++++[DSL_DRV_Init] nFwType 2 !!
+
+
+@@@@@@@@@@@@@ DSL_CPE_DownloadFirmware() @@@@@@@@@@@@@
+nFwReqType = 2, Fw name1=NULL, name2=NULL
+
++++++[DSL_DRV_Init] DSL_DRV_EventGenerate(DSL_EVENT_S_FIRMWARE_REQUEST(18)) nErrCode 0 !!
+[43] Allocate mailbox 8
+
+ifno2dot1x_if[2]=0
+dot1x_wireless_if_mask=0x4
+fwrite_specialConfigPara() Save random seed:1172483
+Treat it as AMD compatible flash.
+init psock cnt=1
+VOIP_Init: 542
+[get_vcpufirmware_address] DSP firmware: [5 -1], dCnt:1
+VOIP_Init: 590
+[get_vcpufirmware_address] DSP firmware: [5 -1], dCnt:1
+[41] Allocate resource 120, FreeResource = 7
+Reset Duslic High begin
+T-SMINTI r3f(CHIP ID)= 0x20
+T-SMINTI r7d(FW VERSION)= 0x3e
+erase from location b00a0000. done
+write length 0x5b0
+0RUNTASK id=57 Atheros_NetTask ...
+<-- RTMPAllocTxRxRingMemory, Status=0
+[enable OAM]
+DSL[00]: Autoboot State: firmwareReady
+##### [DSL_DRV_ThreadInit] name <autbtex>, pid 18
+[56] Allocate resource 121, FreeResource = 8
+[56] Allocate resource 122, FreeResource = 9
+[56] Allocate resource 123, FreeResource = 10
+[56] Allocate resource 124, FreeResource = 11
+[56] Allocate resource 125, FreeResource = 12
+tt################################$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+##### [DSL_DRV_ThreadInit] name <pmex_ne>, pid 59
+##### [DSL_DRV_ThreadInit] name <pmex_fe>, pid 60
+Reset Duslic end
+IFX TAPI, version 3.10.0.3, (c) 2001-2009 Infineon Technologies AG
+[61] Allocate mailbox 9
+TAPI_init_task_queue: enter loop..9
+[41] Allocate mailbox 10
+[41] Allocate mailbox 11
+[41] Allocate mailbox 12
+[41] Allocate mailbox 13
+[41] Allocate mailbox 14
+[41] Allocate mailbox 15
+[41] Allocate mailbox 16
+[41] Allocate mailbox 17
+[41] Allocate mailbox 18
+[41] Allocate mailbox 19
+[41] Allocate mailbox 20
+[41] Allocate mailbox 21
+[41] Allocate mailbox 22
+[41] Allocate mailbox 23
+[41] Allocate mailbox 24
+[41] Allocate mailbox 25
+[41] Allocate resource 126, FreeResource = 13
+ifx_tapi_KPI_IngressThread() check: [TAPIkpi_in],805CF610,pid=0, 62
+start_kthread TASK success: PID 62 Name TAPIkpi_in
+[41] Allocate resource 127, FreeResource = 14
+IFX VMMC device driver, version 1.6.0.3, (c) 2006-2009 Infineon Technologies AG
+IFX MIPS24KEc MPS driver, version 2.1.0.1, (c) 2006-2009 Infineon Technologies AG
+ifx_mps_init_structures request_irq 1 146
+ifx_mps_init_structures request_irq 2 147
+ifx_mps_init_structures request_irq 3 0 142
+ifx_mps_init_structures request_irq 3 1 143
+ifx_mps_init_structures request_irq 3 2 144
+ifx_mps_init_structures request_irq 3 3 145
+VMMC_Open : Major 122 Minor 10 
+IFX_TAPI_Create_Device: ndev = 0, TapiDev 81D3355C
+[41] Allocate resource 128, FreeResource = 15
+[41] Allocate resource 129, FreeResource = 16
+[41] Allocate resource 130, FreeResource = 17
+[41] Allocate resource 131, FreeResource = 18
+[41] Allocate resource 132, FreeResource = 19
+[41] Allocate event 239
+>>>>>>>>>> OS_GetEventNumber: event 239
+VMMC_AddCaps: CODECS = 0
+[41] Allocate resource 133, FreeResource = 20
+[41] Allocate resource 134, FreeResource = 21
+[41] Allocate resource 135, FreeResource = 22
+[41] Allocate resource 136, FreeResource = 23
+[41] Allocate event 240
+>>>>>>>>>> OS_GetEventNumber: event 240
+[41] Allocate resource 137, FreeResource = 24
+[41] Allocate resource 138, FreeResource = 25
+[41] Allocate resource 139, FreeResource = 26
+[41] Allocate resource 140, FreeResource = 27
+[41] Allocate event 241
+>>>>>>>>>> OS_GetEventNumber: event 241
+[41] Allocate resource 141, FreeResource = 28
+[41] Allocate resource 142, FreeResource = 29
+[41] Allocate resource 143, FreeResource = 30
+[41] Allocate resource 144, FreeResource = 31
+[41] Allocate event 242
+>>>>>>>>>> OS_GetEventNumber: event 242
+[41] Allocate resource 145, FreeResource = 32
+[41] Allocate resource 146, FreeResource = 33
+[41] Allocate resource 147, FreeResource = 34
+[41] Allocate resource 148, FreeResource = 35
+[41] Allocate event 243
+>>>>>>>>>> OS_GetEventNumber: event 243
+[41] Allocate resource 149, FreeResource = 36
+[41] Allocate resource 150, FreeResource = 37
+[41] Allocate resource 151, FreeResource = 38
+[41] Allocate resource 152, FreeResource = 39
+[41] Allocate event 244
+>>>>>>>>>> OS_GetEventNumber: event 244
+[41] Allocate resource 153, FreeResource = 40
+[41] Allocate resource 154, FreeResource = 41
+[41] Allocate resource 155, FreeResource = 42
+[41] Allocate resource 156, FreeResource = 43
+[41] Allocate event 245
+>>>>>>>>>> OS_GetEventNumber: event 245
+[41] Allocate resource 157, FreeResource = 44
+[41] Allocate resource 158, FreeResource = 45
+[41] Allocate resource 159, FreeResource = 46
+[41] Allocate resource 160, FreeResource = 47
+[41] Allocate event 246
+>>>>>>>>>> OS_GetEventNumber: event 246
+[41] Allocate resource 161, FreeResource = 48
+[41] Allocate resource 162, FreeResource = 49
+[41] Allocate resource 163, FreeResource = 50
+[41] Allocate resource 164, FreeResource = 51
+[41] Allocate event 247
+>>>>>>>>>> OS_GetEventNumber: event 247
+VMMC_Open --> 81d1fdf8
+VMMC_handle[0] : 81d1fdf8
+VMMC_Open : Major 122 Minor 11 
+VMMC_Open --> 81d1fdd8
+VMMC_handle[1] : 81d1fdd8
+VMMC_Open : Major 122 Minor 12 
+VMMC_Open --> 81d1fdb8
+VMMC_handle[2] : 81d1fdb8
+VMMC_Open : Major 122 Minor 13 
+VMMC_Open --> 81d1fd98
+VMMC_handle[3] : 81d1fd98
+VMMC_Open : Major 122 Minor 14 
+VMMC_Open --> 81d1fd78
+VMMC_handle[4] : 81d1fd78
+VMMC_Open : Major 122 Minor 15 
+VMMC_Open --> 81d1fd58
+VMMC_handle[5] : 81d1fd58
+VMMC_Open : Major 122 Minor 16 
+VMMC_Open --> 81d1fd38
+VMMC_handle[6] : 81d1fd38
+VMMC_Open : Major 122 Minor 17 
+VMMC_Open --> 81d1fd18
+VMMC_handle[7] : 81d1fd18
+VMMC_Open : Major 122 Minor 18 
+VMMC_Open --> 81d1fcf8
+VMMC_handle[8] : 81d1fcf8
+ifx_tapi_ioctl: 710f error at line 1028!
+===> 
+Set PCM I/F 0 VMMC_handle:81d1fdf8
+[get_vcpufirmware_address] DSP firmware: [5 -1], dCnt:1
+Unzipping from B047CC00 to 82D30C84 ... [ZIP 2] Channel=0
+rtmp_read_wds_from_file() is called !!!
+rtmp_read_wds_from_file : WDS disabled 
+Magic No. in Boot Param check OK!!!
+sould check E2PROM MAC ?????????????????
+NICReadEEPROMParameters 882 
+NICReadEEPROMParameters 945 
+NICReadEEPROMParameters 970 
+done
+Uncompressed size = 655776
+IFX_MPS: Download firmware (size 655776 bytes)... [41] Allocate resource 165, FreeResource = 52
+[41] Allocate resource 166, FreeResource = 53
+Delay 5 seconds for WAN mode check
+VMMC_AddCaps: CODECS = 7df
+[41] Allocate event 248
+>>>>>>>>>> OS_GetEventNumber: event 248
+[41] Allocate event 249
+>>>>>>>>>> OS_GetEventNumber: event 249
+===> 
+ VMMC_Ioctl: Phone 1 IFX_TAPI_LINE_TYPE ok!
+ VMMC_Ioctl: Phone 1 IFXPHONE_SET_LINEFEED ok!
+Set PCM I/F 1 VMMC_handle:81d1fdd8
+===> 
+ VMMC_Ioctl: Phone 2 IFX_TAPI_LINE_TYPE ok!
+ VMMC_Ioctl: Phone 2 IFXPHONE_SET_LINEFEED ok!
+Set PCM I/F 2 VMMC_handle:81d1fdb8
+===> 
+Set PCM I/F 3 VMMC_handle:81d1fd98
+===> 
+Set PCM I/F 4 VMMC_handle:81d1fd78
+===> 
+Set PCM I/F 5 VMMC_handle:81d1fd58
+===> 
+Set PCM I/F 6 VMMC_handle:81d1fd38
+===> 
+Set PCM I/F 7 VMMC_handle:81d1fd18
+===> 
+Set PCM I/F 8 VMMC_handle:81d1fcf8
+Setting HOOK Related Parameters 0
+Setting HOOKFLASH_TIME min 80 ms max 900 ms
+Setting HOOKON_TIME min 370 max 370
+Setting HOOK Related Parameters 1
+Setting HOOKFLASH_TIME min 80 ms max 900 ms
+Setting HOOKON_TIME min 370 max 370
+Setting HOOK Related Parameters 2
+Setting HOOK Related Parameters 3
+RUNTASK id=63 VINETIC_DRV_Task...
+[64] Allocate mailbox 26
+RUNTASK id=64 VINETIC_T38_Task...
+RUNTASK id=66 FXO_flash_task...
+RUNTASK id=65 VOICE_API_task...
+<==== rt28xx_init, Status=0
+0x1300 = 00064300
+ND 2 ???
+ND 1 ???
+pAd->VirtualIfCnt 1
+VDSL...
+dsl_relay_vdsl: switch to VDSL mode!
+VDSL detect
+[24] SSLClient> SSLClient() run
+[24] sslc_conf_init> ssl client info:
+[24] PrivateKey=
+[24] MyCertificate=
+[24] CaCertificate=
+[24] SSL_method=31
+[24] verify_mode=1
+[24] cipher_suites=ADH:SHA1:HIGH:EXP
+[24] tftp_server_ip=140.92.61.131
+[24] fn_myCerttificate=ServCert.pem
+[24] fn_privateKey=PrivKey.pem
+[24] fn_caCertificate=CaCert.pem
+[24] sslc_conf_init> ssl client info end:
+PKCS12_PBE_add>
+PKCS12_PBE_add> support RC4
+PKCS12_PBE_add> support DES
+PKCS12_PBE_add> support RC2
+[24] sslc_conf_init> pCtx=0x81d179f0 in ssld_conf_init
+
+[24] sslc_ctx_reset_cert> re-LoadCACertificate( 3rdCA ) ok!!
+[24] sslc_ctx_reset_cert> re-LoadCACertificate( 2ndCA ) ok!!
+[24] sslc_ctx_reset_cert> re-LoadCACertificate( 1stCA ) ok!!sslc_ctx_reset_cert> this is pkcs12 type certificate
+
+[24] sslc_ctx_reset_cert : re-LoadServerCertAndKey() ok!!
+[24] sslc_conf_init> sslc_conf_init() ok
+[24] SSLClient> want to bind socket for client application!
+DSL[00]: DSL_DEV_LineStateGet: Got state 0
+DSL[00]: Autoboot State: ConfigWriteWait
+nReturn=0
+TRAP(coldStart) : send ok!
+[USBLPT] Printer Initialize Fail : Plug Out !!
+padmin_task_entry() task running
+********** upnp_main() Unsupportted UPnP root device[0]: UPnP
+upnp_main(1-0) Run-up UPnP device IGD...
+nReturn=0
+push_daemon> enter. (0, 0)
+pd_get_server_socket> listen_port=50433
+*********************************************
+****Wi-Fi Simple Config Application***** 
+Version: Build 2.02.2.DTM1.1, Dec 13 2011 18:47:38
+*********************************************
+wsc_Send_UPNP_packet> enter
+wsc_Send_eap_packet:udpFdupnp_wcn:33;;udpFdupnp:35
+hr_daemon> port 32769.
+hr_daemon> ssl port 32770.
+Init_SSLServer> input listen_protocol=6, nListenPort=32770
+[ncidd]: [ncidd]: <Network Port: 3333>
+[ncidd]: lan ip=0xffffffffc0a80201
+[ncidd]: ncidd_nwsk() sndlog_sock = 48
+[HWLAN] [58] rapi_tmr_task running 
+uhci_pci_attach: begin ... 
+ptp Daemon task running
+TR069: The connection request port is 52380 
+lpd Daemon task running
+[USB ROOTHUB_LOOP] RUNTASK id=70 lpd_main ...
+[USB] lpd_init() End.
+[47] ssld_conf_init> ssl server info:
+[47] PrivateKey=
+[47] MyCertificate=
+[47] CaCertificate=
+[47] SSL_method=31
+[47] verify_mode=0
+[47] cipher_suites=ADH:SHA1:HIGH:EXP
+[47] tftp_server_ip=140.92.61.131
+[47] fn_myCerttificate=ServCert.pem
+[47] fn_privateKey=PrivKey.pem
+[47] fn_caCertificate=CaCert.pem
+[47] ssld_conf_init> ssl server info end:
+[47] pCtx=0x81d02e5c in ssld_conf_init
+ssld_ctx_reset_cert> this is pkcs12 type certificate
+
+[47] ssld_ctx_reset_cert : re-LoadServerCertAndKey() ok!!
+
+[47] ssld_ctx_reset_cert> re-LoadCACertificate( 1stCA ) ok!![47] ssld_conf_init> ssld_conf_init() ok
+printer schedule task running
+upnp_Init(0) upnpGlobalInit[1]:0
+SSDP Initialization completed...
+GenaInit : event_hook is NULL!!
+
+>> Parse Service 'urn:schemas-microsoft-com:service:OSInfo:1' : TRUE
+>> Parse Service 'urn:schemas-upnp-org:service:Layer3Forwarding:1' : TRUE
+>> Parse Service 'urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1' : TRUE
+>> Parse Service 'urn:schemas-upnp-org:service:WANEthernetLinkConfig:1' : TRUE
+>> Parse Service 'urn:schemas-upnp-org:service:WANPPPConnection:1' : TRUE
+>> Parse Service 'urn:schemas-upnp-org:service:WANIPConnection:1' : TRUE
+>> Parse Device 'urn:schemas-upnp-org:device:WANConnectionDevice:1' : TRUE
+>> Parse Device 'urn:schemas-upnp-org:device:WANDevice:1' : TRUE
+>> Parse Device 'urn:schemas-upnp-org:device:InternetGatewayDevice:1' : TRUE
+********** upnp_main1() Record pDevRoot[1]:81cec35c
+
+>>>> UPNP init IGD device successfully ...
+
+********** upnp_main() Unsupportted UPnP root device[2]: TR64
+upnp_main(3-0) Run-up UPnP device WPS-WCN...
+upnp_Init(0) upnpGlobalInit[3]:0
+
+>> Parse Service 'urn:schemas-wifialliance-org:service:WFAWLANConfig:1' : TRUE
+>> Parse Device 'urn:schemas-wifialliance-org:device:WFADevice:1' : TRUE
+********** upnp_main1() Record pDevRoot[3]:81cc1f24
+
+>>>> UPNP init WPS-WCN device successfully ...
+
+********** upnp_main() Unsupportted UPnP root device[4]: AV Media Server
+********** upnp_main() Unsupportted UPnP root device[5]: AV Media Renderer
+********** upnp_main() Unsupportted UPnP root device[6]: Printer
+[reset_802dot1x] wireless module ready
+config->enablePreAuthen=1
+install group key to Mac ASIC ????????????????????????
+[reset_802dot1x] 802.1Xv2 ready
+uhci_init() UHCI_FRAMELIST_COUNT=1024, alloc size:4096
+uhci_init() UHCI_FLBASEADDR:0x00ef5000, physicalMem:0x00ef5000
+[42] Allocate resource 167, FreeResource = 54
+[42] Allocate resource 168, FreeResource = 55
+!! arcISDNIrqEnable: chipId=0
+!! arcISDNIrqEnable: chipId=0
+[42] Allocate resource 169, FreeResource = 56
+[42] Allocate resource 170, FreeResource = 57
+[42] Allocate resource 171, FreeResource = 58
+ifx_tapi_KPI_IngressThread: error 0
+ifx_tapi_KPI_IngressThread: error 0
+[42] Allocate resource 172, FreeResource = 59
+sizeof(struct ap_cm)=256
+RUNTSK ISDN_ApCM 77
+### CAPI 2.0 / 3.001
+### Nbr. of ctrls = 2
+     ctrl 1: nbr. of B-chnls=2, global opts=0x451
+             B1 prots=0x3, B2 prots=0x2, B3 prots=0x1
+     ctrl 2: nbr. of B-chnls=2, global opts=0x451
+             B1 prots=0x3, B2 prots=0x2, B3 prots=0x1
+>>> CAPI_REGISTER (2048/1/8/2048), applId=1
+
+
+>>>>>> usbd_new_device: adding unit bus:1, addr=1, rev=0100, class=9, subclass=0, protocol=0, maxpacket=64, len=18, speed=2
+
+>>> CAPI_REGISTER (2048/1/8/2048), applId=2
+>>> CAPI_REGISTER (2048/1/8/2048), applId=3
+>>> CAPI_REGISTER (2048/1/8/2048), applId=4
+>>> CAPI_REGISTER (2048/1/8/2048), applId=5
+usbd_probe_and_attach,probe 1!
+uhci_pci_attach: begin ... 
+[htf_dbg]     - OnlineActiveWirless() 1376
+WirelessMode 9 BasicRate 15
+AutochannelSelect 0 Channel 0 
+Do APScan()
+autoChannel : 13
+NEW : channel 13, BW 0(20MHZ), EXTCHA 3(BELOW)
+Set_PreAuth_Proc called, PreAuth=1
+[WirelessCFG_task] CHannelBW:0
+[signal_1x_reset] ...
+>>>>>>>>>>>>>>>>>>>>>>tick 14639
+DSL[00]: Autoboot State: Init
+ifno2dot1x_if[2]=0
+dot1x_wireless_if_mask=0x4
+uhci_init() UHCI_FRAMELIST_COUNT=1024, alloc size:4096
+uhci_init() UHCI_FLBASEADDR:0x00f21000, physicalMem:0x00f21000
+
+
+>>>>>> usbd_new_device: adding unit bus:2, addr=1, rev=0100, class=9, subclass=0, protocol=0, maxpacket=64, len=18, speed=2
+
+DSL[00]: Autoboot State: LinkActivateWait
+nReturn=0 nData="A173 0000 0002 000C0D18 "
+usbd_probe_and_attach,probe 1!
+ehci_pci_attach: begin ... 
+ehci_pci_attach: ioregs:0xb8010000, irq:95
+ehci_init() flsize=1024, alloc size:4096
+ehci_init() EHCI_PERIODICLISTBASE:0x00e5f000, physicalMem:0x00e5ff80
+ehci_init() sqh->physaddr:0x00ca0e42
+ehci_init() EHCI_ASYNCLISTADDR:0x00ca0e40, physicalMem:0x00ca0e40
+
+
+>>>>>> usbd_new_device: adding unit bus:3, addr=1, rev=0200, class=9, subclass=0, protocol=1, maxpacket=64, len=18, speed=3
+
+Reset Duslic High begin
+Reset Duslic end
+ProDAAInitialize: begin now
+ProDAAInitialize: Line-Side Device Status 0
+Port 2 sytem-side revision 45, line-side revision 6
+init_DTMF_data: time 15574
+force_daa_offhook ch 2 onoff 1 time 15574
+ProDaaOffhook 0 2 onoff 1
+CID_Detect CH 2 onoff 0
+FXO_PolState_DTMFCID --> Disable DTMF CID
+VDSL detect
+force_daa_offhook ch 2 onoff 0 time 15634
+ProDaaOffhook 1 2 onoff 0
+CID_Detect CH 2 onoff 1
+FXO_PolState_DTMFCID --> Detect Polarity Changed Enable DTMF CID
+When * the value is 60000
+When * the value is 60000
+When * the value is 60000
+When * the value is 60000
+sys_voip_cfg->cpt.reorder = 425@-230;20(0.24/0.24/1)
+TEL_DRV_TONE_REORDER  duration = 480
+When * the value is 60000
+[41] Allocate resource 173, FreeResource = 60
+[41] Allocate mailbox 27
+TEL_MGR_Init
+[41] Allocate resource 174, FreeResource = 61
+tel_mgr_mutex=174
+[41] Allocate mailbox 28
+ TEL_DM_Init
+[41] Allocate resource 175, FreeResource = 62
+[41] Allocate resource 176, FreeResource = 63
+ TEL_MGR_VoiceChannelInit
+ TEL_MGR_SetVoiceChannel 1
+ !TEL_MGR_SetVoiceChannel: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneEC
+ !TEL_MGR_SetPhoneEC: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneVAD
+ !TEL_MGR_SetPhoneVAD: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneGain
+Gain Tx -2, Rx -9
+ TEL_MGR_SetPhoneJitter
+ !TEL_MGR_SetPhoneJitter: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetVoiceChannel 2
+ !TEL_MGR_SetVoiceChannel: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneEC
+ !TEL_MGR_SetPhoneEC: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneVAD
+ !TEL_MGR_SetPhoneVAD: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneGain
+Gain Tx -2, Rx -9
+ TEL_MGR_SetPhoneJitter
+ !TEL_MGR_SetPhoneJitter: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetVoiceChannel 3
+ !TEL_MGR_SetVoiceChannel: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneEC
+ !TEL_MGR_SetPhoneEC: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneVAD
+ !TEL_MGR_SetPhoneVAD: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneGain
+Gain Tx -2, Rx -9
+ TEL_MGR_SetPhoneJitter
+ !TEL_MGR_SetPhoneJitter: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetVoiceChannel 4
+ !TEL_MGR_SetVoiceChannel: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneEC
+ !TEL_MGR_SetPhoneEC: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneVAD
+ !TEL_MGR_SetPhoneVAD: TEL_PORT_GetPhoneChannelId fail
+ TEL_MGR_SetPhoneGain
+Gain Tx -2, Rx -9
+ TEL_MGR_SetPhoneJitter
+ !TEL_MGR_SetPhoneJitter: TEL_PORT_GetPhoneChannelId fail
+[41] Allocate resource 177, FreeResource = 64
+[41] Allocate mailbox 29
+[78] Allocate resource 178, FreeResource = 65
+[78] Allocate resource 179, FreeResource = 66
+[SIP_CORE_Task] sip_core_ready
+TEL_MGR_SetVoipPhoneEvtHookFunc
+TEL_MGR_SetVoipPhoneEvtHookFunc
+TEL_MGR_SetVoipPhoneEvtHookFunc
+TEL_MGR_SetVoipPhoneEvtHookFunc
+[41] Allocate resource 180, FreeResource = 67
+[41] Allocate mailbox 30
+VOICE_IVR_Init: voice_ivr_channel[0].ivrQueueId = 30
+[41] Allocate mailbox 31
+VOICE_IVR_Init: voice_ivr_channel[1].ivrQueueId = 31
+[41] Allocate mailbox 32
+VOICE_IVR_Init: voice_ivr_channel[2].ivrQueueId = 32
+[41] Allocate mailbox 33
+VOICE_IVR_Init: voice_ivr_channel[3].ivrQueueId = 33
+[41] Allocate mailbox 34
+VOICE_IVR_Init: voice_ivr_channel[4].ivrQueueId = 34
+[41] Allocate mailbox 35
+VOICE_IVR_Init: voice_ivr_channel[5].ivrQueueId = 35
+[41] Allocate mailbox 36
+VOICE_IVR_Init: voice_ivr_channel[6].ivrQueueId = 36
+[41] Allocate mailbox 37
+VOICE_IVR_Init: voice_ivr_channel[7].ivrQueueId = 37
+TEL_MGR_DisableDebug
+TEL_MGR_AutoDetection: End U high impedance state 15895
+DSL[00]: Autoboot State: Train
+DSL[00]: DSL_DEV_LineStateGet: Got state 1
+usbd_probe_and_attach,probe 1!
+[USB] dwc3884_start() DWC3884 core version:0x4F54220A, 2.20a
+[USB] dwc3884_reset() DANUBE_RCU_UBSCFG:0xBF203018, var:0x00000400
+[USB] dwc3884_reset() rstctl:0xBE101010
+[USB] dwc3884_start() intsts:0xBE101014, var:0x04008829
+
+
+>>>>>> usbd_new_device: adding unit bus:4, addr=1, rev=0200, class=9, subclass=0, protocol=1, maxpacket=64, len=18, speed=3
+
+usbd_probe_and_attach(Hub)> Reopen STATIC default pipe OK
+VDSL detect
+usbd_probe_and_attach,probe 1!
+startExplore() usb explore task run-up, slot:0, tsk_id:81, reason:0
+usb_hc_install_interrupt() Interrupt disable
+usb_hc_install_interrupt() Interrupt disable
+usb_hc_install_interrupt() Install EHCI interrupt 95
+usb_hc_install_interrupt() Install OTG interrupt 54
+USB Module: Version 2.0.0 build Jul 26 2011 16:46:16
+usb_explore_task() Begin ...
+TEL_MGR_AutoDetection: Start calculate time 17895
+Config Method:0x84
+*********************************************
+***Waiting for Registrar to connect...***
+*********************************************
+VDSL detect
+[reset_802dot1x] wireless module ready
+config->enablePreAuthen=1
+install group key to Mac ASIC ????????????????????????
+[reset_802dot1x] 802.1Xv2 ready
+ce_l4_proc: 7h cause ah 2h
+VDSL detect
+VDSL detect
+VDSL detect
+...</nowiki>
+</WRAP>\\
+
+===== Tags =====
+{{tag>16flash 1WNIC 1usb 2ant 2core 2x2 32bit 34kc 5port 64ram 802.11bgn brnboot crypto fastethernet fxo internalantenna lantiq mips mips32 rt2860 rt3062 serial usb usb2.0  xDSL VDSL2 ADSL2+ vinax unsupported}}

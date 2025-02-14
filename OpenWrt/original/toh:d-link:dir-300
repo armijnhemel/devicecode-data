@@ -1,0 +1,627 @@
+====== D-Link DIR-300 Rev.A1 (Airlink AR335W/AR430W) ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+|:!: Note: For D-Link DIR-300 Rev.B (other hardware (HW), please see **[[toh:d-link:dir-300revb|D-Link DIR-300 Rev.B]]**.|
+
+===== Supported Versions =====
+^ Version/Model ^ S/N ^ OpenWrt Version Supported ^ Model Specific Notes ^
+| A1 | - | Kamikaze 8.09 | - |
+| Bx | - | other hardware | see [[toh:d-link:dir-300revb|DIR-300 Rev.B]] |
+
+:!: **//NOTE://** Because of [[https://dev.openwrt.org/ticket/6807|Ticket 6807]] OpenWrt 10.03 'Backfire' wasn't working. In r20733 (2010-04-07) this issue has been fixed. So avoid OpenWrt 10.03 and use OpenWrt 8.09 'Kamikaze', a trunk version newer then r20733 or the newest OpenWrt 10.03.1 'Backfire'. Enjoy.
+
+===== Hardware Highlights =====
+
+These devices are listed in the [[toh:start|Table of Hardware]]:
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "ethernet100mports", "usbports", "serial", "jtag", "supportedcurrentrel", "deviceid"],
+  "filterColumns": {"brand": "^D-Link$", "model": "DIR-300", "version": "^A"}
+} -->
+
+===== First Time Installation... =====
+
+Before you install, you might need to back up the original firmware. It can be done in multiple ways, including but not limited to using UART and/or Telnet. The most important partition is Board/RadioCfg, which is physically located at last 64KiB of flash chip.
+
+==== Original Firmware flash layout ====
+<code>
+# cat /proc/mtd
+dev: size erasesize name
+mtd0: 00400000 00010000 "spiflash"
+mtd1: 001ce000 00010000 "rootfs"
+mtd2: 003b0000 00010000 "upgrade"
+mtd3: 00010000 00010000 "rgdb"
+mtd4: 00020000 00010000 "RedBoot"
+mtd5: 00010000 00010000 "Board/RadioCfg"
+mtd6: 00010000 00010000 "LangPack"
+mtd7: 00400000 00010000 "flash"
+</code>
+
+Partition sizes correspond to DIR-300 v1.05_a319 firmware. While upgrade partition has multiple sections, only ''rootfs'' has got its own mtd device file. 
+
+^ Layer0   |  raw flash, **mtd0** and **mtd7**, 4096 KiB  |||||||
+^ Layer1   |  **mtd4** \\ ''RedBoot'' \\ 128 KiB  |  **mtd2** \\ ''upgrade'' \\ 3776 KiB  |||||  **mtd6** \\ ''LangPack'' \\ 64 KiB  |  **mtd3** \\ ''rgdb'' \\ 64 KiB  |  **mtd5** \\ ''Board/RadioCfg'' \\ 64 KiB  |
+^ Layer2   |:::|  **No device** \\ ''kernel'' \\ 512 KiB  |  PackImg \\ header \\ 32B  |  **mtd1** \\ ''rootfs'' \\ 1848 KiB  |  empty \\ space \\ 8160B  | **No device** \\ ''data'' \\ 1408 KiB |:::|:::|:::|
+
+When original firmware is flashed onto the router, first 96B are stripped, since it's a header of some kind. The rest of it is written directly to ''upgrade'' partition. Knowing this allows restoring original firmware from an alternative firmware, such as OpenWrt. A command such as ''tail -c +97 dir300a.bin > upgrade.bin'' allows to prepare file suitable for writing directly onto mtd partition.
+
+The data on the end of upgrade partition is likely remaining from past installation of some alt firmware and not used for anything.
+
+==== Flash Layout ====
+First let's have a quick view at the [[docs:techref:flash.layout|Flash Layout]] with the stock firmware and once OpenWrt has been installed onto the device. This helper understanding what mtd/sysupgrade does.\\
+The D-Link DIR-300 Rev.A1 uses this flash Layout:
+^ Layer0       |  raw flash, 4096KiB                                                                 |||||||
+^ Layer1       |  **mtd0**\\ ''RedBoot'' \\ 196.6KiB  |  **mtd1** \\ ''rootfs'' \\ 2.6MiB  |  **mtd3** \\ ''vmlinux.bin.l7'' \\ 1.3MiB \\ "''Kernel''", |  **mtd4** \\ ''FIS directory'' \\ 61.4KiB  |  **mtd5** \\ ''RedBoot config'' \\ 4.1KiB  |  **mtd6** \\ ''boardconfig'' \\ 65.5KiB  |
+^ Layer2       |:::|  **mtd2** \\ ''rootfs_data'' \\ 720.9KiB \\ "''/''", [[docs:techref:filesystems#JFFS2|JFFS2]]  |:::|:::|:::|:::|:::|
+
+:!: Notes: 
+As opposed to other devices, there is **no OpenWrt ''firmware'' partition**, so you cannot address it with ''mtd -r write xxx.bin firmware''. The explanation for this is, that the "FIS" (**F**ile **I**nformation **S**ystem) must be adjusted every time the flash is written. Unfortunately, ''mtd'' cannot do that, and thus cannot be used to do updates. Instead, ''RedBoot'' is used for updates.
+
+If you need to backup SPI flash you don't need mtd2(rootfs_data) partition. You need to join 0,1,3,4,5,6 with cat command like:
+<code>cat /dev/mtd0 > /tmp/dir300_full_flash.bin
+cat /dev/mtd1 >> /tmp/dir300_full_flash.bin
+cat /dev/mtd3 >> /tmp/dir300_full_flash.bin
+cat /dev/mtd4 >> /tmp/dir300_full_flash.bin
+cat /dev/mtd5 >> /tmp/dir300_full_flash.bin
+cat /dev/mtd6 >> /tmp/dir300_full_flash.bin
+</code>
+Then you can save your SPI flash somewhere safe with:
+<code>
+scp /tmp/dir300_full_flash.bin user@othersite:/path
+</code>
+Some users have reported that the JFFS version of OpenWrt can **remove the ''boardconfig''** area of the flash. If you need to restore to the original firmware or to the emergency redboot web flash page at any point, instructions are [[http://www.shadowandy.net/2007/10/flashing-dir-300-back-to-original-firmware.htm|here]]
+==== ... with manual step by step guide: ====
+
+| {{:meta:icons:tango:dialog-information.png?nolink}} | **Note** My DIR-300 takes ridiculously long to boot. I measured about 70 seconds after power connection has been established until I can connect to the bootloader and about 160 seconds until I can telnet/ssh to the OpenWrt! Maybe this is normal, maybe I miss-configured the replacement bootloader at the first time installation. FYI. |
+
+In order to replace the original firmware with OpenWrt, you will need to replace the BootLoader as well. RedBoot is OpenSource software and we are going to replace the original one with a modified one [[http://forum.freifunk-hannover.de/viewtopic.php?f=23&t=1028#p6960|here]] or from the DD-Wrt-Project. For the first time installation of OpenWrt on the D-Link DIR-300 (Rev.A1) or on the Airlink AR335W/AR430W you need to obtain 4 files from the Internet and have a [[wp>Trivial File Transfer Protocol|tfpd]] (i.e. daemon, not client) running.
+
+First you should install a tfpt-daemon and change into its root directory. After installation it will be automatically started. In Ubuntu do:
+
+| <code>
+sudo aptitude install tftpd-hpa
+cd /var/lib/tftpboot
+</code>|
+
+Now download the four files directly into this directory. You only need sudo, because as a normal user you cannot write in here:
+
+| <code>
+sudo wget http://www.dd-wrt.com/dd-wrtv2/downloads/v24/Atheros%20WiSoc/Airlink%20101%20AR430W/ap61.ram
+sudo wget http://www.dd-wrt.com/dd-wrtv2/downloads/v24/Atheros%20WiSoc/Airlink%20101%20AR430W/ap61.rom
+
+sudo wget http://downloads.openwrt.org/snapshots/trunk/atheros/openwrt-atheros-vmlinux.lzma
+sudo wget http://downloads.openwrt.org/snapshots/trunk/atheros/openwrt-atheros-root.squashfs
+</code>|
+
+
+Let's assume, you have only one NIC in you PC, while keeping you browser with this page open so you can read on, you will need to give yourself the IP 192.168.20.80. Now before you proceed, due to compatibility issues, you need to create the ~/.telnetrc. It has to contain the following:
+
+| <code>
+192.168.20.81
+        mode line
+</code>|
+
+Connect your NIC to the ''WAN''-Port of the DIR-300 and then restart the Router. While it reboots, after about 5 sec, there is a window of about 1 sec, during which you should be able to login to the original BootLoader of the DIR-300. Simply repeat this, until success:
+| <code>
+telnet 192.168.20.81 9000
+</code>|
+
+This is not a big deal, and you should be successful at first try. You will be presented with the original RedBoot prompt eagerly awaiting your input:
+| <code>
+Redboot>
+</code>|
+
+Now we will get and execute the modified (and temporary) RedBoot from the DD-Wrt-Project:
+| <code>
+Redboot> load ap61.ram go
+</code>|
+or split over two commands (if you get an error with the above)
+| <code>
+Redboot> load ap61.ram
+Redboot> go
+</code>|
+
+You will get no feedback and nothing has been written onto the flash yet, but the new temporary BootLoader should be running. To communicate with it, you need to change your own IP from 192.168.20.80 to 192.168.1.2 and reconnect the ethernet cable to one of the LAN-Ports of the Router. Then telnet to it:
+| <code>
+telnet 192.168.1.1 9000
+</code>|
+
+The modified (and temporary) BootLoader awaits you.
+| <code>
+DD-WRT>
+</code>|
+
+Now you need to make things permanent. For this we will use the other file, the ap61.rom:
+
+| <code>
+DD-WRT>fis init
+About to initialize [format] FLASH image system - continue (y/n)? y
+*** Initialize FLASH Image System
+... Erase from 0xbffe0000-0xbfff0000: .
+... Program from 0x807f0000-0x80800000 at 0xbffe0000: .
+
+DD-WRT>ip_address -h 192.168.1.2
+IP: 192.168.1.1/255.255.255.0, Gateway: 0.0.0.0
+Default server: 192.168.1.2
+
+DD-WRT>load -r -b %{FREEMEMLO} ap61.rom
+Using default protocol (TFTP)
+Raw file loaded 0x80080000-0x800a8717, assumed entry at 0x80080000
+
+DD-WRT>fis create -l 0x30000 -e 0xbfc00000 RedBoot
+An image named 'RedBoot' exists - continue (y/n)? y
+... Erase from 0xbfc00000-0xbfc30000: ...
+... Program from 0x80080000-0x800a8718 at 0xbfc00000: ...
+... Erase from 0xbffe0000-0xbfff0000: .
+... Program from 0x807f0000-0x80800000 at 0xbffe0000: .
+
+DD-WRT>fconfig bootp false
+bootp: Setting to false
+Update RedBoot non-volatile configuration - continue (y/n)? y
+... Erase from 0xbffe0000-0xbfff0000: .
+... Program from 0x80ff0000-0x81000000 at 0xbffe0000: . 
+DD-WRT>reset
+</code>|
+
+The Router will reboot, it should take about a minute. You login again to the modified (but this time persistent) BootLoader, load and fis the OpenWrt-Images onto the flash and configure the BootLoader:
+| <code>
+DD-WRT>fis init
+About to initialize [format] FLASH image system - continue (y/n)? y
+*** Initialize FLASH Image System
+... Erase from 0xbffe0000-0xbfff0000: .
+... Program from 0x807f0000-0x80800000 at 0xbffe0000: .
+
+DD-WRT>ip_address -h 192.168.1.2
+IP: 192.168.1.1/255.255.255.0, Gateway: 0.0.0.0
+Default server: 192.168.1.2
+
+DD-WRT>load -r -b %{FREEMEMLO} openwrt-atheros-vmlinux.lzma
+Using default protocol (TFTP)
+Raw file loaded 0x80040800-0x801007ff, assumed entry at 0x80040800
+
+DD-WRT>fis create -e 0x80041000 -r 0x80041000 vmlinux.bin.l7
+... Erase from 0xbfc30000-0xbfcf0000: ............
+... Program from 0x80040800-0x80100800 at 0xbfc30000: ............
+... Erase from 0xbffe0000-0xbfff0000: .
+... Program from 0x80ff0000-0x81000000 at 0xbffe0000: .
+
+DD-WRT>load -r -b %{FREEMEMLO} openwrt-atheros-root.squashfs
+Using default protocol (TFTP)
+Raw file loaded 0x80040800-0x802207ff, assumed entry at 0x80040800''
+
+DD-WRT>fis create rootfs
+... Erase from 0xbfcf0000-0xbffe0000: ...............................................
+... Program from 0x80040800-0x80220800 at 0xbfcf0000: ..............................
+... Erase from 0xbffe0000-0xbfff0000: .
+... Program from 0x80ff0000-0x81000000 at 0xbffe0000: .
+
+DD-WRT>fconfig boot_script_timeout 5
+
+DD-WRT>fconfig boot_script true
+Run script at boot: true 
+
+DD-WRT>fconfig
+Run script at boot: true
+Boot script:
+Enter script, terminate with empty line
+>> fis load -l vmlinux.bin.l7
+>> exec
+>>
+Boot script timeout (1000ms resolution): 5
+Use BOOTP for network configuration: false
+Gateway IP address: 192.168.1.1
+Local IP address: 192.168.1.10
+Local IP address mask: 255.255.255.0
+Default server IP address: 192.168.1.228
+Console baud rate: 9600
+GDB connection port: 9000
+Force console for special debug messages: false
+Network debug at boot time: false
+Update RedBoot non-volatile configuration - continue (y/n)? y
+... Erase from 0xbffe0000-0xbfff0000: .
+... Program from 0x80ff0000-0x81000000 at 0xbffe0000: .''
+
+DD-WRT>reset
+</code>|
+
+**And we are done.** This time the reboot could take up to 4-5 minutes, so be patient.
+
+
+==== ... with dir300-flash.sh shell script ====
+:!: If you don't trust the script below (it loads some binary from some blog, use the step by step guideline above ;-)
+
+For linux there is shell script called [[http://x-alina.freifunk-potsdam.de/downloads/dir300-flash/|dir300-flash]]; it wraps the manual steps for replacing the original bootloader and/or flashing firmware images into a single command line. The script requires a tftp-daemon to be already running. See –help for further details. Usage:
+
+''$ sudo ./dir300-flash.sh eth0 openwrt-atheros-vmlinux.lzma openwrt-atheros-root.squashfs
+Please connect now the WAN port of the DIR-300 wireless router directly to
+the interface "eth0" and then power the wireless router on.
+Waiting for the wireless router..... done
+Testing for the factory bootloader... yes
+Uploading the temporary bootloader RAM image... done
+Starting the temporary bootloader... done
+Waiting for the temporary bootloader to come up.... done
+Uploading the new bootloader ROM image... done
+Warning: Do not power off or disconnect as this may break the wireless router!
+Setting up bootloader configuration... done
+Flashing the new bootloader... done
+Resetting the wireless router... done
+Waiting for the new bootloader............. done
+Uploading the new kernel image... done
+Flashing the new kernel image... done
+Uploading the new root filesystem... done
+Flashing the new root filesystem... done
+Resetting the wireless router... done''
+===== Reflash =====
+==== via Bootloader for Latest Openwrt (18.06.1)====
+For reflashing via the [[docs:techref:bootloader]] do:
+You have to compile by your own - Not enough memory to boot the openwrt. Example of configuration where device boot fine - No gui/www, no dhcp server, only ssh.
+<code>
+CONFIG_TARGET_ath25=y
+CONFIG_TARGET_ath25_Default=y
+CONFIG_TARGET_BOARD="ath25"
+# CONFIG_ATH_USER_REGD is not set
+# CONFIG_IPV6 is not set
+CONFIG_KERNEL_COREDUMP=y
+CONFIG_KERNEL_DEBUG_INFO=y
+CONFIG_KERNEL_DEBUG_KERNEL=y
+CONFIG_KERNEL_ELF_CORE=y
+# CONFIG_KERNEL_IPV6 is not set
+CONFIG_KERNEL_SWAP=y
+# CONFIG_PACKAGE_ATH_DFS is not set
+# CONFIG_PACKAGE_MAC80211_MESH is not set
+# CONFIG_PACKAGE_dnsmasq is not set
+# CONFIG_PACKAGE_firewall is not set
+# CONFIG_PACKAGE_iptables is not set
+# CONFIG_PACKAGE_kmod-ipt-conntrack is not set
+# CONFIG_PACKAGE_kmod-ipt-core is not set
+# CONFIG_PACKAGE_kmod-ipt-nat is not set
+# CONFIG_PACKAGE_kmod-ipt-offload is not set
+# CONFIG_PACKAGE_kmod-nf-conntrack is not set
+# CONFIG_PACKAGE_kmod-nf-flow is not set
+# CONFIG_PACKAGE_kmod-nf-ipt is not set
+# CONFIG_PACKAGE_kmod-nf-ipt6 is not set
+# CONFIG_PACKAGE_kmod-nf-nat is not set
+# CONFIG_PACKAGE_kmod-nf-reject is not set
+# CONFIG_PACKAGE_kmod-ppp is not set
+# CONFIG_PACKAGE_libip4tc is not set
+# CONFIG_PACKAGE_libip6tc is not set
+# CONFIG_PACKAGE_libpthread is not set
+# CONFIG_PACKAGE_libxtables is not set
+# CONFIG_PACKAGE_odhcpd-ipv6only is not set
+# CONFIG_PACKAGE_opkg is not set
+# CONFIG_PACKAGE_ppp is not set
+CONFIG_PACKAGE_kmod-lib-crc-ccitt=y
+</code>
+On tftp server, two files are needed:
+<code>
+openwrt-ath25-generic-kernel.lzma
+openwrt-ath25-generic-squashfs-rootfs.bin
+</code>
+Connect to telnet to 192.168.1.10 port 9000
+<code>
+fis init
+ip_address -h 192.168.1.2
+load -r -b %{FREEMEMLO} openwrt-ath25-generic-kernel.lzma
+fis create -e 0x80041000 -r 0x80041000 vmlinux.bin.l7
+load -r -b %{FREEMEMLO} openwrt-ath25-generic-squashfs-rootfs.bin
+fis create rootfs
+</code>
+==== via Bootloader ====
+For reflashing via the [[docs:techref:bootloader]] do:
+
+<code>
+fis init
+ip_address -h 192.168.1.2
+load -r -b %{FREEMEMLO} openwrt-atheros-vmlinux.lzma
+fis create -e 0x80041000 -r 0x80041000 vmlinux.bin.l7
+load -r -b %{FREEMEMLO} openwrt-atheros-root.squashfs
+fis create rootfs
+</code>
+If your router have already had DD-WRT installed, there will be a chance that the existing bootloader is MicroRedboot. In that case, the router boots rather fast, you cannot telnet to 192.168.1.1 9000 at start up. You will have to use Reset button to access Redboot. See http://www.dd-wrt.com/wiki/index.php/Micro_Redboot for more detail.
+
+If you have already followed this guide and your router is running OpenWrt, but because of some reason you still want to reflash using the bootloader you can access Redboot after 10-11 seconds from powering the device up with the following command:
+
+<code>
+telnet 192.168.1.10 9000
+</code>
+==== via OpenWrt ====
+
+Use the ''openwrt-atheros-combined.squashfs.img'' to upgrade OpenWrt. The file can be found here. http://downloads.openwrt.org/backfire/10.03.1/atheros/ (this is the latest version at the time of wiki edit. There may be newer versions, so look around)
+
+=== LUCI ===
+  - Go to System > Flash firmware
+  - Point to ''openwrt-atheros-combined.squashfs.img'' that you have downloaded
+  - Upload image
+  - Flash it
+
+=== Terminal ===
+  - download the combined firmware from OpenWrt to your router:<code>
+cd /tmp
+wget http://downloads.openwrt.org/snapshots/trunk/atheros/openwrt-atheros-combined.squashfs.img
+wget http://downloads.openwrt.org/snapshots/trunk/atheros/md5sums
+</code>
+  - utilize ''[[docs:techref:sysupgrade]]'': <code>
+sysupgrade /tmp/openwrt-atheros-combined.squashfs.img</code>
+
+
+===== Basic configuration =====
+Since this part is identical for all devices, see [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]].
+
+
+===== Redboot access script for Windows =====
+
+download [[http://www.chiark.greenend.org.uk/~sgtatham/putty/download.html|putty.exe]] to c:\
+create a file on c:\ called redboot.txt, with the following content:
+
+''^C''
+
+create a file on c:\ called redboot.bat with the following content:
+
+''rem echo off
+:start
+rem ------------------------------------------------
+ping 192.168.20.81 -n 1 -w 1 >NUL
+IF ERRORLEVEL 1 goto start
+
+rem putty
+rem ------------------------------------------------
+break
+putty.exe telnet://192.168.20.81:9000 -m redboot.txt
+exit''
+
+start the bat file and power on the router.....here comes redboot
+
+
+===== Hardware =====
+
+==== Info ====
+^ Architecture     | MIPS                                   |
+^ Vendor           | Atheros                                |
+^ Bootloader       | [[docs:techref:bootloader:redboot]]    |
+^ System-On-Chip   | AR2317 (MIPS 4KEc V6.4)                |
+^ CPU Speed        | 182 Mhz                                |
+^ Flash chip       | Spansion FL032AIF (3.0V)               |
+^ Flash size       | 4 MiB (32MBit)                         |
+^ RAM chip         | ESMT M12L128168A (SDRAM)               |
+^ RAM size         | 16 MiB (128MBit; 2M x 16 Bit x 4 Banks)|
+^ Wireless         | Integrated Atheros 802.11b/g           |
+^ Ethernet         | IC Plus 175c                           |
+^ USB              | No                                     |
+^ Serial           | [[#Serial|Yes]]                        |
+^ JTAG             | [[#JTAG|Yes]]                          |
+
+==== Serial ====
+
+-> JP1
+
+''|Power| |Wan| |Ethernet x4 ports| |Ant|
+
+                                  |TXD|
+                                  |GND|
+                                  |VCC|
+                                  | . |
+                                  |RXD|''
+
+
+speed 9600,n,8.
+
+If you just see non-printable characters in the console, you may want to change baudrate. In some case, where MicroRedboot is install, the speed is 115200.
+
+==== JTAG ====
+
+-> J6
+
+The router follows the MIPS 2.6 EJTAG Specification and has the same PIN information. But on the board the PINS are laid out as
+
+|  1 - nTRST |  2 - GND |  3 - TDI |  4 - GND   |  5 - TDO | 6 - GND | 7 - TMS |
+| 14 - VCC   | 13 - N/C | 12 - N/C | 11 - nSRST | 10 - GND | 9 - TCK | 8 - GND |
+
+
+===== Specific configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| eth0.1           | LAN ports (1 to 4)   | None                    |
+| eth0.2           | WAN port             | DHCP                    |
+| ath0             | WiFi                 | Disabled                |
+
+==== WiFi ====
+To enable WiFi, you need to install packages ''xxx'' and ''xxx''.
+
+==== Switch Ports (for VLANs) ====
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+
+^ Port          | Internet (WAN)   | LAN 1   | LAN 2   | LAN 3   | LAN 4   |
+^ Switch port   | 4                | 3       | 2       | 1       | 0       |
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+  * Unplug the router's power cord
+  * Connect any router LAN port directly to your PC
+  * Configure your PC with a static IP address: 192.168.1.2
+  * Plug the power on to the router
+  * Wait until the "SYS" LED starts flashing repeatedly
+  * Press the button (on the side of the router) -- the "SYS" LED will now start flashing at a faster rate
+  * Login to the router by using telnet to connect to the IP address 192.168.1.1 -- there will be an immediate unauthenticated login to a root shell
+
+Commands:
+
+  * mount_root - will mount the normal root filesystem
+  * firstboot - all settings will be reset
+
+
+===== Mods =====
+==== CPU Overclock from 183 to 200 MHz ====
+Assuming OpenWrt is already installed, log on the the device via SSH, then do:
+
+''cat /dev/mtdblock0 > /tmp/RedBoot.bin''
+
+Copy the file (with scp, for example) to your local computer and generate a MD5-checksum for it.
+
+''md5sum RedBoot.bin''
+
+if it equals with //B9D638E537D01D3ED651FAB2AF63FC22// it is probalby safe to go on. Load the file into a hex editor and
+
+''- change offset 0x17 from 0x03 to 0x01
+- change offset 0x23 from 0x5c to 0x28''
+
+MD5 checksums:
+''DIR-300 183MHz: B9D638E537D01D3ED651FAB2AF63FC22
+DIR-300 200MHz: 713806dbb99cb0e633a385eb1a8b5440''
+
+Copy the modded RedBoot.bin back to the /tmp folder of your router and flash it back:
+
+''mtd -f write /tmp/RedBoot.bin RedBoot''
+
+Reboot, then check CPU frequency:
+
+''cat /proc/cpuinfo''
+
+==== SD-card slot mod ====
+There is a working mod to add a SD-card slot to your DIR-300. Follow the instructions [[http://tinyhack.com/2010/04/04/d-link-dir-300-serial-port-and-sd-mod/|here.]]
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+[    0.000000] Linux version 4.14.67 (kofec@E5420Mint) (gcc version 7.3.0 (OpenWrt GCC 7.3.0 r7981-a6e11ccb13)) #0 Wed Aug 29 19:00:58 2018
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019064 (MIPS 4KEc)
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 01000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 16kB, VIPT, 4-way, linesize 16 bytes.
+[    0.000000] Primary data cache 16kB, 4-way, VIPT, no aliases, linesize 16 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000000ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000000ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000000ffffff]
+[    0.000000] On node 0 totalpages: 4096
+[    0.000000] free_area_init_node: node 0, pgdat 8039ed20, node_mem_map 80403020
+[    0.000000]   Normal zone: 32 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 4096 pages, LIFO batch:0
+[    0.000000] random: get_random_bytes called from 0x803a2724 with crng_init=0
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists, mobility grouping off.  Total pages: 4064
+[    0.000000] Kernel command line: console=ttyS0,9600 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 64 (order: -4, 256 bytes)
+[    0.000000] Dentry cache hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.000000] Inode-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000000] Memory: 12076K/16384K available (2952K kernel code, 137K rwdata, 364K rodata, 184K init, 198K bss, 4308K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 128
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 20774570075 ns
+[    0.000044] sched_clock: 32 bits at 92MHz, resolution 10ns, wraps every 23342213114ns
+[    0.093925] Calibrating delay loop... 183.70 BogoMIPS (lpj=918528)
+[    0.247254] pid_max: default: 32768 minimum: 301
+[    0.303331] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.381815] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.478520] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.595452] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.670236] NET: Registered protocol family 16
+[    0.725362] Can't analyze schedule() prologue at 8031ebb8
+[    0.874847] clocksource: Switched to clocksource MIPS
+[    0.941291] NET: Registered protocol family 2
+[    0.996916] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    1.079706] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    1.155501] TCP: Hash tables configured (established 1024 bind 1024)
+[    1.232162] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    1.301397] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    1.377303] NET: Registered protocol family 1
+[    1.429005] PCI: CLS 0 bytes, default 16
+[    1.459740] Radio config found at offset 0xf8 (0x1f8)
+[    1.549079] Crashlog allocated RAM at address 0xf00000
+[    1.630362] workingset: timestamp_bits=30 max_order=12 bucket_order=0
+[    1.739465] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    1.808609] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    1.992085] io scheduler noop registered
+[    2.038321] io scheduler deadline registered (default)
+[    2.100486] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    2.196960] serial8250: ttyS0 at MMIO 0x11100000 (irq = 9, base_baud = 5750000) is a 16550A
+[    2.296346] console [ttyS0] enabled
+[    2.379633] bootconsole [early0] disabled
+[    2.480695] ar2315-spiflash ar2315-spiflash.0: 4096 Kbytes flash detected
+[    2.575388] Searching for RedBoot partition table in spiflash at offset 0x3d0000
+[    3.039138] Searching for RedBoot partition table in spiflash at offset 0x3e0000
+[    3.502859] 6 RedBoot partitions found on MTD device spiflash
+[    3.572014] Creating 6 MTD partitions on "spiflash":
+[    3.631853] 0x000000000000-0x000000030000 : "RedBoot"
+[    3.704474] 0x000000030000-0x000000160000 : "vmlinux.bin.l7"
+[    3.784163] 0x000000160000-0x0000003e0000 : "rootfs"
+[    3.849281] mtd: device 2 (rootfs) set to be root filesystem
+[    3.917851] 1 squashfs-split partitions found on MTD device rootfs
+[    3.992372] 0x0000002d0000-0x0000003e0000 : "rootfs_data"
+[    4.074338] 0x0000003e0000-0x0000003ef000 : "FIS directory"
+[    4.152968] 0x0000003ef000-0x0000003f0000 : "RedBoot config"
+[    4.232712] 0x0000003f0000-0x000000400000 : "boardconfig"
+[    4.376558] eth0: Atheros AR231x: 00:1e:58:85:6f:8e, irq 4
+[    4.519858] IP17xx: Found IP175C at 0:00
+[    4.688305] libphy: ar231x_eth_mii: probed
+[    4.906966] eth0: attached PHY driver [IC+ IP17xx] (mii_bus:phy_addr=0:00)
+[    4.996733] NET: Registered protocol family 17
+[    5.050827] 8021q: 802.1Q VLAN Support v1.8
+[    5.158519] VFS: Mounted root (squashfs filesystem) readonly on device 31:2.
+[    5.245421] Freeing unused kernel memory: 184K
+[    5.298969] This architecture does not have kernel memory protection.
+[    5.694951] random: fast init done
+[    8.640944] init: Console is alive
+[    8.683616] init: - watchdog -
+[   11.214585] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[   11.470643] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[   11.569761] init: - preinit -
+[   15.415089] eth0: link up (100Mbps/full duplex)
+[   17.957847] mount_root: jffs2 not ready yet, using temporary tmpfs overlay
+[   18.098917] urandom-seed: Seed file not found (/etc/urandom.seed)
+[   18.544184] procd: - early -
+[   18.580065] procd: - watchdog -
+[   19.630296] procd: - watchdog -
+[   19.671190] procd: - ubus -
+[   19.946288] random: ubusd: uninitialized urandom read (4 bytes read)
+[   20.025809] random: ubusd: uninitialized urandom read (4 bytes read)
+[   20.102960] random: ubusd: uninitialized urandom read (4 bytes read)
+[   20.188693] procd: - init -
+[   21.166424] kmodloader: loading kernel modules from /etc/modules.d/*
+[   21.251507] Loading modules backported from Linux version wt-2017-11-01-0-gfe248fc2c180
+[   21.347929] Backport generated by backports.git v4.14-rc2-1-31-g86cf0e5d
+[   22.287420] ath: EEPROM regdomain: 0x0
+[   22.287470] ath: EEPROM indicates default country code should be used
+[   22.287484] ath: doing EEPROM country->regdmn map search
+[   22.287530] ath: country maps to regdmn code: 0x3a
+[   22.287553] ath: Country alpha2 being used: US
+[   22.287568] ath: Regpair used: 0x3a
+[   22.290628] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[   22.297900] ath5k: phy0: Atheros AR2317 chip found (MAC: 0x90, PHY: 0x48)
+[   22.496682] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   24.792537] urandom_read: 4 callbacks suppressed
+[   24.792579] random: jshn: uninitialized urandom read (4 bytes read)
+[   25.144620] random: jshn: uninitialized urandom read (4 bytes read)
+[   26.378829] random: jshn: uninitialized urandom read (4 bytes read)
+[   43.626312] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   44.015184] jffs2_build_filesystem(): unlocking the mtd device... 
+[   44.015243] done.
+[   44.112911] jffs2_build_filesystem(): erasing all blocks after the end marker... 
+[   59.213539] eth0: link up (100Mbps/full duplex)
+[   59.431960] br-lan: port 1(eth0.1) entered blocking state
+[   59.497131] br-lan: port 1(eth0.1) entered disabled state
+[   59.563771] device eth0.1 entered promiscuous mode
+[   59.621607] device eth0 entered promiscuous mode
+[   60.637489] br-lan: port 1(eth0.1) entered blocking state
+[   60.702589] br-lan: port 1(eth0.1) entered forwarding state
+[   67.826211] done.
+[   67.849791] jffs2: notice: (650) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[   70.107830] overlayfs: upper fs does not support tmpfile.
+[  137.135206] random: crng init done
+</nowiki>
+</WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ath25 4Flash 16RAM 802.11bg 1Ant DetachableAntenna FastEthernet 1NIC 1WNIC 5Port JTAG MIPS MIPS32 4KEc}}

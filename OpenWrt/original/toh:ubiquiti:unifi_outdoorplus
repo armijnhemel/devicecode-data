@@ -1,0 +1,564 @@
+====== Ubiquiti UniFi Outdoor Plus ======
+
+The UniFi Outdoor Plus is an 802.11b/g/n weatherproof outdoor access point. Exclusive feature is a configurable RF filter in the receive path that should allow better sensitivity in noisy environment.
+
+**Reverse engineering the control protocol of the filter is currently being worked on. Without a correctly programmed filter, the access point is deaf and therefore not usable**.
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^UniFi AP Outdoor Plus$"}
+} -->
+
+^ Version/Model ^ Launch Date ^
+| v1   |  2006-07  |
+| v1.1 |  2008-12  |
+| v2   |  2011-01  |
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^UniFi AP Outdoor Plus$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^UniFi AP Outdoor Plus$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+An unconfigured device gets its IP address via DHCP, Login username and password is 'ubnt'. Once the device has been adopted by a controller, it will use the device password of the 'Site config' page. Use ssh to login.
+
+  - Login
+  - possibly backup the stock firmware using <code>
+dd if=/dev/mtd2ro of=/tmp/jffs.img
+</code>
+  - scp /tmp/jffs.img to your backup location, rm /tmp/jffs.img from the device to save memory
+  - Download the factory.bin image as shown above
+  - scp the image to the /tmp directory of your device
+  - Install OpenWrt using <code>
+fwupdate.real -m openwrt-ar71xx-generic-ubnt-unifi-outdoor-plus-squashfs-factory.bin -d
+</code>
+
+==== Flash Layout ====
+
+=== OEM Firmware ===
+
+^   UniFi Outdoor Plus Flash Layout           ^^^^^^
+^ Layer0       |                       en25qh128 16384KiB                                                                      |||||
+^ Layer1       |  mtd0 **//u-boot//** 256KiB  |  mtd1 **//u-boot-env//** 64KiB  |  mtd2 **//jffs2//** 15744KiB  |  mtd3 **//cfg//** 256 KiB  |  mtd4 **//EEPROM//** 64KiB  |
+
+=== OpenWrt ===
+
+^   UniFi Outdoor Plus  Flash Layout           ^^^^^^^^
+^ Layer0       |                       en25qh128 16384KiB                                                                      |||||||
+^ Layer1       |  mtd0 **//u-boot//** 256KiB  |  mtd1 **//u-boot-env//** 64KiB |  mtd7 **//firmware//** 15744KiB  |||  mtd5  **//cfg//**  |  mtd6 **//EEPROM (art)//** 64KiB  |
+^ Layer2       | | |  mtd2 **//kernel//** 1536KiB  |  mtd3 **//rootfs//** 14208KiB   || | |
+^ <color magenta>mountpoint</color>   | | | |  <color magenta>''/''</color>  || | |
+^ filesystem   | | | |  [[docs:techref:filesystems#mini_fo|mini_fo]]/[[docs:techref:filesystems#overlayfs|overlayfs]]  || | |
+^ Layer3       | | | | |  mtd4 **//rootfs_data//** 11904KiB | | |
+^ Size in KiB  |  256KiB  |  64KiB  |  1536KiB  |  2304KiB  |  11904KiB  |  256KiB  |  64KiB  |
+^ Name         |  **//u-boot//**  |  **//u-boot-env//**  |  **//kernel//**  | |  **//rootfs_data//**  |  **//cfg//**  |  **//EEPROM//**  |
+^ <color magenta>mountpoint</color>  |  //none//  |  //none//  |  //none//  |  <color magenta>''/rom''</color>  |  <color magenta>''/overlay''</color>   |  //none//  |  //none//  |
+^ filesystem   |  //none//  |  //none//  |  //none//  |  [[docs:techref:filesystems#SquashFS]]  |  [[docs:techref:filesystems#JFFS2]]  |  //none//  |  //none//  |
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+==== Revert to stock firmware (untested) ====
+
+You can flash the backup image optionally created before first installation. Note that the configuration partition of the stock firmware is not touched by OpenWrt, so you will also revert to the config used before OpenWrt.
+
+  - scp your backuped jffs.img to /tmp
+  - ssh into the device
+  - Revert using <code>mtd write /tmp/jffs.img firmware -r
+</code>
+
+Also look at the debricking section.
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+
+===== Specific Configuration =====
+
+==== Wifi power ====
+
+Total gain by antenna and tx amplifier is about 10-11dB, amateurish measured. ath9k doesn't know about this and so doesn't OpenWrt. **So if you configure 18dBm transmit power, you'll actually get 28dBm, well outside regulatory limits!** For Europe, do not set transmit power beyond 10dBm. As the access points also needs the hear the devices associated to it, one sided transmit power boost would not help with range extension anyway.
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description   ^ Default configuration   ^
+| br-lan           | LAN & WiFi    | 192.168.1.1/24          |
+| eth0             | LAN port      | None                    |
+| eth1             | WAN port      | DHCP                    |
+| wlan0            | WiFi          | Disabled                |
+
+
+==== Failsafe mode ====
+
+Use the instructions from -> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]. The button to trigger failsafe during bootup is the reset button hidden between the two ethernet ports.
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The Linksys WRT54GL has two buttons. They are Reset and Secure Easy Setup. Here, we merely name the buttons, so we can use them in the above Howto:
+^ BUTTON              ^ Event   ^
+| Reset               | reset   |
+| Secure Easy Setup   | ses     |
+
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set]]             | [[wp>MIPS architecture|MIPS]] |
+^ Vendor                             | [[wp>Qualcomm Atheros]] |
+^ [[docs:techref:bootloader]]        | [[docs:techref:bootloader:uboot|U-Boot]] |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | |
+^ [[docs:techref:hardware:cpu|CPU]] @Frq         | MIPS 24Kc V7.4 @?MHz |
+^ Flash size                 | 16384 KiB |
+^ Flash Chip                 | en25qh128 |
+^ RAM size                   | 64 MiB   |
+^ RAM Chip                   |   |
+^ Wireless No1               | 2x2 MIMO for 2.4GHz 802.11b/g/n |
+^ [[docs:techref:hardware:switch]]    | //none// |
+^ [[docs:techref:hardware:internet.access.technologies|Modem]]   | //none// |
+^ USB                        | No  |
+^ PSU             | 48V/0.5A passive PoE supply shipped, also supports 802.3af |
+^ [[docs:techref:hardware:port.serial|Serial]]  | [[#Serial|?]] |
+^ [[docs:techref:hardware:port.jtag|JTAG]]      | [[#JTAG|?]]   |
+
+==== Photos ====
+Model Number
+
+//Front://
+
+**Photo of front of the casing**
+
+//Back://
+
+**Photo of back of the casing**
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+Remove the antennas, nuts and o-rings from the top.
+Remove two screws behind the label.
+Pull board carrier down and out.
+
+**Photo of PCB**
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:
+
+J1-1 3v3
+J1-2 Rx
+J1-3 Tx
+J1-4 Gnd
+
+Don't connect pin 1.
+
+**Photo of PCB with markings**
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:
+
+**Photo of PCB with markings**
+
+
+===== Debricking =====
+There is a bootloader TFTP debricking method described in the 
+[[https://community.ubnt.com/t5/UniFi-Troubleshooting/UniFi-TFTP-soft-recovery-for-bricked-access-point/ta-p/607605|UBNT forum]], but it's possibly not working once OpenWrt has been installed.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 2.6.32.33 (build-unifi@ubnt-builder3) (gcc version 4.1.2) #1 Mon Oct 27 15:39:20 PDT 2014
+[    0.000000] flash_size passed from bootloader = 16
+[    0.000000] arg 1: console=tty0
+[    0.000000] arg 2: panic=3
+[    0.000000] arg 3: mtdparts=ar7240-nor0:256k(u-boot),64k(u-boot-env),15744k(jffs2),256k(cfg),64k(EEPROM)
+[    0.000000] arg 4: mem=64M
+[    0.000000] arg 5: ubntbootid=0
+[    0.000000] arg 6: ubootver=unifi-v1.5.2.206-g44e4c8bc
+[    0.000000] CPU revision is: 00019374 (MIPS 24Kc)
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 02000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00004000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] early_node_map[1] active PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00004000
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 80266b70, node_mem_map 81000000
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16256 pages, LIFO batch:3
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=tty0 panic=3 mtdparts=ar7240-nor0:256k(u-boot),64k(u-boot-env),15744k(jffs2),256k(cfg),64k(EEPROM) mem=64M ubntbootid=0 ubootver=unifi-v1.5.2.206-g44e4c8bc 
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 58784k/65536k available (1972k kernel code, 6676k reserved, 480k data, 3532k init, 0k highmem)
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:128
+[    0.000000] plat_time_init: plat time init done
+[    0.000000] Console: colour dummy device 80x25
+[    0.000000] console [tty0] enabled
+[    0.001000] Calibrating delay loop... 259.07 BogoMIPS (lpj=129536)
+[    0.017000] Mount-cache hash table entries: 512
+[    0.020000] NET: Registered protocol family 16
+[    0.022000] ===== ar7240_platform_init: 0
+[    0.022000] PCIe WLAN H/W found [tries: 1]
+[    0.023000] PCI init:ar7240_pcibios_init
+[    0.023000] ar7240_pcibios_init(368): PCI CMD write: 0x356
+[    0.023000] registering PCI controller with io_map_base unset
+[    0.028000] bio: create slab <bio-0> at 0
+[    0.030000] pci 0000:00:00.0: reg 10 64bit mmio: [0x10000000-0x1000ffff]
+[    0.030000] pci 0000:00:00.0: supports D1
+[    0.030000] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    0.030000] pci 0000:00:00.0: PME# disabled
+[    0.031000] Returning IRQ 48
+[    0.032000] Switching to clocksource MIPS
+[    0.035000] NET: Registered protocol family 2
+[    0.035000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.037000] TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+[    0.037000] TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.038000] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.038000] TCP reno registered
+[    0.038000] NET: Registered protocol family 1
+[    7.376000] AR7240 GPIOC major 0
+[    7.379000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    7.379000] JFFS2 version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    7.380000] msgmni has been set to 114
+[    7.380000] io scheduler noop registered
+[    7.380000] io scheduler deadline registered (default)
+[    7.408000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    7.409000] serial8250.0: ttyS0 at MMIO 0xb8020000 (irq = 19) is a 16550A
+[    7.411000] 5 cmdlinepart partitions found on MTD device ar7240-nor0
+[    7.411000] Creating 5 MTD partitions on "ar7240-nor0":
+[    7.411000] 0x000000000000-0x000000040000 : "u-boot"
+[    7.413000] 0x000000040000-0x000000050000 : "u-boot-env"
+[    7.414000] 0x000000050000-0x000000fb0000 : "jffs2"
+[    7.416000] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    7.417000] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    7.419000] u32 classifier
+[    7.419000]     Performance counters on
+[    7.419000]     input device check on 
+[    7.419000]     Actions configured 
+[    7.422000] TCP westwood registered
+[    7.422000] NET: Registered protocol family 17
+[    7.422000] Bridge firewalling registered
+[    7.422000] 802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+[    7.422000] All bugs added by David S. Miller <davem@redhat.com>
+[    7.422000] ar7240wdt_init: Registering WDT success
+[    7.423000] [caution]: last reboot is triggered by WDT!
+[    7.454000] Freeing unused kernel memory: 3532k freed
+[    7.459000] Algorithmics/MIPS FPU Emulator v1.5
+[    7.505000] ubnthal: module license 'Proprietary' taints kernel.
+[    7.505000] Disabling lock debugging due to kernel taint
+[    7.537000] flash (0xbfff5000) magic (0xffff) is wrong 
+[    7.537000] flash (0xbfff5000) magic (0xffff) is wrong 
+[    7.537000] flash (0xbfff5000) magic (0xffff) is wrong 
+[    7.538000] ubnthal: Ubiquiti UAP-Outdoor+
+[    7.538000] ubnthal: Merlin: maxPower 30 powerOffset 10 txmask 3 antenna 4 [0] gain 0 caps 0x9014
+[    7.538000] creating procfs for ubnthal
+[    7.538000] creating proc entry for system.info
+[    7.538000] creating proc entry for board
+[    7.538000] creating proc entry for wifi0
+[    7.538000] creating procfs for status
+[    7.538000] creating proc entry for IsDefault
+[    7.538000] creating proc entry for IsLocated
+[    7.538000] creating proc entry for IsIsolated
+[    7.552000] gpiodev: (reset_timeout=3 factory_countdown=1000000)
+[    7.552000] creating /proc/gpio/
+[    7.552000]          /proc/gpio/led_pattern
+[    7.552000]          /proc/gpio/led_tempo
+[    7.552000]          /proc/gpio/poe_passthrough
+[    8.462000] **** drop_caches_sysctl_handler: all done timer added ...**** 
+[   10.221000] SCSI subsystem initialized
+[   10.328000] fuse init (API version 7.13)
+[   10.357000] pktgen 2.72: Packet Generator for packet performance testing.
+[   13.068000] ATHR_GMAC: Length per segment 1536
+[   13.068000] ATHR_GMAC: fifo cfg 3 01f00140
+[   13.069000] ATHR_GMAC: Mac address for unit 0:838b5e7c
+[   13.069000] ATHR_GMAC: 24:a4:3c:94:4b:56 
+[   13.627000] athr_gmac_mii_setup 0
+[   13.628000] Virian MDC CFG Value ==> 6
+[   13.628000] ATHR_GMAC: Max segments per packet :   1
+[   13.628000] ATHR_GMAC: Max tx descriptor count :   80
+[   13.628000] ATHR_GMAC: Max rx descriptor count :   252
+[   13.628000] ATHR_GMAC: Mac capability flags    :   4401
+[   13.628000] ATHR_GMAC: Mac address for unit 1:838b5e7c
+[   13.628000] ATHR_GMAC: 26:a4:3c:94:4b:56 
+[   14.186000] athr_gmac_mii_setup 1
+[   14.186000] Virian MDC CFG Value ==> 6
+[   14.187000] ATHR_GMAC: Max segments per packet :   1
+[   14.187000] ATHR_GMAC: Max tx descriptor count :   40
+[   14.187000] ATHR_GMAC: Max rx descriptor count :   252
+[   14.187000] ATHR_GMAC: Mac capability flags    :   4D81
+[   14.783000] ath_hal: 0.9.17.1 (AR5416, DEBUG, REGOPS_FUNC, WRITE_EEPROM, 11D)
+[   15.253000] ath_dfs: Version 2.0.0
+[   15.253000] Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+[   15.719000] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+[   16.316000] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+[   17.983000] ath_pci: 9.2.0_U10.5.13 (Atheros/multi-bss)
+[   17.983000] wevent: registered
+[   17.983000] qos: registered
+[   17.983000] PCI: Setting latency timer of device 0000:00:00.0 to 64
+[   17.983000] __ath_attach: Set global_scn[0]
+[   17.983000] ACBKMinfree = 48
+[   17.983000] ACBEMinfree = 32
+[   17.984000] ACVIMinfree = 16
+[   17.984000] ACVOMinfree = 0
+[   17.984000] CABMinfree = 48
+[   17.984000] UAPSDMinfree = 0
+[   17.992000] ath_hal: Ubiquiti Merlin (HSR Capable)
+[   17.992000] ath_hal: maxPower 60 minPower 0 powerOffset 20
+[   17.994000] [DFS] dfs_attach: use DFS enhancements
+[   18.000000] ath_get_caps[5174] rx chainmask mismatch actual 3 sc_chainmak 0
+[   18.000000] ath_get_caps[5149] tx chainmask mismatch actual 3 sc_chainmak 0
+[   18.030000] wifi0: Atheros 9280: mem=0x10000000, irq=48 hw_base=0xb0000000
+[   20.212000] ubnt_roam [BASIC]:Initialized
+[   20.266000] [DFS] dfs_init_radar_filters: DFS min filter rssiThresh is 10 + offset 0 = 10
+[   20.266000] [DFS] DFS max pulse dur = 207 ticks
+[   20.272000] wlan_vap_create : enter. devhandle=0x8388c2c0, opmode=IEEE80211_M_HOSTAP, flags=0x1
+[   20.273000] wlan_vap_create : exit. devhandle=0x8388c2c0, opmode=IEEE80211_M_HOSTAP, flags=0x1.
+[   20.273000] VAP device ath0 created 
+[   20.312000] setting antenna gain to 6
+[   20.378000] WARNING: Fragmentation with HT mode NOT ALLOWED!!
+[   20.427000] wlan_vap_create : enter. devhandle=0x8388c2c0, opmode=IEEE80211_M_HOSTAP, flags=0x1
+[   20.427000] wlan_vap_create : exit. devhandle=0x8388c2c0, opmode=IEEE80211_M_HOSTAP, flags=0x1.
+[   20.428000] VAP device ath1 created 
+[   20.450000] ubnt_roam [BASIC]:UDP TX thread starting
+[   20.485000] ubnt_roam [BASIC]:Radio [8388C2C0] for VAP ath0 not found, creating one...
+[   20.636000] ubnt_roam [BASIC]:Radio [8388C2C0] for VAP ath1 already created...
+[   20.855000] Ebtables v2.0 registered
+[   21.397000] device eth0 entered promiscuous mode
+[   21.408000] device eth1 entered promiscuous mode
+[   21.418000] device ath1 entered promiscuous mode
+[   21.455000] device ath0 entered promiscuous mode
+[   21.466000] device eth0.3 entered promiscuous mode
+[   21.476000] device eth1.3 entered promiscuous mode
+[   21.512000] athr_gmac_ring_alloc Allocated 1280 at 0x81cce000
+[   21.512000] athr_gmac_ring_alloc Allocated 4032 at 0x81cdb000
+[   21.813000] athr_gmac_mii_setup 0
+[   21.813000] Virian MDC CFG Value ==> 6
+[   21.813000] Setting Drop CRC Errors, Pause Frames and Length Error frames 
+[   21.814000] Setting PHY...
+[   24.838000] ATHR_GMAC: Enet Unit:0 PHY:4 is UP GMii 100Mbps full duplex
+[   24.838000] ATHR_GMAC: done cfg2 0x7115 ifctl 0x10000 miictrl  
+[   24.838000] athr_gmac_mii_setup 0
+[   24.838000] Virian MDC CFG Value ==> 6
+[   24.838000] Setting Drop CRC Errors, Pause Frames and Length Error frames 
+[   24.884000] br0: port 1(eth0) entering learning state
+[   24.884000] br0.3: port 2(eth0.3) entering learning state
+[   24.902000] athr_gmac_ring_alloc Allocated 640 at 0x81ccdc00
+[   24.902000] athr_gmac_ring_alloc Allocated 4032 at 0x81d6d000
+[   25.203000] athr_gmac_mii_setup 1
+[   25.203000] Virian MDC CFG Value ==> 6
+[   25.203000] Setting Drop CRC Errors, Pause Frames and Length Error frames 
+[   25.203000] ATHRS26: resetting s26
+[   25.304000] ATHRS26: s26 reset done
+[   25.310000] Setting PHY...</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 3.18.11 (buildbot@builder1) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r45556) ) #1 Tue May 19 01:34:36 CEST 2015
+[    0.000000] MyLoader: sysp=3fb277f7, boardp=11d33371, parts=77375913
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019374 (MIPS 24Kc)
+[    0.000000] SoC: Atheros AR7241 rev 1
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x00000000-0x03ffffff]
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 803822b0, node_mem_map 81000000
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16384 pages, LIFO batch:3
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line:  board=UBNT-UOP console=ttyS0,115200 mtdparts=spi0.0:256k(u-boot)ro,64k(u-boot-env)ro,1536k(kernel),14208k(rootfs),256k(cfg)ro,64k(EEPROM)ro,15744k@0x50000(firmware) rootfstype=squashfs,jffs2 noinitrd
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 60812K/65536K available (2626K kernel code, 132K rwdata, 544K rodata, 208K init, 194K bss, 4724K reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:51
+[    0.000000] Clocks: CPU:390.000MHz, DDR:390.000MHz, AHB:195.000MHz, Ref:5.000MHz
+[    0.000000] Calibrating delay loop... 259.27 BogoMIPS (lpj=1296384)
+[    0.070000] pid_max: default: 32768 minimum: 301
+[    0.070000] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.080000] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.090000] NET: Registered protocol family 16
+[    0.090000] MIPS: machine is Ubiquiti UniFiAP Outdoor+
+[    0.540000] registering PCI controller with io_map_base unset
+[    0.550000] PCI host bridge to bus 0000:00
+[    0.560000] pci_bus 0000:00: root bus resource [mem 0x10000000-0x13ffffff]
+[    0.560000] pci_bus 0000:00: root bus resource [io  0x0000]
+[    0.570000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.570000] pci 0000:00:00.0: [168c:002a] type 00 class 0x028000
+[    0.570000] pci 0000:00:00.0: fixup device configuration
+[    0.580000] pci 0000:00:00.0: reg 0x10: [mem 0x10000000-0x1000ffff 64bit]
+[    0.580000] pci 0000:00:00.0: supports D1
+[    0.580000] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    0.580000] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[    0.580000] pci 0000:00:00.0: BAR 0: assigned [mem 0x10000000-0x1000ffff 64bit]
+[    0.580000] pci 0000:00:00.0: using irq 40 for pin 1
+[    0.590000] Switched to clocksource MIPS
+[    0.590000] NET: Registered protocol family 2
+[    0.600000] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.600000] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.610000] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.620000] TCP: reno registered
+[    0.620000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.630000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.630000] NET: Registered protocol family 1
+[    0.640000] PCI: CLS 0 bytes, default 32
+[    0.640000] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.650000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.660000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.670000] msgmni has been set to 118
+[    0.680000] io scheduler noop registered
+[    0.680000] io scheduler deadline registered (default)
+[    0.680000] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.700000] console [ttyS0] disabled
+[    0.720000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 12187500) is a 16550A
+[    0.730000] console [ttyS0] enabled
+[    0.730000] bootconsole [early0] disabled
+[    0.740000] m25p80 spi0.0: found en25qh128, expected m25p80
+[    0.750000] m25p80 spi0.0: en25qh128 (16384 Kbytes)
+[    0.760000] 7 cmdlinepart partitions found on MTD device spi0.0
+[    0.760000] Creating 7 MTD partitions on "spi0.0":
+[    0.770000] 0x000000000000-0x000000040000 : "u-boot"
+[    0.770000] 0x000000040000-0x000000050000 : "u-boot-env"
+[    0.780000] 0x000000050000-0x0000001d0000 : "kernel"
+[    0.780000] 0x0000001d0000-0x000000fb0000 : "rootfs"
+[    0.790000] mtd: device 3 (rootfs) set to be root filesystem
+[    0.800000] 1 squashfs-split partitions found on MTD device rootfs
+[    0.800000] 0x000000410000-0x000000fb0000 : "rootfs_data"
+[    0.810000] 0x000000fb0000-0x000000ff0000 : "cfg"
+[    0.820000] 0x000000ff0000-0x000001000000 : "EEPROM"
+[    0.820000] 0x000000050000-0x000000fb0000 : "firmware"
+[    0.860000] libphy: ag71xx_mdio: probed
+[    1.460000] ag71xx ag71xx.0: connected to PHY at ag71xx-mdio.1:04 [uid=004dd041, driver=Generic PHY]
+[    1.470000] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:MII
+[    2.060000] ag71xx-mdio.1: Found an AR7240/AR9330 built-in switch
+[    2.100000] eth1: Atheros AG71xx at 0xba000000, irq 5, mode:GMII
+[    2.110000] TCP: cubic registered
+[    2.110000] NET: Registered protocol family 17
+[    2.110000] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    2.130000] Bridge firewalling registered
+[    2.130000] 8021q: 802.1Q VLAN Support v1.8
+[    2.140000] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    2.150000] Freeing unused kernel memory: 208K (8039c000 - 803d0000)
+[    3.460000] init: failed to symlink /tmp -> /var
+[    3.460000] init: Console is alive
+[    3.460000] init: - watchdog -
+[    5.060000] usbcore: registered new interface driver usbfs
+[    5.060000] usbcore: registered new interface driver hub
+[    5.070000] usbcore: registered new device driver usb
+[    5.080000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    5.090000] ehci-platform: EHCI generic platform driver
+[    5.100000] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    5.100000] ohci-platform: OHCI generic platform driver
+[    5.580000] init: - preinit -
+[    6.290000] random: procd urandom read with 9 bits of entropy available
+[    8.590000] eth0: link up (100Mbps/Full duplex)
+[    8.760000] jffs2: notice: (347) jffs2_build_xattr_subsystem: complete building xattr subsystem, 1 of xdatum (1 unchecked, 0 orphan) and 1 of xref (0 dead, 0 orphan) found.
+[    8.780000] mount_root: switching to jffs2 overlay
+[    8.830000] eth0: link down
+[    8.850000] procd: - early -
+[    8.860000] procd: - watchdog -
+[    9.550000] procd: - ubus -
+[   10.560000] procd: - init -
+[   11.610000] NET: Registered protocol family 10
+[   11.620000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   11.640000] Loading modules backported from Linux version master-2015-03-09-0-g141f155
+[   11.650000] Backport generated by backports.git backports-20150129-0-gdd4a670
+[   11.660000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   11.680000] nf_conntrack version 0.5.0 (953 buckets, 3812 max)
+[   11.730000] xt_time: kernel timezone is -0000
+[   11.770000] cfg80211: Calling CRDA to update world regulatory domain
+[   11.810000] cfg80211: World regulatory domain updated:
+[   11.810000] cfg80211:  DFS Master region: unset
+[   11.810000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   11.820000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.830000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.840000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.850000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.860000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[   11.870000] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   11.870000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.880000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   11.970000] PPP generic driver version 2.4.2
+[   11.980000] NET: Registered protocol family 24
+[   12.040000] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[   12.050000] ath: EEPROM regdomain: 0x0
+[   12.050000] ath: EEPROM indicates default country code should be used
+[   12.050000] ath: doing EEPROM country->regdmn map search
+[   12.050000] ath: country maps to regdmn code: 0x3a
+[   12.050000] ath: Country alpha2 being used: US
+[   12.050000] ath: Regpair used: 0x3a
+[   12.070000] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[   12.070000] ieee80211 phy0: Atheros AR9280 Rev:2 mem=0xb0000000, irq=40
+[   12.080000] cfg80211: Calling CRDA for country: US
+[   12.100000] cfg80211: Regulatory domain changed to country: US
+[   12.110000] cfg80211:  DFS Master region: FCC
+[   12.110000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   12.120000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 3000 mBm), (N/A)
+[   12.130000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 1700 mBm), (N/A)
+[   12.140000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2300 mBm), (0 s)
+[   12.150000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 3000 mBm), (N/A)
+[   12.160000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR7240 outdoor FastEthernet no_switch PoE 2NIC 1WNIC 802.11bgn ath9k DetachableAntenna 2ant 64RAM 16Flash MIPS MIPS32}}

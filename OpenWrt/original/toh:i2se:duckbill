@@ -1,0 +1,171 @@
+====== I2SE Duckbill ======
+
+Tiny USB pen drive like device which can be used as controller for Home Automation
+and/or as developer board. Vendor offers versions with several RF add-ons, e.g. WM-Bus or Z-Wave.
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^Duckbill$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^Duckbill$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^Duckbill$"}
+} -->
+
+FIXME Please add the installation procedure here.
+
+{{page>meta:infobox:outdated&noheader&nofooter&noeditbtn}}
+
+At time of writing not all patches are merged into OpenWrt's mainline yet. So the following
+scripts still use some external references.
+
+First, compile U-Boot and OpenWrt. You can use the following script:
+<code>
+#!/bin/bash
+#
+# This script downloads OpenWrt MXS target and U-Boot and compiles for
+# I2SE' Duckbill device.
+#
+
+# clone repository and checkout mxs branch
+git clone git@github.com:mhei/openwrt.git openwrt.git
+( cd openwrt.git; git checkout -b mxs origin/mxs )
+
+# create a default config for I2SE's Duckbill device
+cat <<EOF > openwrt.git/.config
+CONFIG_TARGET_mxs=y
+CONFIG_TARGET_mxs_duckbill=y
+EOF
+
+make -C openwrt.git defconfig
+
+# compile all
+make -C openwrt.git -j8
+
+# clone u-boot repository and checkout duckbill branch
+git clone git@github.com:mhei/u-boot.git u-boot.git
+( cd u-boot.git; git checkout -b duckbill origin/duckbill )
+
+# tweak environment for u-boot cross-compiling by using OpenWrt's toolchain
+TS_PATH="$(pwd)/openwrt.git/staging_dir/toolchain-arm_v5te_gcc-4.6-linaro_uClibc-0.9.33.2_eabi/bin"
+export CROSS_COMPILE="arm-openwrt-linux-"
+export PATH="$TS_PATH:$PATH"
+
+make -C u-boot.git duckbill_config
+make -C u-boot.git -j8 u-boot.sb
+
+u-boot.git/tools/mxsboot sd u-boot.git/u-boot.sb u-boot.git/bootpart
+</code>
+
+After this, you could use the following script for preparing a SD card with the OpenWrt's
+default SD card layout.
+
+<code>
+#!/bin/bash
+#
+# This script installs OpenWrt on a SD card for a I2SE Duckbill device.
+#
+# Attention: this script destroys all data on the device!
+# Use at your own risk.
+#
+SDCARD=/dev/sdd
+
+#
+# Attention: the following deletes all partitions from the SD card
+# and re-partition the SD card into 3 primary partitions:
+# Partition 1: boot partition for U-Boot
+# Partition 2: OpenWrt system 1
+# Partition 3: OpenWrt system 2
+#
+fdisk "$SDCARD" <<EOF
+o
+n
+p
+1
+2048
++1M
+n
+p
+2
+4096
++48M
+n
+p
+3
+102400
++48M
+t
+1
+53
+p
+w
+EOF
+
+# write boot partition
+dd if=u-boot.git/bootpart of=${SDCARD}1 conv=fsync
+
+# write image 1
+dd if=openwrt.git/bin/mxs/openwrt-mxs-root.ext4 of=${SDCARD}2 conv=fsync
+
+# write image 2
+dd if=openwrt.git/bin/mxs/openwrt-mxs-root.ext4 of=${SDCARD}3 conv=fsync
+</code>
+
+==== SD card layout ====
+
+  - Partition 1: boot partition for U-Boot
+  - Partition 2: OpenWrt system 1
+  - Partition 3: OpenWrt system 2
+
+==== Upgrading OpenWrt ====
+
+Not yet supported. However, the SD card layout is prepared for "safe-upgrade". That means that
+you can write the update to a second partition, leaving the currently running system alone,
+and then switch over to the new system by setting a flag in the bootloader.
+See next chapter for details.
+
+=== Terminal Upgrade Process ===
+
+  * Login as root via SSH on 192.168.1.1
+  * Determine whether you run system 1 or 2 at the moment: if "cat /proc/cmdline" contains "root=/dev/mmcblk0p2" then you are running system 1 and have to write the new firmware into system 2 (/dev/mmcblk0p3). Use /dev/mmcblk0p2     when you are running the system 1 at the moment.
+  * Use the following commands to write the partiton image:
+
+<code>
+cd /tmp/
+wget http://downloads.openwrt.org/snapshots/trunk/mxs/openwrt-mxs-root.ext4
+dd if=openwrt-mxs-root.ext4 of=/dev/mmcblk0p3 conv=fsync
+</code>
+
+  * Now tell U-Boot to use the other system (adopt according to your current system) and reboot:
+
+<code>
+fw_setenv bootsys 2
+reboot</code>
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>mxs microsd 128RAM 1port FastEthernet 1NIC USB DevBoard}}

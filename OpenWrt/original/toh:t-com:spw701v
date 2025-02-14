@@ -1,0 +1,2367 @@
+====== T-Com Speedport W701V ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^Speedport W 701V$"}
+} -->
+
+==== Status ====
+Tested [[https://downloads.openwrt.org/barrier_breaker/14.07/ar7/generic/openwrt-EVA-3.10-squashfs.bin|Barrier Breaker 14.07]]:
+
+  * Boot: working, be patient -> Busybox working
+  * Wifi: not working due -> acx_mac80211: Unknown symbol ieee80211_queue_stopped (err 0)
+  * ADSL: ???
+  * Ethernet: if not responding, can be fixed ([[#serial_port|serial console]]) -> uci set network.lan.ifname="eth0 eth1"
+  * Serial Port: working
+  * LEDs: ???
+  * LuCI: working
+
+Tested [[http://downloads.openwrt.org/attitude_adjustment/12.09/ar7/generic/openwrt-EVA-3.3-squashfs.bin|Attitude Adjustment 12.09]]:
+
+  * Boot: working, be patient -> Busybox working
+  * Wifi: no boot errors -> not working, <del>loading acx-mac80211 freezes the router</del> (chip: TNETW1350A, it's a chip with features somewhere between the supported TNETW1150 and the TNETW1450))
+  * ADSL: working
+  * Ethernet: if not responding, can be fixed ([[#serial_port|serial console]]) -> uci set network.lan.ifname="eth0 eth1"
+  * LEDs: working
+  * Serial Port: working
+  * LuCI: working
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^Speedport W 701V$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^Speedport W 701V$"}
+} -->
+
+==== Bootloader ====
+The bootloader is ADAM2 which provides a console on the serial port and allows flashing via FTP.  The W701V's bootloader's default IP address is 192.168.178.1, you should be able to ping it on that address a second or two after the device is rebooted.  If not reset the device back to it's defaults using the reset button on the back (see tcom's site for info on how to do this).  My router came with a very recent edition, v1.203, from February 2007.
+
+
+===== Hardware =====
+==== Info ====
+^ SoC               | [[docs:techref:hardware:soc:soc.ar7|ar7]]   |
+^ CPU               | TNETD7200ZDW (AR7) @211MHz                  |
+^ Flash             | 8 MB                                        |
+^ RAM               | 32 MB                                       |
+^ USB               | No                                          |
+^ WLAN              | TNETW1350A                                  |
+^ Ethernet Switch   | Infineon ADM6996LC                          |
+^ Serial Port       | Yes                                         |
+^ JTAG              | ?                                           |
+^ Power             | 12 volts 1000 mA                            |
+^ Specials          | S0-port, 2 analog telephone ports           |
+
+
+==== Photos ====
+[[http://www.hydraservices.com/files/t-com_speedport-w701v/pcb1.jpg]]
+
+[[http://www.hydraservices.com/files/t-com_speedport-w701v/pcb2.jpg]]
+
+==== Serial Port ====
+It has a 3.3v serial port to the lower right of the CPU, near the crystal and the large capacitor. The PCB on my router didn't have a pin header/pin strip attached to it so I bought a pin strip from Maplin Electronics for £0.79p and soldered it carefully to the back of the PCB. I then attached my serial port adaptor (see the Addontech ARM8100 page on this wiki for circuit diagram, note the different order of RX and TX signals on the router's pin serial port) to the pin header and to my pc.
+
+The general location of the port and it's pin-out is as follows:
+
+<code>
+        Top right of PCB
+_________________________
+                         |
+F     R A M              |
+L                WIFI    |
+A                CHIP    |
+S        SoC             |
+H        CPU  XTal       |
+                 4  GND  |
+                 3  TX   |
+                 2  RX   |
+                 1  VCC  |
+                         |
+              ADM6996    |
+                         |
+_________________________|
+</code>
+
+Serial port settings: 38400 8N1
+
+===== Original Firmware Info =====
+==== Backing up original firmware ====
+To backup the original firmware you'll need console access to the device, e.g. use a serial cable and minicom to access the root shell.
+
+You can then dump each mtd block to a file and download them via the built in web browser as below.
+
+<code>
+mkdir /var/backup
+cp /dev/mtd1 /var/backup/mtd1-rootfs.bin
+cp /dev/mtd2 /var/backup/mtd2-kernel-and-rootfs.bin
+cp /dev/mtd3 /var/backup/mtd3-bootloader.bin
+cp /dev/mtd4 /var/backup/mtd4-nvram1.bin
+cp /dev/mtd5 /var/backup/mtd5-nvram2.bin
+kill `pidof websrv`
+cd /var
+rm html
+ln -s backup html
+websrv
+</code>
+
+You can then download the files by pointing your webbrowser at <code>http:///mtd0-rootfs.bin</code>
+ etc.
+
+All being well you should have files like this
+
+<code>
+# ls -al
+drwxr-xr-x    2 root     root            0 Jan  1 01:10 .
+drwxrwxr-x    8 root     root            0 Jan  1 01:04 ..
+-rw-r--r--    1 root     root      7158272 Jan  1 01:09 mtd1-rootfs.bin
+-rw-r--r--    1 root     root      7798784 Jan  1 01:09 mtd2-kernel-and-rootfs.bin
+-rw-r--r--    1 root     root        65536 Jan  1 01:09 mtd3-bootloader.bin
+-rw-r--r--    1 root     root       262144 Jan  1 01:10 mtd4-nvram1.bin
+-rw-r--r--    1 root     root       262144 Jan  1 01:10 mtd5-nvram2.bin
+</code>
+
+
+Another way is to do this via a tftp (tftp server eg ip 192.168.178.21):
+<code>
+cat /dev/mtdblock3 | tftp -p -l - -r urlader.image 192.168.178.21
+cat /dev/mtdblock7 | tftp -p -l - -r kernel.image 192.168.178.21
+</code>
+
+this can be easily flashed back via adam2 for recovering
+
+==== Restoring Original Firmware ====
+=== Undoing changes to adam2 config ===
+TODO: finish this section, here's some hints for now
+
+flashing my own backup didn't work for me, I had to use speed-to-fritz from [[http://wiki.ip-phone-forum.de/skript:speedport2fritz|ippf]]. It works with the new [[http://www.t-home.de/dlp/eki/downloads/Speedport/Speedport%20W%20701%20V/fw_Speedport_W701V_V33.04.26.image|Firmware from T-Home]] also. Use it with "sudo ./sp-to-fritz.sh -m 701" and flash the resulting image with adam2:
+
+ftp 192.168.1.1 (login: adam2/adam2)
+
+<code>
+binary
+passiv
+quote MEDIA FLSH
+put Firmware.new/kernel.image mtd1
+quote SETENV firmware_version tcom
+quote UNSETENV kernel_args
+quote UNSETENV mtd5
+quote REBOOT
+bye
+</code>
+
+===== System info =====
+
+==== Output from various commands on the original firmware ====
+When I logged in to the console for the first time it kindly dumped a bunch of info and kernel configuration values for me to see!
+
+<code>
+HWRevision='101'
+HWRevision_ATA='1'
+HWRevision_BitFileCount='1'
+HWRevision_Reserved1='0'
+ANNEX='B'
+OEM='tcom'
+OEM_DEFAULT_INDEX=''
+OEM_tmp='tcom'
+Language='de'
+Country='049'
+TZ='CET-1CEST,M3.5.0,M10.5.0'
+CONFIG_AB_COUNT='2'
+CONFIG_ANNEX='B'
+CONFIG_ASSIST='y'
+CONFIG_ATA='n'
+CONFIG_ATA_FULL='n'
+CONFIG_AUDIO='n'
+CONFIG_AURA='n'
+CONFIG_BLUETOOTH='n'
+CONFIG_BLUETOOTH_CTP='n'
+CONFIG_BUTTON='y'
+CONFIG_CAPI='y'
+CONFIG_CAPI_MIPS='n'
+CONFIG_CAPI_NT='n'
+CONFIG_CAPI_POTS='y'
+CONFIG_CAPI_TE='y'
+CONFIG_CAPI_UBIK='n'
+CONFIG_CAPI_XILINX='y'
+CONFIG_CDROM='n'
+CONFIG_CDROM_FALLBACK='n'
+CONFIG_DECT='n'
+CONFIG_DSL='y'
+CONFIG_ENVIRONMENT_PATH='/proc/sys/urlader'
+CONFIG_ETH_COUNT='4'
+CONFIG_FIRMWARE_URL='http://www.telekom.de/faq'
+CONFIG_FON='y'
+CONFIG_HOMEI2C='n'
+CONFIG_HOSTNAME='speedport.ip'
+CONFIG_I2C='n'
+CONFIG_INSTALL_TYPE='ar7_8MB_xilinx_4eth_2ab_isdn_pots_wlan_13200'
+CONFIG_JFFS2='n'
+CONFIG_LED_NO_DSL_LED='n'
+CONFIG_MAILER='n'
+CONFIG_MEDIACLI='n'
+CONFIG_MEDIASRV='n'
+CONFIG_NAND='n'
+CONFIG_NFS='n'
+CONFIG_OEM_DEFAULT='tcom'
+CONFIG_PRODUKT='Fritz_Box_SpeedportW701V'
+CONFIG_PRODUKT_NAME='Speedport W 701V'
+CONFIG_RAMSIZE='32'
+CONFIG_ROMSIZE='8'
+CONFIG_SERVICEPORTAL_URL='none'
+CONFIG_STOREUSRCFG='n'
+CONFIG_SUBVERSION=''
+CONFIG_TAM='n'
+CONFIG_TAM_MODE='0'
+CONFIG_TR069='y'
+CONFIG_UBIK2='n'
+CONFIG_UPNP='n'
+CONFIG_USB='n'
+CONFIG_USB_HOST_AVM='n'
+CONFIG_USB_HOST_TI='n'
+CONFIG_USB_PRINT_SERV='n'
+CONFIG_USB_STORAGE='n'
+CONFIG_USB_WLAN_AUTH='n'
+CONFIG_VDSL='n'
+CONFIG_VERSION='04.26'
+CONFIG_VERSION_MAJOR='33'
+CONFIG_VLYNQ='y'
+CONFIG_VLYNQ0='0'
+CONFIG_VLYNQ1='0'
+CONFIG_VPN='n'
+CONFIG_WLAN='y'
+CONFIG_WLAN_1130TNET='n'
+CONFIG_WLAN_1350TNET='y'
+CONFIG_WLAN_GREEN='n'
+CONFIG_WLAN_WDS='y'
+CONFIG_XILINX='y'
+</code>
+
+=== running proccesses ===
+<code>
+~ # ps ax
+  PID  Uid     VmSize Stat Command
+    1 root        336 S   init
+    2 root            SWN [ksoftirqd/0]
+    3 root            SW< [events/0]
+    4 root            SW< [khelper]
+    5 root            SW< [kthread]
+    6 root            SW< [kblockd/0]
+   24 root            SW< [pdflush]
+   25 root            SW< [pdflush]
+   27 root            SW< [aio/0]
+   26 root            SW  [kswapd0]
+   69 root            SW  [mtdblockd]
+  128 root            SW  [tffsd_mtd_0]
+  352 root            SW  [capitransp]
+  411 root        456 S   wpa_authenticator
+  424 root       1656 R N websrv
+  428 root       1656 S N websrv
+  429 root       1656 S N websrv
+  430 root       1656 S N websrv
+  435 root       1736 S   multid
+  444 root       1920 S   dsld -i -n
+  458 root        724 S   telefon a127.0.0.1
+  463 root       2124 S < voipd
+  470 root        160 S   /bin/run_clock -c /dev/tffs -d
+  475 root        468 S   -sh
+  561 root        312 R   ps ax
+</code>
+
+=== free memory ===
+<code>
+~ # free
+              total         used         free       shared      buffers
+  Mem:        30468        24024         6444            0         3040
+ Swap:            0            0            0
+Total:        30468        24024         6444
+</code>
+
+=== proc directory ===
+<code>
+~ # ls proc
+1                   428                 69                  execdomains         meminfo             sysrq-trigger
+128                 429                 avalanche           filesystems         misc                sysvipc
+2                   430                 buddyinfo           fs                  modules             tffs
+24                  435                 bus                 interrupts          mounts              tty
+25                  444                 capi                iomem               mtd                 uptime
+26                  458                 clocks              ioports             net                 version
+27                  463                 cmdline             irq                 partitions          vmstat
+3                   470                 cpmac_sched_cpmac0  kallsyms            self                wlan
+352                 475                 cpuinfo             kcore               slabinfo            zoneinfo
+4                   5                   devices             kmsg                stat
+411                 565                 diskstats           loadavg             sync-on-demand
+424                 6                   driver              locks               sys
+</code>
+
+=== CPU Info ===
+<code>
+~ # cat /proc/cpuinfo
+system type             : MIPS OHIO
+processor               : 0
+cpu model               : MIPS 4KEc V4.8
+BogoMIPS                : 211.35
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 16
+extra interrupt vector  : yes
+hardware watchpoint     : yes
+VCED exceptions         : not available
+VCEI exceptions         : not available
+</code>
+
+=== FLASH Map Info ===
+<code>
+~ # cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00800000 00010000 "phys_mapped_flash"
+mtd1: 006d3b00 00010000 "filesystem"
+mtd2: 00770000 00010000 "kernel"
+mtd3: 00010000 00010000 "bootloader"
+mtd4: 00040000 00010000 "tffs (1)"
+mtd5: 00040000 00010000 "tffs (2)"
+mtd6: 00200000 00010000 "jffs2"
+mtd7: 00570000 00010000 "Kernel without jffs2"
+</code>
+
+<code>
+~ # cat /proc/partitions
+major minor  #blocks  name
+  31     0       8192 mtdblock0
+  31     1       6990 mtdblock1
+  31     2       7616 mtdblock2
+  31     3         64 mtdblock3
+  31     4        256 mtdblock4
+  31     5        256 mtdblock5
+  31     6       2048 mtdblock6
+  31     7       5568 mtdblock7
+~ #
+</code>
+
+=== ATM Driver Info (TI Avalanche SAR) ===
+<code>
+~ # cat /proc/avalanche/avsar_ver
+ATM Driver version:[4.06.04.30]
+DSL HAL version: [5.00.00.02]
+DSP Datapump version: [1.35.73.01]
+SAR HAL version: [01.07.2b]
+PDSP Firmware version:[0.54]
+</code>
+
+=== OS Info ===
+<code>
+~ # cat /proc/version
+Linux version 2.6.13.1-ohio (jpluschke@EmbeddedVM) (gcc version 3.4.3) #3 Thu Feb 8 14:32:37 CET 2007
+</code>
+
+=== MEMINFO ===
+<code>
+~ # cat /proc/meminfo
+MemTotal:        30468 kB
+MemFree:          6384 kB
+Buffers:          3040 kB
+Cached:          10232 kB
+SwapCached:          0 kB
+Active:           9600 kB
+Inactive:         6676 kB
+HighTotal:           0 kB
+HighFree:            0 kB
+LowTotal:        30468 kB
+LowFree:          6384 kB
+SwapTotal:           0 kB
+SwapFree:            0 kB
+Dirty:               0 kB
+Writeback:           0 kB
+Mapped:           5648 kB
+Slab:             4868 kB
+CommitLimit:     15232 kB
+Committed_AS:     4428 kB
+PageTables:        196 kB
+VmallocTotal:  1048560 kB
+VmallocUsed:      2636 kB
+VmallocChunk:  1044964 kB
+</code>
+
+=== Kernel messages ===
+<WRAP bootlog>
+<nowiki>
+~ # cat /proc/kmsg
+ify disable 0x940013f8 0x9419be18
+[ohio_set_clock_notify] avm_clock_id_cpu notify enable 0x940013f8 0x9419be18
+CPU frequency 211.97 MHz
+Using 105.984 MHz high precision timer.
+[setup_irq]: irq 127 irqaction->handler 0x94041a10 (no_action+0x0/0x8 )
+[register_console] enable commandline console 0
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Memory: 30324k/30676k available (1477k kernel code, 320k reserved, 342k data, 112k init, 0k highmem)
+totalram_pages= 7589
+Calibrating delay loop... 211.35 BogoMIPS (lpj=1056768)
+loops_per_jiffy=1056768
+Mount-cache hash table entries: 512
+Checking for 'wait' instruction... [speedup] idle_mode = 4
+ with idle values available.
+Calling initcall 0x941d6414: helper_init+0x0/0x30()
+Calling initcall 0x941d6558: ksysfs_init+0x0/0x3c()
+Calling initcall 0x941d840c: filelock_init+0x0/0x48()
+Calling initcall 0x941d8c50: init_script_binfmt+0x0/0xc()
+Calling initcall 0x941d8c5c: init_elf_binfmt+0x0/0xc()
+Calling initcall 0x941dda7c: netlink_proto_init+0x0/0x2ac()
+NET: Registered protocol family 16
+Calling initcall 0x941d94cc: kobject_uevent_init+0x0/0x50()
+Calling initcall 0x941d9754: tty_class_init+0x0/0x34()
+Calling initcall 0x941cd57c: frame_info_init+0x0/0xb4()
+Can't analyze prologue code at 9416fc8c
+Calling initcall 0x941d80fc: init_bio+0x0/0x17c()
+Calling initcall 0x941d9e00: misc_init+0x0/0xc0()
+Calling initcall 0x941db814: genhd_device_init+0x0/0x44()
+Calling initcall 0x941dbf2c: init_mtd+0x0/0x48()
+Calling initcall 0x941dccf0: input_init+0x0/0x1e0()
+Calling initcall 0x941dd514: proto_init+0x0/0x48()
+Calling initcall 0x941dd6d8: net_dev_init+0x0/0x1dc()
+Calling initcall 0x941d8360: init_pipe_fs+0x0/0x6c()
+Calling initcall 0x941d95e4: chr_dev_init+0x0/0xb4()
+Calling initcall 0x941d5a94: create_proc_profile+0x0/0x64()
+Calling initcall 0x941d5b74: ioresources_init+0x0/0x6c()
+Calling initcall 0x941d5d28: uid_cache_init+0x0/0x88()
+Calling initcall 0x941d6104: param_sysfs_init+0x0/0x208()
+Calling initcall 0x941d630c: init_posix_timers+0x0/0x108()
+Calling initcall 0x941d6444: init_posix_cpu_timers+0x0/0xd4()
+Calling initcall 0x941d6518: kallsyms_init+0x0/0x40()
+Calling initcall 0x941d7794: init_per_zone_pages_min+0x0/0x64()
+Calling initcall 0x941d7bdc: pdflush_init+0x0/0x28()
+Calling initcall 0x941d7c04: cpucache_init+0x0/0x20()
+Calling initcall 0x941d7f50: kswapd_init+0x0/0x70()
+Calling initcall 0x941d8004: init_tmpfs+0x0/0x3c()
+Calling initcall 0x941d83cc: fasync_init+0x0/0x40()
+Calling initcall 0x941d8ad0: aio_setup+0x0/0x8c()
+Calling initcall 0x941d8b5c: inotify_setup+0x0/0xf4()
+Calling initcall 0x941d9194: init_devpts_fs+0x0/0x48()
+Calling initcall 0x941d91dc: init_squashfs_fs+0x0/0xe4()
+Squashfs 2.2-r2b (released 2006/02/23) (C) 2002-2005 Phillip Lougher
+Calling initcall 0x941d92c0: init_ramfs_fs+0x0/0xc()
+Calling initcall 0x941d92d8: ipc_init+0x0/0x30()
+Calling initcall 0x941d9698: rand_initialize+0x0/0x3c()
+Calling initcall 0x941d9788: tty_init+0x0/0x184()
+Calling initcall 0x941d990c: pty_init+0x0/0x4f4()
+Calling initcall 0x941d9ec0: avm_power_init+0x0/0x11c()
+Calling initcall 0x941d9fdc: avm_sammel_init+0x0/0x158()
+[avm] configured: watchdog eventled enable shift register enable direct gpio
+     gpio usage: reset=12 clock=13 store=10 data=9
+AR7WDT: Watchdog Driver for AR7 Hardware (Version 1.0, build: Feb  8 2007 14:30:44)
+Calling initcall 0x941dae60: serial8250_init+0x0/0x10c()
+Serial: 8250/16550 driver $Revision: 1.90 $ 1 ports, IRQ sharing disabled
+[uart_add_one_port]
+ttyS0 at MMIO 0x0 (irq = 15) is a OHIO_UART
+[uart_add_one_port] dont rigister console port->type = 16
+port->cons = 0x941a9680 port->cons->flags = 0x7
+[uart_add_one_port] sucess
+Calling initcall 0x941db858: noop_init+0x0/0xc()
+io scheduler noop registered
+Calling initcall 0x941db864: cpmac_main_probe+0x0/0xd8()
+Calling initcall 0x941db93c: cpphy_entry_probe+0x0/0xcc()
+Calling initcall 0x941dba08: cpphy_entry_probe+0x0/0xe8()
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x200) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x200) = 0x3100
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x220) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x220) = 0x3100
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x240) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x240) = 0x3100
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x260) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x260) = 0x3100
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x280) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x280) = 0x3100
+cpmac_if_register, dev cpmac0 (phy_id 0) registered
+Calling initcall 0x941dbaf0: cpphy_entry_probe+0x0/0xcc()
+Calling initcall 0x941dbbbc: cpphy_entry_probe+0x0/0xe8()
+cpmac_if_register, phy_id 0 already registered
+Calling initcall 0x941dbd34: net_olddevs_init+0x0/0x100()
+Calling initcall 0x941dbe9c: tun_init+0x0/0x90()
+tun: Universal TUN/TAP device driver, 1.6
+tun: (C) 1999-2004 Max Krasnyansky 
+Calling initcall 0x941dbf74: cmdline_parser_init+0x0/0xc()
+Calling initcall 0x941dbf80: init_mtdchar+0x0/0xc0()
+Calling initcall 0x941dc040: init_mtdblock+0x0/0xc()
+Calling initcall 0x941dc04c: cfi_probe_init+0x0/0x24()
+Calling initcall 0x941dc070: cfi_amdstd_init+0x0/0x30()
+Calling initcall 0x941dc0a0: cfi_intelext_init+0x0/0x4c()
+Calling initcall 0x941dc0ec: jedec_probe_init+0x0/0x24()
+Calling initcall 0x941dc110: map_ram_init+0x0/0x24()
+Calling initcall 0x941dc134: init_physmap+0x0/0x170()
+physmap flash device: 400000 at 10000000
+phys_mapped_flash: Found 1 x16 devices at 0x0 in 16-bit bank
+ Amd/Fujitsu Extended Query Table at 0x0040
+phys_mapped_flash: Swapping erase regions for broken CFI table.
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+RedBoot partition parsing not available
+Calling initcall 0x941dc2a4: platram_init+0x0/0x30()
+Generic platform RAM MTD, (c) 2004 Simtec Electronics
+Calling initcall 0x941dc2d4: init_ohio_flash+0x0/0xa1c()
+Ohio flash driver (size->0x400000 mem->0x10000000)
+flash_size=0x800000
+Ohio flash memory: Found 1 x16 devices at 0x0 in 16-bit bank
+ Amd/Fujitsu Extended Query Table at 0x0040
+Ohio flash memory: Swapping erase regions for broken CFI table.
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+[mtd]: set to default: jffs2_size = 0x20 * 64KByte (0x200000 Bytes)
+[ohio_find_hidden_filesystem]: super block found: bytes_used: 0x36347f/3552383
+[init_ohio_flash] find hidden filesystem size=0x6d3b00 offset=0xac500
+[mtd] configure jffs2 partition
+[mtd] fs_size=0x400000 max=0x370000 is=0x200000 max jffs2_size value 55
+Creating 7 MTD partitions on "Ohio flash memory":
+0x000ac500-0x00780000 : "filesystem"
+     'nor-flash'
+     'Bits can be cleared (flash)'
+     'Has an erase function'
+mtd: partition "filesystem" doesn't start on an erase block boundary -- force read-only
+0x00010000-0x00780000 : "kernel"
+     'nor-flash'
+     'Bits can be cleared (flash)'
+     'Has an erase function'
+0x00000000-0x00010000 : "bootloader"
+     'nor-flash'
+     'Bits can be cleared (flash)'
+     'Has an erase function'
+     'Virtual blocks not allowed'
+0x00780000-0x007c0000 : "tffs (1)"
+     'nor-flash'
+     'Bits can be cleared (flash)'
+     'Has an erase function'
+     'Virtual blocks not allowed'
+0x007c0000-0x00800000 : "tffs (2)"
+     'nor-flash'
+     'Bits can be cleared (flash)'
+     'Has an erase function'
+     'Virtual blocks not allowed'
+0x00580000-0x00780000 : "jffs2"
+     'nor-flash'
+     'Bits can be cleared (flash)'
+     'Has an erase function'
+     'Virtual blocks not allowed'
+0x00010000-0x00580000 : "Kernel without jffs2"
+     'nor-flash'
+     'Bits can be cleared (flash)'
+     'Has an erase function'
+     'Virtual blocks not allowed'
+Calling initcall 0x941dced0: kcapi_init+0x0/0x9c()
+Calling initcall 0x941dd014: capi_init+0x0/0x324()
+capi20: Rev 1.1.2.7: started up with major 68 (middleware+capifs)
+Calling initcall 0x941dd338: capifs_init+0x0/0x108()
+capifs: Rev 1.1.2.3
+Calling initcall 0x941de72c: inet_init+0x0/0x504()
+NET: Registered protocol family 2
+IP route cache hash table entries: 512 (order: -1, 2048 bytes)
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+Calling initcall 0x941e1168: init+0x0/0x8()
+Calling initcall 0x941e1170: bictcp_register+0x0/0xc()
+TCP bic registered
+Calling initcall 0x941e117c: mcfw_init_module+0x0/0x88()
+mcfw_init: ok
+Calling initcall 0x941e1204: af_unix_init+0x0/0xa0()
+NET: Registered protocol family 1
+Calling initcall 0x941e12a4: packet_init+0x0/0x80()
+NET: Registered protocol family 17
+Calling initcall 0x941e1324: br_init+0x0/0x68()
+Calling initcall 0x941e13e0: atm_init+0x0/0xec()
+NET: Registered protocol family 8
+NET: Registered protocol family 20
+Calling initcall 0x941e1584: br2684_init+0x0/0x54()
+Calling initcall 0x941cc2a0: ohio_install_dummy_irq_functions+0x0/0x58()
+[setup_irq]: irq 1 irqaction->handler 0x94001664 (dummy_timer_irq+0x0/0x14 )
+[setup_irq]: irq 6 irqaction->handler 0x94001678 (dummy_system_irq_2+0x0/0x18 )
+Calling initcall 0x9400174c: ohio_late_init+0x0/0x3c()
+[ohio_late_init]
+[ohio_set_clock_notify] avm_clock_id_system notify disable 0x9400169c 0x94279e48
+[ohio_set_clock_notify] avm_clock_id_system notify enable 0x9400169c 0x94279e48
+Calling initcall 0x941cc3f8: ohio_clk_switch_init+0x0/0x60()
+Calling initcall 0x941cc6ac: speedup_init+0x0/0x2c()
+Calling initcall 0x941d96d4: seqgen_init+0x0/0x20()
+Calling initcall 0x940c5b18: avm_event_push_button_init+0x0/0x114()
+Calling initcall 0x941da610: tffs_init+0x0/0x2e4()
+[tffs] alloc_chrdev_region() param=mtd4
+[tffs] CONFIG_TFFS_MTD_DEVICE_0=4 CONFIG_TFFS_MTD_DEVICE_1=5
+[tffs] Character device init successfull
+TFFS: tiny flash file system driver. GPL (c) AVM Berlin (Version 2.0)
+      mount on mtd4 and mtd5 (double buffering)
+Adam2 environment variables API installed.
+Calling initcall 0x941db524: early_uart_console_switch+0x0/0xb8()
+Calling initcall 0x94113e38: net_random_reseed+0x0/0x34()
+Calling initcall 0x941dfc50: ip_auto_config+0x0/0x1140()
+[prepare_namespace] new mount root /dev/mtdblock1
+tffsd: wait for events
+use lzma compression
+VFS: Mounted root (squashfs filesystem) readonly.
+Freeing prom memory: 0kb freed
+Freeing unused kernel memory: 112k freed (7617 free)
+[setup_irq]: irq 15 irqaction->handler 0x940cf534 (serial8250_interrupt+0x0/0x128 )
+[setup_irq]: irq 15 irqaction->handler 0x940cf534 (serial8250_interrupt+0x0/0x128 )
+[setup_irq]: irq 15 irqaction->handler 0x940cf534 (serial8250_interrupt+0x0/0x128 )
+[setup_irq]: irq 15 irqaction->handler 0x940cf534 (serial8250_interrupt+0x0/0x128 )
+AR7WDT: System Init UEberwachung 120 Sekunden
+TFFS Name Table 8
+Piglet: module license '
+(C) Copyright 2005 by AVM
+' taints kernel.
+registered device TI Avalanche SAR
+tiatm driver (patch_annex=0xc00519ec)
+[tiatm] Set StrictPriority=0
+DSP binary filesize = 303784 bytes
+[setup_irq]: irq 23 irqaction->handler 0xc003920c (tn7atm_sar_irq+0x0/0x30 [tiatm] )
+[setup_irq]: irq 31 irqaction->handler 0xc003923c (tn7atm_dsl_irq+0x0/0x28 [tiatm] )
+[tiatm]: Powermanagment (States => 1,3,10) supported!
+Texas Instruments ATM driver: version:[4.06.04.30]
+ubik2 driver (ubik2 - 0x10=0xc00646b4)
+atm_dsp_register_ubik2: ubik2_ToMIPS_notify=0xc0055c00
+atm_dsp_register_ubik2: dsp mem pointer 0xa1c0f218
+ubik2_init_interface: DSP-Link Version v3 8480
+isdn_fbox: Loading...
+isdn_fbox: Driver 'isdn_fbox' attached to stack
+isdn_fbox: CAPI driver registered.
+isdn_fbox: AVM F!Box expected @ port 0x0000, irq 0
+isdn_fbox: Loading...
+isdn_fbox: Stack version 3.11-07
+isdn_fbox: D-channel 0: DSS1
+isdn_fbox: D-channel 1: DSS1
+isdn_fbox: D-channel 2: DSS1_N
+isdn_fbox: D-channel 3: POTS
+isdn_fbox: D-channel 4: SIP
+isdn_fbox: Loaded.
+kdsldmod: init start
+kdsld: cache_create(datapipe)
+kdsld: cache_create(datapipe_mod)
+kdsld: cache_create(ipaccessset)
+kdsld: cache_create(ipaccessrule)
+kdsld: cache_create(ipfragid)
+kdsld: cache_create(ipmasqentry)
+kdsld: cache_create(ipmasqfwinfo)
+kdsld: cache_create(ipmasqigdpm)
+kdsld: cache_create(ipmasqappldata)
+kdsld: cache_create(ipmasqmcgroup)
+kdsld: cache_create(dnsmasqentry)
+kdsld: cache_create(dnsstaticentry)
+kdsld: cache_create(pingerentry)
+kdsld: cache_create(pingerwaiter)
+kdsld: cache_create(iprouteset)
+kdsld: DATAPIPE: with header optimization
+kdsldmod: init done
+kdsld: PPP led: off (value=0)
+[speedup] disable
+429493936: Configuration succeeded !!!
+[ohio_vlynq_init] device 0
+[ohio_vlynq_startup_link]
+[setup_irq]: irq 29 irqaction->handler 0x94004f2c (vlynq_interrupt+0x0/0x34 )
+[setup_irq]: irq 79 irqaction->handler 0xc02d7a10 (whal_acxIntrHandler+0x0/0x1e8 [tiap] )
+429493943:
+429493966: WDRV_MAINSM: WLAN Driver initialized successfully
+
+429493966: FW Watchdog is Enabled
+dda: tiwlan0 in initializing Succeeded wireless extensions: ret = 0
+tiwlan0 device is activated
+wdsup0 device is activated
+wdsdw0 device is activated
+wdsdw1 device is activated
+wdsdw2 device is activated
+wdsdw3 device is activated
+[setup_irq]: irq 27 irqaction->handler 0x940e016c (cpmac_main_isr+0x0/0x78 )
+cpmac_main_ioctl, unknown ioctl 35142
+device eth0 entered promiscuous mode
+device cpmac0 entered promiscuous mode
+lan: port 1(eth0) entering learning state
+tiwlan_ddaDoIoctl : Unknown ioctl 35142
+device tiwlan0 entered promiscuous mode
+lan: port 2(tiwlan0) entering learning state
+tiwlan_ddaWdsDoIoctl : Unknown ioctl 35142
+device wdsup0 entered promiscuous mode
+lan: port 3(wdsup0) entering learning state
+tiwlan_ddaWdsDoIoctl : Unknown ioctl 35142
+device wdsdw0 entered promiscuous mode
+lan: port 4(wdsdw0) entering learning state
+tiwlan_ddaWdsDoIoctl : Unknown ioctl 35142
+device wdsdw1 entered promiscuous mode
+lan: port 5(wdsdw1) entering learning state
+tiwlan_ddaWdsDoIoctl : Unknown ioctl 35142
+device wdsdw2 entered promiscuous mode
+lan: port 6(wdsdw2) entering learning state
+tiwlan_ddaWdsDoIoctl : Unknown ioctl 35142
+device wdsdw3 entered promiscuous mode
+lan: port 7(wdsdw3) entering learning state
+kdsld: sync lost
+AR7WDT: System Init UEberwachung abgeschlossen (93030 ms noch verfuegbar)
+SysRq : Changing Loglevel
+Loglevel set to 4
+lan: topology change detected, propagating
+lan: port 1(eth0) entering forwarding state
+lan: topology change detected, propagating
+lan: port 2(tiwlan0) entering forwarding state
+lan: topology change detected, propagating
+lan: port 3(wdsup0) entering forwarding state
+lan: topology change detected, propagating
+lan: port 4(wdsdw0) entering forwarding state
+lan: topology change detected, propagating
+lan: port 5(wdsdw1) entering forwarding state
+lan: topology change detected, propagating
+lan: port 6(wdsdw2) entering forwarding state
+lan: topology change detected, propagating
+lan: port 7(wdsdw3) entering forwarding state
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+[tiatm] DSL in training!
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+[tiatm] DSL in training!
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+mcfw_query_sent: tiwlan:0:0.0.0.0 1000
+</nowiki>
+</WRAP>\\
+
+=== IOMEM ===
+<code>
+~ # cat /proc/iomem
+14000000-1420afff : reserved
+  14000000-141715d3 : Kernel code
+  141715d4-141c70bf : Kernel data
+1420b000-15ffffff : System RAM
+a8610000-a86107ff : cpmac0
+</code>
+
+=== devices ===
+<code>
+~ # cat /proc/devices
+Character devices:
+  1 mem
+  2 pty
+  3 ttyp
+  4 ttyS
+  5 /dev/tty
+  5 /dev/console
+  5 /dev/ptmx
+ 10 misc
+ 13 input
+ 68 capi20
+ 90 mtd
+128 ptm
+136 pts
+191 capi
+230 tiatm
+240 tffs
+241 avm_event
+242 watchdog
+243 kdsld
+244 kdsldptrace
+245 ubik2
+246 debug
+251 avm_led
+252 avm_power
+Block devices:
+ 31 mtdblock
+</code>
+
+=== loaded kernel modules ===
+<code>
+~ # cat /proc/modules
+tiap 880464 0 - Live 0xc02ab000
+kdsldmod 515808 2 - Live 0xc022c000
+isdn_fbox 931040 20 - Live 0xc0147000
+ubik2 69104 1 isdn_fbox, Live 0xc0055000
+tiatm 106560 1 ubik2, Live 0xc0039000
+Piglet 7632 0 - Live 0xc000a000
+</code>
+
+=== Network Interfaces Configuration ===
+<code>
+~ # ifconfig
+cpmac0    Link encap:Ethernet  HWaddr 00:1A:4F:CB:E2:D9
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:256
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+eth0      Link encap:Ethernet  HWaddr 00:1A:4F:CB:E2:D9
+          UP BROADCAST RUNNING ALLMULTI MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:19 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:1026 (1.0 KiB)
+lan       Link encap:Ethernet  HWaddr 00:1A:4F:CB:E2:D9
+          inet addr:192.168.2.1  Bcast:192.168.2.255  Mask:255.255.255.0
+          UP BROADCAST RUNNING ALLMULTI MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:21 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:1062 (1.0 KiB)
+lan:0     Link encap:Ethernet  HWaddr 00:1A:4F:CB:E2:D9
+          inet addr:192.168.2.254  Bcast:192.168.2.255  Mask:255.255.255.0
+          UP BROADCAST RUNNING ALLMULTI MULTICAST  MTU:1500  Metric:1
+lo        Link encap:Local Loopback
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          UP LOOPBACK RUNNING  MTU:16436  Metric:1
+          RX packets:270 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:270 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:32574 (31.8 KiB)  TX bytes:32574 (31.8 KiB)
+tiwlan0   Link encap:Ethernet  HWaddr 00:1A:4F:90:5B:9E
+          UP BROADCAST RUNNING ALLMULTI MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:19 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:0 (0.0 B)  TX bytes:950 (950.0 B)
+wdsdw0    Link encap:Ethernet  HWaddr 00:1A:4F:90:5B:9E
+          UP BROADCAST RUNNING ALLMULTI MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:19 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:0 (0.0 B)  TX bytes:950 (950.0 B)
+wdsdw1    Link encap:Ethernet  HWaddr 00:1A:4F:90:5B:9E
+          UP BROADCAST RUNNING ALLMULTI MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:19 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:0 (0.0 B)  TX bytes:950 (950.0 B)
+wdsdw2    Link encap:Ethernet  HWaddr 00:1A:4F:90:5B:9E
+          UP BROADCAST RUNNING ALLMULTI MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:19 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:0 (0.0 B)  TX bytes:950 (950.0 B)
+wdsdw3    Link encap:Ethernet  HWaddr 00:1A:4F:90:5B:9E
+          UP BROADCAST RUNNING ALLMULTI MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:19 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:0 (0.0 B)  TX bytes:950 (950.0 B)
+wdsup0    Link encap:Ethernet  HWaddr 00:1A:4F:90:5B:9E
+          UP BROADCAST RUNNING ALLMULTI MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:19 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000
+          RX bytes:0 (0.0 B)  TX bytes:950 (950.0 B)
+</code>
+
+<code>
+~ # cat /etc/avm_firmware_public_key1
+00d153ab43f587bc891397f763ac18aff92b840cdfd5aeb773c995ae957cd3b992cd48eacc7ac940cb38e0849777010ed41189c986cfbe67b929121934654f3976b2748f8d16059d9a1e518617c4dcfba468ec865c2bae9269b
+010001
+</code>
+
+<code>
+~ # cat /etc/avm_firmware_public_key2
+00e1519e966ee984cdf564825a34cc9beb3c14f720579781e8859eb51f963560979ef16caa6e279376dc9c60a35d67d2b32128ce8f8abb29b2c3aace92bc32607b0b2f09dfcc3c9258d1e6b1daff58fd1f29c410a31ef454e0b
+010001
+</code>
+
+<code>
+~ # cat /etc/led.conf
+DEF error,0 = 1,128,0,all
+DEF error,1 = 3,127,0,all
+DOUBLE error,0 TO error,1
+DEF power,0 = 0,7,0,power
+DEF power,1 = 0,7,0,power
+DEF tr69,0 = 2,6,1,tr69
+DEF cpmac,3 = 99,0,2,lan4
+DEF cpmac,2 = 99,1,3,lan3
+DEF cpmac,1 = 99,2,4,lan2
+DEF cpmac,0 = 99,3,5,lan
+DEF wlan,0 = 2,5,6,wlan
+DEF ab,1 = 2,4,7,festnetz
+DEF ab,2 = 2,4,7,festnetz
+DEF ab,3 = 2,4,7,festnetz
+DEF voip_con,0 = 2,3,8,voip_con
+DEF pppoe,0 = 2,2,9,dsl
+DEF pppoe,1 = 2,2,9,dsl
+DEF adsl,0 = 2,1,10,adsl
+DEF adsl,1 = 2,1,10,adsl
+DEF ata,0 = 2,0,11,ata
+DEF usb,0 = 99,32,12,usb
+DEF usb,1 = 99,32,12,usb
+DEF blockring,0 = 99,32,13,blockring
+DEF missedcall,0 = 99,32,14,missedcall
+DEF budget,0 = 99,32,15,budget
+DEF info,0 = 99,32,16,info
+DEF info,1 = 99,32,16,info
+DEF info,2 = 99,32,16,info
+DEF info,3 = 99,32,16,info
+DEF info,4 = 99,32,16,info
+DEF internet,0 = 99,32,17,internet
+DEF internet,1 = 99,32,17,internet
+DEF isdn,0 = 99,32,18,isdn
+DEF isdn,1 = 99,32,18,isdn
+DEF isdn,2 = 99,32,18,isdn
+DEF stick_surf,0 = 99,32,19,stick_surf
+DEF stick_surf,1 = 99,32,19,stick_surf
+DEF stick_surf,2 = 99,32,19,stick_surf
+DEF stick_surf,3 = 99,32,19,stick_surf
+DEF null,0 = 99,32,20,null_device
+MAP budget,0 TO info,1
+MAP ab,2 TO null,0
+SET power,0 = 1
+</code>
+
+==== Output from various ADAM2 commands on original firmware ====
+<code>
+(AVM) EVA Revision: 1.203 Version: 1203
+(C) Copyright 2005 AVM Date: Feb  7 2007 Time: 19:03:32 (3) 2 0-11111
+[FLASH:] SPANSION Top-MirrorBit-Flash 8MB 32 Bytes WriteBuffer
+[FLASH:](Eraseregion [0] 127 sectors a 64kB)
+[FLASH:](Eraseregion [1] 8 sectors a 8kB)
+[SYSTEM:] OHIO on 211MHz/125MHz
+Eva_AVM >
+       Commands   Description
+       --------   -----------
+           help   help
+             dm   dump mem  
+             cm   change mem  
+          erase   Erase Flash 
+       printenv   print Env. Variables
+        restart   reboot Device
+         setenv   set Env. variable  
+       unsetenv   unset Env. variable 
+             go   load & start kernel from mtd1
+         setmac   set mac addresses  (like 12:23:40)
+        memtest   test memory
+Eva_AVM >printenv
+HWRevision            101.1.1.0
+ProductID             Fritz_Box_SpeedportW701V
+SerialNumber          0000000000000000
+annex                 B
+autoload              yes
+bootloaderVersion     1.203
+bootserport           tty0
+bluetooth
+cpufrequency          211968000
+firstfreeaddress      0x946B1D78
+firmware_version      tcom
+firmware_info         33.04.26
+flashsize             0x00800000
+kernel_args           idle=4
+maca                  00:1A:4F:CB:E2:D9
+macb                  00:1A:4F:CB:E2:DA
+macwlan               00:1A:4F:90:5B:9E
+macdsl                00:1A:4F:CB:E2:DB
+memsize               0x02000000
+modetty0              38400,n,8,1,hw
+modetty1              38400,n,8,1,hw
+mtd0                  0x90000000,0x90000000
+mtd1                  0x90010000,0x90780000
+mtd2                  0x90000000,0x90010000
+mtd3                  0x90780000,0x907C0000
+mtd4                  0x907C0000,0x90800000
+my_ipaddress          192.168.178.1
+prompt                Eva_AVM
+ptest
+reserved
+req_fullrate_freq     125000000
+sysfrequency          125000000
+urlader-version       1203
+usb_board_mac         00:1A:4F:CB:E2:DC
+usb_rndis_mac         00:1A:4F:CB:E2:DD
+usb_device_id         0x0000
+usb_revision_id       0x0000
+usb_device_name       USB DSL Device
+usb_manufacturer_name  AVM
+wlan_key              3577134058785966
+wlan_cal              001C,03F2,000F,00D2,010A,00D2,010A,02E0,02DA
+</code>
+
+==== Original Flash Map ====
+^ partition ^ start ^ end ^ size ^ description ^
+| mtd0 | <code>0x90000000</code> | <code>0x90000000</code> | <code>0x000000</code> | empty! | 
+| mtd1 | <code>0x90010000</code> | <code>0x90780000</code> | <code>0x770000</code> | kernel+jffs2 (jffs starts at 0x00580000) | 
+| mtd2 | <code>0x90000000</code> | <code>0x90010000</code> | <code>0x010000</code> | ADAM2/bootloader | 
+| mtd3 | <code>0x90780000</code> | <code>0x907c0000</code> | <code>0x040000</code> | tffs (1) ? | 
+| mtd4 | <code>0x907c0000</code> | <code>0x90800000</code> | <code>0x040000</code> | tffs (2) ? | 
+Physical order of partitions on flash chip is:
+
+mtd0,mtd2,mtd1,mtd3,mtd4
+
+mtd0 is rather odd as it's 0 length!
+
+===== Installing OpenWrt =====
+
+{{page>meta:infobox:outdated&noheader&nofooter&noeditbtn}}
+
+To install OpenWrt you need an OpenWrt Kamikaze image file, it's best to build your own if you have a Linux system around, the process is quite simple and well documented, there's just a few options that need to be changed from the build system's defaults.
+
+==== Building OpenWrt ====
+
+Revision r12244 is the latest known versions to work due to this bug: https://dev.openwrt.org/cgi-bin/trac.fcgi/ticket/3123#comment:6
+
+`svn co https://svn.openwrt.org/openwrt/trunk@r12244 trunk_r12244`
+
+`cd trunk_r12244`
+
+`make defconfig`
+
+`scripts/feeds update -a`
+
+`scripts/feeds install -a`
+
+apply the patch from http://article.gmane.org/gmane.comp.embedded.openwrt.devel/1688 (it's in trunk since r13018)
+
+`make menuconfig`
+
+In menu config '*' means it'll be built into the image 'M' means it'll be built into an ipkg package which you can install later.
+
+  * select Target System (TI AR7 [2.6])
+  * select Base system ---> br2684ctl (only needed if you use PPPoE, for PPPoA this is not required)
+  * select Kernel modules  ---> Network Devices  ---> kmod-sangam-atm-annex (a for analog / b for isdn)
+  * in Networking make sure you choose PPPoA or PPPoE as required, it's best to build support in rather than making it as a module/ipkg
+
+`time make world V=99`
+
+(see https://dev.openwrt.org/ticket/2561)
+
+==== Flashing your OpenWrt image ====
+The best way to do this is [[docs:guide-user:installation:generic.flashing.ftp|using the bootloaders built in FTP server]].  I also prefer to have a serial cable attached so I can monitor the progress, but this optional.
+
+To flash OpenWrt onto any device there must be an MTD Block that spans the main unused area of the flash rom.  The adam2 bootloader always boots from MTD1 (using the "go" command).  As it turns out the W701V's MTD block 1 (mtd1) is correct for the flashing operation as can be seen from this except from the original flash map table (above).
+^ partition ^ start ^ end ^ size ^ description ^
+| mtd1 | <code>0x90010000</code> | <code>0x90780000</code> | <code>0x770000</code> | kernel+jffs2 jffs starts at 0x00580000) | 
+
+
+The W701V's default ip address is '192.168.178.1' - You can change the default adam2 address using the adam2 setenv commands to change the 'my_ipaddress' variable. Give your PC an IP address of '192.168.178.10'. Reboot the router an within 5 seconds connect to the ADAM2 ftp server on '192.168.178.1'. If you have a serial cable you can also reboot the router and press a key to get the router to wait in the ADAM2 console so that you have more time to connect via ftp to it. You should also be able to ping the device in the 5 second window or while the adam2 boot loader is paused, if not see the bootloader section of this document (above).
+
+The login name and password for the ftp server is adam2 (lower case).
+
+Now you can flash with the firmware of your choice. I (Hydra) downloaded openwrt from the svn repos and built a stock flash image which was created by the build process as 'trunk/bin/openwrt-EVA-2.6-squashfs.bin'. The JFFS images were also created which can be also be used. The JFFS image to use would be the one with the 64k erase size, e.g. 'openwrt-EVA-2.6-jffs2-64k.bin'.
+
+I flashed the firmware by issue the following commands:
+
+<code>
+binary
+quote MEDIA FLSH
+passiv
+put openwrt-EVA-2.6-squashfs.bin mtd1
+quote REBOOT
+bye
+</code>
+
+Passiv mode must be used otherwise the device reports "501 Command Not Implemented" after issuing the "put" command.
+
+The entire process looked like this:
+
+<code>
+hydra@hydra02:~$ ftp 192.168.178.1
+Connected to 192.168.178.1.
+220 ADAM2 FTP Server ready.
+Name (192.168.178.1:hydra): adam2
+331 Password required for adam2.
+Password:
+230 User adam2 successfully logged in.
+Remote system type is UNIX.
+ftp> binary
+200 Type set to I.
+ftp> quote MEDIA FLSH
+200 Media set to FLSH.
+ftp> passiv
+Passive mode on.
+ftp> put /home/hydra/openwrt/svn/trunk/bin/openwrt-EVA-2.6-squashfs.bin mtd1
+local: /home/hydra/openwrt/svn/trunk/bin/openwrt-EVA-2.6-squashfs.bin remote: mtd1
+200 Port command successful.
+150 Opening BINARY mode data connection for file transfer.
+226 Transfer complete.
+1697713 bytes sent in 7.37 secs (225.0 kB/s)
+ftp> quote REBOOT
+221 Thank you for using the FTP service on ADAM2.
+221 Goodbye.
+ftp> quit
+</code>
+
+There is a pause before the file is transferred where the router erases the mtd1 block. If you have a serial cable attached you can see the output in the adam2 console.
+
+After the file is transferred there is another pause while the image file is flashed to the chip, don't reboot your router during this time.
+
+Some users have reported errors appearing in the serial console that complain about flashing problems.  It appears that the flash process sometimes retries and succeedes and other times it fails.  failure is not reported to the ftp so it's advised to always use a serial cable so you can monitor  the flash process, if it fails just "put" the image via ftp until it doesn't report a failure.
+
+The entire log from the serial console was as follows:
+
+<code>
+Eva_AVM >
+erase mtd1 .......................................................................................................................
+Eva_AVM >
+flash .......................
+</code>
+
+Next up, you have to remove the old "kernel_args" adam2 environment variable if one is set (if you need your original firmware make sure you know what it's currently set to before erasing it, use printenv to find out).
+
+<code>
+Eva_AVM > unsetenv kernel_args
+</code>
+
+Finally, boot the device!  - type either "restart" or "go" at the adam2 prompt on the serial port or power the box off and on again.
+
+My boot log looked like this:
+
+<WRAP bootlog>
+<nowiki>
+Eva_AVM >go
+AVM decompress Kernel:
+...................done
+start kernel
+Linux version 2.6.22.4 (jan@jan) (gcc version 4.1.2) #1 Fri Sep 28 11:47:45 CEST 2007
+CPU revision is: 00018448
+Clocks: Async mode
+Clocks: Setting DSP clock
+Clocks: base = 25000000, frequency = 125000000, prediv = 1, postdiv = 2, postdiv2 = 1, mul = 10
+Clocks: Setting CPU clock
+Adjusted requested frequency 211000000 to 211968000
+Clocks: base = 35328000, frequency = 211968000, prediv = 1, postdiv = 1, postdiv2 = -1, mul = 6
+Clocks: Setting USB clock
+Adjusted requested frequency 48000000 to 48076920
+Clocks: base = 125000000, frequency = 48000000, prediv = 13, postdiv = 1, postdiv2 = -1, mul = 5
+TI AR7 (TNETD7200), ID: 0x002b, Revision: 0x11
+Determined physical RAM map:
+ memory: 02000000 @ 14000000 (usable)
+Built 1 zonelists.  Total pages: 8128
+Kernel command line: init=/etc/preinit rootfstype=squashfs,jffs2, console=ttyS0,38400n8r
+Primary instruction cache 16kB, physically tagged, 4-way, linesize 16 bytes.
+Primary data cache 8kB, 4-way, linesize 16 bytes.
+Synthesized TLB refill handler (20 instructions).
+Synthesized TLB load handler fastpath (32 instructions).
+Synthesized TLB store handler fastpath (32 instructions).
+Synthesized TLB modify handler fastpath (31 instructions).
+PID hash table entries: 128 (order: 7, 512 bytes)
+Using 105.984 MHz high precision timer.
+Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+Memory: 28816k/32768k available (1996k kernel code, 3952k reserved, 424k data, 104k init, 0k highmem)
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+vlynq0: regs 0x08611800, irq 29, mem 0x04000000
+vlynq-pci: attaching device TI TNETW1350 at vlynq0
+registering PCI controller with io_map_base unset
+Generic PHY: Registered new driver
+Time: MIPS clocksource has been installed.
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+TCP: Hash tables configured (established 1024 bind 1024)
+TCP reno registered
+squashfs: version 3.0 (2006/03/15) Phillip Lougher
+Registering mini_fo version $Id$
+JFFS2 version 2.2. (NAND) (SUMMARY)  © 2001-2006 Red Hat, Inc.
+io scheduler noop registered
+io scheduler deadline registered (default)
+ar7_wdt: timer margin 59 seconds (prescale 65535, change 57180, freq 62500000)
+Serial: 8250/16550 driver $Revision: 1.90 $ 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x8610e00 (irq = 15) is a TI-AR7
+console handover: boot [early0] -> real [ttyS0]
+Fixed PHY: Registered new driver
+cpmac-mii: probed
+cpmac: device eth0 (regs: 08610000, irq: 27, phy: fixed@100:1, mac: 00:1a:4f:f4:fe:52)
+physmap platform flash device: 00800000 at 10000000
+physmap-flash.0: Found 1 x16 devices at 0x0 in 16-bit bank
+ Amd/Fujitsu Extended Query Table at 0x0040
+physmap-flash.0: Swapping erase regions for broken CFI table.
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+cmdlinepart partition parsing not available
+RedBoot partition parsing not available
+4 ar7part partitions found on MTD device physmap-flash.0
+Creating 4 MTD partitions on "physmap-flash.0":
+0x00000000-0x00010000 : "loader"
+0x007f0000-0x00800000 : "config"
+0x00010000-0x007f0000 : "linux"
+0x000e0000-0x007f0000 : "rootfs"
+mtd: partition "rootfs" set to be root filesystem
+mtd: partition "rootfs_data" created automatically, ofs=1E0000, len=610000
+0x001e0000-0x007f0000 : "rootfs_data"
+Registered led device: ar7:status
+nf_conntrack version 0.5.0 (256 buckets, 2048 max)
+ip_tables: (C) 2000-2006 Netfilter Core Team
+TCP vegas registered
+NET: Registered protocol family 1
+NET: Registered protocol family 17
+802.1Q VLAN Support v1.8 Ben Greear 
+All bugs added by David S. Miller 
+VFS: Mounted root (squashfs filesystem) readonly.
+Freeing unused kernel memory: 104k freed
+Warning: unable to open an initial console.
+Algorithmics/MIPS FPU Emulator v1.5
+- preinit -
+jffs2 not ready yet; using ramdisk
+mini_fo: using base directory: /
+mini_fo: using storage directory: /tmp/root
+- init -
+init started:  BusyBox v1.4.2 (2007-09-28 11:39:05 CEST) multi-call binary
+Please press Enter to activate this console. NET: Registered protocol family 8
+NET: Registered protocol family 20
+PHY: fixed@100:1 - Link is Up - 10/Half
+PPP generic driver version 2.4.2
+registered device TI Avalanche SAR
+Ohio250(7200/7100A2) detected
+requesting firmware image "ar0700xx.bin"
+Creating new root folder avalanche in the proc for the driver stats
+Texas Instruments ATM driver: version:[7.02.01.00]
+jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+jffs2_build_filesystem(): unlocking the mtd device... done.
+jffs2_build_filesystem(): erasing all blocks after the end marker... done.
+mini_fo: using base directory: /
+mini_fo: using storage directory: /jffs
+
+
+
+BusyBox v1.4.2 (2007-09-28 11:39:05 CEST) Built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   |   _  |  -__|     |   |  |  |    _|    _|
+ |_ ^ |_____|__| ^ ^ |  |____|
+          |__| W I R E L E S S   F R E E D O M
+ KAMIKAZE (bleeding edge, r9053) -------------------
+   * 10 oz Vodka       Shake well with ice and strain
+   * 10 oz Triple sec  mixture into 10 shot glasses.
+   * 10 oz lime juice  Salute!
+ ---------------------------------------------------
+root@OpenWrt:/#
+</nowiki>
+</WRAP>\\
+
+===== Specific configuration =====
+==== Getting the ADSL Working via PPPoA ====
+/etc/config/network:
+
+<code>
+# Network configuration file
+config interface loopback
+        option ifname   lo
+        option proto    static
+        option ipaddr   127.0.0.1
+        option netmask  255.0.0.0
+config interface lan
+        option ifname   eth0
+        option proto    static
+        option ipaddr   192.168.128.1
+        option netmask  255.255.255.0
+config interface wan
+        option ifname   ppp0
+        option username "my_network_username@my_isp"
+        option password "my_network_password"
+        option proto    pppoa
+        option mtu      1500
+        option mru      1500
+        option vpi      0
+        option vci      38
+        option encaps   llc
+</code>
+
+ifup wan
+
+==== Getting the ADSL Working via PPPoE (example for german Arcor) ====
+/etc/config/network:
+
+<code>
+# Network configuration file
+config interface loopback
+        option ifname   lo
+        option proto    static
+        option ipaddr   127.0.0.1
+        option netmask  255.0.0.0
+config interface lan
+        option ifname   eth0
+        option proto    static
+        option ipaddr   192.168.1.1
+        option netmask  255.255.255.0
+
+config atm-bridge
+        option unit     0
+        option encaps   llc
+        option vpi      1
+        option vci      32
+        option payload  bridged
+
+config interface wan
+        option ifname   nas0
+        option proto    pppoe
+        option username "arxxx"
+        option password "xxx"
+</code>
+
+( /etc/init.d/br2684ctl start )
+
+ifup wan
+
+If your provider doesn't work, try experimenting with vpi/vci. 1.32, 8.35 and 1.35 (VPI.VCI) are quite common.
+
+
+===== Bootlogs =====
+
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>(AVM) EVA Revision: 1.190 Version: 1190
+(C) Copyright 2005 AVM Date: Nov 15 2006 Time: 16:53:42 (0) 2 0-11111
+[FLASH:] SPANSION Top-MirrorBit-Flash 8MB 32 Bytes WriteBuffer
+[FLASH:](Eraseregion [0] 127 sectors a 64kB)
+[FLASH:](Eraseregion [1] 8 sectors a 8kB)
+[SYSTEM:] OHIO on 211MHz/125MHz
+Eva_AVM >AVM decompress Kernel:
+............done
+start kernel
+[ohio_pre_init] System Clk = 62500000 Hz               Linux version 2.6.13.1-ohio (jpluschke@EmbeddedVM) (gcc version 3.4.3) #3 Thu Feb 7
+YAMON MEMORY DESCRIPTOR dump:
+prom_memsize = 0x02000000
+memsize=32 MByte
+prom_flashsize = 0x00800000
+flashsize=8 MByte
+&_end=0x9420aec8 PFN_ALIGN(&_end)=0x9420b000 CPHYSADDR(PFN_ALIGN(&_end))=0x1420b000 memsize=0x2000000
+[0,941e4fc0]: base size type
+[0,941e4fcc]: base size type
+prom_memsize = 0x02000000
+memsize=32 MByte
+prom_flashsize = 0x00800000
+flashsize=8 MByte
+&_end=0x9420aec8 PFN_ALIGN(&_end)=0x9420b000 CPHYSADDR(PFN_ALIGN(&_end))=0x1420b000 memsize=0x2000000
+CPU revision is: 00018448
+ohio_setup+0x0/0x100
+[ohio_clk_init]: dsl xtal 35328000Hz lan xtal 25000000Hz
+[ohio_gpio_init]
+Determined physical RAM map:
+ memory: 0020b000 @ 14000000 (reserved)
+ memory: 01df5000 @ 1420b000 (usable)
+On node 0 totalpages: 8192
+[alloc_node_mem_map] reduce size from 2883616 Bytes to  262176 Bytes
+[alloc_node_mem_map]: (org) sizeof(mem_map) = 262176 mem_map=0x9420e000-0x9424e020
+[alloc_node_mem_map]: sizeof(mem_map) = 2883616 mem_map=0x93f8e000-0x9424e020
+  DMA zone: 8192 pages, LIFO batch:3
+  Normal zone: 0 pages, LIFO batch:1
+  HighMem zone: 0 pages, LIFO batch:1
+Built 1 zonelists
+Kernel command line: idle=4  console=ttyS0,38400n8r
+[ld_mmu_r4xx0] memcpy((void *)(CAC_BASE   + 0x100), &except_vec2_generic, 0x30)
+Primary instruction cache 16kB, physically tagged, 4-way, linesize 16 bytes.
+Primary data cache 8kB, 4-way, linesize 16 bytes.
+Synthesized TLB refill handler (20 instructions). Base=0x941e2734
+TLB synthesizer field overflow (simm)
+Synthesized TLB load handler fastpath (34 instructions) Base=0x941e5760.
+TLB synthesizer field overflow (simm)
+Synthesized TLB store handler fastpath (34 instructions) Base=0x941e5960.
+TLB synthesizer field overflow (simm)
+Synthesized TLB modify handler fastpath (33 instructions) Base=0x941e5b60.
+PID hash table entries: 256 (order: 8, 4096 bytes)
+[ohio_set_clock_notify] avm_clock_id_cpu notify disable 0x940013f8 0x9419be18
+[ohio_set_clock_notify] avm_clock_id_cpu notify enable 0x940013f8 0x9419be18
+CPU frequency 211.97 MHz
+Using 105.984 MHz high precision timer.
+[setup_irq]: irq 127 irqaction->handler 0x94041a10 (no_action+0x0/0x8 )
+[register_console] enable commandline console 0
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Memory: 30324k/30676k available (1477k kernel code, 320k reserved, 342k data, 112k init, 0k highmem)
+totalram_pages= 7589
+Calibrating delay loop... 211.35 BogoMIPS (lpj=1056768)
+loops_per_jiffy=1056768
+Mount-cache hash table entries: 512
+Checking for 'wait' instruction... [speedup] idle_mode = 4
+ with idle values available.
+NET: Registered protocol family 16
+Can't analyze prologue code at 9416fc8c
+Squashfs 2.2-r2b (released 2006/02/23) (C) 2002-2005 Phillip Lougher
+[avm] configured: watchdog eventled enable shift register enable direct gpio
+        gpio usage: reset=12 clock=13 store=10 data=9
+AR7WDT: Watchdog Driver for AR7 Hardware (Version 1.0, build: Feb  8 2007 14:30:44)
+Serial: 8250/16550 driver $Revision: 1.90 $ 1 ports, IRQ sharing disabled
+[uart_add_one_port]
+ttyS0 at MMIO 0x0 (irq = 15) is a OHIO_UART
+[uart_add_one_port] dont rigister console port->type = 16
+port->cons = 0x941a9680 port->cons->flags = 0x7
+[uart_add_one_port] sucess
+io scheduler noop registered
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x200) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x200) = 0x3100
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x220) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x220) = 0x3100
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x240) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x240) = 0x3100
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x260) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x260) = 0x3100
+(vor) REG_ADM_LC_PHY_CONTROL_PORT(0x280) = 0x3100
+(nach) REG_ADM_LC_PHY_CONTROL_PORT(0x280) = 0x3100
+cpmac_if_register, dev cpmac0 (phy_id 0) registered
+cpmac_if_register, phy_id 0 already registered
+tun: Universal TUN/TAP device driver, 1.6
+tun: (C) 1999-2004 Max Krasnyansky 
+physmap flash device: 400000 at 10000000
+phys_mapped_flash: Found 1 x16 devices at 0x0 in 16-bit bank
+ Amd/Fujitsu Extended Query Table at 0x0040
+phys_mapped_flash: Swapping erase regions for broken CFI table.
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+RedBoot partition parsing not available
+Generic platform RAM MTD, (c) 2004 Simtec Electronics
+Ohio flash driver (size->0x400000 mem->0x10000000)
+flash_size=0x800000
+Ohio flash memory: Found 1 x16 devices at 0x0 in 16-bit bank
+ Amd/Fujitsu Extended Query Table at 0x0040
+Ohio flash memory: Swapping erase regions for broken CFI table.
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+[mtd]: set to default: jffs2_size = 0x20 * 64KByte (0x200000 Bytes)
+[ohio_find_hidden_filesystem]: super block found: bytes_used: 0x36347f/3552383
+[init_ohio_flash] find hidden filesystem size=0x6d3b00 offset=0xac500
+[mtd] configure jffs2 partition
+[mtd] fs_size=0x400000 max=0x370000 is=0x200000 max jffs2_size value 55
+Creating 7 MTD partitions on "Ohio flash memory":
+0x000ac500-0x00780000 : "filesystem"
+        'nor-flash'
+        'Bits can be cleared (flash)'
+        'Has an erase function'
+mtd: partition "filesystem" doesn't start on an erase block boundary -- force read-only
+0x00010000-0x00780000 : "kernel"
+        'nor-flash'
+        'Bits can be cleared (flash)'
+        'Has an erase function'
+0x00000000-0x00010000 : "bootloader"
+        'nor-flash'
+        'Bits can be cleared (flash)'
+        'Has an erase function'
+        'Virtual blocks not allowed'
+0x00780000-0x007c0000 : "tffs (1)"
+        'nor-flash'
+        'Bits can be cleared (flash)'
+        'Has an erase function'
+        'Virtual blocks not allowed'
+0x007c0000-0x00800000 : "tffs (2)"
+        'nor-flash'
+        'Bits can be cleared (flash)'
+        'Has an erase function'
+        'Virtual blocks not allowed'
+0x00580000-0x00780000 : "jffs2"
+        'nor-flash'
+        'Bits can be cleared (flash)'
+        'Has an erase function'
+        'Virtual blocks not allowed'
+0x00010000-0x00580000 : "Kernel without jffs2"
+        'nor-flash'
+        'Bits can be cleared (flash)'
+        'Has an erase function'
+        'Virtual blocks not allowed'
+capi20: Rev 1.1.2.7: started up with major 68 (middleware+capifs)
+capifs: Rev 1.1.2.3
+NET: Registered protocol family 2
+IP route cache hash table entries: 512 (order: -1, 2048 bytes)
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+TCP bic registered
+mcfw_init: ok
+NET: Registered protocol family 1
+NET: Registered protocol family 17
+NET: Registered protocol family 8
+NET: Registered protocol family 20
+[setup_irq]: irq 1 irqaction->handler 0x94001664 (dummy_timer_irq+0x0/0x14 )
+[setup_irq]: irq 6 irqaction->handler 0x94001678 (dummy_system_irq_2+0x0/0x18 )
+[ohio_late_init]
+[ohio_set_clock_notify] avm_clock_id_system notify disable 0x9400169c 0x94279e48
+[ohio_set_clock_notify] avm_clock_id_system notify enable 0x9400169c 0x94279e48
+[tffs] alloc_chrdev_region() param=mtd4
+[tffs] CONFIG_TFFS_MTD_DEVICE_0=4 CONFIG_TFFS_MTD_DEVICE_1=5
+[tffs] Character device init successfull
+TFFS: tiny flash file system driver. GPL (c) AVM Berlin (Version 2.0)
+      mount on mtd4 and mtd5 (double buffering)
+Adam2 environment variables API installed.
+tffsd: wait for events
+[prepare_namespace] new mount root /dev/mtdblock1
+use lzma compression
+VFS: Mounted root (squashfs filesystem) readonly.
+Freeing prom memory: 0kb freed
+Freeing unused kernel memory: 112k freed (7617 free)
+[setup_irq]: irq 15 irqaction->handler 0x940cf534 (serial8250_interrupt+0x0/0x128 )
+[setup_irq]: irq 15 irqaction->handler 0x940cf534 (serial8250_interrupt+0x0/0x128 )
+[setup_irq]: irq 15 irqaction->handler 0x940cf534 (serial8250_interrupt+0x0/0x128 )
+init started:  BusyBox v1.1.0 (2006.03.22-15:32+0000) multi-call binary
+[setup_irq]: irq 15 irqaction->handler 0x940cf534 (serial8250_interrupt+0x0/0x128 )
+AR7WDT: System Init UEberwachung 120 Sekunden
+TFFS Name Table 8
+HWRevision      101.1.1.0
+ProductID       Fritz_Box_SpeedportW701V
+SerialNumber    0000000000000000
+annex   B
+autoload        yes
+bootloaderVersion       1.190
+bootserport     tty0
+bluetooth
+cpufrequency    211968000
+firstfreeaddress        0x946AE878
+firmware_version        tcom
+firmware_info   33.04.26
+flashsize       0x00800000
+kernel_args     idle=4
+maca    00:1A:4F:BF:17:C0
+macb    00:1A:4F:BF:17:C1
+macwlan 00:1A:4F:8D:CB:60
+macdsl  00:1A:4F:BF:17:C2
+memsize 0x02000000
+modetty0        38400,n,8,1,hw
+modetty1        38400,n,8,1,hw
+mtd0    0x90000000,0x90000000
+mtd1    0x90010000,0x90780000
+mtd2    0x90000000,0x90010000
+mtd3    0x90780000,0x907C0000
+mtd4    0x907C0000,0x90800000
+my_ipaddress    192.168.178.1
+prompt  Eva_AVM
+ptest
+reserved
+req_fullrate_freq       125000000
+sysfrequency    125000000
+urlader-version 1190
+usb_board_mac   00:1A:4F:BF:17:C3
+usb_rndis_mac   00:1A:4F:BF:17:C4
+usb_device_id   0x0000
+usb_revision_id 0x0000
+usb_device_name USB DSL Device
+usb_manufacturer_name   AVM
+wlan_key        5303946966528549
+wlan_cal        03F5,000A,0014,00D6,010A,00DB,010A,02E4,02EC
+HWRevision='101'
+HWRevision_ATA='1'
+HWRevision_BitFileCount='1'
+HWRevision_Reserved1='0'
+ANNEX='B'
+OEM='tcom'
+OEM_DEFAULT_INDEX=''
+OEM_tmp='tcom'
+Language='de'
+Country='049'
+TZ='CET-1CEST,M3.5.0,M10.5.0'
+CONFIG_AB_COUNT='2'
+CONFIG_ANNEX='B'
+CONFIG_ASSIST='y'
+CONFIG_ATA='n'
+CONFIG_ATA_FULL='n'
+CONFIG_AUDIO='n'
+CONFIG_AURA='n'
+CONFIG_BLUETOOTH='n'
+CONFIG_BLUETOOTH_CTP='n'
+CONFIG_BUTTON='y'
+CONFIG_CAPI='y'
+CONFIG_CAPI_MIPS='n'
+CONFIG_CAPI_NT='n'
+CONFIG_CAPI_POTS='y'
+CONFIG_CAPI_TE='y'
+CONFIG_CAPI_UBIK='n'
+CONFIG_CAPI_XILINX='y'
+CONFIG_CDROM='n'
+CONFIG_CDROM_FALLBACK='n'
+CONFIG_DECT='n'
+CONFIG_DSL='y'
+CONFIG_ENVIRONMENT_PATH='/proc/sys/urlader'
+CONFIG_ETH_COUNT='4'
+CONFIG_FIRMWARE_URL='http://www.telekom.de/faq'
+CONFIG_FON='y'
+CONFIG_HOMEI2C='n'
+CONFIG_HOSTNAME='speedport.ip'
+CONFIG_I2C='n'
+CONFIG_INSTALL_TYPE='ar7_8MB_xilinx_4eth_2ab_isdn_pots_wlan_13200'
+CONFIG_JFFS2='n'
+CONFIG_LED_NO_DSL_LED='n'
+CONFIG_MAILER='n'
+CONFIG_MEDIACLI='n'
+CONFIG_MEDIASRV='n'
+CONFIG_NAND='n'
+CONFIG_NFS='n'
+CONFIG_OEM_DEFAULT='tcom'
+CONFIG_PRODUKT='Fritz_Box_SpeedportW701V'
+CONFIG_PRODUKT_NAME='Speedport W 701V'
+CONFIG_RAMSIZE='32'
+CONFIG_ROMSIZE='8'
+CONFIG_SERVICEPORTAL_URL='none'
+CONFIG_STOREUSRCFG='n'
+CONFIG_SUBVERSION=''
+CONFIG_TAM='n'
+CONFIG_TAM_MODE='0'
+CONFIG_TR069='y'
+CONFIG_UBIK2='n'
+CONFIG_UPNP='n'
+CONFIG_USB='n'
+CONFIG_USB_HOST_AVM='n'
+CONFIG_USB_HOST_TI='n'
+CONFIG_USB_PRINT_SERV='n'
+CONFIG_USB_STORAGE='n'
+CONFIG_USB_WLAN_AUTH='n'
+CONFIG_VDSL='n'
+CONFIG_VERSION='04.26'
+CONFIG_VERSION_MAJOR='33'
+CONFIG_VLYNQ='y'
+CONFIG_VLYNQ0='0'
+CONFIG_VLYNQ1='0'
+CONFIG_VPN='n'
+CONFIG_WLAN='y'
+CONFIG_WLAN_1130TNET='n'
+CONFIG_WLAN_1350TNET='y'
+CONFIG_WLAN_GREEN='n'
+CONFIG_WLAN_WDS='y'
+CONFIG_XILINX='y'
+set 'Activate Wizzard'
+mknod: /var/flash/ar7.cfg: File exists
+cp /etc/default.049/fx_moh.default /var/fx_moh
+checkempty: warning, /var/flash/voip.cfg not found - nop
+Piglet: module license '
+(C) Copyright 2005 by AVM
+' taints kernel.
+attempting to load DSL Firmware '/lib/modules/microvoip-dsl.bin'
+**** ANNEX: 'B'
+*************************************
+setting DSL Firmware to Annex B
+registered device TI Avalanche SAR
+tiatm driver (patch_annex=0xc00519ec)
+[tiatm] Set StrictPriority=0
+DSP binary filesize = 303784 bytes
+[setup_irq]: irq 23 irqaction->handler 0xc003920c (tn7atm_sar_irq+0x0/0x30 [tiatm] )
+[setup_irq]: irq 31 irqaction->handler 0xc003923c (tn7atm_dsl_irq+0x0/0x28 [tiatm] )
+[tiatm]: Powermanagment (States => 1,3,10) supported!
+Texas Instruments ATM driver: version:[4.06.04.30]
+ubik2 driver (ubik2 - 0x10=0xc00646b4)
+atm_dsp_register_ubik2: ubik2_ToMIPS_notify=0xc0055c00
+atm_dsp_register_ubik2: dsp mem pointer 0xa1c0f218
+ubik2_init_interface: DSP-Link Version v3 8480
+isdn_fbox: Loading...
+isdn_fbox: Driver 'isdn_fbox' attached to stack
+isdn_fbox: CAPI driver registered.
+isdn_fbox: AVM F!Box expected @ port 0x0000, irq 0
+isdn_fbox: Loading...
+isdn_fbox: Stack version 3.11-07
+isdn_fbox: D-channel 0: DSS1
+isdn_fbox: D-channel 1: DSS1
+isdn_fbox: D-channel 2: DSS1_N
+isdn_fbox: D-channel 3: POTS
+isdn_fbox: D-channel 4: SIP
+isdn_fbox: Loaded.
+kdsldmod: init start
+kdsld: cache_create(datapipe)
+kdsld: cache_create(datapipe_mod)
+kdsld: cache_create(ipaccessset)
+kdsld: cache_create(ipaccessrule)
+kdsld: cache_create(ipfragid)
+kdsld: cache_create(ipmasqentry)
+kdsld: cache_create(ipmasqfwinfo)
+kdsld: cache_create(ipmasqigdpm)
+kdsld: cache_create(ipmasqappldata)
+kdsld: cache_create(ipmasqmcgroup)
+kdsld: cache_create(dnsmasqentry)
+kdsld: cache_create(dnsstaticentry)
+kdsld: cache_create(pingerentry)
+kdsld: cache_create(pingerwaiter)
+kdsld: cache_create(iprouteset)
+kdsld: DATAPIPE: with header optimization
+kdsldmod: init done
+kdsld: PPP led: off (value=0)
+2000-01-01 01:00:15 cltmgr: csock: using poll
+Jan  1 01:00:15 cltmgr[383]: csock: using poll
+2000-01-01 01:00:16 cltmgr: avmssl_init: done
+Jan  1 01:00:16 cltmgr[383]: avmssl_init: done
+2000-01-01 01:00:16 cltmgr: process priority is 19
+Jan  1 01:00:16 cltmgr[383]: process priority is 19
+MAC WLAN:       00:1A:4F:8D:CB:60
+WLAN is not enabled
+SIOCGIFFLAGS: No such device
+SIOCGIFFLAGS: No such device
+SIOCGIFFLAGS: No such device
+SIOCGIFFLAGS: No such device
+SIOCGIFFLAGS: No such device
+SIOCGIFFLAGS: No such device
+/etc/init.d/rc.net: /etc/init.d/rc.net: 366: igdd: not found
+Jan  1 01:00:17 websrv[408]: csock: using poll
+Jan  1 01:00:17 cltmgr[385]: /var/flash/voip.cfg: is empty
+Jan  1 01:00:17 cltmgr[385]: FactoryDefault=/etc/default/tcom/voip.cfg (voip)
+Jan  1 01:00:17 cltmgr[385]: load_config(voip): factory default loaded
+Jan  1 01:00:17 cltmgr[385]: TR-069 is NOT ACTIVATED in tr069.cfg
+Jan  1 01:00:17 websrv[408]: avmssl_init: done
+Jan  1 01:00:17 cltmgr[385]: mapping to info-LED already exist
+Jan  1 01:00:17 cltmgr[385]: box init ok
+Jan  1 01:00:17 cltmgr[385]: dlopen(/usr/share/ctlmgr/libdect.so) failed: File not found
+Jan  1 01:00:17 cltmgr[385]: dlopen(/usr/share/ctlmgr/libtamconf.so) failed: File not found
+Jan  1 01:00:17 cltmgr[385]: dlopen(/usr/share/ctlmgr/libvdsl.so) f[speedup] disable
+ailed: File not found
+Jan  1 01:00:17 cltmgr[385]: WAN (ata) led value = 0
+Jan  1 01:00:18 cltmgr[385]: TR069_Init() TR069_Init(assi-only)
+Jan  1 01:00:18 cltmgr[385]: TR069_Init returned 0
+Jan  1 01:00:18 cltmgr[385]: TR069_Init(lite mode) returned 0
+Jan  1 01:00:18 cltmgr[385]: verbose: DISABLED
+2000-01-01 01:00:18 multid: startup (Aug 31 2006 17:10:44)
+Jan  1 01:00:18 multid[414]: startup (Aug 31 2006 17:10:44)
+2000-01-01 01:00:18 multid: csock: using poll
+Jan  1 01:00:18 multid[414]: csock: using poll
+2000-01-01 01:00:18 multid: avmssl_init: done
+Jan  1 01:00:18 multid[414]: avmssl_init: done
+Jan  1 01:00:18 multid[418]: new cpmac driver detected
+Jan  1 01:0[setup_irq]: irq 27 irqaction->handler 0x940e016c (0:1cpmac_main_isr+0x0/0x78 8 m)
+ultid[418]: enabling non-ATA-Mode
+Jan  1 01:00:18 multid[418]: normal
+Jan  1cpmac_main_ioctl, unknown ioctl 35142
+ 01:device eth0 entered promiscuous mode
+00:device cpmac0 entered promiscuous mode
+18 mulan: port 1(eth0) entering learning state
+ltid[418]: if_setup: lan:0: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: usbrndis: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for usbrndis failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: usbrndis: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: tiwlan0: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for tiwlan0 failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: tiwlan0: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: wdsup0: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for wdsup0 failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: wdsup0: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: wdsdw0: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for wdsdw0 failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: wdsdw0: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: wdsdw1: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for wdsdw1 failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: wdsdw1: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: wdsdw2: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for wdsdw2 failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: wdsdw2: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: wdsdw3: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for wdsdw3 failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: wdsdw3: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: eth1: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for eth1 failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: eth1: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: eth2: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for eth2 failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: eth2: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_setup: eth3: SIOCSIFADDR failed - No such device (19)
+Jan  1 01:00:19 multid[418]: br_add_if: get index for eth3 failed - No such device (19)
+Jan  1 01:00:19 multid[418]: if_allmulti: eth3: SIOCGIFFLAGS failed - No such device (19)
+Jan  1 01:00:19 multid[418]: static routes: 0 deleted (0 failed), 0 added (0 failed)
+Jan  1 01:00:19 multid[418]: static routes: 0 deleted (0 failed), 0 added (0 failed)
+Jan  1 01:00:19 multid[418]: IGMP tos configured to 0x80
+Jan  1 01:00:19 multid[418]: mrouter: using IGMPv3 for upstream interface dsl
+Jan  1 01:00:19 multid[418]: mrouter: using IGMPv3 for other interfaces
+Jan  1 01:00:19 multid[418]: DHCPD on lan:0 skipped, is virtual interface
+Jan  1 01:00:19 multid[418]: DDNS: no valid accounts
+Jan  1 01:00:19 websrv[408]: startup (Jul  6 2006 15:36:02)
+Jan  1 01:00:19 multid[418]: ONLINE: script /bin/onlinechanged not found.
+Jan  1 01:00:19 multid[4kdsld: sync lost
+18]: verbose: DISABLED
+2000-01-01 01:00:19 dsld: csock: using poll
+Jan  1 01:00:19 dsld[426]: csock: using poll
+2000-01-01 01:00:19 dsld: avmssl_init: done
+Jan  1 01:00:19 dsld[426]: avmssl_init: done
+2000-01-01 01:00:19 dsld: startup (Jul  6 2006 15:37:07)
+Jan  1 01:00:19 dsld[426]: startup (Jul  6 2006 15:37:07)
+2000-01-01 01:00:19 dsld: new cpmac driver detected
+Jan  1 01:00:19 dsld[426]: new cpmac driver detected
+Jan  1 01:00:19 dsld[428]: DSL Mac 00:1a:4f:bf:17:c2
+Jan  1 01:00:19 dsld[428]: VOIP Mac 00:1a:4f:bf:17:c3
+Jan  1 01:00:19 dsld[428]: voip: ppptarget voip disabled, ignored
+Jan  1 01:00:19 dsld[428]: verbose: DISABLED
+/etc/init.d/rc.net: /etc/init.d/rc.net: 1: avmike: not found
+telefon: use clock_gettime(CLOCK_MONOTONIC)!
+telefon: SIGCHLD received!
+telefon: SIGCHLD received!
+voipd: csock: using poll
+voipd: avmssl_init: done
+Jan  1 01:00:22 voipd[448]: /var/flash/voip.cfg: is empty
+Jan  1 01:00:22 voipd[448]: FactoryDefault=/etc/default/tcom/voip.cfg (voip)
+Jan  1 01:00:22 voipd[448]: load_config(voip): factory default loaded
+Jan  1 01:00:22 voipd[448]: startup (AVM Speedport W 701V 33.04.26 AVM SIP v5.01.48 Jul 12 2006 16:18:47)
+Jan  1 01:00:22 voipd[448]: using capi controller 5
+Jan  1 01:00:22 voipd[448]: using b1 protocol 10
+Jan  1 01:00:22 voipd[448]: tel: supported
+Jan  1 01:00:22 voipd[448]: ENUM NOT enabled
+Jan  1 01:00:22 voipd[448]: enumdomain: e164.arpa
+Jan  1 01:00:22 voipd[448]: enumdomain: e164.org
+Jan  1 01:00:22 voipd[448]: Couldn't load shared library libspeex.so - File not found - Not a directory (20)
+Jan  1 01:00:22 voipd[448]: VoIP led value = 0
+Jan  1 01:00:22 voipd[448]: no useragent configured
+Jan  1 01:00:22 voipd[448]: INFO led: off (value=0)
+Jan  1 01:00:22 voipd[448]: priority is -20
+Jan  1 01:00:22 voipd[448]: encaplen 32
+Jan  1 01:00:22 voipd[448]: brutto speed unknown
+Jan  1 01:00:22 voipd[448]: PCMA: 98933 bits/second (encaplen=32,30ms)
+Jan  1 01:00:22 voipd[448]: PCMU: 98933 bits/second (encaplen=32,30ms)
+Jan  1 01:00:22 voipd[448]: G726-32: 70666 bits/second (encaplen=32,30ms)
+Jan  1 01:00:22 voipd[448]: G726-40: 70666 bits/second (encaplen=32,30ms)
+Jan  1 01:00:22 AR7WDT: System Init UEberwachung abgeschlossen (100540 ms noch verfuegbar)
+voipd[448]: G726-24: 56533 bits/second (encaplen=32,30ms)
+Jan  1 01:00:22 voipd[448]: iLBC: 42400 bits/second (encaplen=32,30ms)
+Jan  1 01:00:22 voipd[448]: PCMA: 106000 bits/second (encaplen=32,20ms)
+Jan  1 01:00:22 voipd[448]: PCMU: 106000 bits/second (encaplen=32,20ms)
+Jan  1 01:0SysRq : Changing Loglevel
+Loglevel set to 4
+0:22 voipd[448]: G72
+Please press Enter to activate this console.</nowiki>
+</WRAP>\\
+
+
+==== OpenWrt 14.07 bootlog ====
+
+<WRAP bootlog>
+<nowiki>
+(AVM) EVA Revision: 1.203 Version: 1203
+
+(C) Copyright 2005 AVM Date: Feb  7 2007 Time: 19:03:32 (1) 2 0-11111
+
+[FLASH:] MACRONIX Top-MirrorBit-Flash 8MB 32 Bytes WriteBuffer
+[FLASH:](Eraseregion [0] 127 sectors a 64kB) 
+[FLASH:](Eraseregion [1] 8 sectors a 8kB) 
+[SYSTEM:] OHIO on 211MHz/125MHz 
+
+Eva_AVM >AVM decompress Kernel:
+......................done
+start kernel
+[    0.000000] Linux version 3.10.49 (bb@builder1) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r42625) ) #3 Wed Oct 1 13:55:11 CEST 2014
+[    0.000000] ar7-gpio: registered 32 GPIOs
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00018448 (MIPS 4KEc)
+[    0.000000] TI AR7 (TNETD7200), ID: 0x002b, Revision: 0x11
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 02000000 @ 14000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x14000000-0x15ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x14000000-0x15ffffff]
+[    0.000000] Primary instruction cache 16kB, VIPT, 4-way, linesize 16 bytes.
+[    0.000000] Primary data cache 8kB, 4-way, VIPT, no aliases, linesize 16 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 8128
+[    0.000000] Kernel command line:  console=ttyS0,38400n8 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 128 (order: -3, 512 bytes)
+[    0.000000] Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.000000] Memory: 27952k/32768k available (2523k kernel code, 4816k reserved, 555k data, 184k init, 0k highmem)
+[    0.000000] NR_IRQS:256
+[    0.000000] Clocks: Async mode
+[    0.000000] Clocks: Setting DSP clock
+[    0.000000] Clocks: base = 25000000, frequency = 125000000, prediv = 1, postdiv = 2, postdiv2 = 1, mul = 10
+[    0.000000] Clocks: Setting CPU clock
+[    0.000000] Adjusted requested frequency 211000000 to 211968000
+[    0.000000] Clocks: base = 35328000, frequency = 211968000, prediv = 1, postdiv = 1, postdiv2 = -1, mul = 6
+[    0.000000] Clocks: Setting USB clock
+[    0.000000] Adjusted requested frequency 48000000 to 48076920
+[    0.000000] Clocks: base = 125000000, frequency = 48000000, prediv = 13, postdiv = 1, postdiv2 = -1, mul = 5
+[    0.000000] Calibrating delay loop... 211.35 BogoMIPS (lpj=1056768)
+[    0.090000] pid_max: default: 32768 minimum: 301
+[    0.100000] Mount-cache hash table entries: 512
+[    0.120000] NET: Registered protocol family 16
+[    0.180000] bio: create slab <bio-0> at 0
+[    0.200000] Switching to clocksource MIPS
+[    0.220000] NET: Registered protocol family 2
+[    0.240000] TCP established hash table entries: 512 (order: 0, 4096 bytes)
+[    0.260000] TCP bind hash table entries: 512 (order: -1, 2048 bytes)
+[    0.280000] TCP: Hash tables configured (established 512 bind 512)
+[    0.300000] TCP: reno registered
+[    0.310000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.330000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.350000] NET: Registered protocol family 1
+[    0.410000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.430000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.460000] msgmni has been set to 54
+[    0.470000] io scheduler noop registered
+[    0.490000] io scheduler deadline registered (default)
+[    0.500000] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.520000] serial8250: ttyS0 at MMIO 0x8610e00 (irq = 15) is a TI-AR7
+[    0.540000] console [ttyS0] enabled, bootconsole disabled
+[    0.540000] console [ttyS0] enabled, bootconsole disabled
+[    0.620000] physmap platform flash device: 02000000 at 10000000
+[    0.640000] physmap-flash.0: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x0000c2 Chip ID 0x00227e
+[    0.670000] Amd/Fujitsu Extended Query Table at 0x0040
+[    0.680000]   Amd/Fujitsu Extended Query version 1.3.
+[    0.700000] physmap-flash.0: Swapping erase regions for top-boot CFI table.
+[    0.720000] number of CFI chips: 1
+[    0.730000] 4 ar7part partitions found on MTD device physmap-flash.0
+[    0.750000] Creating 4 MTD partitions on "physmap-flash.0":
+[    0.770000] 0x000000000000-0x000000010000 : "loader"
+[    0.800000] 0x000000780000-0x000000800000 : "config"
+[    0.820000] 0x000000010000-0x000000780000 : "linux"
+[    0.840000] 0x000000125db3-0x000000780000 : "rootfs"
+[    0.860000] mtd: partition "rootfs" must either start or end on erase block boundary or be smaller than an erase block -- forcing read-only
+[    0.910000] mtd: device 3 (rootfs) set to be root filesystem
+[    0.920000] mtd: partition "rootfs_data" created automatically, ofs=0x3c0000, len=0x3c0000
+[    0.950000] 0x0000003c0000-0x000000780000 : "rootfs_data"
+[    0.990000] libphy: Fixed MDIO Bus: probed
+[    1.330000] libphy: cpmac-mii: probed
+[    1.410000] cpmac: device eth0 (regs: 08610000, irq: 27, phy: fixed-0:00, mac: 00:1a:4f:7c:2f:dd)
+[    1.440000] ar7_wdt: timer margin 59 seconds (prescale 65535, change 57180, freq 62500000)
+[    1.480000] vlynq0: regs 0x08611800, irq 29, mem 0x04000000
+[    1.720000] vlynq0: local VLYNQ protocol rev. is 0x00010205
+[    1.730000] vlynq0: remote VLYNQ protocol rev. is 0x00010206
+[    1.750000] vlynq0: using remote clock divisor 1
+[    1.840000] Found a VLYNQ device: 00000029
+[    1.850000] TCP: cubic registered
+[    1.860000] NET: Registered protocol family 17
+[    1.880000] Bridge firewalling registered
+[    1.890000] 8021q: 802.1Q VLAN Support v1.8
+[    1.920000] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    1.970000] Freeing prom memory: 1020k freed
+[    1.990000] Freeing unused kernel memory: 184K (94402000 - 94430000)
+procd: Console i[    3.450000] ar7_wdt: timer margin 29 seconds (prescale 65535, change 28590, freq 62500000)
+s alive
+procd: - watchdog -
+procd: - preinit -
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+jffs2 is ready
+jffs2 is ready
+[    9.040000] jffs2: notice: (194) jffs2_build_xattr_subsystem: complete building xattr subsystem, 1 of xdatum (0 unchecked, 0 orphan) and 12 of xref (0 dead, 2 orphan) found.
+switching to overlay
+procd: - early -[    9.130000] ar7_wdt: timer margin 29 seconds (prescale 65535, change 28590, freq 62500000)
+
+procd: - watchdog -
+procd: - ubus -
+procd: - init -
+Please press Enter to activate this console.
+[   13.160000] NET: Registered protocol family 10
+[   13.190000] NET: Registered protocol family 8
+[   13.200000] NET: Registered protocol family 20
+[   13.240000] PPP generic driver version 2.4.2
+[   13.290000] nf_conntrack version 0.5.0 (455 buckets, 1820 max)
+[   13.330000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   13.390000] acx_mac80211: Unknown symbol ieee80211_queue_stopped (err 0)
+[   13.410000] acx_mac80211: Unknown symbol ieee80211_free_hw (err 0)
+[   13.430000] acx_mac80211: Unknown symbol ieee80211_probereq_get (err 0)
+[   13.450000] acx_mac80211: Unknown symbol ieee80211_alloc_hw (err 0)
+[   13.470000] acx_mac80211: Unknown symbol ieee80211_register_hw (err 0)
+[   13.490000] acx_mac80211: Unknown symbol ieee80211_restart_hw (err 0)
+[   13.510000] acx_mac80211: Unknown symbol ieee80211_rx (err 0)
+[   13.530000] acx_mac80211: Unknown symbol ieee80211_wake_queues (err 0)
+[   13.550000] acx_mac80211: Unknown symbol ieee80211_tx_status (err 0)
+[   13.570000] acx_mac80211: Unknown symbol ieee80211_stop_queues (err 0)
+[   13.590000] acx_mac80211: Unknown symbol ieee80211_scan_completed (err 0)
+[   13.610000] acx_mac80211: Unknown symbol ieee80211_unregister_hw (err 0)
+[   13.630000] acx_mac80211: Unknown symbol ieee80211_beacon_get_tim (err 0)
+[   13.650000] acx_mac80211: Unknown symbol ieee80211_queue_work (err 0)
+[   13.670000] acx_mac80211: Unknown symbol backport_dependency_symbol (err 0)
+[   13.710000] acx_mac80211: Unknown symbol ieee80211_queue_stopped (err 0)
+[   13.730000] acx_mac80211: Unknown symbol ieee80211_free_hw (err 0)
+[   13.750000] acx_mac80211: Unknown symbol ieee80211_probereq_get (err 0)
+[   13.770000] acx_mac80211: Unknown symbol ieee80211_alloc_hw (err 0)
+[   13.790000] acx_mac80211: Unknown symbol ieee80211_register_hw (err 0)
+[   13.810000] acx_mac80211: Unknown symbol ieee80211_restart_hw (err 0)
+[   13.840000] acx_mac80211: Unknown symbol ieee80211_rx (err 0)
+[   13.850000] acx_mac80211: Unknown symbol ieee80211_wake_queues (err 0)
+[   13.870000] acx_mac80211: Unknown symbol ieee80211_tx_status (err 0)
+[   13.890000] acx_mac80211: Unknown symbol ieee80211_stop_queues (err 0)
+[   13.910000] acx_mac80211: Unknown symbol ieee80211_scan_completed (err 0)
+[   13.940000] acx_mac80211: Unknown symbol ieee80211_unregister_hw (err 0)
+[   13.960000] acx_mac80211: Unknown symbol ieee80211_beacon_get_tim (err 0)
+[   13.980000] acx_mac80211: Unknown symbol ieee80211_queue_work (err 0)
+[   14.000000] acx_mac80211: Unknown symbol backport_dependency_symbol (err 0)
+[   14.110000] registered device TI Avalanche SAR
+[   14.130000] Ohio250(7200/7100A2) detected
+[   14.150000] requesting firmware image "ar0700xx.bin"
+[   16.430000] Creating new root folder avalanche in the proc for the driver stats 
+[   16.450000] Texas Instruments ATM driver: version:[7.03.01.00]
+[   16.500000] acx_mac80211: Unknown symbol ieee80211_queue_stopped (err 0)
+[   16.520000] acx_mac80211: Unknown symbol ieee80211_free_hw (err 0)
+[   16.540000] acx_mac80211: Unknown symbol ieee80211_probereq_get (err 0)
+[   16.560000] acx_mac80211: Unknown symbol ieee80211_alloc_hw (err 0)
+[   16.580000] acx_mac80211: Unknown symbol ieee80211_register_hw (err 0)
+[   16.600000] acx_mac80211: Unknown symbol ieee80211_restart_hw (err 0)
+[   16.620000] acx_mac80211: Unknown symbol ieee80211_rx (err 0)
+[   16.640000] acx_mac80211: Unknown symbol ieee80211_wake_queues (err 0)
+[   16.660000] acx_mac80211: Unknown symbol ieee80211_tx_status (err 0)
+[   16.680000] acx_mac80211: Unknown symbol ieee80211_stop_queues (err 0)
+[   16.720000] acx_mac80211: Unknown symbol ieee80211_scan_completed (err 0)
+[   16.740000] acx_mac80211: Unknown symbol ieee80211_unregister_hw (err 0)
+[   16.760000] acx_mac80211: Unknown symbol ieee80211_beacon_get_tim (err 0)
+[   16.780000] acx_mac80211: Unknown symbol ieee80211_queue_work (err 0)
+[   16.800000] acx_mac80211: Unknown symbol backport_dependency_symbol (err 0)
+[   16.850000] acx_mac80211: Unknown symbol ieee80211_queue_stopped (err 0)
+[   16.870000] acx_mac80211: Unknown symbol ieee80211_free_hw (err 0)
+[   16.890000] acx_mac80211: Unknown symbol ieee80211_probereq_get (err 0)
+[   16.910000] acx_mac80211: Unknown symbol ieee80211_alloc_hw (err 0)
+[   16.930000] acx_mac80211: Unknown symbol ieee80211_register_hw (err 0)
+[   16.950000] acx_mac80211: Unknown symbol ieee80211_restart_hw (err 0)
+[   16.970000] acx_mac80211: Unknown symbol ieee80211_rx (err 0)
+[   16.990000] acx_mac80211: Unknown symbol ieee80211_wake_queues (err 0)
+[   17.010000] acx_mac80211: Unknown symbol ieee80211_tx_status (err 0)
+[   17.030000] acx_mac80211: Unknown symbol ieee80211_stop_queues (err 0)
+[   17.050000] acx_mac80211: Unknown symbol ieee80211_scan_completed (err 0)
+[   17.070000] acx_mac80211: Unknown symbol ieee80211_unregister_hw (err 0)
+[   17.090000] acx_mac80211: Unknown symbol ieee80211_beacon_get_tim (err 0)
+[   17.110000] acx_mac80211: Unknown symbol ieee80211_queue_work (err 0)
+[   17.130000] acx_mac80211: Unknown symbol backport_dependency_symbol (err 0)
+[   17.170000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   17.260000] NET: Registered protocol family 24
+[   17.340000] xt_time: kernel timezone is -0000
+[   17.370000] acx_mac80211: Unknown symbol ieee80211_queue_stopped (err 0)
+[   17.390000] acx_mac80211: Unknown symbol ieee80211_free_hw (err 0)
+[   17.410000] acx_mac80211: Unknown symbol ieee80211_probereq_get (err 0)
+[   17.430000] acx_mac80211: Unknown symbol ieee80211_alloc_hw (err 0)
+[   17.450000] acx_mac80211: Unknown symbol ieee80211_register_hw (err 0)
+[   17.470000] acx_mac80211: Unknown symbol ieee80211_restart_hw (err 0)
+[   17.490000] acx_mac80211: Unknown symbol ieee80211_rx (err 0)
+[   17.510000] acx_mac80211: Unknown symbol ieee80211_wake_queues (err 0)
+[   17.530000] acx_mac80211: Unknown symbol ieee80211_tx_status (err 0)
+[   17.550000] acx_mac80211: Unknown symbol ieee80211_stop_queues (err 0)
+[   17.570000] acx_mac80211: Unknown symbol ieee80211_scan_completed (err 0)
+[   17.590000] acx_mac80211: Unknown symbol ieee80211_unregister_hw (err 0)
+[   17.610000] acx_mac80211: Unknown symbol ieee80211_beacon_get_tim (err 0)
+[   17.630000] acx_mac80211: Unknown symbol ieee80211_queue_work (err 0)
+[   17.650000] acx_mac80211: Unknown symbol backport_dependency_symbol (err 0)
+[   17.720000] acx_mac80211: Unknown symbol ieee80211_queue_stopped (err 0)
+[   17.740000] acx_mac80211: Unknown symbol ieee80211_free_hw (err 0)
+[   17.760000] acx_mac80211: Unknown symbol ieee80211_probereq_get (err 0)
+[   17.780000] acx_mac80211: Unknown symbol ieee80211_alloc_hw (err 0)
+[   17.800000] acx_mac80211: Unknown symbol ieee80211_register_hw (err 0)
+[   17.820000] acx_mac80211: Unknown symbol ieee80211_restart_hw (err 0)
+[   17.840000] acx_mac80211: Unknown symbol ieee80211_rx (err 0)
+[   17.860000] acx_mac80211: Unknown symbol ieee80211_wake_queues (err 0)
+[   17.880000] acx_mac80211: Unknown symbol ieee80211_tx_status (err 0)
+[   17.900000] acx_mac80211: Unknown symbol ieee80211_stop_queues (err 0)
+[   17.920000] acx_mac80211: Unknown symbol ieee80211_scan_completed (err 0)
+[   17.940000] acx_mac80211: Unknown symbol ieee80211_unregister_hw (err 0)
+[   17.960000] acx_mac80211: Unknown symbol ieee80211_beacon_get_tim (err 0)
+[   17.990000] acx_mac80211: Unknown symbol ieee80211_queue_work (err 0)
+[   18.010000] acx_mac80211: Unknown symbol backport_dependency_symbol (err 0)
+[   18.050000] acx_mac80211: Unknown symbol ieee80211_queue_stopped (err 0)
+[   18.070000] acx_mac80211: Unknown symbol ieee80211_free_hw (err 0)
+[   18.090000] acx_mac80211: Unknown symbol ieee80211_probereq_get (err 0)
+[   18.110000] acx_mac80211: Unknown symbol ieee80211_alloc_hw (err 0)
+[   18.130000] acx_mac80211: Unknown symbol ieee80211_register_hw (err 0)
+[   18.150000] acx_mac80211: Unknown symbol ieee80211_restart_hw (err 0)
+[   18.170000] acx_mac80211: Unknown symbol ieee80211_rx (err 0)
+[   18.190000] acx_mac80211: Unknown symbol ieee80211_wake_queues (err 0)
+[   18.210000] acx_mac80211: Unknown symbol ieee80211_tx_status (err 0)
+[   18.230000] acx_mac80211: Unknown symbol ieee80211_stop_queues (err 0)
+[   18.250000] acx_mac80211: Unknown symbol ieee80211_scan_completed (err 0)
+[   18.270000] acx_mac80211: Unknown symbol ieee80211_unregister_hw (err 0)
+[   18.300000] acx_mac80211: Unknown symbol ieee80211_beacon_get_tim (err 0)
+[   18.320000] acx_mac80211: Unknown symbol ieee80211_queue_work (err 0)
+[   18.340000] acx_mac80211: Unknown symbol backport_dependency_symbol (err 0)
+procd: - init complete -
+[   36.930000] device eth0 entered promiscuous mode
+[   36.950000] br-lan: port 1(eth0) entered forwarding state
+[   36.960000] br-lan: port 1(eth0) entered forwarding state
+[   37.730000] libphy: fixed-0:00 - Link is Up - 100/Full
+[   38.960000] br-lan: port 1(eth0) entered forwarding state
+
+
+
+BusyBox v1.22.1 (2014-09-20 21:35:17 CEST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ BARRIER BREAKER (14.07, r42625)
+ -----------------------------------------------------
+  * 1/2 oz Galliano         Pour all ingredients into
+  * 4 oz cold Coffee        an irish coffee mug filled
+  * 1 1/2 oz Dark Rum       with crushed ice. Stir.
+  * 2 tsp. Creme de Cacao
+ -----------------------------------------------------
+root@OpenWrt:/# ifconfig
+br-lan    Link encap:Ethernet  HWaddr 00:1A:4F:7C:2F:DD  
+          inet addr:192.168.1.1  Bcast:192.168.1.255  Mask:255.255.255.0
+          inet6 addr: fd7d:354d:d99a::1/60 Scope:Global
+          inet6 addr: fe80::21a:4fff:fe7c:2fdd/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:102 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:107 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:9042 (8.8 KiB)  TX bytes:11508 (11.2 KiB)
+
+eth0      Link encap:Ethernet  HWaddr 00:1A:4F:7C:2F:DD  
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:102 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:107 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:10470 (10.2 KiB)  TX bytes:11464 (11.1 KiB)
+          Interrupt:27 
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:194 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:194 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:13824 (13.5 KiB)  TX bytes:13824 (13.5 KiB)
+
+root@OpenWrt:/# uci show network
+network.loopback=interface
+network.loopback.ifname=lo
+network.loopback.proto=static
+network.loopback.ipaddr=127.0.0.1
+network.loopback.netmask=255.0.0.0
+network.lan=interface
+network.lan.type=bridge
+network.lan.proto=static
+network.lan.ipaddr=192.168.1.1
+network.lan.netmask=255.255.255.0
+network.lan.nat=1
+network.lan.ip6assign=60
+network.lan.ifname=eth0 eth1
+network.wan6=interface
+network.wan6.ifname=@wan
+network.wan6.proto=dhcpv6
+network.globals=globals
+network.globals.ula_prefix=fd7d:354d:d99a::/48
+</nowiki>
+</WRAP>\\
+
+
+==== OpenWrt 12.09 bootlog ====
+
+<WRAP bootlog>
+<nowiki>
+(AVM) EVA Revision: 1.203 Version: 1203
+
+(C) Copyright 2005 AVM Date: Feb  7 2007 Time: 19:03:32 (1) 2 0-11111
+
+[FLASH:] MACRONIX Top-MirrorBit-Flash 8MB 32 Bytes WriteBuffer
+[FLASH:](Eraseregion [0] 127 sectors a 64kB) 
+[FLASH:](Eraseregion [1] 8 sectors a 8kB) 
+[SYSTEM:] OHIO on 211MHz/125MHz 
+
+Eva_AVM >AVM decompress Kernel:
+.....................done
+start kernel
+[    0.000000] Linux version 3.3.8 (blogic@Debian-60-squeeze-64-minimal) (gcc version 4.6.3 20120201 (prerelease) (Linaro GCC 4.6-2012.02) ) #1 Sat Mar 23 14:45:52 UTC 2013
+[    0.000000] gpiochip_add: registered GPIOs 0 to 31 on device: ar7-gpio
+[    0.000000] ar7-gpio: registered 32 GPIOs
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00018448 (MIPS 4KEc)
+[    0.000000] TI AR7 (TNETD7200), ID: 0x002b, Revision: 0x11
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 02000000 @ 14000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00014000 -> 0x00016000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] Early memory PFN ranges
+[    0.000000]     0: 0x00014000 -> 0x00016000
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 8128
+[    0.000000] Kernel command line:  console=ttyS0,38400n8 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 128 (order: -3, 512 bytes)
+[    0.000000] Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.000000] Primary instruction cache 16kB, VIPT, 4-way, linesize 16 bytes.
+[    0.000000] Primary data cache 8kB, 4-way, VIPT, no aliases, linesize 16 bytes
+[    0.000000] Memory: 28196k/32768k available (2467k kernel code, 4572k reserved, 365k data, 172k init, 0k highmem)
+[    0.000000] NR_IRQS:256
+[    0.000000] Clocks: Async mode
+[    0.000000] Clocks: Setting DSP clock
+[    0.000000] Clocks: base = 25000000, frequency = 125000000, prediv = 1, postdiv = 2, postdiv2 = 1, mul = 10
+[    0.000000] Clocks: Setting CPU clock
+[    0.000000] Adjusted requested frequency 211000000 to 211968000
+[    0.000000] Clocks: base = 35328000, frequency = 211968000, prediv = 1, postdiv = 1, postdiv2 = -1, mul = 6
+[    0.000000] Clocks: Setting USB clock
+[    0.000000] Adjusted requested frequency 48000000 to 48076920
+[    0.000000] Clocks: base = 125000000, frequency = 48000000, prediv = 13, postdiv = 1, postdiv2 = -1, mul = 5
+[    0.000000] Calibrating delay loop... 211.35 BogoMIPS (lpj=1056768)
+[    0.090000] pid_max: default: 32768 minimum: 301
+[    0.100000] Mount-cache hash table entries: 512
+[    0.120000] NET: Registered protocol family 16
+[    0.180000] bio: create slab <bio-0> at 0
+[    0.200000] Switching to clocksource MIPS
+[    0.220000] NET: Registered protocol family 2
+[    0.240000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.260000] TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+[    0.280000] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.300000] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.320000] TCP reno registered
+[    0.330000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.350000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.370000] NET: Registered protocol family 1
+[    0.420000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.440000] JFFS2 version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.470000] msgmni has been set to 55
+[    0.480000] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 254)
+[    0.510000] io scheduler noop registered
+[    0.520000] io scheduler deadline registered (default)
+[    0.540000] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.560000] serial8250: ttyS0 at MMIO 0x8610e00 (irq = 15) is a TI-AR7
+[    0.580000] console [ttyS0] enabled, bootconsole disabled
+[    0.580000] console [ttyS0] enabled, bootconsole disabled
+[    0.650000] physmap platform flash device: 02000000 at 10000000
+[    0.670000] physmap-flash.0: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x0000c2 Chip ID 0x00227e
+[    0.700000] Amd/Fujitsu Extended Query Table at 0x0040
+[    0.710000]   Amd/Fujitsu Extended Query version 1.3.
+[    0.730000] physmap-flash.0: Swapping erase regions for top-boot CFI table.
+[    0.750000] number of CFI chips: 1
+[    0.770000] 4 ar7part partitions found on MTD device physmap-flash.0
+[    0.790000] Creating 4 MTD partitions on "physmap-flash.0":
+[    0.800000] 0x000000000000-0x000000010000 : "loader"
+[    0.830000] 0x000000780000-0x000000800000 : "config"
+[    0.850000] 0x000000010000-0x000000780000 : "linux"
+[    0.880000] 0x0000000fe214-0x000000780000 : "rootfs"
+[    0.890000] mtd: partition "rootfs" must either start or end on erase block boundary or be smaller than an erase block -- forcing read-only
+[    0.940000] mtd: partition "rootfs" set to be root filesystem
+[    0.960000] mtd: partition "rootfs_data" created automatically, ofs=300000, len=480000 
+[    0.980000] 0x000000300000-0x000000780000 : "rootfs_data"
+[    1.020000] Fixed MDIO Bus: probed
+[    1.320000] EXTERNAL SWITCH!!!
+[    1.500000] cpmac-mii: probed
+[    1.580000] eth0: ADM6996FC model PHY found.
+[    1.590000] cpmac: device eth0 (regs: 08610000, irq: 27, phy: cpmac-1:00, mac: 00:1a:4f:7c:2f:dd)
+[    1.620000] ar7_wdt: timer margin 59 seconds (prescale 65535, change 57180, freq 62500000)
+[    1.670000] vlynq0: regs 0x08611800, irq 29, mem 0x04000000
+[    1.900000] vlynq0: local VLYNQ protocol rev. is 0x00010205
+[    1.910000] vlynq0: remote VLYNQ protocol rev. is 0x00010206
+[    1.930000] vlynq0: using remote clock divisor 1
+[    2.020000] Found a VLYNQ device: 00000029
+[    2.030000] TCP cubic registered
+[    2.040000] NET: Registered protocol family 17
+[    2.060000] Bridge firewalling registered
+[    2.070000] 8021q: 802.1Q VLAN Support v1.8
+[    2.100000] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    2.140000] Freeing prom memory: 1020k freed
+[    2.160000] Freeing unused kernel memory: 172k freed
+- preinit -
+Press the [f] key and hit [enter] to enter failsafe mode
+- regular preinit -
+jffs2 not ready yet; using ramdisk
+- init -
+
+Please press Enter to activate this console. [   13.700000] Compat-drivers backport release: compat-drivers-2012-09-04-2-gddac993
+[   13.720000] Backport based on wireless-testing.git master-2012-09-07
+[   13.740000] compat.git: wireless-testing.git
+[   13.850000] cfg80211: Calling CRDA to update world regulatory domain
+[   13.870000] cfg80211: World regulatory domain updated:
+[   13.880000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp)
+[   13.910000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   13.930000] cfg80211:   (2457000 KHz - 2482000 KHz @ 20000 KHz), (300 mBi, 2000 mBm)
+[   13.960000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (300 mBi, 2000 mBm)
+[   13.980000] cfg80211:   (5170000 KHz - 5250000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   14.000000] cfg80211:   (5735000 KHz - 5835000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   14.690000] NET: Registered protocol family 8
+[   14.710000] NET: Registered protocol family 20
+[   15.040000] PPP generic driver version 2.4.2
+[   15.410000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   15.840000] NET: Registered protocol family 24
+[   15.910000] nf_conntrack version 0.5.0 (459 buckets, 1836 max)
+[   16.570000] acx-mac80211, version: v0.6.0 (git: unknown)
+[   16.590000] this driver is still EXPERIMENTAL
+[   16.590000] acx: please read the README file and/or go to http://acx100.sourceforge.net/wiki for further information
+[   16.630000] built with CONFIG_ACX_MAC80211_PCI
+[   16.650000] compiled to use 32bit I/O access. I/O timing issues might occur, such as non-working firmware upload. Report them
+[   16.680000] acx: running on a little-endian CPU
+[   16.680000]  PCI/VLYNQ module initialized, waiting for cards to probe...
+[   16.800000] registered device TI Avalanche SAR
+[   16.820000] Ohio250(7200/7100A2) detected
+[   16.830000] requesting firmware image "ar0700xx.bin"
+[   19.160000] Creating new root folder avalanche in the proc for the driver stats 
+[   19.180000] Texas Instruments ATM driver: version:[7.03.01.00]
+[   28.000000] ar7_wdt: timer margin 59 seconds (prescale 65535, change 57180, freq 62500000)
+[   30.620000] device eth0 entered promiscuous mode
+[   30.650000] br-lan: port 1(eth0) entered forwarding state
+[   30.660000] br-lan: port 1(eth0) entered forwarding state
+[   30.780000] device eth0.1 entered promiscuous mode
+[   30.790000] br-lan: port 2(eth0.1) entered forwarding state
+[   30.810000] br-lan: port 2(eth0.1) entered forwarding state
+[   30.860000] device eth0.2 entered promiscuous mode
+[   30.880000] br-lan: port 3(eth0.2) entered forwarding state
+[   30.900000] br-lan: port 3(eth0.2) entered forwarding state
+[   31.390000] PHY: cpmac-1:00 - Link is Up - 100/Full
+[   32.660000] br-lan: port 1(eth0) entered forwarding state
+[   32.810000] br-lan: port 2(eth0.1) entered forwarding state
+[   32.900000] br-lan: port 3(eth0.2) entered forwarding state
+[   61.900000] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   61.940000] jffs2_build_filesystem(): unlocking the mtd device... done.
+[   61.960000] jffs2_build_filesystem(): erasing all blocks after the end marker... done.
+[  119.340000] JFFS2 notice: (983) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+
+
+
+BusyBox v1.19.4 (2013-03-13 20:53:01 UTC) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ ATTITUDE ADJUSTMENT (12.09, r36088)
+ -----------------------------------------------------
+  * 1/4 oz Vodka      Pour all ingredients into mixing
+  * 1/4 oz Gin        tin with ice, strain into glass.
+  * 1/4 oz Amaretto
+  * 1/4 oz Triple sec
+  * 1/4 oz Peach schnapps
+  * 1/4 oz Sour mix
+  * 1 splash Cranberry juice
+ -----------------------------------------------------
+root@OpenWrt:/# ifconfig
+br-lan    Link encap:Ethernet  HWaddr 00:1A:4F:7C:2F:DD  
+          inet addr:192.168.1.1  Bcast:192.168.1.255  Mask:255.255.255.0
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:11 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:1 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:566 (566.0 B)  TX bytes:402 (402.0 B)
+
+eth0      Link encap:Ethernet  HWaddr 00:1A:4F:7C:2F:DD  
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:13 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:21 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:892 (892.0 B)  TX bytes:2322 (2.2 KiB)
+          Interrupt:27 
+
+eth0.1    Link encap:Ethernet  HWaddr 00:1A:4F:7C:2F:DD  
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:9 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:878 (878.0 B)
+
+eth0.2    Link encap:Ethernet  HWaddr 00:1A:4F:7C:2F:DD  
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:9 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:878 (878.0 B)
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          UP LOOPBACK RUNNING  MTU:16436  Metric:1
+          RX packets:384 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:384 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:26112 (25.5 KiB)  TX bytes:26112 (25.5 KiB)
+</nowiki>
+</WRAP>\\
+
+===== References =====
+There are loads of forum posts (in german) relating to the W701V here (use Suchen, top right, to search) http://www.ip-phone-forum.de/forumdisplay.php?f=560
+
+==== Tags ====
+[[meta:tags|How to add tags]]
+{{tag>ar7 8flash 32ram}}

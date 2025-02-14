@@ -1,0 +1,1947 @@
+====== Buffalo LinkStation LS421DE ======
+{{:media:buffalo:ls421de:ls421de.png?nolink&200}}
+
+This is a low-cost dual-port SATA NAS box.
+It comes with one 1GbE network port, one USB 2.0 host port on the back and one USB 3.0 on the front.
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"model": "^LS421DE$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "ethernet1gports", "sataports", "usbports"],
+  "filterColumns": {"model": "^LS421DE$"}
+} -->
+
+===== Installation =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^LS421DE$"}
+} -->
+
+Stuff used in the installation:
+  *  Stock firmware: [[https://drive.google.com/uc?export=download&id=13wPgMXyYczoJ69Jcd54RyMeq0KCkN0s9|ls400-134en.zip]]
+  *  acp-commander: https://github.com/1000001101000/acp-commander
+
+==== Installation through the OEM firmware ====
+The box must have at least 1 hard drive installed in a bay. First check that the stock firmware is working ok. 192.168.1.11 is the IP of the device, 192.168.1.7 is the IP of our computer.
+  - Downgrade the firmware to 1.34 version (BUFFALO_BOOTVER=0.13)
+  - Use acp_commander to enable a root shell over telnet: <code bash>java -jar acp_commander.jar -t 192.168.1.11 -pw password -o</code>
+  - Open a telnet session on the device: <code bash>telnet 192.168.1.11</code>
+  - Backup the stock uImage:<code bash> mv /boot/uImage.buffalo /boot/uImage.buffalo.bak</code>
+  - Download the Openwrt initramfs image and reboot: <code bash>wget -O /boot/uImage.buffalo http://192.168.1.7:8000/openwrt-mvebu-cortexa9-buffalo_ls421de-initramfs-kernel.bin
+sync
+reboot</code>
+  - Now the device will load the Openwrt RAM image (not installed yet). Open a secure shell into Openwrt:<code bash>ssh root@192.168.1.1</code>
+  - Optional: restore the stock uImage:<code bash>mount -t ext3 /dev/sda1 /mnt && mv /mnt/uImage.buffalo.bak /mnt/uImage.buffalo</code> This will make easier to restore the stock firmware after installing OpenWrt.
+  - Download the sysupgrade image, and install it: <code bash>cd /tmp
+wget http://192.168.1.7:8000/openwrt-mvebu-cortexa9-buffalo_ls421de-squashfs-sysupgrade.bin
+sysupgrade -n openwrt-mvebu-cortexa9-buffalo_ls421de-squashfs-sysupgrade.bin</code>
+  - Wait until it finish. 
+  - Power off the device
+  - **Remove the hard drive** [[https://forum.openwrt.org/t/buffalo-linkstation-does-not-store-config-changes-and-always-boots-into-inital-configuration/109659/10?u=trendy|or you might end up booting the initram]]. Keep it apart if you want back to the stock firmware later.
+  - Power on the device. It will boot with openwrt installed in the NAND flash
+  
+Note: If you want to start using external storage see [[#nas_configuration|NAS configuration]]
+
+==== Installation using the U-Boot serial console ====
+
+  * //ipaddr//: 192.168.11.150
+  * //serverip//: 192.168.11.1
+
+  - Downgrade the OEM firmware to **1.34** (BUFFALO_BOOTVER=0.13)
+  - Remove any hard drive inside the bays. Keep it apart if you want to go back to stock firmware later.
+  - Boot the Openwrt initramfs image using the **U-Boot** [[#serial|serial console]]:  <code bash>tftpboot 0x1200000 openwrt-mvebu-cortexa9-buffalo_ls421de-initramfs-kernel.bin
+bootm 0x1200000</code>
+  - Flash the sysupgrade image using the **Openwrt** console: <code bash>sysupgrade -n openwrt-mvebu-cortexa9-buffalo_ls421de-squashfs-sysupgrade.bin</code>
+  - Wait until it finish, the device will reboot with Openwrt installed on the NAND flash.
+
+===== Post Installation =====
+
+==== NAS configuration ====
+
+If you want to start using external storage insert a formatted hard drive inside the bay. The first partition should be never be in **EXT4 filesystem** format or it will hang at startup otherwise.
+
+Tested partitioning configurations: 
+  * **OK**: GPT, 1 partition
+    * 1st: XFS, whole hard drive, storage partition
+  * **OK**: GPT, 2 partitions:
+    * 1st: EXT3, 8MB, dummy partition
+    * 2nd: EXT4, all remaining space, storage partition
+  * **OK**: GPT, 2 partitions:
+    * 1st: SWAP, 1GB, virtual system memory.
+    * 2nd: EXT4, all remaining space, storage partition
+  * **OK**: GPT, 2 partitions:
+    * 1st: SWAP, 1GB, virtual system memory.
+    * 2nd: XFS, all remaining space, storage partition
+  * **FAIL**: GPT, 1 partition
+    * 1st: EXT4, whole hard drive, storage partition
+
+=== NAS related documentation: ===
+
+  * [[docs:guide-user:services:nas:start|NAS (aka Network Attached Storage)]]
+  * [[docs:guide-user:services:media_server:start|Media Server (aka stream media to devices in your local network)]]
+  * [[:docs:guide-user:services:downloading_and_filesharing:start|Downloading and P2P Filesharing]]
+
+==== Performance Improvements ====
+=== Remove kernel netfilters ===
+
+Since this device is presumably used only for attached storage purposes, you can rid of firewall/routing stuff. Remove the firewall related kernel modules:
+<code bash>mkdir /etc/bak
+mv /etc/modules.d/nf-* /etc/bak/
+mv /etc/modules.d/nft-* /etc/bak/
+mv /etc/modules.d/nfnetlink /etc/bak/
+mv /etc/modules.d/ipt-* /etc/bak/
+mv /etc/modules.d/*ip6tables* /etc/bak/
+reboot</code>
+After rebooting, the network throughput should be about +15% better.
+
+=== Cypher Engine ===
+See -> [[docs:techref:hardware:cryptographic.hardware.accelerators|Cryptographic Hardware Accelerators]]
+
+This device has a cypher engine called CESA. It can be used for libraries like openssl. 
+
+First install the openssl-util:
+<code bash>opkg update
+opkg install openssl-util </code>
+
+Make a test:
+<WRAP bootlog>
+<nowiki>root@LinkStation:~# time openssl speed -evp aes-256-cbc -elapsed
+You have chosen to measure elapsed time instead of user CPU time.
+Doing aes-256-cbc for 3s on 16 size blocks: 2580520 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 64 size blocks: 787211 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 256 size blocks: 208627 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 1024 size blocks: 52926 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 8192 size blocks: 6647 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 16384 size blocks: 3327 aes-256-cbc's in 3.00s
+OpenSSL 1.1.1j  16 Feb 2021
+built on: Fri Mar 26 09:12:12 2021 UTC
+options:bn(64,32) rc4(char) des(long) aes(partial) blowfish(ptr) 
+compiler: arm-openwrt-linux-muslgnueabi-gcc -fPIC -pthread -Wa,--noexecstack -Wall -O3 -Os -pipe -mthumb -fno-caller-saves -fno-plt -fhonour-copts -Wno-error=unused-but-set-variable -Wno-error=unused-result -mfloat-abi=hard -Wformat -Werror=format-security -fstack-protector -D_FORTIFY_SOURCE=1 -Wl,-z,now -Wl,-z,relro -DPIC -fpic -ffunction-sections -fdata-sections -znow -zrelro -DOPENSSL_USE_NODELETE -DOPENSSL_PIC -DOPENSSL_CPUID_OBJ -DOPENSSL_BN_ASM_MONT -DOPENSSL_BN_ASM_GF2m -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM -DKECCAK1600_ASM -DAES_ASM -DBSAES_ASM -DGHASH_ASM -DECP_NISTZ256_ASM -DPOLY1305_ASM -DNDEBUG -DOPENSSL_PREFER_CHACHA_OVER_GCM -DOPENSSL_SMALL_FOOTPRINT
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+aes-256-cbc      13762.77k    16793.83k    17802.84k    18065.41k    18150.74k    18169.86k
+real    0m 18.02s
+user    0m 17.82s
+sys     0m 0.04s
+root@LinkStation:~#</nowiki>
+</WRAP>\\
+
+Now install the cryptodev module to make the engine available, also install the openssl library:
+<code sh>opkg update
+opkg install kmod-cryptodev
+opkg install libopenssl-devcrypto </code>
+
+Open the **/etc/ssl/openssl.cnf** configuration file and uncomment these lines:
+<code config>[engines]
+devcrypto=devcrypto
+
+[devcrypto] 
+CIPHERS=DES-CBC, DES-EDE3-CBC, AES-128-CBC, AES-192-CBC, AES-256-CBC
+</code>
+
+Now make another test:
+<WRAP bootlog>
+<nowiki>root@LinkStation:~# time openssl speed -evp aes-256-cbc -elapsed
+You have chosen to measure elapsed time instead of user CPU time.
+Doing aes-256-cbc for 3s on 16 size blocks: 91023 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 64 size blocks: 89142 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 256 size blocks: 87199 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 1024 size blocks: 73867 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 8192 size blocks: 22725 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 16384 size blocks: 12813 aes-256-cbc's in 3.00s
+OpenSSL 1.1.1j  16 Feb 2021
+built on: Fri Mar 26 09:12:12 2021 UTC
+options:bn(64,32) rc4(char) des(long) aes(partial) blowfish(ptr) 
+compiler: arm-openwrt-linux-muslgnueabi-gcc -fPIC -pthread -Wa,--noexecstack -Wall -O3 -Os -pipe -mthumb -fno-caller-saves -fno-plt -fhonour-copts -Wno-error=unused-but-set-variable -Wno-error=unused-result -mfloat-abi=hard -Wformat -Werror=format-security -fstack-protector -D_FORTIFY_SOURCE=1 -Wl,-z,now -Wl,-z,relro -DPIC -fpic -ffunction-sections -fdata-sections -znow -zrelro -DOPENSSL_USE_NODELETE -DOPENSSL_PIC -DOPENSSL_CPUID_OBJ -DOPENSSL_BN_ASM_MONT -DOPENSSL_BN_ASM_GF2m -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM -DKECCAK1600_ASM -DAES_ASM -DBSAES_ASM -DGHASH_ASM -DECP_NISTZ256_ASM -DPOLY1305_ASM -DNDEBUG -DOPENSSL_PREFER_CHACHA_OVER_GCM -DOPENSSL_SMALL_FOOTPRINT
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+aes-256-cbc        485.46k     1901.70k     7440.98k    25213.27k    62054.40k    69976.06k
+real    0m 18.07s
+user    0m 0.37s
+sys     0m 6.45s
+root@LinkStation:~#</nowiki>
+</WRAP>\\
+
+
+=== Custom build ===
+
+You can also optimize your firmware making your own custom build:
+  * Compile the kernel for single core (no SMP stuff).
+  * Compile the kernel in THUMB2 mode, and also the user space apps.
+  * Patch the kernel to enable the hardware I/O coherency.
+
+==== Monitor sensors ====
+The unit has 2 temperature sensors for CPU and ethernet phy, and a FAN cooling. Sensors at hard drives are also available if installed. We can monitor/control them at:
+  * **/sys/class/hwmon**: to check temperatures and FAN. Eg:<code bash>root@LinkStation:~# for i in 0 1 2 3;do cat /sys/class/hwmon/hwmon$i/name;cat /sys/class/hwmon/hwmon$i/*_input;echo;done
+d0072004mdiomii00
+57000
+
+d0018300.thermal
+64593
+
+drivetemp
+36000
+
+gpio_fan
+1500
+</code> The temperature is in millicelsius and the FAN in rpm
+  * **/sys/class/thermal**: to check and modify some parameters. \\  //CONFIG_THERMAL_WRITABLE_TRIPS// kernel option needs to be set to allow modifying thermal trips.
+===== Recovery =====
+==== Broken bootloader recovery ====
+If for some reason the bootloader is broken (no apparent life from the board), you can recover the device by using the UART [[#serial|serial port]].
+
+<WRAP center round download 60%>
+{{ :media:buffalo:ls421de:recovery-ls421de.tar.gz |}}
+</WRAP>
+
+  - Connect the Linkstation's [[#serial|serial port]] to your computer
+  - At the computer execute:<code bash>./kwboot -b uboot.uart -t -B 115200 /dev/ttyUSB0</code>
+  - Power on the Linkstation, wait for it to load.
+  - At the Uboot console execute:<code bash>bubt spiflash_134.bak</code>
+
+Example of recovery session:
+<WRAP bootlog>
+<nowiki>./kwboot -b uboot.uart -t -B 115200 /dev/ttyUSB0
+Sending boot message. Please reboot the target...\xb7$\x9a"U\x99\xdd\xff\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\
+x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DU
+fw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\
+x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUfw\xbb\x11"3DUf
+BootROM 1.08
+Pattern detected on UART0 (Boot)
+
+Got expected NAKs
+Sending boot image...
+  0 % [S.....................................................................]
+  1 % [......................................................................]
+  2 % [......................................................................]
+  3 % [......................................................................]
+  4 % [......................................................................]
+  5 % [......................................................................]
+  7 % [......................................................................]
+  8 % [......................................................................]
+  9 % [......................................................................]
+ 10 % [..........
+
+General initialization - Version: 1.0.0
+mvBoardSerdesModulesScan: mvTwsiRead error, Using default serdes configuration ****
+High speed PHY - Version: 2.1.4 (COM-PHY-V20) 
+Update PEX Device ID 0x67100
+High speed PHY - Ended Successfully
+DDR3 Training Sequence - Ver 5.7.1
+
+DDR3 Training Sequence - Run DDR3 at 600 Mhz
+
+########### LOG LEVEL 1 (D-UNIT SETUP)###########
+
+Static D-UNIT Setup:
+0x00001400 = 0x73014924
+0x00001404 = 0x3000B808
+0x00001408 = 0x56159996
+0x0000140C = 0x3AD93F96
+0x00001410 = 0x120F0000
+0x00001414 = 0x00000000
+0x00001418 = 0x00000E00
+0x0000141C = 0x00000642
+0x00001420 = 0x00000004
+0x00001424 = 0x0100F37F
+0x00001428 = 0x000F8830
+0x00001454 = 0x00000000
+0x00001474 = 0x00000000
+0x0000142C = 0x014C4EE4
+0x0000147C = 0x0000C671
+0x00001494 = 0x00010000
+0x00001498 = 0x00000000
+0x0000149C = 0x0000030F
+DDR3 Training Sequence - Run without PBS.
+Cuurrent frequency is: 100MHz
+Cuurrent frequency is: 444MHz
+DDR3 - Write Leveling - Starting HW WL procedure 
+DDR3 - Write Leveling - Write Leveling Cs - 0 Results: 
+DDR3 - Write Leveling - PUP: 0, Phase: 0, Delay: 03
+DDR3 - Write Leveling - PUP: 1, Phase: 0, Delay: 07
+DDR3 - Write Leveling - HW WL Ended Successfully 
+DDR3 - Read Leveling - Starting HW RL procedure 
+DDR3 - Read Leveling - Results for CS - 0
+DDR3 - Read Leveling - PUP: 0, Phase: 1, Delay: 1F
+DDR3 - Read Leveling - PUP: 1, Phase: 2, Delay: 02
+DDR3 - Read Leveling - Read Sample Delay: 09
+DDR3 - Read Leveling - Read Ready Delay: 0D
+DDR3 - Read Leveling - HW RL Ended Successfully 
+DDR3 - Write Leveling Hi-Freq Supplement - Starting 
+DDR3 - Write Leveling Hi-Freq Supplement - SW Override Enabled 
+COUNT = 0
+DATA PUP:
+04030201 08070605 0C0B0A09 100F0E0D 
+14131211 18171615 1C1B1A19 201F1E1D 
+24232221 28272625 2C2B2A29 302F2E2D 
+34333231 38373635 3C3B3A39 403F3E3D 
+44434241 48474645 4C4B4A49 504F4E4D 
+54535251 58575655 5C5B5A59 605F5E5D 
+64636261 68676665 6C6B6A69 706F6E6D 
+74737271 78777675 7C7B7A79 807F7E7D 
+CS: 0 PUP: 0
+Actual Data = 21
+Expected Data = 21
+uiError = 00
+uiErrorN = 00
+
+CS: 0 PUP: 1
+Actual Data = 22
+Expected Data = 22
+uiError = 00
+uiErrorN = 00
+COUNT = 1
+DATA PUP:
+04030201 08070605 0C0B0A09 100F0E0D 
+14131211 18171615 1C1B1A19 201F1E1D 
+24232221 28272625 2C2B2A29 302F2E2D 
+34333231 38373635 3C3B3A39 403F3E3D 
+44434241 48474645 4C4B4A49 504F4E4D 
+54535251 58575655 5C5B5A59 605F5E5D 
+64636261 68676665 6C6B6A69 706F6E6D 
+74737271 78777675 7C7B7A79 807F7E7D 
+CS: 0 PUP: 0
+Actual Data = 21
+Expected Data = 21
+uiError = 00
+uiErrorN = 00
+
+CS: 0 PUP: 1
+Actual Data = 22
+Expected Data = 22
+uiError = 00
+uiErrorN = 00
+DDR3 - Write Leveling Hi-Freq Supplement - Ended Successfully 
+
+########## LOG LEVEL 3(Windows margins per-DQ) ##########
+DDR3 - RX  CS: 0
+
+ DATA RESULTS:
+
+BYTE:0
+  DQ's        LOW       HIGH       WIN-SIZE
+============================================
+DQ[ 0]     0x4D       0x0B       0xBF
+DQ[ 1]     0x12       0x4E       0x3D
+DQ[ 2]     0xC6       0xCE       0x09
+DQ[ 3]     0x06       0x7F       0x7A
+DQ[ 4]     0x83       0xE6       0x64
+DQ[ 5]     0xD5       0xDD       0x09
+DQ[ 6]     0xB8       0x30       0x79
+DQ[ 7]     0x3B       0xAD       0x73
+
+BYTE:1
+  DQ's        LOW       HIGH       WIN-SIZE
+============================================
+DQ[ 8]     0x9C       0x25       0x8A
+DQ[ 9]     0x09       0xF8       0xF0
+DQ[10]     0xD2       0xC9       0xF8
+DQ[11]     0xC8       0xD0       0x09
+DQ[12]     0xD7       0x34       0x5E
+DQ[13]     0x0C       0x21       0x16
+DQ[14]     0xEF       0x40       0x52
+DQ[15]     0x05       0x05       0x01
+
+
+############ LOG LEVEL 2(Windows margins) ############
+DDR3 - DQS RX - Set Dqs Centralization Results - CS: 0
+
+DQS    LOW     HIGH     WIN-SIZE      Set
+==============================================
+0     0x00      0x1A      0x1A       0x0D
+1     0x00      0x1B      0x1B       0x0D
+
+########## LOG LEVEL 3(Windows margins per-DQ) ##########
+DDR3 - TX  CS: 0
+
+ DATA RESULTS:
+
+BYTE:0
+  DQ's        LOW       HIGH       WIN-SIZE
+============================================
+DQ[ 0]      0x0C        0x4D        0x41
+DQ[ 1]      0x4F        0x12        0xC3
+DQ[ 2]      0xCF        0xC6        0xF7
+DQ[ 3]      0x80        0x06        0x86
+DQ[ 4]      0xE7        0x83        0x9C
+DQ[ 5]      0xDE        0xD5        0xF7
+DQ[ 6]      0x31        0xB8        0x87
+DQ[ 7]      0xAE        0x3B        0x8D
+
+BYTE:1
+  DQ's        LOW       HIGH       WIN-SIZE
+============================================
+DQ[ 8]      0x26        0x9C        0x76
+DQ[ 9]      0xF9        0x09        0x10
+DQ[10]      0xCA        0xD2        0x08
+DQ[11]      0xD1        0xC8        0xF7
+DQ[12]      0x35        0xD7        0xA2
+DQ[13]      0x22        0x0C        0xEA
+DQ[14]      0x41        0xEF        0xAE
+DQ[15]      0x06        0x05        0xFF
+
+
+############ LOG LEVEL 2(Windows margins) ############
+DDR3 - DQS TX - Set Dqs Centralization Results - CS: 0
+
+DQS    LOW     HIGH     WIN-SIZE      Set
+==============================================
+0     0x00      0x1B      0x1B       0x0D
+1     0x00      0x1C      0x1C       0x0E
+DDR3 Training Sequence - Ended Successfully 
+............................................................]
+ 11 % [......................................................................]
+ 13 % [......................................................................]
+ 14 % [......................................................................]
+ 15 % [......................................................................]
+ 16 % [......................................................................]
+ 17 % [......................................................................]
+ 18 % [......................................................................]
+ 20 % [......................................................................]
+ 21 % [......................................................................]
+ 22 % [......................................................................]
+ 23 % [......................................................................]
+ 24 % [......................................................................]
+ 26 % [......................................................................]
+ 27 % [......................................................................]
+ 28 % [......................................................................]
+ 29 % [......................................................................]
+ 30 % [......................................................................]
+ 31 % [......................................................................]
+ 33 % [......................................................................]
+ 34 % [......................................................................]
+ 35 % [......................................................................]
+ 36 % [......................................................................]
+ 37 % [......................................................................]
+ 39 % [......................................................................]
+ 40 % [......................................................................]
+ 41 % [......................................................................]
+ 42 % [......................................................................]
+ 43 % [......................................................................]
+ 44 % [......................................................................]
+ 46 % [......................................................................]
+ 47 % [......................................................................]
+ 48 % [......................................................................]
+ 49 % [......................................................................]
+ 50 % [......................................................................]
+ 52 % [......................................................................]
+ 53 % [......................................................................]
+ 54 % [......................................................................]
+ 55 % [......................................................................]
+ 56 % [......................................................................]
+ 57 % [......................................................................]
+ 59 % [......................................................................]
+ 60 % [......................................................................]
+ 61 % [......................................................................]
+ 62 % [......................................................................]
+ 63 % [......................................................................]
+ 65 % [......................................................................]
+ 66 % [......................................................................]
+ 67 % [......................................................................]
+ 68 % [......................................................................]
+ 69 % [......................................................................]
+ 70 % [......................................................................]
+ 72 % [......................................................................]
+ 73 % [......................................................................]
+ 74 % [......................................................................]
+ 75 % [......................................................................]
+ 76 % [......................................................................]
+ 78 % [......................................................................]
+ 79 % [......................................................................]
+ 80 % [......................................................................]
+ 81 % [......................................................................]
+ 82 % [......................................................................]
+ 83 % [......................................................................]
+ 85 % [......................................................................]
+ 86 % [......................................................................]
+ 87 % [......................................................................]
+ 88 % [......................................................................]
+ 89 % [......................................................................]
+ 91 % [......................................................................]
+ 92 % [......................................................................]
+ 93 % [......................................................................]
+ 94 % [......................................................................]
+ 95 % [......................................................................]
+ 96 % [......................................................................]
+ 98 % [......................................................................]
+ 99 % [.........................................]
+[Type Ctrl-\ + c to quit]
+
+=========================
+==== Welcome to YANAGI ==
+=========================
+
+ ** LOADER **
+
+
+U-Boot 2009.08 ( 8月 28 2013 - 21:36:20)Marvell version: 1.1.3 NQ
+U-Boot Addressing:
+       Code:            00600000:006AFFF0
+       BSS:             006F8360
+       Stack:           0x5fff70
+       PageTable:       0x8e0000
+       Heap address:    0x900000:0xe00000
+BUFFALO_BOOTVER=0.13
+Board: Buffalo LS-M 88f6710
+SoC:   MV6710 A1
+CPU:   Marvell PJ4B v7 UP (Rev 1) LE
+       CPU @ 1200Mhz, L2 @ 600Mhz
+       DDR @ 600Mhz, TClock @ 200Mhz
+       DDR 16Bit Width, FastPath Memory Access
+PEX 0: Root Complex Interface, Detected Link X1
+PEX 1: Detected No Link.
+DRAM:  512 MB
+       CS 0: base 0x00000000 size 512 MB
+       Addresses 14M - 0M are saved for the U-Boot usage.
+SF: Detected MX25L8006E with page size 256, total 1048576 bytes
+NAND:  512 MiB
+u-boot envinit tval=e42fc1b2
+FPU not initialized
+USB 0: Host Mode
+USB 1: Host Mode
+Shutting down unused interfaces:
+       AUDIO
+       TDM
+Modules/Interfaces Detected:
+       SDIO
+       RGMII0 Phy
+       RGMII1 Phy
+       PEX0 (Lane 0)
+       PEX1 (Lane 1)
+       SATA0 (Lane 2)
+       SATA1 (Lane 3)
+
+Marvell Serial ATA Adapter
+Integrated Sata device found
+
+MAC Address : 10:6F:3F:CD:17:CC
+MMC:   MRVL_MMC: 0
+Net:   egiga0, egiga1 [PRIME]
+hit any key to switch tftp boot.
+Hit any key to stop autoboot:  0 
+switched to TFTP boot.
+Hit any key to stop autoboot:  0 
+
+BUFFALO>> bubt spiflash_134.bak
+Using egiga1 device
+TFTP from server 192.168.11.1; our IP address is 192.168.11.150
+Filename 'spiflash_134.bak'.
+Load address: 0x2000000
+Loading: #################################################################
+         #######
+done
+Bytes transferred = 1048576 (100000 hex)
+Checking file size:             [Done]
+Override Env parameters to default? [y/N] N
+Unprotecting flash:             [Done]
+Erasing 0x0 - 0xf0000:          [Done]
+Writing image to flash:         [Done]
+Protecting flash:               [Done]
+BUFFALO>> 
+</nowiki>
+</WRAP>\\
+
+
+===== OEM flash layout =====
+
+^ NOR SPI flash  ^^^^^
+^ name       ^ offset  ^ size    ^ size (KiB) ^ content ^
+| u-boot     | 0x00000 | 0xf0000 | 960        | bootloader |
+| u-boot-env | 0xf0000 | 0x10000 | 64         | board parameters |
+
+^ NAND flash  ^^^^^
+^ name     ^ offset     ^ size       ^ size (MiB) ^ content ^
+| boot     | 0x00000000 | 0x02000000 | 32        | initrd.buffalo, uImage.buffalo |
+| rootfs   | 0x02000000 | 0x1e000000 | 480       | hddrootfs.buffalo |
+
+//uImage.buffalo// and //initrd.buffalo// are used to load a RAM firmware with the unique purpose of installing //hddrootfs.buffalo// on a SATA hard drive. Once decompressed it'll contain the whole operating system.
+
+^ Hard Drive (/dev/sda)^^^^
+^ name                ^ filesystem ^ size (GiB) ^ content    ^
+|                     | EXT3       | 1          | boot files |
+| LS421DE-EM7CC:1     | EXT3       | 5          | rootfs     |
+| LS421DE-EM7CC:2     | SWAP       | 1          | virtual RAM |
+| LS421DE-EM7CC:101   | XFS        | all remaining space         | user files |
+
+
+OpenWrt will use a more simple approach, installing the firmware in the NAND flash. No need of using an internal hard drive.
+
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set]]        | [[wp>ARM architecture|ARM]] little endian  |
+^ Vendor                        | [[wp>Marvell Technology Group]]            |
+^ [[docs:techref:bootloader]]   | [[docs:techref:bootloader:uboot|U-Boot]]   |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | [[http://www.marvell.com/embedded-processors/armada-370/|Marvell Armada-370]] 88F6707-A1 |
+^ [[docs:techref:hardware:cpu|CPU]] @Frq        | Marvell PJ4Bv7 rev1 (ARMv7) @1200MHz 1 core |
+^ :::            | [[http://www.arm.com/products/processors/cortex-a/cortex-a9.php|ARM Cortex-A9]] VFPv3-D16 |
+^ Flash size     | 512 MiB (NAND) + 1 MiB (SPI-NOR)   |
+^ Flash Chip     | [[http://www.farnell.com/datasheets/1641689.pdf|Hynix H27U4G8F2DTR-BC]]   |
+^ RAM size       | 512 MiB DDR-3                  |
+^ Ethernet       | 1x [[#ethernet_port|Marvell 88E1518 PHY]] via RGMII-ID |
+^ USB            | 2x: 1x USB2.0 SoC + 1x USB3.0 Renesas µPD720202 |
+^ SATA           | 2x 3.0 Gbps                    |
+^ RTC            | [[#real_time_clock|Ricoh RS5C372A]]  I<sup>2</sup>C (no battery) |
+^ Mini PCIe      | Unpopulated                    |
+^ SD Card        | Unpopulated                    |
+^ Case Dimensions (LxWxH) | 205 x 87 x 128 mm     |
+^ FAN            | 60 x 60 x 15 mm Nidec UltraFlo U60R12MLAB-53 12VDC 0.05A |
+^ PSU            | 12 VDC, 4 A / APD DA-48Q12       |
+^ [[docs:techref:hardware:port.serial|Serial]] | [[#Serial|Yes]] (unpopulated) |
+^ [[docs:techref:hardware:port.jtag|JTAG]] | [[#Jtag|Yes]] |
+
+==== Photos ====
+
+**Casing**
+
+{{:media:buffalo:ls421de:ls421de-case_front.jpg?direct&0x200|}} {{:media:buffalo:ls421de:ls421de-case_back.jpg?direct&0x200|}} {{:media:buffalo:ls421de:ls421de-case_bottom.jpg?direct&0x200|}} 
+
+**Opening the case**
+
+| {{:media:buffalo:ls421de:ls421de-case_screws.jpg?direct&0x150|}} | Unscrew the screws at the back of the casing | 
+| {{:media:buffalo:ls421de:ls421de-case_slide.jpg?direct&0x150|}} | Slide the grey casing that covers the board |
+| {{:media:buffalo:ls421de:ls421de-case_open.jpg?direct&0x150|}} | Done, now the main board is exposed and ready to get accest to the serial port |
+
+**Board**
+
+{{:media:buffalo:ls421de:ls421de-board_top.jpg?direct&0x200|}} {{:media:buffalo:ls421de:ls421de-board_bottom.jpg?direct&0x200|}}
+
+{{:media:buffalo:ls421de:ls421de-ethernet_phy.jpg?direct&0x200|}} {{:media:buffalo:ls421de:ls421de-nand.jpg?direct&0x200|}} {{:media:buffalo:ls421de:ls421de-usb30.jpg?direct&0x200|}}
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+The only known way to access the serial console is by wiring up R265 (RX) and R106 (TX) close to the marked edge of the SoC.
+
+{{:media:buffalo:ls421de:ls421de-uart.jpg?direct&300|}}
+
+There are also two pin headers for the serial port, **J11** and **J12**, but //R267// and //R268// resistors are missing and the tracings lose continuity under the SPI flash chip:
+
+{{:media:buffalo:ls421de:ls421de-uart-header.jpg?direct&400|}}
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+Located at CON2 pads, unknown pinout:
+
+{{:media:buffalo:ls421de:ls421de-con2_jtag.jpg?direct&400|}}
+
+==== Ethernet port ====
+Some boards experience random problems with the ethernet port. This bug is likely caused by an misconfigured voltage on the ethernet pins at the SoC.
+
+  * SoC: as default the RGMII pins are configured to operate at 3.3V
+  * PHY: the Marvel 88E1518 can only operate at 1.8V
+
+It turns out that the SoC can be configured via internal registers to set the correct voltage on the RGMII pins. The fix works ok with  bootloader from **1.34** firmware version (BUFFALO_BOOTVER=0.13). Most recent firmwares come with a different bootloader and probably using a different initialization for ethernet.
+
+There are three ways to fix this bug:
+  - **Setting the registers from userspace**: it can be done using devmem. But it requires building a custom firmware with ///dev/mem// enabled in the kernel, and the utility //devmem// in busybox: <code bash>devmem 0xd00184e0 32 0xa8a</code>
+  - **Patching the bootloader**: Flashing a new bootloader might brick your device. This is the patched bootloader (BUFFALO_BOOTVER=0.13) from the firmware version 1.34. It's almost the same stock bootloader but with the fix made after the RAM initialization: <WRAP center round download 60%>
+uBoot with the voltage fix: {{:media:buffalo:ls421de:u-boot.buffalo-1.34_voodoo.tar.gz}}
+</WRAP>
+  - **Patching the kernel**: this seems to be the best option. It won't require user intervention once Openwrt is installed. There is a patch already made for the kernel v5.4.41. But it wouldn't be accepted upstream. See: https://forum.openwrt.org/t/mvneta-help-with-a-voltage-patch/64226
+
+Another workaround that can be made is to wire up the U29 IC (TPS3808) manual reset (pin 4) to a free GPIO. This way we can reset via software the ethernet chip everytime it fails:
+
+{{ :media:buffalo:ls421de:ls421de-gpio_ethernet_reset.jpg?direct&300 }}
+
+  * In the picture we soldered a very thin wire from the GPIO53 to the U29 reset pin. Let's initialize the GPIO53 as output in high state: <code bash>echo 53 > /sys/class/gpio/export
+echo high > /sys/class/gpio/gpio53/direction</code>
+  * When the ethernet hangs, we can perform a reset: <code bash>echo 0 > /sys/class/gpio/gpio53/value && sleep 1
+echo 1 > /sys/class/gpio/gpio53/value</code>
+
+=== Energy-Efficient Ethernet ===
+The ethernet phy is [[wp>Energy-Efficient_Ethernet|EEE]] capable. Enabling this feature (using //ethtool//) may save some miliwatts. Example:
+<code># ethtool --set-eee eth0 eee on</code>
+Check if it has been enabled:
+<code># ethtool --show-eee eth0
+EEE Settings for eth0:
+        EEE status: active
+        Tx LPI: disabled
+        Supported EEE link modes:  100baseT/Full 
+                                   1000baseT/Full 
+        Advertised EEE link modes:  Not reported
+        Link partner advertised EEE link modes:  100baseT/Full 
+                                                 1000baseT/Full 
+</code>
+
+Note: you may need this kernel patch -> https://github.com/torvalds/linux/commit/65a9dedc11d615d8f104a48d38b4fa226967b4ed
+
+=== Ethernet LEDs ===
+Only one LED pin at the IC is wired to a physical LED.
+  * LED0 pin is connected to a physical LED, and used to indicate ethernet link/activity.
+  * LED1 pin seems to be wired somewhere but has no known use, or maybe for PTP/802.1AS?
+  * LED2 pin is used for poweroff function and Wake On LAN
+==== Power off and WoL ====
+
+{{:media:buffalo:ls421de:ls421de-power_switch.jpg?direct&300|}}
+
+
+The Power off function is supported since [[commit>59c200ca0adec17|r14282]]. The driver also brings the [[wp>Wake-on-LAN|WoL]] feature which wasn't available in the stock firmware.
+
+To use the WoL feature:
+  - Install the //ethtool// package in the LinkStation.<code bash>opkg update
+opkg install ethtool</code>
+  - Execute the command: <code bash>ethtool -s eth0 wol g</code>
+  - Power off the LinkStation via command line: <code bash>exec /sbin/poweroff</code>
+  - [[:docs:guide-user:services:w_o_l:start|Wake up from another machine]] using the LinkStation MAC address (i.e using the //etherwake// utility).<code bash>etherwake 10:6F:3F:00:00:00</code>
+
+<hidden>The **old way** to control the power off function was made by toggling manually the LED2/INTn ethernet PHY pin output before powering off:\\
+Page 3, Register 16, bits 8-11:
+  * 0x800 = Force Off
+  * 0x900 = Force On
+
+Example in user space, using the utility [[https://github.com/wkz/phytool|phytool]]:
+  * LED2 off: \\ ''phytool write eth0/0/22 3; phytool write eth0/0/16 0x1891''
+  * LED2 on: \\ ''phytool write eth0/0/22 3; phytool write eth0/0/16 0x1991''
+
+Phytool openwrt package (patch): http://patchwork.ozlabs.org/patch/1116514/</hidden>
+\\
+  
+==== Real Time Clock ====
+The board comes with a Ricoh RS5C372A RTC connected via I<sup>2</sup>C. There is no battery backup, therefore if the power supply is disconnected, the current date and alarms are lost.
+
+{{:media:buffalo:ls421de:ls421de-rtc.jpg?300x300|}}
+
+We can set the date manually (if the ntpd already didn't):
+<code bash>date -s '2020-11-22 12:34:56'
+hwclock -w</code>
+
+
+Another feature is the RTC alarm. It can be used to wakeup the Linkstation from the power off state at a programmed date.
+  * Example of use, wake up 5 minutes after scheduling the alarm: <code bash>echo 0 > /sys/class/rtc/rtc0/wakealarm
+echo $(expr $(date '+%s') + 60 * 5) > /sys/class/rtc/rtc0/wakealarm
+poweroff</code>The Linkstation is powered off an it'll come to life after 5 minutes.
+  * Wake up at a determined date: <code bash>echo 0 > /sys/class/rtc/rtc0/wakealarm
+echo $(date +%s -d '2020-12-22 8:40:00') > /sys/class/rtc/rtc0/wakealarm
+poweroff</code>
+
+The limit of the alarm is 1 week in the future. But as default it repeats the scheduled days every week.
+
+This alarm works only if these patches were commited:
+
+http://patchwork.ozlabs.org/project/openwrt/patch/12171393.lrVZulmrcU@tool \\
+http://patchwork.ozlabs.org/project/openwrt/patch/6133600.ifz057I5f4@tool 
+
+==== GPIOs ====
+
+{{:media:buffalo:ls421de:ls421de-gpios_top.jpg?linkonly|}}
+
+^ GPIO pin  ^ dir ^  Voltage  ^ Function ^ PCB markings ^
+| 0 | in  |  3.3  | UART-RX | {{:media:buffalo:ls421de:ls421de-uart.jpg?linkonly|}} |
+| 1 | out |  3.3  | UART-TX | ::: |
+| 2 | io  |  3.3  | I2C-SCK | |
+| 3 | io  |  3.3  | I2C-SDA | |
+| 4 | out |  3.3  | <color red>CPU POWER DOWN SIGNAL</color> | |
+| 5 | out |  3.3  | <color orange>USB POWER</color> | |
+| 6 | out |  3.3  | USB Over Current\\ (not used in OpenWrt) | U40 (not soldered), D20:{{:media:buffalo:ls421de:ls421de-gpio6_usbback.jpg?linkonly|ls421de-gpio6_usbback.jpg}}\\  D24: {{:media:buffalo:ls421de:ls421de-gpio6_usbfront.jpg?linkonly|ls421de-gpio6_usbfront.jpg}}|
+| 7 | out |  3.3  | <color green>LED SYSTEM RED</color> | |
+| 8 | out |  3.3  | <color orange>SATA1 POWER</color> | |
+| 9 | out |  3.3  | <color orange>SATA2 POWER</color> | |
+| 10 | in |  3.3  | FAN alarm | |
+| 11 | out |  3.3  | Hard Disk 1 Present | |
+| 12 | out |  3.3  | Hard Disk 2 Present | |
+| 13 | out |  3.3  | FAN high | |
+| 14 | out |  3.3  | FAN low | |
+| 15 | in  |  3.3  | <color brown>SWITCH POWER</color> | |
+| 16 | in  |  3.3  | <color brown>BUTTON FRONT</color> | |
+| 17 | out |  1.8  | GE-MDC | |
+| 18 | io  |  1.8  | GE-MDIO | |
+| 19 | out |  1.8  | GE-TXCLK | |
+| 20 | out |  1.8  | GE-TXD0 | |
+| 21 | out |  1.8  | GE-TXD1 | |
+| 22 | out |  1.8  | GE-TXD2 | |
+| 23 | out |  1.8  | GE-TXD3 | |
+| 24 | out |  1.8  | GE-TXCTL | |
+| 25 | in  |  1.8  | GE-RXD0 | |
+| 26 | in  |  1.8  | GE-RXD1 | |
+| 27 | in  |  1.8  | GE-RXD2 | |
+| 28 | in  |  1.8  | GE-RXD2 | |
+| 29 | in  |  1.8  | GE-RXCTL | |
+| 30 | in  |  1.8  | GE-RXCLK | |
+| 31 | -   |  1.8  | **unused** | R72 (not soldered), R189 (pull-up) |
+| 32 | out |  3.3  | SPI-CS0 | {{:media:buffalo:ls421de:ls421de-spi_gpios.jpg?linkonly|}} |
+| 33 | out |  3.3  | NAND-CS0 | |
+| 34 | out |  3.3  | NAND-WEN | |
+| 35 | out |  3.3  | NAND-REN | |
+| 36 | out |  3.3  | NAND-ALE | |
+| 37 | out |  3.3  | NAND-CLE | |
+| 38 | in  |  3.3  | NAND-READY | |
+| 39 | io |  3.3  | NAND-IO0 | |
+| 40 | io |  3.3  | NAND-IO1 | |
+| 41 | io |  3.3  | NAND-IO2 | |
+| 42 | io |  3.3  | NAND-IO3 | |
+| 43 | io |  3.3  | NAND-IO4 | |
+| 44 | io |  3.3  | NAND-IO5 | |
+| 45 | io |  3.3  | NAND-IO6 | |
+| 46 | io |  3.3  | NAND-IO7 | |
+| 47 | out |  3.3  | <color grey>SD-CLK</color> | {{:media:buffalo:ls421de:ls421de-sd_gpios.jpg?linkonly|}}\\ (not soldered)|
+| 48 | io |  3.3  | <color grey>SD-CMD</color> | ::: |
+| 49 | io |  3.3  | <color grey>SD-D0</color> | ::: |
+| 50 | io |  3.3  | <color grey>SD-D1</color> | ::: |
+| 51 | io |  3.3  | <color grey>SD-D2</color> | ::: |
+| 52 | io |  3.3  | <color grey>SD-D3</color> | ::: |
+| 53 | in |  3.3  | <color grey>USB3.0 PCIe WAKE#</color> | R326 (not soldered) |
+| 54 | out |  3.3  | <color green>LED POWER WHITE</color> | |
+| 55 | out |  3.3  | <color green>LED POWER RED</color> | |
+| 56 | in  |  3.3  | USB3.0 PCIe CLKREQ0# | pin10 at μPD720202 USB3.0 chip,\\  R67 (not soldered), R68 |
+| 57 | out |  3.3  | <color green>LED POWER ORANGE</color> | |
+| 58 | ?   |  ?    | ? | ? |
+| 59 | out |  3.3  | <color green>LED SYSTEM</color> | |
+| 60 | out |  3.3  | USB3.0 PCIe RESET#  | pin 47 at μPD720202 USB3.0 chip,\\ R218 (not soldered),\\ miniPCIE pads (not soldered) |
+| 61 | out |  3.3  | <color green>LED SATA1</color> | |
+| 62 | out |  3.3  | <color green>LED SATA2</color> | |
+| 63 | out |  3.3  | SPI-SCK | {{:media:buffalo:ls421de:ls421de-spi_gpios.jpg?linkonly|}} |
+| 64 | in  |  3.3  | SPI-MISO | ::: |
+| 65 | out |  3.3  | SPI-MOSI | ::: |
+
+
+
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>BootROM 1.08
+Booting from SPI flash
+DDR3 Training Sequence - Ver 2.3.5 
+DDR3 Training Sequence - Ended Successfully 
+BootROM: Image checksum verification PASSED
+
+=========================
+==== Welcome to YANAGI ==
+=========================
+
+ ** LOADER **
+
+
+U-Boot 2009.08-svn ( 4月 09 2013 - 19:15:41)Marvell version: 1.1.3 NQ
+U-Boot Addressing:
+       Code:		00600000:006AFFF0
+       BSS:		006F8360
+       Stack:		0x5fff70
+       PageTable:	0x8e0000
+       Heap address:	0x900000:0xe00000
+BUFFALO_BOOTVER=0.06
+Board: Buffalo LS-M 88f6710
+SoC:   MV6710 A1
+CPU:   Marvell PJ4B v7 UP (Rev 1) LE
+       CPU @ 1200Mhz, L2 @ 600Mhz
+       DDR @ 600Mhz, TClock @ 200Mhz
+       DDR 16Bit Width, FastPath Memory Access
+PEX 0: Root Complex Interface, Detected Link X1
+PEX 1: Detected No Link.
+DRAM:  512 MB
+       CS 0: base 0x00000000 size 512 MB
+       Addresses 14M - 0M are saved for the U-Boot usage.
+SF: Detected MX25L8006E with page size 256, total 1048576 bytes
+NAND:  512 MiB
+u-boot envinit tval=e4cefcd5
+FPU not initialized
+USB 0: Host Mode
+USB 1: Host Mode
+Shutting down unused interfaces:
+       AUDIO
+       TDM
+Modules/Interfaces Detected:
+       SDIO
+       RGMII0 Phy
+       RGMII1 Phy
+       PEX0 (Lane 0)
+       PEX1 (Lane 1)
+       SATA0 (Lane 2)
+       SATA1 (Lane 3)
+HDD1 Power ON
+HDD0 Power ON
+
+Marvell Serial ATA Adapter
+Integrated Sata device found
+  Device 0 @ 0 0:
+Model: WDC WD10EFRX-68FYTN0                     Firm: 82.00A82 Ser#:      WD-XXXXXXXXXXXX
+            Type: Hard Disk
+            Supports 48-bit addressing
+            Capacity: 953869.7 MB = 931.5 GB (1953525168 x 512)
+  Device 1 @ 0 1:
+Model: WDC WD10EFRX-68PJCN0                     Firm: 82.00A82 Ser#:      WD-XXXXXXXXXXXX
+            Type: Hard Disk
+            Supports 48-bit addressing
+            Capacity: 953869.7 MB = 931.5 GB (1953525168 x 512)
+
+MAC Address : XX:XX:XX:XX:XX:XX
+MAC Address read from block device 0 : 
+** Bad partition 1 **
+MAC Address read from block device 1 : 
+** Bad partition 1 **
+MMC:   MRVL_MMC: 0
+Net:   egiga0, egiga1 [PRIME]
+hit any key to switch tftp boot.
+Hit any key to stop autoboot:  2  1  0 
+Hit any key to stop autoboot:  3  2  1  0 
+### JFFS2 loading '/uImage.buffalo' to 0x1200000
+Scanning JFFS2 FS:   .   done.
+### JFFS2 load complete: 2894408 bytes loaded to 0x1200000
+### JFFS2 loading '/initrd.buffalo' to 0x2600000
+### JFFS2 load complete: 11854685 bytes loaded to 0x2600000
+## Booting kernel from Legacy Image at 01200000 ...
+   Image Name:   Linux-3.3.4
+   Created:      2013-05-29  18:55:47 UTC
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    2894344 Bytes =  2.8 MB
+   Load Address: 00008000
+   Entry Point:  00008000
+   Verifying Checksum ... OK
+## Loading init Ramdisk from Legacy Image at 02600000 ...
+   Image Name:   initramfs
+   Created:      2013-05-29  19:21:58 UTC
+   Image Type:   ARM Linux RAMDisk Image (gzip compressed)
+   Data Size:    11854621 Bytes = 11.3 MB
+   Load Address: 00000000
+   Entry Point:  00000000
+   Verifying Checksum ... OK
+   Loading Kernel Image ... OK
+OK
+
+Starting kernel ...
+
+Uncompressing Linux... done, booting the kernel.
+Booting Linux on physical CPU 0
+Initializing cgroup subsys cpu
+Linux version 3.3.4 (root@debian) (gcc version 4.6.2 (Linaro GCC branch-4.6.2. Marvell GCC 201201-883.01c949de) ) #1 Thu May 30 03:55:41 JST 2013
+CPU: Marvell PJ4Bv7 Processor [561f5811] revision 1 (ARMv7), cr=10c53c7d
+CPU: PIPT / VIPT nonaliasing data cache, PIPT instruction cache
+Machine: Marvell Armada-370
+Using UBoot passing parameters structure
+>>>>>>>Tag MAC XX:XX:XX:XX:XX:XX
+>>>>>>>Tag MAC XX:XX:XX:XX:XX:XX
+Memory policy: ECC disabled, Data cache writealloc
+Built 1 zonelists in Zone order, mobility grouping off.  Total pages: 130048
+Kernel command line: console=ttyS0,115200 root=/dev/sda2 rw initrd=0x2600040 panic=5 BOOTVER=0.06 UBOOT_DATE=2013/04/09 mtdparts=armada-nand:0x2000000(boot),0x1e000000(rootfs) nandboot=yes
+PID hash table entries: 2048 (order: 1, 8192 bytes)
+Dentry cache hash table entries: 65536 (order: 6, 262144 bytes)
+Inode-cache hash table entries: 32768 (order: 5, 131072 bytes)
+Memory: 512MB = 512MB total
+Memory: 498168k/498168k available, 26120k reserved, 0K highmem
+Virtual kernel memory layout:
+    vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+    fixmap  : 0xfff00000 - 0xfffe0000   ( 896 kB)
+    vmalloc : 0xe0800000 - 0xff000000   ( 488 MB)
+    lowmem  : 0xc0000000 - 0xe0000000   ( 512 MB)
+    pkmap   : 0xbfe00000 - 0xc0000000   (   2 MB)
+    modules : 0xbf000000 - 0xbfe00000   (  14 MB)
+      .text : 0xc0008000 - 0xc053383c   (5295 kB)
+      .init : 0xc0534000 - 0xc0559000   ( 148 kB)
+      .data : 0xc055a000 - 0xc0589840   ( 191 kB)
+       .bss : 0xc0589864 - 0xc05c2350   ( 227 kB)
+NR_IRQS:256
+axp_time_init
+Calibrating delay loop... 1196.85 BogoMIPS (lpj=5984256)
+pid_max: default: 32768 minimum: 301
+Mount-cache hash table entries: 512
+CPU: Testing write buffer coherency: ok
+hw perfevents: no hardware support available
+Setting up static identity map for 0x3da858 - 0x3da89c
+devtmpfs: initialized
+xor: measuring software checksum speed
+   arm4regs  :  1151.600 MB/sec
+   8regs     :   817.600 MB/sec
+   32regs    :  1149.600 MB/sec
+xor: using function: arm4regs (1151.600 MB/sec)
+NET: Registered protocol family 16
+L0 cache Enabled
+Speculative Prefetch Disabled
+aurora_l2_init 
+Aurora: Enabling L2
+AuroraL2: System L2 cache support initialised
+Support IO coherency.
+Enable DLB and DRAM write coalescing
+
+CPU Interface
+-------------
+SDRAM_CS0 ....base 00000000, size 512MB 
+SDRAM_CS1 ....disable
+SDRAM_CS2 ....disable
+SDRAM_CS3 ....disable
+DEVICE_CS0 ....base f2000000, size  32MB 
+DEVICE_CS1 ....no such
+DEVICE_CS2 ....no such
+DEVICE_CS3 ....no such
+PEX0_MEM ....base e0000000, size  32MB 
+PEX0_IO ....base f1100000, size   1MB 
+PEX1_MEM ....base e2000000, size  32MB 
+PEX1_IO ....base f1200000, size   1MB 
+INTER_REGS ....base d0000000, size   1MB 
+DMA_UART ....no such
+SPI_CS0 ....base f0000000, size  16MB 
+SPI_CS1 ....no such
+SPI_CS2 ....no such
+SPI_CS3 ....no such
+SPI_CS4 ....no such
+SPI_CS5 ....no such
+SPI_CS6 ....no such
+SPI_CS7 ....no such
+BOOT_ROM_CS ....no such
+DEV_BOOTCS ....base f5000000, size  16MB 
+PMU_SCRATCHPAD ....no such
+CRYPT0_ENG ....base c8010000, size  64KB 
+
+  Marvell Armada370 Board-- YANAGI  Soc: MV6710 A1 LE
+  LSP version: Armada370_LSP_3.1.0_p15_NQ
+
+
+ Detected Tclk 200000000, SysClk 600000000, FabricClk 600000000
+gpiochip_add: registered GPIOs 0 to 64 on device: mv_gpio
+hw-breakpoint: debug architecture 0x4 unsupported.
+Marvell USB EHCI Host controller #0: d004c400
+Marvell USB EHCI Host controller #1: d004c200
+PCI host bridge to bus 0000:00
+pci_bus 0000:00: root bus resource [io  0x0000-0xfffff]
+pci_bus 0000:00: root bus resource [mem 0xe0000000-0xe1ffffff]
+PCI: bus0: Fast back to back transfers disabled
+PCI host bridge to bus 0000:01
+pci_bus 0000:01: root bus resource [io  0x100000-0x1fffff]
+pci_bus 0000:01: root bus resource [mem 0xe2000000-0xe3ffffff]
+PCI: bus1: Fast back to back transfers enabled
+pci 0000:00:01.0: BAR 0: assigned [mem 0xe0000000-0xe0001fff 64bit]
+bio: create slab <bio-0> at 0
+raid6: int32x1    135 MB/s
+raid6: int32x2    210 MB/s
+raid6: int32x4    203 MB/s
+raid6: int32x8    244 MB/s
+raid6: using algorithm int32x8 (244 MB/s)
+vgaarb: loaded
+SCSI subsystem initialized
+Switching to clocksource armada370_clocksource
+NET: Registered protocol family 2
+IP route cache hash table entries: 4096 (order: 2, 16384 bytes)
+TCP established hash table entries: 16384 (order: 5, 131072 bytes)
+TCP bind hash table entries: 16384 (order: 4, 65536 bytes)
+TCP: Hash tables configured (established 16384 bind 16384)
+TCP reno registered
+UDP hash table entries: 256 (order: 0, 4096 bytes)
+UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+NET: Registered protocol family 1
+RPC: Registered named UNIX socket transport module.
+RPC: Registered udp transport module.
+RPC: Registered tcp transport module.
+RPC: Registered tcp NFSv4.1 backchannel transport module.
+Trying to unpack rootfs image as initramfs...
+Freeing initrd memory: 11576K
+cesadev_init(c053bb7c)
+mvCesaInit: channels=1, session=640, queue=64
+Armada XP hwmon thermal sensor initialized.
+Initializing Armada-XP CPU power management  (DISABLED)
+MICON ctrl (C) BUFFALO INC. V.1.00 installed.
+Buffalo Gpio Control Driver (C) BUFFALO INC. Ver.1.00 installed.
+Buffalo CPU Inerupts Driver (C) BUFFALO INC. Ver.0.01 alpha1 installed.
+Kernel event proc (C) BUFFALO INC. V.1.00 installed.
+initial_polarity_val = 0x0001f800
+initial_polarity_val_high = 0x00000000
+Buffalo GPIO SATA Hotplug Event Driver (C) BUFFALO INC. Ver.1.00 installed.
+VFS: Disk quotas dquot_6.5.2
+Dquot-cache hash table entries: 1024 (order 0, 4096 bytes)
+JFFS2 version 2.2. (NAND) © 2001-2006 Red Hat, Inc.
+fuse init (API version 7.18)
+SGI XFS with ACLs, security attributes, large block/inode numbers, no debug enabled
+SGI XFS Quota Management subsystem
+msgmni has been set to 995
+async_tx: api initialized (async)
+io scheduler noop registered
+io scheduler deadline registered
+io scheduler cfq registered (default)
+Initializing ths8200_init
+Initializing dove_adi9889_init
+mv_xor_shared mv_xor_shared.0: Marvell shared XOR driver
+mv_xor_shared mv_xor_shared.1: Marvell shared XOR driver
+mv_xor mv_xor.0: Marvell XOR: ( xor )
+mv_xor mv_xor.1: Marvell XOR: ( xor )
+mv_xor mv_xor.2: Marvell XOR: ( cpy )
+mv_xor mv_xor.3: Marvell XOR: ( fill cpy )
+Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+serial8250.0: ttyS0 at MMIO 0xd0012000 (irq = 41) is a 16550A
+console [ttyS0] enabled
+brd: module loaded
+loop: module loaded
+** BUFFALO Disable Command Queuing Function [sata_mv sata_mv.0] **
+sata_mv sata_mv.0: slots 32 ports 2
+scsi0 : sata_mv
+scsi1 : sata_mv
+ata1: SATA max UDMA/133 irq 55
+ata2: SATA max UDMA/133 irq 55
+SPI Serial flash detected @ 0xf0000000, 1024KB (16sec x 64KB)
+armada-nand armada-nand.0: Initialize HAL based NFC in 8bit mode with DMA Disabled using BCH 4bit ECC
+NAND device: Manufacturer ID: 0xad, Chip ID: 0xdc (Hynix NAND 512MiB 3,3V 8-bit)
+Bad block table found at page 262080, version 0x01
+Bad block table found at page 262016, version 0x01
+nand_read_bbt: bad block at 0x000002f20000
+nand_read_bbt: bad block at 0x000006120000
+nand_read_bbt: bad block at 0x000009da0000
+nand_read_bbt: bad block at 0x00000fbe0000
+nand_read_bbt: bad block at 0x000016280000
+2 cmdlinepart partitions found on MTD device armada-nand
+Creating 2 MTD partitions on "armada-nand":
+0x000000000000-0x000002000000 : "boot"
+0x000002000000-0x000020000000 : "rootfs"
+mv_eth_probe: port_mask=0x3, cpu_mask=0x1 
+0 - Base 0x00000000 , Size = 0x20000000.
+4 - Base 0xf2000000 , Size = 0x02000000.
+8 - Base 0xe0000000 , Size = 0x02000000.
+9 - Base 0xf1100000 , Size = 0x00100000.
+10 - Base 0xe2000000 , Size = 0x02000000.
+11 - Base 0xf1200000 , Size = 0x00100000.
+12 - Base 0xd0000000 , Size = 0x00100000.
+14 - Base 0xf0000000 , Size = 0x01000000.
+23 - Base 0xf5000000 , Size = 0x01000000.
+25 - Base 0xc8010000 , Size = 0x00010000.
+  o 2 Giga ports supported
+  o NETA acceleration mode 1
+  o RX Queue support: 1 Queues * 128 Descriptors
+  o TX Queue support: 1 Queues * 512 Descriptors
+  o GSO supported
+  o GRO supported
+  o Receive checksum offload supported
+  o Transmit checksum offload supported
+  o Driver ERROR statistics enabled
+  o Switch support enabled
+
+  o Loading network interface(s)
+
+  o Port 0 is connected to Linux netdevice
+	giga p=0: mtu=1500, mac=d002beec
+    o eth0, ifindex = 2, GbE port = 0
+
+  o Port 1 is connected to Linux netdevice
+	giga p=1: mtu=1500, mac=d002beec
+    o eth1, ifindex = 3, GbE port = 1
+
+sky2: driver version 1.30
+i2c /dev entries driver
+rtc-rs5c372 0-0032: clock needs to be set
+rtc-rs5c372 0-0032: rs5c372a found, 24hr, driver version 0.6
+rtc-rs5c372 0-0032: rtc core: registered rtc-rs5c372 as rtc0
+md: linear personality registered for level -1
+md: raid0 personality registered for level 0
+md: raid1 personality registered for level 1
+md: raid10 personality registered for level 10
+md: raid6 personality registered for level 6
+md: raid5 personality registered for level 5
+md: raid4 personality registered for level 4
+cpuidle: using governor ladder
+cpuidle: using governor menu
+mmc0: mvsdio driver initialized, lacking card detect (fall back to polling)
+TCP cubic registered
+NET: Registered protocol family 17
+VFP support v0.3: implementor 56 architecture 2 part 20 variant 9 rev 6
+rtc-rs5c372 0-0032: hctosys: unable to read the hardware clock
+ata1: SATA link up 3.0 Gbps (SStatus 123 SControl F300)
+ata1.00: ATA-9: WDC WD10EFRX-68FYTN0, 82.00A82, max UDMA/133
+ata1.00: 1953525168 sectors, multi 0: LBA48 NCQ (depth 0/32)
+ata1.00: configured for UDMA/133
+scsi 0:0:0:0: Direct-Access     ATA      WDC WD10EFRX-68F 82.0 PQ: 0 ANSI: 5
+sd 0:0:0:0: [sda] 1953525168 512-byte logical blocks: (1.00 TB/931 GiB)
+sd 0:0:0:0: [sda] 4096-byte physical blocks
+sd 0:0:0:0: [sda] Write Protect is off
+sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+ sda: unknown partition table
+sd 0:0:0:0: [sda] Attached SCSI disk
+ata2: SATA link up 3.0 Gbps (SStatus 123 SControl F300)
+ata2.00: ATA-9: WDC WD10EFRX-68PJCN0, 82.00A82, max UDMA/133
+ata2.00: 1953525168 sectors, multi 0: LBA48 NCQ (depth 0/32)
+ata2.00: configured for UDMA/133
+scsi 1:0:0:0: Direct-Access     ATA      WDC WD10EFRX-68P 82.0 PQ: 0 ANSI: 5
+sd 1:0:0:0: [sdb] 1953525168 512-byte logical blocks: (1.00 TB/931 GiB)
+sd 1:0:0:0: [sdb] 4096-byte physical blocks
+sd 1:0:0:0: [sdb] Write Protect is off
+sd 1:0:0:0: [sdb] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+ sdb: unknown partition table
+sd 1:0:0:0: [sdb] Attached SCSI disk
+Freeing init memory: 148K
+---- in /init ---
+mount: mounting shm on /dev/shm failed: No such file or directory
+mount: mounting devpts on /dev/pts failed: No such file or directory
+ldconfig: /usr/lib/libstdc++.so.6.0.16-gdb.py is not an ELF file - it has the wrong magic bytes at the start.
+
+err: 
+libsys: nas_feature : using /root/.nas_features/EU/0x0000300C
+Checking the existance of micon ... 
+LS-WSGL/R1Ver1.0
+libsys: /etc/sysctl.conf : using /root/.params/sysctl/0x0000300C
+cp: can't stat '/root/.params/sysctl/0x0000300C.iSCSI': No such file or directory
+ls: /dev/rtc: No such file or directory
+libsys: /dev/rtc was updated : /dev/rtc 254 0
+hwclock: ioctl(RTC_RD_TIME) to /dev/rtc to read the time failed: Invalid argument
+Thu Nov  1 00:00:00 JST 2007
+hwclock: ioctl(RTC_RD_TIME) to /dev/rtc to read the time failed: Invalid argument
+Thu Nov  1 00:00:00 JST 2007
+*** Caution!!! /etc/fanctld.conf create failed!
+ldconfig: /usr/lib/libstdc++.so.6.0.16-gdb.py is not an ELF file - it has the wrong magic bytes at the start.
+
+modprobe: module e1000e not found in modules.dep
+LibSys_GetUsbDiskStartNum : Usb device not found(/sys/block/sdc/device). Returning 3
+grep: /var/tmp/devlink: No such file or directory
+create_devlink:Using new routine.
+linuxrc:choose operation (timeout 4[s])
+ 1:RamRoot 2:sda1 2:sda2 other:HddRoot  ? -HddRoot-
+-- rebuild mdadm.conf for BOOT, ROOTFS with Intelligent routine --
+checkDiskStatus : disk1 plugged
+checkDiskStatus : disk1 LibSys_IsScsiDeviceExist [1] 0:0:0:0
+checkDiskStatus : disk2 plugged
+checkDiskStatus : disk2 LibSys_IsScsiDeviceExist [1] 1:0:0:0
+checkDiskStatus : disk1 plugged
+checkDiskPeformance : disk1 performans test ... 152117 kB/s [OK]
+checkDiskStatus : disk2 plugged
+checkDiskPeformance : disk2 performans test ... 148686 kB/s [OK]
+mount: mounting /dev/disk1_1 on /tmp/boot_test failed: No such file or directory
+mount: mounting /dev/disk2_1 on /tmp/boot_test failed: No such file or directory
+libmd: GetMdBaseDisk : Selected 0
+mdadm: cannot open /dev/disk?_1: No such file or directory
+mdadm: cannot open /dev/disk??_1: No such file or directory
+mdadm: cannot open /dev/disk?_2: No such file or directory
+mdadm: cannot open /dev/disk??_2: No such file or directory
+mdadm: cannot open /dev/disk?_5: No such file or directory
+mdadm: cannot open /dev/disk??_5: No such file or directory
+mdadm: No devices listed in conf file were found.
+-- setup max error counts --
+/sys/block/md0/md/maxerr_cnt is setted to -1
+/usr/local/lib/libmd: line 765: /sys/block/md0/md/maxerr_cnt: No such file or directory
+/sys/block/md1/md/maxerr_cnt is setted to -1
+/usr/local/lib/libmd: line 765: /sys/block/md1/md/maxerr_cnt: No such file or directory
+/sys/block/md2/md/maxerr_cnt is setted to -1
+/usr/local/lib/libmd: line 765: /sys/block/md2/md/maxerr_cnt: No such file or directory
+/usr/local/bin/hdd_raid_syncspeed.sh: line 148: /sys/block/md0/md/sync_speed_max: No such file or directory
+/usr/local/bin/hdd_raid_syncspeed.sh: line 148: /sys/block/md1/md/sync_speed_max: No such file or directory
+/usr/local/bin/hdd_raid_syncspeed.sh: line 148: /sys/block/md2/md/sync_speed_max: No such file or directory
+Starting :fsck_disks(boot) ...         [Failed. ]
+Starting :mount(boot) ...              [Failed. ]
+mount: mounting /dev/md1 on /rootfs failed: No such file or directory
+mount: mounting /dev/md1 on /rootfs failed: No such file or directory
+TestRootfs failed
+-RamdiskRoot-
+--- rcStart (initrd) ---
+mount: mounting proc on /proc failed: Device or resource busy
+mount: mounting sysfs on /sys failed: Device or resource busy
+ldconfig: /usr/lib/libstdc++.so.6.0.16-gdb.py is not an ELF file - it has the wrong magic bytes at the start.
+
+Cannot set device ring parameters: Operation not supported
+Cannot set device ring parameters: Operation not supported
+Cannot set device ring parameters: Operation not supported
+Cannot set device ring parameters: Operation not supported
+Cannot get device ring settings: No such device
+Cannot get device ring settings: No such device
+Cannot get device ring settings: No such device
+Cannot get device ring settings: No such device
+modprobe: module e1000e not found in modules.dep
+=== checkroot.sh ===
+grep: /var/tmp/devlink: No such file or directory
+create_devlink:Using new routine.
+swapon: can't stat '/dev/md2': No such file or directory
+create dir : /var/www
+=== create_devlink.sh ===
+create_devlink:Using new routine.
+=== startSysMd.sh ===
+-- rebuild mdadm.conf for BOOT, ROOTFS with Intelligent routine --
+checkDiskStatus : disk1 plugged
+checkDiskStatus : disk1 LibSys_IsScsiDeviceExist [1] 0:0:0:0
+checkDiskStatus : disk2 plugged
+checkDiskStatus : disk2 LibSys_IsScsiDeviceExist [1] 1:0:0:0
+checkDiskStatus : disk1 plugged
+checkDiskPeformance : disk1 performans test ... 152110 kB/s [OK]
+checkDiskStatus : disk2 plugged
+checkDiskPeformance : disk2 performans test ... 149027 kB/s [OK]
+mount: mounting /dev/disk1_1 on /tmp/boot_test failed: No such file or directory
+mount: mounting /dev/disk2_1 on /tmp/boot_test failed: No such file or directory
+libmd: GetMdBaseDisk : Selected 0
+mdadm: cannot open /dev/disk?_1: No such file or directory
+mdadm: cannot open /dev/disk??_1: No such file or directory
+mdadm: cannot open /dev/disk?_2: No such file or directory
+mdadm: cannot open /dev/disk??_2: No such file or directory
+mdadm: cannot open /dev/disk?_5: No such file or directory
+mdadm: cannot open /dev/disk??_5: No such file or directory
+mdadm: No devices listed in conf file were found.
+-- setup max error counts --
+/sys/block/md0/md/maxerr_cnt is setted to -1
+/usr/local/lib/libmd: line 765: /sys/block/md0/md/maxerr_cnt: No such file or directory
+/sys/block/md1/md/maxerr_cnt is setted to -1
+/usr/local/lib/libmd: line 765: /sys/block/md1/md/maxerr_cnt: No such file or directory
+/sys/block/md2/md/maxerr_cnt is setted to -1
+/usr/local/lib/libmd: line 765: /sys/block/md2/md/maxerr_cnt: No such file or directory
+/usr/local/bin/hdd_raid_syncspeed.sh: line 148: /sys/block/md0/md/sync_speed_max: No such file or directory
+/usr/local/bin/hdd_raid_syncspeed.sh: line 148: /sys/block/md1/md/sync_speed_max: No such file or directory
+/usr/local/bin/hdd_raid_syncspeed.sh: line 148: /sys/block/md2/md/sync_speed_max: No such file or directory
+=== fwupdate.sh ===
+umount: can't umount /boot: Invalid argument
+mkdir: can't create directory '/boot': File exists
+mount: mounting /dev/md0 on /boot failed: No such file or directory
+=== check_nandboot.sh ===
+grep: /tmp/check_nandboot: No such file or directory
+=== acpid.sh ===
+/etc/init.d/rcS: line 43: /etc/init.d/acpid.sh: No such file or directory
+=== closeSysMd.sh ===
+mdadm: error opening /dev/md0: No such file or directory
+mdadm: error opening /dev/md1: No such file or directory
+mdadm: error opening /dev/md2: No such file or directory
+=== sethostname.sh ===
+configure files from Buffalo parameters.
+=== restore_config.sh ===
+-- rebuild mdadm.conf for BOOT --
+mdadm: cannot open /dev/disk?_1: No such file or directory
+mdadm: cannot open /dev/disk??_1: No such file or directory
+mdadm: No devices listed in conf file were found.
+-- setup max error counts --
+/sys/block/md0/md/maxerr_cnt is setted to -1
+/usr/local/lib/libmd: line 765: /sys/block/md0/md/maxerr_cnt: No such file or directory
+mount: mounting /dev/md0 on /boot failed: No such file or directory
+Restore previous configuration files
+tar (child): /boot/conf_save.tgz: Cannot open: No such file or directory
+tar (child): Error is not recoverable: exiting now
+tar (child): /boot/conf_save.tgz: Cannot open: No such file or directory
+tar (child): Error is not recoverable: exiting now
+/bin/tar: Child returned status 2
+/bin/tar: Error is not recoverable: exiting now
+/bin/tar: Child returned status 2
+/bin/tar: Error is not recoverable: exiting now
+unzip  fail.
+/tmp/etc/localtime -> 
+BusyBox v1.19.4 (2013-05-13 21:53:16 JST) multi-call binary.
+
+Usage: dirname FILENAME
+
+Strip non-directory suffix from FILENAME
+
+BusyBox v1.19.4 (2013-05-13 21:53:16 JST) multi-call binary.
+
+Usage: mkdir [OPTIONS] DIRECTORY...
+
+Create DIRECTORY
+
+	-m MODE	Mode
+	-p	No error if exists; make parent directories as needed
+
+umount: can't umount /boot: Invalid argument
+rootfs on / type rootfs (rw,relatime)
+proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
+sysfs on /sys type sysfs (rw,nosuid,nodev,noexec,relatime)
+udev on /dev type devtmpfs (rw,nosuid,relatime,size=10240k,nr_inodes=62271,mode=755)
+/dev/ram1 on /mnt/ram type tmpfs (rw,relatime,size=15360k)
+PID   USER     COMMAND
+    1 root     init
+    2 root     [kthreadd]
+    3 root     [ksoftirqd/0]
+    4 root     [kworker/0:0]
+    5 root     [kworker/u:0]
+    6 root     [khelper]
+    7 root     [kdevtmpfs]
+    8 root     [kworker/u:1]
+  142 root     [sync_supers]
+  144 root     [bdi-default]
+  146 root     [kblockd]
+  153 root     [ata_sff]
+  159 root     [md]
+  179 root     [rpciod]
+  180 root     [kworker/0:1]
+  183 root     [crypto]
+  184 root     [crypto_ret]
+  197 root     [kswapd0]
+  198 root     [fsnotify_mark]
+  199 root     [nfsiod]
+  201 root     [xfs_mru_cache]
+  202 root     [xfslogd]
+  203 root     [xfsdatad]
+  204 root     [xfsconvertd]
+  205 root     [crypto]
+  317 root     [scsi_eh_0]
+  320 root     [scsi_eh_1]
+  323 root     [kworker/u:2]
+  324 root     [kworker/u:3]
+  335 root     [mtdblock0]
+  341 root     [mtdblock1]
+  346 root     [mtdblock2]
+  369 root     [kworker/u:4]
+  754 root     {rcS} /bin/sh /etc/init.d/rcS
+ 1325 root     {restore_config.} /bin/sh /etc/init.d/restore_config.sh start
+ 1353 root     ps
+mdadm: error opening /dev/md0: No such file or directory
+mdadm: error opening /dev/md1: No such file or directory
+mdadm: error opening /dev/md2: No such file or directory
+grep: /etc/melco/iscsi_info: No such file or directory
+/etc/init.d/restore_config.sh: line 59: perl: command not found
+=== EnablingAutoip.sh ===
+=== networking.sh ===
+/etc/init.d/networking.sh : Clear /etc/dhcpc/dhcpcd-eth0.pid eth0
+/etc/init.d/networking.sh : Clear /etc/dhcpc/dhcpcd-eth1.pid eth1
+/etc/init.d/networking.sh : Clear /etc/dhcpc/dhcpcd-bond0.pid bond0
+/etc/init.d/networking.sh : Read dhcpc file 
+/etc/init.d/networking.sh : configure : 
+create network files.. (eth0)
+IP=[dhcp], netmask=[], dgw=[], dns1=[], dns2=[]
+create network files.. (eth1)
+IP=[dhcp], netmask=[], dgw=[]
+dhcpcd: no process found
+/etc/init.d/networking.sh : Delete /etc/dhcpc/dhcpcd-.pid
+Configuration network interface: lo eth0 eth1
+/sbin/ifconfig eth0 mtu 1500 multicast
+/sbin/ifconfig eth1 mtu 1500 multicast
+requesting DHCP  tout=30[s]
+networking.sh: dhcp requesting...
+DontDownIfacepool #1: pkt_size=1536, buf_size=1632 - 256 of 256 buffers added
+
+alwaysFork
+eth1: link up
+eth1: link up, full duplex, speed 1 Gbps
+eth1: started
+SIOCGIFADDR :Cannot assign requested address
+sendto:  count 6   sync 0
+sendto:  count 6   sync 0
+dhcpcd.exe: interface eth1 has been configured with new IP=X.X.X.X GATEWAY=X.X.X.X
+** eth1 : networking.sh dhcp fin.
+/sbin/ifconfig eth0  netmask 
+Waiting 1421 ...finished.
+Checking network address for each network device
+SIOCGIFADDR :No such device
+networking.sh: arp_newip_notify_sub : Can't get ipaddr of eth0.
+networking.sh: arp_newip_notify_sub : executing arping -A X.X.X.X -I eth1 -c 1
+configure files from Buffalo parameters.
+=== syslog.sh ===
+Starting system logger: load_info ItemValue = off
+LoadConfFileStringEx:key=[ad_dns] not found in /etc/melco/info.
+LoadConfFileOnOffEx:key=[info_visible] not found in /etc/melco/info.
+LoadConfFileOnOffEx:key=[smb2] not found in /etc/melco/info.
+
+Starting kernel logger: 
+=== kernelmon.sh ===
+Starting kernelmon:=== fanctld.sh ===
+ * Starting fanctld ...    [ ok ]
+=== usb.sh ===
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+xhci_hcd 0000:00:01.0: xHCI Host Controller
+xhci_hcd 0000:00:01.0: new USB bus registered, assigned bus number 1
+xhci_hcd 0000:00:01.0: irq 58, io mem 0xe0000000
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 2 ports detected
+xhci_hcd 0000:00:01.0: xHCI Host Controller
+xhci_hcd 0000:00:01.0: new USB bus registered, assigned bus number 2
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 2 ports detected
+ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+ehci_marvell ehci_marvell.0: Marvell Orion EHCI
+ehci_marvell ehci_marvell.0: new USB bus registered, assigned bus number 3
+ehci_marvell ehci_marvell.0: irq 45, io base 0xfbb50100
+ehci_marvell ehci_marvell.0: USB 2.0 started, EHCI 1.00
+hub 3-0:1.0: USB hub found
+hub 3-0:1.0: 1 port detected
+ehci_marvell ehci_marvell.1: Marvell Orion EHCI
+ehci_marvell ehci_marvell.1: new USB bus registered, assigned bus number 4
+ehci_marvell ehci_marvell.1: irq 46, io base 0xfbb51100
+ehci_marvell ehci_marvell.1: USB 2.0 started, EHCI 1.00
+hub 4-0:1.0: USB hub found
+hub 4-0:1.0: 1 port detected
+ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+usbcore: registered new interface driver usblp
+grep: /etc/melco/usbshareinfo: No such file or directory
+/usr/local/lib/libsys: line 1078: sqlite3: command not found
+grep: /etc/melco/usbshareinfo: No such file or directory
+/usr/local/lib/libsys: line 1078: sqlite3: command not found
+KERNELMOn (SATA 0 plugged)
+/usr/local/lib/libsys: line 1103: sqlite3: command not found
+/usr/local/lib/libsys: line 1103: sqlite3: command not found
+/usr/local/lib/libsys: line 1115: sqlite3: command not found
+/usr/local/lib/libsys: line 1115: sqlite3: command not found
+=== clientUtil_servd.sh ===
+Starting clientUtil_server:
+  ->Starting on eth1
+  ->Starting on eth0
+=== daemonwatch.sh ===
+Starting daemonwatch:daemonwatch Ver.1.01
+watch list file : /etc/daemonwatch.list
+=== bootcomplete.sh ===
+No need to run drivecheck.sh
+KERNELMOn (SATA 1 plugged)
+/usr/local/bin/hdd_raid_syncspeed.sh: line 148: /sys/block/md0/md/sync_speed_max: No such file or directory
+/usr/local/bin/hdd_raid_syncspeed.sh: line 148: /sys/block/md1/md/sync_speed_max: No such file or directory
+/usr/local/bin/hdd_raid_syncspeed.sh: line 148: /sys/block/md2/md/sync_speed_max: No such file or directory
+hdd_raid_syncspeed.sh: Adding EDP md devices
+hdd_raid_syncspeed.sh: USERLAND_MD=md10 md11 md12 md13 md14 md101 md102
+=== micon_setup.sh ===
+=== late_inspection_phase.sh ===
+KERNELMOn (lanact 1000 full eth1)
+=== buffalo_rescue.sh ===
+buffalo_rescue.sh: Its not a usb boot environment.
+**** request DHCP eth1
+
+BUFFALO INC. LinkStation series 
+LS421DE-EM986 login: **** release DHCP IP
+eth1: stopped
+eth1: link up
+eth1: started
+** eth1 : networking.sh dhcp fin.
+Checking network address for each network device
+Checking network address for each network device
+KERNELMOn (PSW_on)
+OF
+admin
+Password: 
+admin@LS421DE-EM986:~$ netstat -l
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       
+netstat: /proc/net/tcp6: No such file or directory
+udp        0      0 0.0.0.0:bootpc          0.0.0.0:*                           
+udp        0      0 0.0.0.0:22936           0.0.0.0:*                           
+udp        0      0 0.0.0.0:22936           0.0.0.0:*                           
+netstat: /proc/net/udp6: No such file or directory
+netstat: /proc/net/raw6: No such file or directory
+Active UNIX domain sockets (only servers)
+Proto RefCnt Flags       Type       State         I-Node Path</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>BootROM 1.08
+Booting from SPI flash
+DDR3 Training Sequence - Ver 2.3.5 
+DDR3 Training Sequence - Ended Successfully 
+BootROM: Image checksum verification PASSED
+
+=========================
+==== Welcome to YANAGI ==
+=========================
+
+ ** LOADER **
+
+
+U-Boot 2009.08 ( 8�.. 28 2013 - 21:36:20)Marvell version: 1.1.3 NQ
+U-Boot Addressing:
+       Code:            00600000:006AFFF0
+       BSS:             006F8360
+       Stack:           0x5fff70
+       PageTable:       0x8e0000
+       Heap address:    0x900000:0xe00000
+BUFFALO_BOOTVER=0.13
+Board: Buffalo LS-M 88f6710
+SoC:   MV6710 A1
+CPU:   Marvell PJ4B v7 UP (Rev 1) LE
+       CPU @ 1200Mhz, L2 @ 600Mhz
+       DDR @ 600Mhz, TClock @ 200Mhz
+       DDR 16Bit Width, FastPath Memory Access
+PEX 0: Root Complex Interface, Detected Link X1
+PEX 1: Detected No Link.
+DRAM:  512 MB
+       CS 0: base 0x00000000 size 512 MB
+       Addresses 14M - 0M are saved for the U-Boot usage.
+SF: Detected MX25L8006E with page size 256, total 1048576 bytes
+NAND:  512 MiB
+u-boot envinit tval=e4b4d147
+FPU not initialized
+USB 0: Host Mode
+USB 1: Host Mode
+Shutting down unused interfaces:
+       AUDIO
+       TDM
+Modules/Interfaces Detected:
+       SDIO
+       RGMII0 Phy
+       RGMII1 Phy
+       PEX0 (Lane 0)
+       PEX1 (Lane 1)
+       SATA0 (Lane 2)
+       SATA1 (Lane 3)
+
+Marvell Serial ATA Adapter
+Integrated Sata device found
+
+MAC Address : 10:6F:3F:CD:17:CC
+MMC:   MRVL_MMC: 0
+Net:   egiga0, egiga1 [PRIME]
+hit any key to switch tftp boot.
+Hit any key to stop autoboot:  0 
+Hit any key to stop autoboot:  0 
+### JFFS2 loading '/uImage.buffalo' to 0x1200000
+Scanning JFFS2 FS: . done.
+### JFFS2 load complete: 2834449 bytes loaded to 0x1200000
+### JFFS2 loading '/initrd.buffalo' to 0x2600000
+### JFFS2 load complete: 131072 bytes loaded to 0x2600000
+## Booting kernel from Legacy Image at 01200000 ...
+   Image Name:   ARM OpenWrt Linux-4.19.108
+   Created:      2020-03-24  14:42:52 UTC
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    2834385 Bytes =  2.7 MB
+   Load Address: 00008000
+   Entry Point:  00008000
+   Verifying Checksum ... OK
+## Loading init Ramdisk from Legacy Image at 02600000 ...
+   Image Name:   fake initrd
+   Created:      2020-03-24  14:42:52 UTC
+   Image Type:   ARM Linux RAMDisk Image (gzip compressed)
+   Data Size:    131008 Bytes = 127.9 kB
+   Load Address: 00000000
+   Entry Point:  00000000
+   Verifying Checksum ... OK
+   Loading Kernel Image ... OK
+OK
+
+Starting kernel ...
+
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 4.19.108 (dani@tool) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r12706-1fb3c003d6)) #0 SMP Tue Mar 24 14:42:52 2020
+[    0.000000] CPU: ARMv7 Processor [561f5811] revision 1 (ARMv7), cr=10c5387d
+[    0.000000] CPU: PIPT / VIPT nonaliasing data cache, PIPT instruction cache
+[    0.000000] OF: fdt: Machine model: Buffalo LinkStation LS421DE
+[    0.000000] Memory policy: Data cache writeback
+[    0.000000] CPU: All CPU(s) started in SVC mode.
+[    0.000000] random: get_random_bytes called from start_kernel+0x7c/0x4f0 with crng_init=0
+[    0.000000] percpu: Embedded 11 pages/cpu s15308 r8192 d21556 u45056
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 129920
+[    0.000000] Kernel command line: console=ttyS0,115200 earlyprintk noinitrd rootfstype=squashfs nullparameter=2
+[    0.000000] Bootloader command line (ignored): console=ttyS0,115200 root=/dev/sda2 rw initrd=0x2600040 panic=5 BOOTVER=0.13 UBOOT_DATE=2013/08/28 mtdparts=armada-nand:0x2000000(boot),0x1e000000(rootfs) nandbs
+[    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes)
+[    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Memory: 509468K/524288K available (6144K kernel code, 213K rwdata, 1512K rodata, 1024K init, 230K bss, 14820K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] Virtual kernel memory layout:
+[    0.000000]     vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+[    0.000000]     fixmap  : 0xffc00000 - 0xfff00000   (3072 kB)
+[    0.000000]     vmalloc : 0xe0800000 - 0xff800000   ( 496 MB)
+[    0.000000]     lowmem  : 0xc0000000 - 0xe0000000   ( 512 MB)
+[    0.000000]     pkmap   : 0xbfe00000 - 0xc0000000   (   2 MB)
+[    0.000000]     modules : 0xbf000000 - 0xbfe00000   (  14 MB)
+[    0.000000]       .text : 0x(ptrval) - 0x(ptrval)   (7136 kB)
+[    0.000000]       .init : 0x(ptrval) - 0x(ptrval)   (1024 kB)
+[    0.000000]       .data : 0x(ptrval) - 0x(ptrval)   ( 214 kB)
+[    0.000000]        .bss : 0x(ptrval) - 0x(ptrval)   ( 231 kB)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu:     RCU restricting CPUs from NR_CPUS=4 to nr_cpu_ids=1.
+[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=1
+[    0.000000] NR_IRQS: 16, nr_irqs: 16, preallocated irqs: 16
+[    0.000000] L2C: DT/platform modifies aux control register: 0x12086300 -> 0x1a086302
+[    0.000000] Aurora cache controller enabled, 4 ways, 256 kB
+[    0.000000] Aurora: CACHE_ID 0x00000100, AUX_CTRL 0x1a086302
+[    0.000000] Switching to timer-based delay loop, resolution 53ns
+[    0.000006] sched_clock: 32 bits at 18MHz, resolution 53ns, wraps every 114532461029ns
+[    0.000020] clocksource: armada_370_xp_clocksource: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 101933890472 ns
+[    0.000239] Calibrating delay loop (skipped), value calculated using timer frequency.. 37.50 BogoMIPS (lpj=187500)
+[    0.000254] pid_max: default: 32768 minimum: 301
+[    0.000375] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000387] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000957] CPU: Testing write buffer coherency: ok
+[    0.001214] CPU0: thread -1, cpu 0, socket -1, mpidr 0
+[    0.001652] Setting up static identity map for 0x100000 - 0x100060
+[    0.001938] mvebu-soc-id: MVEBU SoC ID=0x6710, Rev=0x1
+[    0.002028] mvebu-pmsu: Initializing Power Management Service Unit
+[    0.002160] rcu: Hierarchical SRCU implementation.
+[    0.002540] smp: Bringing up secondary CPUs ...
+[    0.002550] smp: Brought up 1 node, 1 CPU
+[    0.002557] SMP: Total of 1 processors activated (37.50 BogoMIPS).
+[    0.002564] CPU: All CPU(s) started in SVC mode.
+[    0.005610] VFP support v0.3: implementor 56 architecture 2 part 20 variant 9 rev 6
+[    0.005730] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.005747] futex hash table entries: 256 (order: 2, 16384 bytes)
+[    0.005826] pinctrl core: initialized pinctrl subsystem
+[    0.006406] NET: Registered protocol family 16
+[    0.006857] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.007438] cpuidle: using governor ladder
+[    0.029335] cryptd: max_cpu_qlen set to 1000
+[    0.030355] SCSI subsystem initialized
+[    0.031334] usbcore: registered new interface driver usbfs
+[    0.031377] usbcore: registered new interface driver hub
+[    0.031419] usbcore: registered new device driver usb
+[    0.034171] clocksource: Switched to clocksource armada_370_xp_clocksource
+[    0.034902] NET: Registered protocol family 2
+[    0.035316] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes)
+[    0.035339] TCP established hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.035367] TCP bind hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.035405] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.035472] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    0.035489] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    0.035609] NET: Registered protocol family 1
+[    0.037898] Crashlog allocated RAM at address 0x3f00000
+[    0.038488] workingset: timestamp_bits=14 max_order=17 bucket_order=3
+[    0.042918] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.042929] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.053132] io scheduler noop registered
+[    0.053147] io scheduler deadline registered (default)
+[    0.054013] armada-370-pinctrl d0018000.pin-ctrl: registered pinctrl driver
+[    0.056037] mvebu-pcie soc:pcie@82000000: PCI host bridge to bus 0000:00
+[    0.056057] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    0.056067] pci_bus 0000:00: root bus resource [mem 0xf8000000-0xffdfffff]
+[    0.056075] pci_bus 0000:00: root bus resource [io  0x1000-0xeffff]
+[    0.057359] PCI: bus0: Fast back to back transfers disabled
+[    0.057373] pci 0000:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    0.057721] pci 0000:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s x1 link at 0000:00:01.0 (capable of 4.000 Gb/s with 5 GT/s x1 link)
+[    0.058866] PCI: bus1: Fast back to back transfers disabled
+[    0.058934] pci 0000:00:01.0: BAR 8: assigned [mem 0xf8000000-0xf80fffff]
+[    0.058947] pci 0000:01:00.0: BAR 0: assigned [mem 0xf8000000-0xf8001fff 64bit]
+[    0.058967] pci 0000:00:01.0: PCI bridge to [bus 01]
+[    0.058978] pci 0000:00:01.0:   bridge window [mem 0xf8000000-0xf80fffff]
+[    0.059025] pci 0000:00:01.0: enabling device (0140 -> 0142)
+[    0.059442] mv_xor d0060800.xor: Marvell shared XOR driver
+[    0.114949] mv_xor d0060800.xor: Marvell XOR (Registers Mode): ( xor cpy intr )
+[    0.115158] mv_xor d0060900.xor: Marvell shared XOR driver
+[    0.174939] mv_xor d0060900.xor: Marvell XOR (Registers Mode): ( xor cpy intr )
+[    0.175208] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    0.175704] console [ttyS0] disabled
+[    0.195854] d0012000.serial: ttyS0 at MMIO 0xd0012000 (irq = 19, base_baud = 12500000) is a 16550A
+[    0.840291] console [ttyS0] enabled
+[    0.847333] loop: module loaded
+[    0.851119] sata_mv d00a0000.sata: slots 32 ports 2
+[    0.859151] scsi host0: sata_mv
+[    0.862973] scsi host1: sata_mv
+[    0.866321] ata1: SATA max UDMA/133 irq 27
+[    0.870440] ata2: SATA max UDMA/133 irq 27
+[    0.876115] nand: device found, Manufacturer ID: 0xad, Chip ID: 0xdc
+[    0.882527] nand: Hynix H27U4G8F2DTR-BC
+[    0.886449] nand: 512 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+[    0.894587] Bad block table found at page 262080, version 0x01
+[    0.900791] Bad block table found at page 262016, version 0x01
+[    0.906896] nand_read_bbt: bad block at 0x00000fbe0000
+[    0.912060] nand_read_bbt: bad block at 0x000011b80000
+[    0.917238] nand_read_bbt: bad block at 0x000013f40000
+[    0.922733] 3 fixed-partitions partitions found on MTD device pxa3xx_nand-0
+[    0.929764] Creating 3 MTD partitions on "pxa3xx_nand-0":
+[    0.935215] 0x000000000000-0x000002000000 : "kernel"
+[    0.940940] 0x000002000000-0x000020000000 : "ubi"
+[    0.949200] 0x000000000000-0x000020000000 : "nand_all"
+[    0.964175] m25p80 spi0.0: mx25l8005 (1024 Kbytes)
+[    0.969169] 2 fixed-partitions partitions found on MTD device spi0.0
+[    0.975601] Creating 2 MTD partitions on "spi0.0":
+[    0.980420] 0x000000000000-0x0000000f0000 : "u-boot"
+[    0.985939] 0x0000000f0000-0x000000100000 : "u-boot-env"
+[    0.992062] libphy: Fixed MDIO Bus: probed
+[    0.996754] libphy: orion_mdio_bus: probed
+[    1.005138] mvneta d0074000.ethernet eth0: Using random mac address 12:89:42:bc:43:5c
+[    1.013237] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    1.019844] ehci-pci: EHCI PCI platform driver
+[    1.024369] ehci-platform: EHCI generic platform driver
+[    1.029720] ehci-orion: EHCI orion driver
+[    1.033864] orion-ehci d0050000.usb: EHCI Host Controller
+[    1.039333] orion-ehci d0050000.usb: new USB bus registered, assigned bus number 1
+[    1.047060] orion-ehci d0050000.usb: irq 25, io mem 0xd0050000
+[    1.074275] orion-ehci d0050000.usb: USB 2.0 started, EHCI 1.00
+[    1.080793] hub 1-0:1.0: USB hub found
+[    1.084870] hub 1-0:1.0: 1 port detected
+[    1.089371] xhci_hcd 0000:01:00.0: xHCI Host Controller
+[    1.094703] xhci_hcd 0000:01:00.0: new USB bus registered, assigned bus number 2
+[    1.107523] xhci_hcd 0000:01:00.0: hcc params 0x014051cf hci version 0x100 quirks 0x0000000100000090
+[    1.118090] hub 2-0:1.0: USB hub found
+[    1.122051] hub 2-0:1.0: 2 ports detected
+[    1.126565] xhci_hcd 0000:01:00.0: xHCI Host Controller
+[    1.131845] xhci_hcd 0000:01:00.0: new USB bus registered, assigned bus number 3
+[    1.139332] xhci_hcd 0000:01:00.0: Host supports USB 3.0 SuperSpeed
+[    1.146044] usb usb3: We don't know the algorithms for LPM for this host, disabling LPM.
+[    1.154690] hub 3-0:1.0: USB hub found
+[    1.158643] hub 3-0:1.0: 2 ports detected
+[    1.163389] usbcore: registered new interface driver usb-storage
+[    1.169762] i2c /dev entries driver
+[    1.204630] orion_wdt: Initial timeout 229 sec
+[    1.209658] sdhci: Secure Digital Host Controller Interface driver
+[    1.215917] sdhci: Copyright(c) Pierre Ossman
+[    1.225976] ata1: SATA link down (SStatus 0 SControl F300)
+[    1.244635] sdhci-pltfm: SDHCI platform and OF driver helper
+[    1.257000] marvell-cesa d0090000.crypto: CESA device successfully registered
+[    1.265376] NET: Registered protocol family 10
+[    1.273265] Segment Routing with IPv6
+[    1.277154] NET: Registered protocol family 17
+[    1.282385] 8021q: 802.1Q VLAN Support v1.8
+[    1.286833] Registering SWP/SWPB emulation handler
+[    1.558875] ata2: SATA link down (SStatus 0 SControl F300)
+[    6.223833] random: fast init done
+[   11.525143] UBI: auto-attach mtd1
+[   11.528496] ubi0: attaching mtd1
+[   14.736171] ubi0: scanning is finished
+[   14.749498] ubi0: attached mtd1 (name "ubi", size 480 MiB)
+[   14.755098] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[   14.762013] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[   14.768882] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[   14.775911] ubi0: good PEBs: 3829, bad PEBs: 11, corrupted PEBs: 0
+[   14.782124] ubi0: user volume: 2, internal volumes: 1, max. volumes count: 128
+[   14.789406] ubi0: max/mean erase counter: 2/1, WL threshold: 4096, image sequence number: 1138647508
+[   14.798606] ubi0: available PEBs: 0, total reserved PEBs: 3829, PEBs reserved for bad PEB handling: 69
+[   14.808882] block ubiblock0_0: created from ubi0:0(rootfs)
+[   14.814466] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[   14.821674] hctosys: unable to open rtc device (rtc0)
+[   14.827416] ubi0: background thread "ubi_bgt0d" started, PID 661
+[   14.838835] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[   14.847601] Freeing unused kernel memory: 1024K
+[   14.865132] Run /sbin/init as init process
+[   15.074442] init: Console is alive
+[   15.078113] init: - watchdog -
+[   15.301358] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[   15.362882] SGI XFS with security attributes, no debug enabled
+[   15.373258] gpio-keys gpio_keys: does not support key code:148
+[   15.379237] gpio-keys gpio_keys: does not support key code:149
+[   15.385187] gpio-keys gpio_keys: does not support key code:357
+[   15.395910] rtc-rs5c372 0-0032: rs5c372a found, 24hr
+[   15.407657] rtc rtc0: invalid alarm value: 2020-3-26 37:77:0
+[   15.413527] rtc-rs5c372 0-0032: rtc core: registered rtc-rs5c372 as rtc0
+[   15.421372] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[   15.430938] init: - preinit -
+strings: standard output: Broken pipe
+[   16.079440] random: jshn: uninitialized urandom read (4 bytes read)
+[   16.114061] random: jshn: uninitialized urandom read (4 bytes read)
+[   16.143947] random: jshn: uninitialized urandom read (4 bytes read)
+[   16.229506] mvneta d0074000.ethernet eth0: PHY [d0072004.mdio-mii:00] driver [Marvell 88E1510]
+[   16.238622] mvneta d0074000.ethernet eth0: configuring for phy/rgmii-id link mode
+[   16.246892] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   20.455610] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 778
+[   20.502637] UBIFS (ubi0:1): recovery needed
+[   20.635936] UBIFS (ubi0:1): recovery completed
+[   20.640543] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[   20.648468] UBIFS (ubi0:1): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   20.658466] UBIFS (ubi0:1): FS size: 472858624 bytes (450 MiB, 3724 LEBs), journal size 23617536 bytes (22 MiB, 186 LEBs)
+[   20.669499] UBIFS (ubi0:1): reserved for root: 4952683 bytes (4836 KiB)
+[   20.676174] UBIFS (ubi0:1): media format: w4/r0 (latest is w5/r0), UUID C52EE65E-C7E7-43C7-9CA8-2A7B30E8BABE, small LPT model
+[   20.690936] mount_root: switching to ubifs overlay
+[   20.709463] overlayfs: upper fs does not support xattr, falling back to index=off and metacopy=off.
+[   20.742270] urandom-seed: Seeding with /etc/urandom.seed
+[   20.862632] procd: - early -
+[   20.866284] procd: - watchdog -
+[   21.472104] procd: - watchdog -
+[   21.475703] procd: - ubus -
+[   21.494070] urandom_read: 3 callbacks suppressed
+[   21.498807] random: ubusd: uninitialized urandom read (4 bytes read)
+[   21.529966] random: ubusd: uninitialized urandom read (4 bytes read)
+[   21.536873] random: ubusd: uninitialized urandom read (4 bytes read)
+[   21.544649] procd: - init -
+Please press Enter to activate this console.
+[   22.049440] kmodloader: loading kernel modules from /etc/modules.d/*
+[   22.103640] urngd: v1.0.2 started.
+[   22.109719] gpio-fan gpio_fan: GPIO fan initialized
+[   22.167525] xt_time: kernel timezone is -0000
+[   22.199931] PPP generic driver version 2.4.2
+[   22.215536] NET: Registered protocol family 24
+[   22.241445] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   22.249241] random: crng init done
+[   22.252675] random: 1 urandom warning(s) missed due to ratelimiting
+[   27.222978] mvneta d0074000.ethernet eth0: PHY [d0072004.mdio-mii:00] driver [Marvell 88E1510]
+[   27.254254] mvneta d0074000.ethernet eth0: configuring for phy/rgmii-id link mode
+[   27.270080] br-lan: port 1(eth0) entered blocking state
+[   27.275433] br-lan: port 1(eth0) entered disabled state
+[   27.281006] device eth0 entered promiscuous mode
+[   27.333526] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   31.525529] mvneta d0074000.ethernet eth0: Link is Up - 1Gbps/Full - flow control rx/tx
+[   31.533664] br-lan: port 1(eth0) entered blocking state
+[   31.538985] br-lan: port 1(eth0) entered forwarding state
+[   31.546246] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+
+
+
+BusyBox v1.31.1 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r12706-1fb3c003d6
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@OpenWrt:/# cat /proc/cpuinfo 
+processor       : 0
+model name      : ARMv7 Processor rev 1 (v7l)
+BogoMIPS        : 37.50
+Features        : half thumb fastmult vfp edsp vfpv3 vfpv3d16 tls idivt 
+CPU implementer : 0x56
+CPU architecture: 7
+CPU variant     : 0x1
+CPU part        : 0x581
+CPU revision    : 1
+
+Hardware        : Marvell Armada 370/XP (Device Tree)
+Revision        : 0000
+Serial          : 0000000000000000
+root@OpenWrt:/# </nowiki>
+</WRAP>\\
+
+===== Misc =====
+GPL source code available at: [[http://opensource.buffalo.jp/ls400-110.html]]
+  * Nas-central thread: <del>[[http://forum.buffalo.nas-central.org/viewtopic.php?f=68&t=30349]]</del>
+  * Doozan thread: [[https://forum.doozan.com/read.php?2,71644|Debian Stretch on Armada-370 Buffalo Devices]]
+  * External wiki: [[https://buffalonas.miraheze.org/wiki/Linkstation_LS421D|Buffalo NAS Wiki]]
+
+
+==== Unsupported features ====
+  * **Coherency fabric**: it is disabled intentionally in the kernel. This might cause a performance loss. An attempt to reenable the coherence fabric: write-allocate cache policy is required, we also need to disable smp checks for the related stuff.<code diff>--- a/arch/arm/mm/mmu.c
++++ b/arch/arm/mm/mmu.c
+@@ -463,6 +463,12 @@
+ 			initial_pmd_value |= PMD_SECT_S;
+ 		}
+ 	}
++#if defined(CONFIG_MACH_ARMADA_370)
++	else if (cachepolicy != CPOLICY_WRITEALLOC) {
++		pr_warn("Forcing write-allocate cache policy for Armada 370\n");
++		cachepolicy = CPOLICY_WRITEALLOC;
++	}
++#endif
+ 
+ 	/*
+ 	 * Strip out features not present on earlier architectures.
+--- a/arch/arm/mach-mvebu/coherency.c
++++ b/arch/arm/mach-mvebu/coherency.c
+@@ -226,8 +226,6 @@
+ 	 * where we don't know yet on which SoC we are running.
+ 
+ 	 */
+-	if (!is_smp())
+-		return COHERENCY_FABRIC_TYPE_NONE;
+ 
+ 	np = of_find_matching_node_and_match(NULL, of_coherency_table, &match);
+ 	if (!np)
+--- a/arch/arm/mm/proc-v7-2level.S
++++ b/arch/arm/mm/proc-v7-2level.S
+@@ -16,9 +16,9 @@
+ #define TTB_IRGN_WT	((1 << 0) | (0 << 6))
+ #define TTB_IRGN_WB	((1 << 0) | (1 << 6))
+ 
+-/* PTWs cacheable, inner WB not shareable, outer WB not shareable */
+-#define TTB_FLAGS_UP	TTB_IRGN_WB|TTB_RGN_OC_WB
+-#define PMD_FLAGS_UP	PMD_SECT_WB
++/* PTWs cacheable, inner WBWA not shareable, outer WBWA not shareable */
++#define TTB_FLAGS_UP	TTB_IRGN_WBWA|TTB_RGN_OC_WBWA
++#define PMD_FLAGS_UP	PMD_SECT_WBWA
+ 
+ /* PTWs cacheable, inner WBWA shareable, outer WBWA not shareable */
+ #define TTB_FLAGS_SMP	TTB_IRGN_WBWA|TTB_S|TTB_NOS|TTB_RGN_OC_WBWA
+--- a/arch/arm/mm/proc-v7.S
++++ b/arch/arm/mm/proc-v7.S
+@@ -444,6 +444,7 @@
+ 	/* Auxiliary Debug Modes Control 1 Register */
+ 	mrc	p15, 1,	r0, c15, c1, 1
+ 	orr     r0, r0, #PJ4B_CLEAN_LINE
++	orr     r0, r0, #(1 << 7)		@ v7 IO coherency support (Single core). Taken from vendor's GPL.
+ 	orr     r0, r0, #PJ4B_INTER_PARITY
+ 	bic	r0, r0, #PJ4B_STATIC_BP
+ 	mcr	p15, 1,	r0, c15, c1, 1
+
+</code>After re-compiling the kernel without netfilter modules and testing, the network throughput is about 20% better. 
+  * **Suspend**: //CONFIG_SUSPEND// isn't enabled by default in the OpenWrt kernel. After enabling it in a custom firmware, we can call the suspend command: <code bash>echo -n s2idle > /sys/power/mem_sleep
+echo -n mem > /sys/power/state</code> But the machine isn't able to remain suspended, it reboots after the suspend sequence.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>mvebu armada370 512NAND 512RAM 1port GigabitEthernet 1NIC no_switch 0WNIC gt32Flash USB 2USB USB3.0 SATA2 ARM ARMv7 crypto NAS fan RTC}}

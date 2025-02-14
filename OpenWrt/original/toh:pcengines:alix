@@ -1,0 +1,241 @@
+====== PC Engines ALIX ======
+ALIX system boards are manufacturered and sold by [[http://pcengines.ch/alix.htm|PC Engines]]. They utilise the x86-based AMD Geode CPUs. The boards and other components (enclosures, power supplies, wireless cards, CompactFlash cards, etc) are sold separately, although some retailers sell pre-build kits. At the time of writing (August 2011, update 2020), ALIX boards and associated accessories are readily available from many resellers across Europe and North America.
+
+===== Supported Versions =====
+^ Model              ^ OpenWrt Version Supported  ^ Model Specific Notes   ^
+| Alix 1c, 2c*, 3c*  | Kamikaze 8.09 and above    | -                      |
+| Alix 1d, 2d*, 3d*  | Kamikaze 8.09 and above    | -                      |
+| Alix 6*            | Kamikaze 8.09 and above    | {{:meta:icons:tango:dialog-error.png?nolink&24|Test at your own risk}} Almost certainly works, but is untested |
+
+The Alix.1 series is significantly different to most other [[http://pcengines.ch/alix.htm|Alix system boards]] in that it includes VGA/PS2 ports, a PCI slot, has only 1 ethernet port, and has a different BIOS. In short, it is very much a x86-compatible PC rather than a headless appliance. This is an important distinction (see below).
+
+===== Hardware Highlights =====
+There are many models of ALIX boards (all work with OpenWrt at present), with two different CPU/RAM configurations:
+
+^ CPU                         ^ Ram       ^ Flash           ^ Network                         ^ USB        ^ Serial        ^
+| AMD Geode LX700 @ 433 MHz   | 128 MiB   | Optional (CF)   | 100Mbit/s (1-3 ports, varies)   | Optional   | Yes (RS232)   |
+| AMD Geode LX800 @ 500 MHz   | 256 MiB   | Optional (CF)   | 100Mbit/s (1-3 ports, varies)   | Optional   | Yes (RS232)   |
+
+All models have a CompactFlash socket and some also have a 44-pin IDE header for 2.5" IDE hard disks.
+
+Many models have miniPCI sockets (ideal for WiFi cards), and some have miniPCI Express sockets (note that there is a warning on the PC Engines site stating that these cannot be used with WiFi cards though).  The Alix.1 series includes a standard 3.3V PCI riser.
+
+The device does not include an embedded Ethernet switch. Models with multiple Ethernet ports have multiple Ethernet controllers (Via VT6105M).
+
+===== Installation =====
+There are two distinct options for installing OpenWrt, using images that are either: 
+  * pre-built nightly and available from [[http://downloads.openwrt.org/]], or
+  * built by yourself (or a mate).
+
+There are no pre-built images specifically for the Alix boards.  However, the **geode x86 images** will work, including all of the Alix system board drivers by default (e.g. LED support, USB). My last succefull try was on a 2d2 ALIX (2 LAN, 2 MiniPCI, 2 USB) with an Atheros Wifi card and OpenWRT 19.07.01 firmware. I performed the update to 19.07.3 without any problem.  
+
+Alternatively, you can build such images yourself (recommended, but obligates a significant learning curve).  Note that the **x86/alix2** image appears to include a Alix.2-specific kernel and that this image is not recommended for the Alix.1 series.
+
+{{:meta:icons:tango:dialog-error.png?nolink&24|Test at your own risk}} Be carrefull with the note below, in my experience, **bootloop occurs with x86/Generic** firmware and Alix 2d2 after grub step.
+
+Note that the **x86/Generic** image is the best option for the Alix.1 series because, unlike the **x86/Alix2** image, it includes drivers for the VGA/PS2 console.  This is because it is easier to add Alix-specific drivers to the x86-generic image, rather than VGA/PS2 drivers to an alix-specific image (which you'd have to build yourself anyway). 
+
+
+==== Using pre-built images ====
+The current release Backfire 10.03.1-RC5 [[http://downloads.openwrt.org/backfire/10.03.1-rc5/x86_generic/openwrt-x86-generic-combined-ext2.img.gz|openwrt-x86-generic-combined-ext2.img.gz]] includes ethernet drivers (at least for the Alix.1/Alix.2d3 boards). After flashing the OpenWrt image, follow these guides to install missing packages:
+  * DELETEME Obsolete with 19.07.01 and Geode firmware <code>
+opkg update
+opkg install ''kmod-leds-alix''</code>
+  * [[docs:guide-user:network:wifi:basic|WiFi /etc/config/wireless]]
+  * [[docs:guide-user:storage:usb-installing|Installing and troubleshooting USB Drivers]]
+  * [[docs:guide-user:storage:usb-drives|Using storage devices]]
+  * [[docs:guide-user:luci:luci.essentials|LuCI essentials]]
+
+**''NOTE:''** If you have problem mounting external storage on boot apply this fix: [[docs:guide-user:storage:fstab#sleep.before.startup]]. FIXME //broken link (section does not exist on that page)// --- //[[tmo26@gmx.de|tmomas]] 2019/09/04 17:17//
+
+==== Building from source ====
+Building your own image and specifying the build profile below will ensure the appropriate drivers are all included in the image.  Follow:
+  * [[docs:guide-developer:toolchain:start|OpenWrt Buildroot – About]]
+  * [[docs:guide-developer:toolchain:install-buildsystem|OpenWrt Buildroot – Installation]]
+  * [[docs:guide-developer:toolchain:start|OpenWrt Buildroot – Usage]]
+
+The build profile should be (exception: Alix.1-series boards, see notes above):
+  * Target System: **x86**
+  * Subtarget: **PCEngines alix2**
+
+==== Flashing by CompactFlash ====
+The easiest method of installation for ALIX boards is to use dd to write the image to the CompactFlash card on machine.
+
+  - Attach a USB CompactFlash reader/writer to the flashing machine and insert the CompactFlash card
+  - Watch the output from 'dmesg' to see what device ID it has picked up (it will be something like /dev/sdb)
+  - Ensure that /dev/sdb (or whatever is determined in step #2) is not mounted through the use of the ''mount'' command. If it is, unmount it with ''umount''.
+  - Decide whether you want to use the squashfs (openwrt-x86-squashfs.image) or ext2 image (openwrt-x86-ext2.image). The ext2 one will take up considerably more space on the CompactFlash card, but will be faster to boot.
+  - Uncompress your image file <code bash>gunzip openwrt-x86-geode-combined-ext2.img.gz</code>
+  - Flash the desired image to the CompactFlash card with: <code bash>dd if=openwrt-x86-ext2.image of=/dev/sdb</code>
+  - Depending on your CF card size the default install won´t full fill your CF card. You can use gparted or equivalent application to expand the root partition.
+  - Geode firmware set the speed of the serial port to 115200, but the ALIX Bios is set to 38400. So i recommand to replace all the 115200 by 38400 in the ''/boot/grub/grub.cfg'' file before boot the Alix. If you don't need the serial port you can forget this recommendation. <code bash>serial --unit=0 --speed=38400 --word=8 --parity=no --stop=1 --rtscts=off
+terminal_input console serial; terminal_output console serial
+
+set default="0"
+set timeout="5"
+set root='(hd0,msdos1)'
+
+menuentry "OpenWrt" {
+        linux /boot/vmlinuz root=PARTUUID=42410c6e-02 rootfstype=ext4 rootwait console=tty0 console=ttyS0,38400n8 noinitrd
+}
+menuentry "OpenWrt (failsafe)" {
+        linux /boot/vmlinuz failsafe=true root=PARTUUID=42410c6e-02 rootfstype=ext4 rootwait console=tty0 console=ttyS0,38400n8 noinitrd
+}</code>
+
+  - Removed the CompactFlash card, place it in the ALIX board and power on.
+  - Once powered on and booted up the ALIX should be reachable on 192.168.1.1 on eth1. In default install eth0 is wan interface configured to obtain ip by dhcp and eth1 is br-lan interface with static ip 192.168.1.1 :!: this does not apply for the **Alix.1c/1d** - see below.
+  - If you have a serial cable it is recommended to do the first boot and initial network configuration with it attached (minicom configured for 38400-8N1)
+
+   
+:!: If you selected the squashfs image it may take quite a few minutes for the device to power on.
+
+----
+  - Usually one just has to ''[[man>dd]]'' the combined image onto the [[wp>CompactFlash|CF card]]: <code bash>
+wget http://downloads.openwrt.org/backfire/10.03.1-rc5/x86_generic/openwrt-x86-generic-combined-ext2.img.gz
+gunzip openwrt-x86-generic-combined-ext2.img.gz
+dd if=openwrt-x86-generic-combined-ext2.img of=/dev/cfcard
+</code>
+  - Afterwards you can use the usual utilities like ''fdisk'', ''tune2fs'', etc. to resize the system partition (its only around 40MiB by default) and maybe upgrade the filesystem.
+  - Sometimes you need to change the ''root='' parameter in the GRUB settings if the booting kernel does not find the root device. You'll find the ''menu.list'' within the first partition.
+----
+
+===== OpenWrt on the ALIX.1d =====
+
+==== Differences between the ALIX system boards ====
+
+As stated above, the Alix.1d series is //significantly// different to the other Alix system boards.  For example, when using a generic x86 image (recommended), the system will not be able to connect to the Internet by default.  
+
+With this in mind, the following scripts have been tested on both
+  * trunk (aka Attitude Adjustment / bleeding edge) using: **openwrt-x86-generic-combined-ext4.img**, and 
+  * Backfire using **openwrt-x86-generic-combined-ext2.img**.
+
+:!: With the 19.07.01 firmware, have a try with the **x86/geode** if bootloop occurs.
+==== Using the VGA/PS2 console on Alix.1d ====
+To use the VGA/PS2 console, boot the Alix.1d with these devices attached.  When the console has stopped scrolling, just press Enter, and you should be good to go.  The serial port is not necessary, but will work, although you will require a null modem cable (38400 8N1).
+
+If you wish to use SSH (via TCP/IP) later, you will need to set a password for the root account (here's how to do it in a script).
+<code>(echo "12345678"; sleep 1; echo "12345678") | passwd root</code>
+
+==== Using the ethernet port on Alix.1d ====
+By default, the Alix.1d will not be able to access the Internet (and thereby download packages) with a generic x86 image.
+
+This is because the Alix.1d has only one ethernet port, **eth0**, which is configured as a LAN interface by default on this image.  To configure it as a WAN interface, the following has worked for me (see [[docs:guide-user:base-system:basic-networking#interfaces|network interfaces]] for more details):
+
+<code>uci set network.lan.ifname=</code>
+
+:!: The ''lan'' network is still required for the wireless AP to 'bridge' to, even though it has no physical interface.
+
+<code>
+uci set network.wan=interface
+uci set network.wan.ifname=eth0
+uci set network.wan.proto=dhcp
+</code>
+
+Finally, effect the changes.
+
+<code>
+uci commit network
+/etc/init.d/network restart
+</code>
+
+You can confirm the result of this script by executing: ''ifconfig eth0 | grep inet'' and/or ''ping 8.8.8.8 -c 4''.
+
+==== Starting an AP on the Alix.1d ====
+This should work on other x86 models.  First, install the wireless card drivers (this assumes an Atheros ath9k-compatible wifi card):
+
+<code>
+opkg update
+opkg install kmod-ath9k
+</code>
+
+You can confirm the result of this script by executing ''ifconfig wlan0''.  Next, configure the radio:
+
+<code>
+wifi detect > /etc/config/wireless
+uci set wireless.radio0.disabled=0
+uci commit wireless
+</code>
+
+Finally, install and start the access point daemon:
+
+<code>
+opkg install wpad-mini
+wifi
+</code>
+
+By Default, the SSID will be **OpenWRT** and there will be no WEP/WPA.
+
+==== Ethernet assignation alix2d3====
+{{media:pcengines:box-closed-front2.jpg}}
+
+Tested with r38680, this picture is correct:
+| powerplug | usb | WAN/eth0 | LAN/eth1 | MANAGEMENT/eth2 | serial-console |
+
+==== Upgrading ====
+->[[docs:guide-user:installation:generic.sysupgrade]]
+
+===== Controlling the LEDs =====
+Assuming you have the kmod-led-alix module present (check via lsmod), you should get three LED devices under /sys/class/leds/
+- alix:1, alix:2 and alix:3
+This should turn on one led:
+  echo 1 > /sys/class/leds/alix:1/brightness
+And off:
+  echo 0 > /sys/class/leds/alix:1/brightness
+And this should make it blink:
+  echo timer > /sys/class/leds/alix:1/trigger
+  echo 1000 > /sys/class/leds/alix:1/delay_off
+  echo 100 > /sys/class/leds/alix:1/delay_on
+
+You can assign various triggers for LED activity using the instructions [[:docs:guide-user:base-system:led_configuration|here]].
+
+After reading the previous link about leds functionality, the easiest way to configure the leds is from the web gui (LuCI) in "System" >> "LED configuration"
+
+===== Entering Failsafe Mode =====
+
+{{:meta:icons:tango:dialog-error.png?nolink&24 | Test at your own risk }} Note: The below is taken from the Old Wiki, and its current correctness is unknown.
+
+  * The button does not seem to work
+  * Attach serial cable, speed is 38400
+  * Press Esc during or after the memory check (can be tricky to time right)
+  * Choose 'safe mode' in the grub menu
+
+===== Watchdog Timer =====
+
+{{:meta:icons:tango:dialog-error.png?nolink&24 | Test at your own risk }} Note: The below is taken from the Old Wiki, and its current correctness is unknown.
+
+The Geode LX CPUs have a hardware watchdog. It might be supported by the scx200_wdt kernel module that provides the same support for the GX series.
+
+These commands might enable the watchdog with the GX series CPUs.
+
+<code bash>
+mknod -m 600 /dev/wd c 10 130
+modprobe scx200_wdt margin=30
+</code>
+
+An example of the watchdog in action on ALIX boards can be found at [[http://www.twam.info/hardware/alix/watchdog-on-alix3d3|twam.info]]
+
+===== Using the Geode's AES engine =====
+As of OpenWrt Backfire 10.03, cryptodev support can be enabled by installing the following packages (confirmed and tested on Alix 2d13):
+
+From Kernel Modules, Cryptographic API modules:
+  * kmod-crypto-core
+  * kmod-crypto-aes
+  * kmod-crypto-hw-geode 
+  * kmod-crypto-ocf
+
+This was tested using openssl-util, which was installed from Utilities --> openssl-util. The command to test it is:
+  * "//openssl speed -evp aes-128-cbc -engine cryptodev//"
+
+The Alix Geode crypto engine supports only **AES-128**. Other ciphers are not supported. For more general crypto hardware info, see here:
+  * **[[docs:techref:hardware:cryptographic.hardware.accelerators]]**
+
+===== Relevant external articles =====
+Many of the below are written with Gentoo in mind, but will work equally well on OpenWrt (you should install relevant pages via 'opkg' rather than 'emerge' though).
+
+  * [[http://www.twam.info/hardware/alix/watchdog-on-alix3d3|Watchdog usage on Gentoo]]
+  * [[http://www.twam.info/hardware/alix/temperature-sensor-on-alix3d3|Accessing temperature sensors]]
+  * [[http://www.twam.info/hardware/alix/using-geodes-aes-engine-on-alix3d3|Utilising hardware AES engine]]
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>x86 devBoard}}

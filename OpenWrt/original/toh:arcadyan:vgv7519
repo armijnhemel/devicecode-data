@@ -1,0 +1,1248 @@
+====== Astoria networks VGV7519 ======
+This router is distributed by a dutch provider under the name KPN Experia Box v8.
+Also seems to be known as ARV7519KW.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "VGV7519"}
+} -->
+
+^ Version/Model   ^ Model Specific Notes                                    ^
+|       R01       | VRX288 V1.1 (External ethernet PHY chip version V1.3)   |
+|       R02       | VRX288 V1.2 (External ethernet PHY chip version V1.5)   |
+
+Hardware version can be can be found in the interface
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "VGV7519"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "VGV7519"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Original Flash Layout ====
+
+This is the Flash layout as logged by the original VR9 Bootloader
+
+^ #      ^ Area              ^ Address      ^   Length ^
+| [0]    | Boot              | 0xB0000000   |     256K |
+| [1]    | Boot Params       | 0xB0040000   |      64K |
+| [2]    | Certificate       | 0xB0050000   |      64K |
+| [3]    | Special Area      | 0xB0060000   |      64K |
+| [4]    | Reserve 0         | 0xB0070000   |      64K |
+| [5]    | Code Image 0      | 0xB0080000   |    7680K |
+| [6]    | Primary Setting   | 0xB4000000   |      64K |
+| [7]    | Configuration     | 0xB4010000   |     384K |
+| [8]    | Reserve 1         | 0xB4070000   |      64K |
+| [9]    | Code Image 1      | 0xB4080000   |    7680K |
+| [10]   | 1st Flash         | 0xB0000000   |    8192K |
+| [11]   | 2nd Flash         | 0xB4000000   |    8192K |
+
+
+==== OEM easy installation ====
+The easiest way would be to enter the recovery mode as described in [[docs:techref:bootloader:brnboot]]. 
+Instead on what is documented on that page, for this model the recovery web interface is available on http://192.168.2.254/.
+
+The build-in bootloader's serial console would be an another option but there is a SHA-1 hashed password to overcome.
+Additionally the page request for a PIN code which is still unknown...
+This PIN-code is also SHA-1 hashed and compared, I have no idea about constraints, the hash as taken from the disassembly is:
+B16D0EF3 DD0632DC D13D135E 02A097AE C4044C24
+
+I have managed to patch the password protection code sequence out, so I am able to gain access to the bootloader menu.
+The loader itself won't let you erase or overwrite the first sectors so it is useless for flashing another bootloader.
+Administrator mode is aquired by pressing '!'
+Sniffing around through the bootloader disassembly shows some differences, these are explained in the last column
+
+The VR9 bootloader has the following menu options:
+
+^       ^ Menu item                            ^  Admin mode?  ^ Comments                                     ^
+| [#]   | Set Serial Number                    |               |                                              |
+| [2]   | Use Normal Firmware                  |               | not implemented                              |
+| [3]   | Use ART-Testing Firmware             |               | not implemented                              |
+| [9]   | Taggle ART Firmware Enable/Disable   |               |                                              |
+| [A]   | Set MAC Address                      |               |                                              |
+| [B]   | Set WPA Key                          |               |                                              |
+| [E]   | Erase Flash                          |               |                                              |
+| [G]   | Run Runtime Code                     |               |                                              |
+| [H]   | Set Options                          |               |                                              |
+| [I]   | Unlisted                             |               | Doesn't show menu, guess it is patched out   |
+| [L]   | Unlisted                             |               | Doesn't show menu, guess it is patched out   |
+| [M]   | Upload to Memory                     |       X       |                                              |
+| [P]   | Print Boot Params                    |               |                                              |
+| [R]   | Read from Memory                     |       X       |                                              |
+| [S]   | Unlisted                             |               | Doesn't show menu, guess it is patched out   |
+| [T]   | Test Memory (not listed as option)   |               | Found in disassembly                         |
+| [U]   | Upload to Flash                      |               |                                              |
+| [V]   | Set Board Version                    |               |                                              |
+| [W]   | Write to Memory                      |       X       |                                              |
+| [Y]   | Go to Memory                         |       X       |                                              |
+| [Z]   | Dump DDR Ram Register                |       X       |                                              |
+| [0]   | Primary = Image 0                    |       X       |                                              |
+| [1]   | Primary = Image 1                    |       X       |                                              |
+
+
+==== JTAG method ====
+In short: 
+  * Open your device
+  * Connect JTAG
+  * Backup original flash image
+  * Download U-BOOT ram image: [[https://github.com/openwrt-vgv7519/uboot-bin/blob/master/ram/u-boot.bin]]
+  * Download U_BOOT flash image: [[https://github.com/openwrt-vgv7519/uboot-bin/blob/master/flash/u-boot.bin]]
+  * Use JTAG to start ram image of u-boot
+  * Download and flash image to the device using tftp
+  * Download OpenWrt source tree and build images for VGV-7519 with squashfs image.
+  * Flash the squashfs image using tftp
+
+For those who want to try this method, a nice article is written by Alfred Klomp: [[http://www.alfredklomp.com/technology/experia-v8/|OpenWrt on the Experia Box v8 (Arcadyan Astoria Networks VGV7519)]]
+
+==== UART method ====
+The best approach for migration to OpenWrt or LEDE is to use the UART method because JTAG is difficult and the build-in boot loader is password protected.
+This method is tested and works. Currently the preferred method of upgrading.
+
+The installation procedure in short:
+  - Short the bootsel_0 pins (R159), apply VCC (3V3) taken from pin 1 from console to the R155 side of R154 (bootsel_2) and power on the router.
+  - If UART appears on console unshort the bootsel_0 pins and remove VCC from R154
+  - Upload a special U-Boot RAM image using a serial cable
+  - Use U-Boot to install U-Boot to flash
+  - Use U-Boot to install OpenWrt/LEDE to flash
+  - Power off the router and power on again
+
+=== Preparation ===
+Because the LEDE project supports this device better at the moment the following steps will refer to the LEDE 17.01.4 stable image and bootloader. In the near future the OpenWrt project and LEDE project will merge again so future releases of OpenWrt will be usable to and will be preferred.
+
+Setup a TFTP server on your computer and copy the files [[https://downloads.lede-project.org/snapshots/targets/lantiq/xrx200/u-boot-vgv7519_nor/u-boot.bin|u-boot.bin]] and [[https://downloads.lede-project.org/releases/17.01.4/targets/lantiq/xrx200/lede-17.01.4-lantiq-xrx200-VGV7519NOR-squashfs-sysupgrade.bin|lede-17.01.4-lantiq-xrx200-VGV7519NOR-squashfs-sysupgrade.bin]] to the TFTP server root. Copy the file [[https://downloads.lede-project.org/snapshots/targets/lantiq/xrx200/u-boot-vgv7519_ram/u-boot.asc|u-boot.asc]] to your computer and keep it close at hand, you need to upload this file to the console of the router later.
+
+Connect your computer to the routers WAN port with an ethernet cable and configure the IP address to 192.168.1.2 with netmask 255.255.255.0 and start the TFTP server on your computer. 
+
+Now you need to connect a RS232-to-TTL cable to the serial header (do not connect VCC) as shown in the table below. 
+
+| **Pin number**   |   4   |  3   |  2   |      1       |
+| **Function**     |  GND  |  RX  |  TX  |  VCC (3.3V)  |
+
+To enable the router to boot into UART mode short bootsel_0 en put power taken from console pin 1 to the R155 side of R154 on bootsel_2 as shown below with jumper caps or wires.
+
+
+{{media:arcadyan:vgv7519:vgv7519_bootsel.jpg?400|}}
+
+(NOTE: bootsel_4 and bootsel_1 are just in the image for reference)
+
+{{:media:arcadyan:vgv7519:vgv7519_uart_bedrading.jpg?400|}}
+
+Wiring example.
+
+=== Loading u-boot.asc ===
+
+Use 115200 bps, 8-N-1, no flow control, as the serial connection parameter.
+
+Power on the router. You should see
+<code>
+ROM VER: 1.1.4
+CFG 04
+UART
+</code>
+on the serial output.
+
+Now keep the router powered on and remove the bootsel_0 bridge and bootsel_2 power. If this is not done at this moment the router will restart after uploading the ''u-boot.asc'' again into UART mode leaving the console inaccessible. Power cycling the router will solve this.
+
+Send ''u-boot.asc'' as raw ascii to the routers console. After uploading is finished U-Boot should start from RAM.
+
+=== Backup original firmware ===
+
+After the restart of the router it is a good moment to backup the original firmware using:
+
+<code>
+md.l 0xb0000000 0x1000000
+</code>
+
+and logging the output (takes roughly 2 hours).
+If you are in a hurry and have a slightly newer U-Boot and setup tftpd to receive files try:
+<code>
+tftpput B0000000 1000000 backup-flash-vgv7519.bin
+</code>
+this will take about 5 minutes or so.
+
+=== Flasing u-boot.bin ===
+Start flashing u-boot by entering:
+<code>
+protect off all
+tftpboot u-boot.bin
+run write-uboot-nor
+</code>
+
+=== Flashing LEDE/OpenWrt image ===
+When the boot loader is successfully written to flash memory continue with flashing the OS image by entering:
+
+<code>
+protect off all
+tftpboot lede-17.01.4-lantiq-xrx200-VGV7519NOR-squashfs-sysupgrade.bin
+erase 0xb0080000 +${filesize}
+cp.b $fileaddr 0xb0080000 ${filesize}
+reset
+</code>
+
+The router will now reset and if all went well u-boot will start from flash.  
+Now press any key to stop autoboot before starting LEDE/OpenWrt for the first time.
+<WRAP left round alert 100%>
+Caution!! do not use ''erase all'' as mentioned here on this Wiki before it will kill the calibration data belonging to the wireless chip resulting in a kernel panic on boot of LEDE/OpenWrt.
+</WRAP>
+
+=== Set correct MAC address ===
+Because of the generic boot loader used, the boot environment has a default MAC address of ''ethaddr=00:01:02:03:04:05'' this has to be corrected. The correct MAC address can be found on the back of the router. Set this using:
+
+<code>
+setenv ethaddr xx:xx:xx:xx:xx:xx
+saveenv
+</code>
+
+Use ''reset'' to reset the board. Watch as U-Boot loads OpenWrt/LEDE and proceed to configure it to your liking!
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the mtd command line tool. It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== LuCI Web Upgrade Process ===
+
+  * Browse to http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/ LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+=== Terminal Upgrade Process ===
+
+  * Login as root via SSH on 192.168.1.1
+  * Use the following commands to upgrade.
+
+<code>
+cd /tmp/
+wget http://http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+sysupgrade /tmp/xxx.abc
+</code>
+
+  * If sysupgrade does not support this router, use the following commands.
+
+<code>
+cd /tmp/
+wget http://http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+mtd write /tmp/xxx.abc linux && reboot
+</code>
+
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+<WRAP left round tip 100%>
+If no DSL line will be connected to the router it is advisable to stop the ''dsl_control'' service. If no DSL line is connected and this service is run the router will crash and reboot without no apparent reason after a few hours of service.
+</WRAP>
+
+
+
+===== Specific Configuration =====
+
+==== OpenWrt Flash Layout ====
+
+^   Arcadyan VGV7519 Flash Layout           ^^^^^^^^
+^ Layer0       |                       EN29LV640AB-90TIP  8192KiB                                                                      |||||  EN29LV640AB-90TIP 8192KiB  ||
+^ Layer1       |  mtd0 **//u-boot//** |  art **//config-params//** |  **//u-boot-env//**  |  reserved  |  mtd5 **//firmware//** 15872KiB                                      |||
+^ Layer2       |                              ||||  mtd1 **//kernel//** 1984KiB  |  mtd2 **//rootfs//** 13888KiB                           ||
+^ <color magenta>mountpoint</color>   |       ||||                               |  <color magenta>''/''</color>                          ||
+^ filesystem   |                              ||||                               |  [[docs:techref:filesystems#mini_fo|mini_fo]]/[[docs:techref:filesystems#overlayfs|overlayfs]]           ||
+^ Layer3       |                              ||||                               |                 |  mtd3 **//rootfs_data//** 11904KiB     |
+^ Size in KiB  |  256KiB  |  128KiB  |  64KiB  |  64KiB  |                      1984KiB                      |  1984KiB        |  11904KiB     |
+^ Name         |  **//u-boot//**              |  //none//  | **//u-boot env//** |  //none//  |  **//kernel//**               |                 |  **//rootfs_data//**             |
+^ <color magenta>mountpoint</color>           |  //none//  |  //none//  |  //none//  |  //none//  |  //none//                    |  <color magenta>''/rom''</color>  |  <color magenta>''/overlay''</color>   |
+^ filesystem   |    //none//                  |  //none//  |  //none//  |  //none//  |  //none//  |  [[docs:techref:filesystems#SquashFS]]      ||
+
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| vlan0 (eth0.0)   | LAN ports (1 to 4)   | None                    |
+| vlan1 (eth0.1)   | WAN port             | DHCP                    |
+| wl0              | WiFi                 | Disabled                |
+
+==== Switch Ports (for VLANs) ====
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | 4             |
+| LAN 1            | 3             |
+| LAN 2            | 2             |
+| LAN 3            | 1             |
+| LAN 4            | 0             |
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The Arcadyan VGV7519 has four buttons. They are Reset, Secure Easy Setup, ECO and Wifi enable/disable. Here, we merely name the buttons, so we can use them in the above Howto:
+^ BUTTON        ^ Event    ^ Location   ^ Action                ^
+| Reset         | reset    | back       |                       |
+| ECO           | BTN_0    | side       | disables USB & WIFI   |
+| Wifi enable   | rfkill   | side       |                       |
+| wps           | wps      | side       |                       |
+
+
+===== Hardware =====
+==== Info ====
+| **[[wp>Instruction set|Architecture]]:**   | [[wp>MIPS architecture|MIPS]]                |
+| **Vendor:**                                | [[wp>Lantiq]]                                |
+| **[[docs:techref:bootloader]]:**            | [[docs:techref:bootloader:brnboot|BRNBoot]]   |
+| **[[docs:techref:hardware:soc|System-On-Chip]]:**   | VRX288 V1.1 (MIPS, PSB 80920 EL)             |
+| **[[docs:techref:hardware:cpu|CPU]]/Speed**         | 34Kc 500 Mhz                                 |
+| **Flash-Chip:**                            | [[http://www.eonssi.com/upfile/p2010610151847.pdf|EN29LV640AB-90TIP]]   |
+| **Flash size:**                            | 2x 8192 MiB                |
+| **RAM:**                                   | 64 MiB (EM68B16CWQD-25H)   |
+| **WAN:**                                   | 1x RJ45                    |
+| **Modem:**           | Infineon/Lantiq [[http://www.lantiq.com/uploads/tx_abzlantiqproducts/PB-e-0027-v2_lres.pdf|XWAY VRX208]]\\ VDSL2 (G.993.2), VDSL1 (G.993.1, T1.424, TS 101 270)\\ ADSL1/2/2+ (G.992.1/3/5) Annexes A, B, I, J, M, L |
+| **Wireless:**        | RALink RT5362F TPHR059609 1222STA1 2.4ghz 802.11bgn |
+| **Ethernet:**        | <del>(unknown for now) RealTek RTL8366RB Gigabit w/ vlan support [[docs:techref:swconfig]]</del> Internal configurable (Infineon) (3x lantiq PEF7071v) |
+| **Internet:**        | ADSL2+  |
+| **Phone:** | [[http://www.lantiq.com/products/voice-customer-premises-equipment/slictm/xwaytm-slic100/xwaytm-slic120/|Lantiq XWAY SLIC120 (PEF 42068 V V1.2)]], 3x FXS (TAE ports which provide POTS via a SIP gateway) Si3050/Si3011fs |
+| **USB:**                                   | Yes 2 x 2.0                 |
+| **[[docs:techref:hardware:port.serial|Serial]]:**   | [[#Serial|Yes]]             |
+| **[[docs:techref:hardware:port.jtag|JTAG]]:**       | [[#JTAG|Yes (EJTAG 14p)]]   |
+
+
+==== Open up the device ====
+<WRAP left round important 100%>
+This will void your warranty!
+</WRAP>
+
+
+The VGV7519 has two screws hidden underneath the rubber feet at the bottom. After removing them you have to drill 7 additional holes in the gray part of the housing to be able to access the clips that keep the white cover in place. As an indication where they have to be drilled, here are the measurements:
+
+All holes should be drilled right on the edge and 3 mm in diameter. And don't drill to deep or else you will damage the board. Advise: Use a wood drill it has a handy centerpoint that keeps the drill in place.
+
+  * At both sides of the casing two holes, one 4.7cm from the top and one 4.5cm from the bottom
+  * At the top of the casing 3 holes, 2 holes 2.1cm from each side and one hole all most in the middle 12.5cm from the side with no USB ports.
+
+Now you can push a paperclip into the holes and loosen the clips to remove the white cover.
+
+{{:media:arcadyan:vgv7519:vgv7519_boormaten.jpg?400|}}
+{{:media:arcadyan:vgv7519:vgv7519_boorgaten.jpg?400|}}
+
+
+==== Photos ====
+//Front://
+
+{{media:arcadyan:vgv7519:vgv7519_front.jpg?400|}}
+
+//Back://
+
+{{media:arcadyan:vgv7519:vgv7519_back.jpg?400|}}
+
+//Connectors://
+
+{{media:arcadyan:vgv7519:vgv7519_back_connectors.jpg?400|}}
+
+//Label with MAC address and serial numbers://
+
+{{media:arcadyan:vgv7519:vgv7519_back_label.jpg?400|}}
+
+//Main PCB with the custom soldered 14 pins EJTAG header, these are necessary for the JTAG methode://
+
+{{media:arcadyan:vgv7519:vgv7519_pcb_front.jpg?400|}}
+
+//JTAG header and serial port header (4pins), 1st pin is at the right side (Pin 1 marking is located at the back of the PCB)://
+
+{{media:arcadyan:vgv7519:vgv7519_pcb_front_headers.jpg?400|}}
+
+//Both flash chips are located at the bottom of the PCB://
+
+{{media:arcadyan:vgv7519:vgv7519_pcb_back.jpg?400|}}
+==== Important components ====
+The actual VRX288 version is important because of the internal ethernet PHY firmware, mine is a V1.1
+
+{{media:arcadyan:vgv7519:vgv7519_vrx288_v1_1.jpg?400|}}
+
+
+There are 3 external ethernet PHY chips available (these are V1.3)
+
+{{media:arcadyan:vgv7519:vgv7519_ethernet_phy.jpg?400|}}
+
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+Pin 1 is on the right, marked with a white arrow on the PCB, so the pin numbers are counted from right to left. The voltage is 3.3V. Please do *not* connect the VCC pin of the PCB to the VCC pin of you serial interface as this may destroy both of the devices. The pinout is as follows:
+
+| **Pin number**   |   4   |  3   |  2   |      1       |
+| **Function**     |  GND  |  RX  |  TX  |  VCC (3.3V)  |
+
+<color red>Hooking up to the serial with 115200/8N1 enables you to access the bootloader. You have to enter three spaces immediately after powerup after which you have to enter some secret password (seems to be 16 characters, but of course I have no idea what it would be... The SHA-1 hash for the password is: 
+42f25cd06c3e1d7096b35cbd3c3813c23adaf03a</color>
+
+For a photo see the second picture from the Main PCB section
+
+==== GPIOs ====
+
+Generic VR9 gpio map (0xBE100B00+x):
+|        |OUT     |IN      |DIR     |ALT0    |ALT1    |OD      |PUDSEL  |PUDEN |
+|port0   |10      |14      |18      |1c      |20      |24      |2c      |30    |
+|port1   |40      |44      |48      |4c      |50      |54      |5c      |60    |
+|port2   |70      |74      |78      |7c      |80      |84      |8c      |90    |
+|port3   |a0      |a4      |a8      |ac      |b0-53   |b4-34   |bc-38   |c0-3c |
+
+Generic pin id to bit:
+| 0     | 1     | 2     | 3     | 4      | 5      | 6      | 7      | 8       | 9       | 10      | 11      | 12       | 13       | 14       | 15       |
+| 0x1   | 0x2   | 0x4   | 0x8   | 0x10   | 0x20   | 0x40   | 0x80   | 0x100   | 0x200   | 0x400   | 0x800   | 0x1000   | 0x2000   | 0x4000   | 0x8000   |
+
+
+Generic alternat to function:
+|        |f0      |f1      |f2      |f3   |
+|alt0    |0       |1       |0       |1    |
+|alt1    |0       |0       |1       |1    |
+
+Function from disassembled 2.x firmware
+|gpio03|???                              |       | od | dir|~alt0|~alt1             |gpio|  
+|gpio04|stp                              |       | od | dir| alt0|~alt1             |stp |  
+|gpio05|stp                              |       | od | dir| alt0|~alt1             |stp |  
+|gpio06|stp                              |       | od | dir| alt0|~alt1             |stp |  
+|gpio11|duslic(FXS)                      |       | od | dir|~alt0|~alt1             |gpio|  
+|gpio12|CoC /USB HCD                     | out   | od | dir|~alt0|~alt1             |gpio|  
+|gpio15|ProDAAInitialize(fxo)            |       |    |    |     |                  |    |
+|gpio20|sip_core_mwi_led_off             |       |    |    |     |                  |    |  
+|gpio21|pci                              |~out   | od | dir|~alt0|~alt1             |gpio|  
+|gpio30|vmmc-relay                       | out   | od | dir|~alt0|~alt1             |gpio|  
+|gpio32|hcd                              |       | od | dir|~alt0|~alt1             |gpio|  
+|gpio37|reinjiection maybe voip related  |       |    |    |     |                  |    |  
+|gpio42|mdio                             |       | od | dir| alt0|~alt1             |mdio|  
+|gpio43|mdio                             |       | od | dir| alt0|~alt1             |mdio|  
+|gpio47|???                              | out   | od | dir|~alt0|~alt1             |gpio|  
+
+-Eth led                                      
+|gpio07 GPHY                             |       | od | dir| alt0| alt1             |gphy| 
+|gpio44 GPHY                             |       | od | dir| alt0| alt1             |gphy|
+
+-buttons
+|gpio09|btn-rst                          | in    |    |~dir|~alt0|~alt1             |gpio|
+|gpio10|btn-wps                          | in    |    |~dir|~alt0|~alt1             |gpio|
+|gpio41|btn-echo                         | in    |    |~dir|~alt0|~alt1             |gpio|  
+|gpio45|btn-wlan                         | in    |    |~dir|~alt0|~alt1             |gpio|  
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:
+
+| **Pin number**   |    2    |   4   |   6   |   8   |  10   |   12    |      14       |
+| **Function**     |   GND   |  GND  |  GND  |  GND  |  GND  |   NC    |  VREF (3.3V)  |
+| **Function**     |  nTRST  |  TDI  |  TDO  | TMS   |  TCK  |  nSRST  |     DINT      |
+| **Pin number**   |    1    |   3   |   5   |   7   |   9   |   11    |      13       |
+
+
+For a photo see the second picture from the Main PCB section 
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+If the router is bricked use the UART method as described above to access the console and reflash the bootloader to reinstate accessibility.
+
+===== Bootloader Mods =====
+  - you could read about [[docs:techref:bootloader]] in general
+
+I have patched out the password protection to gain access to the bootloader's menu, There aren't really interesting things to do there, so I flashed it over with u-boot.
+
+===== Hardware mods =====
+  - as a beginner, you really should inform yourself about [[docs:techref:hardware:soldering]] in general and then obtain some practical experience!
+
+I had to solder the JTAG header on the board
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>ROM VER: 1.0.5
+CFG 01
+
+
+
+=======================================================================
+Wireless ADSL Gateway VR9 Loader v3.00.06 build Oct 20 2011 15:15:46
+                    Arcadyan Technology Corporation
+=======================================================================
+
+[1] .[1(9)][3] [1]  done
+In c_entry() function ...
+install_exception
+
+
+Had to go a long way to retrieve the reset of this (crashing) bootlog
+
+[GPIO FLOW] SetGpio() Begin ..
+[GPIO FLOW] SetGpio() End.
+Runtime code version: 03.00.122
+System startup...
+Set flash memory layout to Boot Parameters found !!!
+Bootcode version: v3.00.06
+Serial number: J229112404
+Hardware version: 01
+06.07.2012-17:48:38
+config_fnd=3, cfg_size=31115
+cgi info size=31055, 0x55545352
+Decompression ratio = 9.4
+Signature matched at offset 279224
+Add-on new config tail> oldSize:279264, oldCfgSize:13625, adjust length to -1
+[CONFIG] read_config_from_flash ret=0
+[CONFIG] load_config ret=1
+cert_one:
+-----BEGIN CERTIFICATE-----
+MIIEnDCCBAWgAwIBAgIQdTN9mrDhIzuuLX3kRpFi1DANBgkqhkiG9w0BAQUFADBf
+MQswCQYDVQQGEwJVUzEXMBUGA1UEChMOVmVyaVNpZ24sIEluYy4xNzA1BgNVBAsT
+LkNsYXNzIDMgUHVibGljIFByaW1hcnkgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkw
+HhcNMDUwMTE5MDAwMDAwWhcNMTUwMTE4MjM1OTU5WjCBsDELMAkGA1UEBhMCVVMx
+FzAVBgNVBAoTDlZlcmlTaWduLCBJbmMuMR8wHQYDVQQLExZWZXJpU2lnbiBUcnVz
+dCBOZXR3b3JrMTswOQYDVQQLEzJUZXJtcyBvZiB1c2UgYXQgaHR0cHM6Ly93d3cu
+dmVyaXNpZ24uY29tL3JwYSAoYykwNTEqMCgGA1UEAxMhVmVyaVNpZ24gQ2xhc3Mg
+MyBTZWN1cmUgU2VydmVyIENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC
+AQEAlcMhEo5AxQ0BX3ZeZpTZcyxYGSK4yfx6OZAqd3J8HT732FXjr0LLhzAC3Fus
+cOa4RLQrNeuT0hcFfstG1lxToDJRnXRkWPkMmgDqXkRJZHL0zRDihQr5NO6ziGap
+paRa0A6Yf1gNK1K7hql+LvqySHyN2y1fAXWijQY7i7RhB8m+Ipn4G9G1V2YETTX0
+kXGWtZkIJZuXyDrzILHdnpgMSmO3ps6wAc74k2rzDG6fsemEe4GYQeaB3D0s57Rr
+4578CBbXs9W5ZhKZfG1xyE2+xw/j+zet1XWHIWuG0EQUWlR5OZZpVsm5Mc2JYVjh
+2XYFBa33uQKvp/1HkaIiNFox0QIDAQABo4IBgTCCAX0wEgYDVR0TAQH/BAgwBgEB
+/wIBADBEBgNVHSAEPTA7MDkGC2CGSAGG+EUBBxcDMCowKAYIKwYBBQUHAgEWHGh0
+dHBzOi8vd3d3LnZlcmlzaWduLmNvbS9ycGEwMQYDVR0fBCowKDAmoCSgIoYgaHR0
+cDovL2NybC52ZXJpc2lnbi5jb20vcGNhMy5jcmwwDgYDVR0PAQH/BAQDAgEGMBEG
+CWCGSAGG+EIBAQQEAwIBBjApBgNVHREEIjAgpB4wHDEaMBgGA1UEAxMRQ2xhc3Mz
+Q0EyMDQ4LTEtNDUwHQYDVR0OBBYEFG/sr6DdiqTv9SoQZy0/VYK81+8lMIGABgNV
+HSMEeTB3oWOkYTBfMQswCQYDVQQGEwJVUzEXMBUGA1UEChMOVmVyaVNpZ24sIElu
+Yy4xNzA1BgNVBAsTLkNsYXNzIDMgUHVibGljIFByaW1hcnkgQ2VydGlmaWNhdGlv
+biBBdXRob3JpdHmCEHC65B0Q2Sk0tjjKewPMur8wDQYJKoZIhvcNAQEFBQADgYEA
+w34IRl2RNs9n3Nenr6+4IsOLBHTTsWC85v63RBKBWzFzFGNWxnIu0RoDQ1w4ClBK
+Tc3athmo9JkNr+P32PF1KGX2av6b9L1S2T/L2hbLpZ4ujmZSeD0m+v6UNohKlV4q
+TBnvbvqCPy0D79YoszcYz0KyNCFkR9MgazpM3OYDkAw=
+-----END CERTIFICATE-----
+default route: 0.0.0.0
+[CheckUSBBackConf]Erase the garbage config in usbBackConf_s
+BufferInit:
+BUF_HDR_SZ=192 BUF_ALIGN_SZ=16 BUFFER_OFFSET=448
+BUF_BUFSZ0=576 BUF_BUFSZ1=4352
+NUM_OF_B0=0 NUM_OF_B1=2400
+BUF_POOL0_SZ=0 BUF_POOL1_SZ=10905600
+sizeof(BUFFER0)=768,sizeof(BUFFER1)=4544
+*BUF0=0x828e681c *BUF1=0x81e7fffc
+Altgn *BUF0=0x828e6820 *BUF1=0x81e80000
+End at BUF0:0x828e6820, BUF1:0x828e6800
+
+BUF0[0]=0x828e6820 BUF1[0]=0x81e80000
+
+buffer0 pointer init OK!
+buffer1 pointer init OK!
+[qm_lnk_init] CLOCKHZ=1000 ...
+[qm_lnk_init] add if 3 into QM link 0
+[qm_lnk_init] add if 4 into QM link 0
+[qm_cbq_enable] no QM attached
+[qm_cbq_detach] no QM is attached at link 0
+ptime=2000000/1000, cptime=20202/1000, offtime=40724/1000
+New cls: id=0, bw=8 ns/byte, maxd=0 ms,
+         maxb=32, minb=2, avgpktsz=250, maxpktsz=1600,
+         offtime=1, parent=0, borrow=0
+         pri=0, maxidle=1, minidle=-25,
+         maxq=96, clsfg=17
+ptime=12800000/1000, cptime=1280129299/1000, offtime=1280129299/1000
+New cls: id=1, bw=808 ns/byte, maxd=0 ms,
+         maxb=16, minb=1, avgpktsz=1600, maxpktsz=1600,
+         offtime=1280, parent=8121049c, borrow=8121049c
+         pri=5, maxidle=341, minidle=-2585,
+         maxq=48, clsfg=21
+qm_cbq_attach(): cbqp->cbq_res=107
+ptime=2000000/1000, cptime=40608/1000, offtime=166340/1000
+New cls: id=2, bw=8 ns/byte, maxd=0 ms,
+         maxb=32, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1, parent=8121049c, borrow=8121049c
+         pri=5, maxidle=1, minidle=-26,
+         maxq=48, clsfg=21
+ptime=2000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=3, bw=799999 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=819241, parent=8120ee9c, borrow=8120ee9c
+         pri=6, maxidle=0, minidle=-2560000,
+         maxq=48, clsfg=20
+ptime=2000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=4, bw=799999 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=819241, parent=8120ee9c, borrow=8120ee9c
+         pri=0, maxidle=0, minidle=-2560000,
+         maxq=96, clsfg=21
+ptime=2000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=5, bw=799999 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=819241, parent=8120ee9c, borrow=8120ee9c
+         pri=1, maxidle=0, minidle=-2560000,
+         maxq=48, clsfg=23
+ptime=2000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=6, bw=799999 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=819241, parent=8120ee9c, borrow=8120ee9c
+         pri=2, maxidle=0, minidle=-2560000,
+         maxq=48, clsfg=23
+ptime=2000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=7, bw=799999 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=819241, parent=8120ee9c, borrow=8120ee9c
+         pri=3, maxidle=0, minidle=-2560000,
+         maxq=48, clsfg=23
+ptime=2000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=8, bw=799999 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=819241, parent=8120ee9c, borrow=8120ee9c
+         pri=4, maxidle=0, minidle=-2560000,
+         maxq=48, clsfg=23
+ptime=2000000/1000, cptime=40608/1000, offtime=166340/1000
+New cls: id=9, bw=8 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1, parent=8120ee9c, borrow=8120ee9c
+         pri=6, maxidle=1, minidle=-26,
+         maxq=48, clsfg=20
+gConfig.Interface[0].IP_Addr = 127.0.0.1
+gConfig.Interface[0].Subnet_Mask = 255.255.255.255
+gConfig.Interface[0].Description = LOCAL_LOOPBACK
+***** [iput_IpLinkUp] ifno=0, link_type:12
+Interface 0 ip = 127.0.0.1
+
+gConfig.Interface[1].IP_Addr = 192.168.1.254
+gConfig.Interface[1].Subnet_Mask = 255.255.255.0
+gConfig.Interface[1].Description = LAN
+gConfig.Interface[1].VLAN_Idx = 0
+ifp->ipaddr = C0A801FE
+ifp->netmask = FFFFFF00
+gConfig.Vlan_Ports[gConfig.Interface[1].VLAN_Idx].VNet = 1
+gConfig.Vlan_Ports[gConfig.Interface[1].VLAN_Idx].IGMP_Querier_Enable = 1
+br_register_static_mcast_mac: Add static entry 01:00:5E:00:00:01 to VLAN 0 (port 1)
+br_register_static_mcast_mac: Add static entry 01:00:5E:00:00:01 to VLAN 0 (port 2)
+br_register_static_mcast_mac: Add static entry 01:00:5E:00:00:02 to VLAN 0 (port 1)
+br_register_static_mcast_mac: Add static entry 01:00:5E:00:00:02 to VLAN 0 (port 2)
+br_register_static_mcast_mac: Add static entry 01:00:5E:00:00:16 to VLAN 0 (port 1)
+br_register_static_mcast_mac: Add static entry 01:00:5E:00:00:16 to VLAN 0 (port 2)
+br_register_static_mcast_mac: Add static entry 01:00:5E:7F:FF:FA to VLAN 0 (port 1)
+br_register_static_mcast_mac: Add static entry 01:00:5E:7F:FF:FA to VLAN 0 (port 2)
+[mac_0_init] ifno=1, vlan=0, vid=1, port_mask=0xf, mac_0_initialized=0
+[init_local_variables] ethwan=2, g_eth_wan_mode=3, wanitf=0xffffffff
+[init_local_variables] g_wan_itf=0x2, g_ipv6_acc_en=1, g_wanqos_en=8
+[e5 alloc_dma] pre_alloc_desc_total_num=736, line 4437
+[config_SW_VLAN] bTaggedIngress=0, bTaggedEgress=0
+mac_0_init: interface 1 registered to VLAN 1, port_mask=f
+MAC Address(ifno 1): 1c:c6:3c:c4:3d:a7
+***** [iput_IpLinkUp] ifno=1, link_type:12
+Interface 1 ip = 192.168.1.254
+
+gConfig.Interface[2].IP_Addr = 0.0.0.0
+gConfig.Interface[2].Subnet_Mask = 0.0.0.0
+gConfig.Interface[2].Description = WLAN
+gConfig.Interface[2].VLAN_Idx = 0
+ifp->ipaddr = C0A801FE
+ifp->netmask = FFFFFF00
+gConfig.Vlan_Ports[gConfig.Interface[2].VLAN_Idx].VNet = 1
+gConfig.Vlan_Ports[gConfig.Interface[2].VLAN_Idx].IGMP_Querier_Enable = 1
+[HWLAN] ifno=2 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=2, link_type:12
+Interface 2 ip = 192.168.1.254
+
+gConfig.Interface[3].IP_Addr = 0.0.0.0
+gConfig.Interface[3].Subnet_Mask = 0.0.0.0
+gConfig.Interface[3].Description = THS
+[mac_0_init] ifno=3, vlan=1, vid=2, port_mask=0x10, mac_0_initialized=1
+[config_SW_VLAN] bTaggedIngress=1, bTaggedEgress=1
+mac_0_init: interface 3 registered to VLAN 2, port_mask=10
+MAC Address(ifno 3): 1c:c6:3c:c4:3d:a7
+***** [iput_IpLinkUp] ifno=3, link_type:2
+time = 08/01/2003, 00:00:00
+iput_IpLinkUp(ifno=3)> ifp->add_default_route:1
+Init NAT data structure
+iput_IpLinkUp(ifno=3): set ddns_update to 1
+Interface 3 ip = 0.0.0.0
+
+gConfig.Interface[4].IP_Addr = 0.0.0.0
+gConfig.Interface[4].Subnet_Mask = 0.0.0.0
+gConfig.Interface[4].Description = ATM2
+[mac_0_init] ifno=4, vlan=1, vid=2, port_mask=0x10, mac_0_initialized=1
+[config_SW_VLAN] bTaggedIngress=1, bTaggedEgress=1
+mac_0_init: interface 4 registered to VLAN 2, port_mask=10
+MAC Address(ifno 4): 1c:c6:3c:c4:3d:a7
+***** [iput_IpLinkUp] ifno=4, link_type:2
+iput_IpLinkUp(ifno=4)> ifp->add_default_route:0
+Init NAT data structure
+No default route, no need to reinit the NAT data structure
+Interface 4 ip = 0.0.0.0
+
+gConfig.Interface[15].IP_Addr = 0.0.0.0
+gConfig.Interface[15].Subnet_Mask = 0.0.0.0
+gConfig.Interface[15].Description = PPPoE1
+IFLNK_PPPOE init : (Linkp)ifno = 15 idx = 2
+IFLNK_PPPOE init : (Driverp)ifno = 15 idx = 4
+pppInit> set (PPPShutdownRequest[15] = 0), do_connect_in_progress[15]=0
+[change_phase] start to release the allocated memory in if_table[0].ppp_p->state
+[pppoe_init]
+Interface 15 ip = 0.0.0.0
+
+gConfig.Interface[16].IP_Addr = 0.0.0.0
+gConfig.Interface[16].Subnet_Mask = 0.0.0.0
+gConfig.Interface[16].Description = PPPoE2
+IFLNK_PPPOE init : (Linkp)ifno = 16 idx = 2
+IFLNK_PPPOE init : (Driverp)ifno = 16 idx = 4
+pppInit> set (PPPShutdownRequest[16] = 0), do_connect_in_progress[16]=0
+[change_phase] start to release the allocated memory in if_table[0].ppp_p->state
+[pppoe_init]
+[PPPoE]gInitOk==1 , So Not Do pppoe_init
+Interface 16 ip = 0.0.0.0
+
+gConfig.Interface[31].IP_Addr = 0.0.0.0
+gConfig.Interface[31].Subnet_Mask = 0.0.0.0
+gConfig.Interface[31].Description = WDS1
+gConfig.Interface[31].VLAN_Idx = 0
+ifp->ipaddr = C0A801FE
+ifp->netmask = FFFFFF00
+gConfig.Vlan_Ports[gConfig.Interface[31].VLAN_Idx].VNet = 1
+gConfig.Vlan_Ports[gConfig.Interface[31].VLAN_Idx].IGMP_Querier_Enable = 1
+[HWLAN] ifno=31 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=31, link_type:12
+Interface 31 ip = 192.168.1.254
+
+gConfig.Interface[32].IP_Addr = 0.0.0.0
+gConfig.Interface[32].Subnet_Mask = 0.0.0.0
+gConfig.Interface[32].Description = WDS2
+gConfig.Interface[32].VLAN_Idx = 0
+ifp->ipaddr = C0A801FE
+ifp->netmask = FFFFFF00
+gConfig.Vlan_Ports[gConfig.Interface[32].VLAN_Idx].VNet = 1
+gConfig.Vlan_Ports[gConfig.Interface[32].VLAN_Idx].IGMP_Querier_Enable = 1
+[HWLAN] ifno=32 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=32, link_type:12
+Interface 32 ip = 192.168.1.254
+
+gConfig.Interface[33].IP_Addr = 0.0.0.0
+gConfig.Interface[33].Subnet_Mask = 0.0.0.0
+gConfig.Interface[33].Description = WDS3
+gConfig.Interface[33].VLAN_Idx = 0
+ifp->ipaddr = C0A801FE
+ifp->netmask = FFFFFF00
+gConfig.Vlan_Ports[gConfig.Interface[33].VLAN_Idx].VNet = 1
+gConfig.Vlan_Ports[gConfig.Interface[33].VLAN_Idx].IGMP_Querier_Enable = 1
+[HWLAN] ifno=33 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=33, link_type:12
+Interface 33 ip = 192.168.1.254
+
+gConfig.Interface[34].IP_Addr = 0.0.0.0
+gConfig.Interface[34].Subnet_Mask = 0.0.0.0
+gConfig.Interface[34].Description = WDS4
+gConfig.Interface[34].VLAN_Idx = 0
+ifp->ipaddr = C0A801FE
+ifp->netmask = FFFFFF00
+gConfig.Vlan_Ports[gConfig.Interface[34].VLAN_Idx].VNet = 1
+gConfig.Vlan_Ports[gConfig.Interface[34].VLAN_Idx].IGMP_Querier_Enable = 1
+[HWLAN] ifno=34 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=34, link_type:12
+Interface 34 ip = 192.168.1.254
+
+gConfig.Interface[35].IP_Addr = 0.0.0.0
+gConfig.Interface[35].Subnet_Mask = 0.0.0.0
+gConfig.Interface[35].Description = COM1
+pppInit> set (PPPShutdownRequest[35] = 0), do_connect_in_progress[35]=0
+[change_phase] start to release the allocated memory in if_table[0].ppp_p->state
+if_umts_init() WAN interface 35, UMTS-COM1: baudrate=115200
+if_umts_init() MAC:1C:C6:3C:C4:3D:A8
+RUNTASK id=2 umtsEventHandleTsk...
+RUNTASK id=3 umtsEventExeHandleTsk...
+RUNTASK id=4 umtsReceQueueTsk...
+RUNTASK id=5 umtsReceTsk...
+RUNTASK id=6 umtsWritTsk...
+Interface 35 ip = 0.0.0.0
+
+gConfig.Interface[36].IP_Addr = 192.168.2.253
+gConfig.Interface[36].Subnet_Mask = 255.255.255.0
+gConfig.Interface[36].Description = APLAN
+ruleCheck()> Group: 0,  Error: Useless rule index will be truncated, from idx:2
+ruleCheck()> Group: 1,  Error: Useless rule index will be truncated, from idx:22
+ruleCheck()> Group: 2,  Error: Useless rule index will be truncated, from idx:0
+CBAC rule format check succeed !!
+reqCBACBuf()> init match pool, Have: 1000
+Memory Address: 0xffffffff81168514 ~ 0xffffffff8116f290
+reqCBACBuf()> init timeGap pool, Have: 10000
+Memory Address: 0xffffffff8116f290 ~ 0xffffffff8119ffe4
+reqCBACBuf()> init sameHost pool, Have: 2000
+Memory Address: 0xffffffff8119ffe4 ~ 0xffffffff811afa04
+CBAC rule pool initialized !!
+Init NAT data structure
+No default route, no need to reinit the NAT data structure
+RUNTASK id=7 if_task if0...
+RUNTASK id=8 if_task if1...
+RUNTASK id=9 if_task if2...
+RUNTASK id=10 if_task if3...
+RUNTASK id=11 if_task if4...
+RUNTASK id=12 if_task if31...
+RUNTASK id=13 if_task if32...
+RUNTASK id=14 if_task if33...
+RUNTASK id=15 if_task if34...
+RUNTASK id=16 if_task if35...
+RUNTASK id=17 if_task if36...
+RUNTASK id=18 timer_task...
+RUNTASK id=19 conn_mgr...
+RUNTASK id=20 main_8021x...
+RUNTASK id=21 saveRandomSeedTask...
+vfs_codepage_init() TimeZone:23, vfs_cp_idx:23, vfs_cp_ID:5
+fat_codePageInit() TimeZone:23, codePage:CP850, cPID:5, cpSize:256, toUpSize:30
+==[vfs_register_filesystem]============================
+list size:1,  Method:0x808f5cfc
+  1) Type:0xfc, Name:BRN-VFS
+=================================================================
+==[vfs_register_filesystem]============================
+list size:7,  Method:0x808f5e88
+  1) Type:0x01, Name:FAT12
+  2) Type:0x04, Name:FAT16
+  3) Type:0x06, Name:FAT16
+  4) Type:0x0b, Name:FAT32
+  5) Type:0x0c, Name:FAT32
+  6) Type:0x0e, Name:FAT16
+  7) Type:0x81, Name:Minix
+=================================================================
+[0-START]=========================================
+  Node 000-[\],  DIR, MountFlag:0x00
+[0-END]===========================================
+  [1-START]=========================================
+    Node 001-[dev],  DIR, MountFlag:0x00
+  [1-END]===========================================
+  [1-START]=========================================
+    Node 002-[mnt],  DIR, MountFlag:0x00
+  [1-END]===========================================
+dump_inode() freeCnt:77, usedCnt:3
+otg_host_power_set() USB Host0 Power OFF
+usb_host_power_set() isOn:1
+otg_host_power_set() USB Host1 Power OFF
+usb_host_power_set() isOn:1
+RUNTASK id=23 period_task...
+
+========== ADSL Modem initialization OK ! ======
+
+[Dhcpd_Start]
+RUNTASK id=24 dhcp_daemon...
+main()> usb:1, ftp:0
+found signature: 78h 56h 34h 12h
+ulImgLens=2166494, LENGTH[5]-12=7864308, type:0
+length checking OK
+[0]2 find End at 0xFFFFFFFFB0290C00 len=2166494, type=0
+found signature: 78h 56h 34h 12h
+ulImgLens=6978, LENGTH[5]-12=7864308, type:10
+length checking OK
+[1]2 find End at 0xFFFFFFFFB0292800 len=6978, type=10
+found signature: 78h 56h 34h 12h
+ulImgLens=12616, LENGTH[5]-12=7864308, type:11
+length checking OK
+[2]2 find End at 0xFFFFFFFFB0295C00 len=12616, type=11
+found signature: 78h 56h 34h 12h
+ulImgLens=231260, LENGTH[5]-12=7864308, type:12
+length checking OK
+[3]2 find End at 0xFFFFFFFFB02CE400 len=231260, type=12
+---[ LZMA head start in 0xFFFFFFFFB02CE800 ]---
+found signature: 78h 56h 34h 12h
+ulImgLens=365159, LENGTH[5]-12=7864308, type:50
+length checking OK
+[4]2 find End at 0xFFFFFFFFB0327800 len=365159, type=50
+---[ LZMA head start in 0xFFFFFFFFB0327C00 ]---
+found signature: 78h 56h 34h 12h
+ulImgLens=363500, LENGTH[5]-12=7864308, type:90
+length checking OK
+[5]2 find End at 0xFFFFFFFFB0380800 len=363500, type=90
+---[ LZMA head start in 0xFFFFFFFFB0380C00 ]---
+found signature: 78h 56h 34h 12h
+ulImgLens=202985, LENGTH[5]-12=7864308, type:8
+length checking OK
+[6]2 find End at 0xFFFFFFFFB03B2400 len=202985, type=8
+[get_web_address] Web-0:  addr:0xb0291000, len:6978, type:10
+[get_web_address] Web-1:  addr:0xb0292c00, len:12616, type:11
+[get_web_address] Web-2:  addr:0xb0296000, len:231260, type:12
+RUNTASK httpd...
+RUNTASK id=28 SSLClient ...
+g_Client_Cert_Array=0x81c49558
+RUNTASK id=29 dnsproxy...
+RUNTASK id=30 dhcpd_mgmt_task...
+runDDNS() ddns_enable:0, DDNSTaskRun:0, needReRunDDNS:1
+UPnP task run-up... upnpFunc:1
+UPNP Device initialize success! slot=31
+TR64 is enabled
+TR64 Device initialize success! slot=32
+RUNTASK id=35 wscmain...
+RUNTASK id=36 wsc_Send_eap_packet...
+RUNTASK id=37 wsc_Send_UPNP_packet...
+RUNTASK id=38 WSC_WaitUserAction_Task...
+UART RX Output
+Starting Multitask...
+
+===== General exception ======
+EPC   -> 0x80006F20
+CO_SR -> 0x0000FC03
+Register Dump: Saved Area : Begin 0x8166CC34 End 0x8166CDCF
+RES:0x00000000
+ RA:0x8000585C
+ AT:0x809A0000
+ V0:0x80000010
+ V1:0x0000FC03
+ A0:0x00000015
+ A1:0x00000008
+ A2:0x01BC3854
+ T0:0x0000FC01
+ T1:0x00000000
+ T2:0x0000005A
+ T3:0x00000001
+ T4:0x00000000
+ T5:0x00000000
+ T6:0x0FFFFFFF
+ T7:0x0000000F
+ T8:0x808AF8F5
+ T9:0x00000000
+ S0:0x00000BB8
+ S1:0x00000015
+ S2:0x00000015
+ S3:0xFFFFFFFF
+ S4:0x00000001
+ S5:0x00000000
+ S6:0x01E02108
+ S7:0xC1838500
+ S8:0x3052E99D
+EPC:0x80006F20
+ SR:0x0000FC03
+ CAUSE:0x80000010
+ Instruction : 0x14628821
+ SP (Save Point) :0x8166CC34
+==============================
+
+===================
+Print call path
+0x00000000,Function=0x80006EC0  PC=0x80006F20
+0x00000001,Function=0x8000584C  PC=0x80005854
+0x00000002,Function=0x00000000  PC=0x80005844
+
+===================
+
+===================
+Print call stacks
+0x00000000 Stack:
+0x8166CEF0: 0x00000BB8 0x00000015 0x00000064 0x80113704
+0x8166CF00: 0x00000001 0x8000585C 0xC1838500 0x00000000
+
+0x00000001 Stack:
+0x8166CF10: 0x8000584C 0x00000000 0x80113704 0x00000000</nowiki>
+</WRAP>\\
+
+==== u-boot bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 2013.04-rc1-g9d05354-dirty (Jul 06 2013 - 01:13:10) VGV7519
+
+Board: Arcadyan VGV7519 VRX288 Board
+SoC:   Lantiq VRX288 v1.1
+CPU:   500 MHz
+IO:    250 MHz
+BUS:   250 MHz
+BOOT:  NOR
+DRAM:  64 MiB
+Flash: 16 MiB
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ltq-eth
+VGV7519 #</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>ROM VER: 1.0.5
+CFG 01
+
+
+U-Boot 2014.04-g1702a40-dirty (Jun 21 2014 - 16:13:24) VGV7519
+
+Board: Arcadyan VGV7519 VRX288 Board
+SoC:   Lantiq VRX288 v1.1
+CPU:   500 MHz
+IO:    250 MHz
+BUS:   250 MHz
+BOOT:  NOR
+DRAM:  64 MiB
+Flash: 16 MiB
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   firmware: using built-in firmware lantiq/vrx200_phy11g_a1x.fw
+ltq-eth
+Hit any key to stop autoboot:  0
+Wrong Image Format for bootm command
+ERROR: can't get kernel image!
+VGV7519 # bootm 0xB0080000
+## Booting kernel from Legacy Image at b0080000 ...
+   Image Name:   MIPS OpenWrt Linux-3.10.36
+   Created:      2014-06-21  11:50:30 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1414748 Bytes = 1.3 MiB
+   Load Address: 80002000
+   Entry Point:  80002000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+[    0.000000] Linux version 3.10.36 (thelizard@ubuntu) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r41296) ) #1 Sat Jun 21 13:50:23 CEST 2014
+[    0.000000] SoC: VR9 rev 1.1
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019555 (MIPS 34Kc)
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyLTQ0,115200 init=/etc/preinit
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=0007cf41
+[    0.000000] Readback ErrCtl register=0007cf41
+[    0.000000] Memory: 60476k/65536k available (3008k kernel code, 5060k reserved, 1018k data, 188k init, 0k highmem)
+[    0.000000] NR_IRQS:256
+[    0.000000] CPU Clock: 500MHz
+[    0.000000] Calibrating delay loop... 332.54 BogoMIPS (lpj=665088)
+[    0.032000] pid_max: default: 32768 minimum: 301
+[    0.036000] Mount-cache hash table entries: 512
+[    0.040000] pinctrl core: initialized pinctrl subsystem
+[    0.044000] NET: Registered protocol family 16
+[    0.056000] pinctrl-xway 1e100b10.pinmux: Init done
+[    0.060000] dma-xway 1e104100.dma: Init done - hw rev: 7, ports: 7, channels: 28
+[    0.068000] dcdc-xrx200 1f106a00.dcdc: Core Voltage : 1016 mV
+[    0.072000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_assert[185]
+[    0.184000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_deassert[193]
+[    0.284000] ifx_pcie_wait_phy_link_up timeout
+[    0.288000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_assert[185]
+[    0.400000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_deassert[193]
+[    0.500000] ifx_pcie_wait_phy_link_up timeout
+[    0.504000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_assert[185]
+[    0.616000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_deassert[193]
+[    0.716000] ifx_pcie_wait_phy_link_up timeout
+[    0.720000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_assert[185]
+[    0.832000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_deassert[193]
+[    0.932000] ifx_pcie_wait_phy_link_up timeout
+[    0.936000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_assert[185]
+[    1.048000] arch/mips/pci/ifxmips_pcie_vr9.h:pcie_device_rst_deassert[193]
+[    1.148000] ifx_pcie_wait_phy_link_up timeout
+[    1.152000] pcie_rc_initialize link up failed!!!!!
+[    1.164000] bio: create slab <bio-0> at 0
+[    1.168000] gpio-stp-xway 1e100bb0.stp: Init done
+[    1.172000] usbcore: registered new interface driver usbfs
+[    1.176000] usbcore: registered new interface driver hub
+[    1.180000] usbcore: registered new device driver usb
+[    1.184000] Switching to clocksource MIPS
+[    1.192000] NET: Registered protocol family 2
+[    1.196000] TCP established hash table entries: 512 (order: 0, 4096 bytes)
+[    1.200000] TCP bind hash table entries: 512 (order: -1, 2048 bytes)
+[    1.208000] TCP: Hash tables configured (established 512 bind 512)
+[    1.216000] TCP: reno registered
+[    1.216000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    1.224000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    1.232000] NET: Registered protocol family 1
+[    1.236000] gptu: totally 6 16-bit timers/counters
+[    1.240000] gptu: misc_register on minor 63
+[    1.244000] gptu: succeeded to request irq 126
+[    1.248000] gptu: succeeded to request irq 127
+[    1.252000] gptu: succeeded to request irq 128
+[    1.256000] gptu: succeeded to request irq 129
+[    1.264000] gptu: succeeded to request irq 130
+[    1.268000] gptu: succeeded to request irq 131
+[    1.272000] phy-xrx200 gphy-xrx200.5: requesting lantiq/vr9_phy11g_a1x.bin
+[    1.280000] phy-xrx200 gphy-xrx200.5: booting GPHY0 firmware at 38C0000
+[    1.288000] phy-xrx200 gphy-xrx200.5: booting GPHY1 firmware at 38C0000
+[    1.396000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    1.404000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    1.412000] msgmni has been set to 118
+[    1.416000] io scheduler noop registered
+[    1.420000] io scheduler deadline registered (default)
+[    1.428000] 1e100c00.serial: ttyLTQ0 at MMIO 0x1e100c00 (irq = 112) is a lantiq,asc
+[    1.436000] console [ttyLTQ0] enabled, bootconsole disabled
+[    1.436000] console [ttyLTQ0] enabled, bootconsole disabled
+[    1.448000] ltq_nor: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x00007f Chip ID 0x0022cb
+[    1.456000] Amd/Fujitsu Extended Query Table at 0x0040
+[    1.464000]   Amd/Fujitsu Extended Query version 1.1.
+[    1.468000] number of CFI chips: 1
+[    1.472000] 3 ofpart partitions found on MTD device ltq_nor
+[    1.476000] Creating 3 MTD partitions on "ltq_nor":
+[    1.480000] 0x000000000000-0x000000040000 : "uboot"
+[    1.488000] 0x000000060000-0x000000070000 : "uboot_env"
+[    1.492000] 0x000000080000-0x000001000000 : "firmware"
+[    1.496000] mtd: partition "firmware" extends beyond the end of device "ltq_nor" -- size truncated to 0x780000
+[    1.508000] 0x0000001d969c-0x000000800000 : "rootfs"
+[    1.512000] mtd: partition "rootfs" must either start or end on erase block boundary or be smaller than an erase block -- forcing read-only
+[    1.528000] mtd: device 3 (rootfs) set to be root filesystem
+[    1.532000] mtd: partition "rootfs_data" created automatically, ofs=0x3f0000, len=0x410000
+[    1.540000] 0x0000003f0000-0x000000800000 : "rootfs_data"
+[    1.672000] libphy: lantiq,xrx200-mdio: probed
+[    1.680000] net-xrx200: invalid MAC, using random
+[    1.684000] eth0: attached PHY [Lantiq XWAY VR9 GPHY 11G v1.3] (phy_addr=0:00, irq=-1)
+[    1.692000] eth0: attached PHY [Lantiq XWAY VR9 GPHY 11G v1.3] (phy_addr=0:01, irq=-1)
+[    1.700000] eth0: attached PHY [Lantiq XWAY VR9 GPHY 11G v1.4] (phy_addr=0:11, irq=-1)
+[    1.708000] eth0: attached PHY [Lantiq XWAY VR9 GPHY 11G v1.4] (phy_addr=0:13, irq=-1)
+[    1.716000] net-xrx200: invalid MAC, using random
+[    1.720000] eth1: attached PHY [Lantiq XWAY VR9 GPHY 11G v1.3] (phy_addr=0:05, irq=-1)
+[    1.728000] wdt 1f8803f0.watchdog: Init done
+[    1.732000] leds-gpio gpio-leds.7: pins are not configured from the driver
+[    1.744000] TCP: cubic registered
+[    1.744000] NET: Registered protocol family 17
+[    1.752000] 8021q: 802.1Q VLAN Support v1.8
+[    1.760000] UBIFS error (pid 1): ubifs_mount: cannot open "ubi0:rootfs", error -19
+[    1.772000] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    1.776000] Freeing unused kernel memory: 188K (803f1000 - 80420000)
+[    2.700000] eth0: port 0 got link
+procd: Console is alive
+procd: - watchdog -
+[    4.572000] IFXUSB: ifxusb_hcd: version 3.2 B110801
+[    4.576000] Chip Version :01c0 BurstSize=0
+[    5.180000] IFXUSB: USB core #0 soft-reset
+[    5.484000] IFXUSB: USB core #0 soft-reset
+[    5.488000] ifxusb_hcd ifxusb_hcd: IFX USB Controller
+[    5.492000] ifxusb_hcd ifxusb_hcd: new USB bus registered, assigned bus number 1
+[    5.500000] ifxusb_hcd ifxusb_hcd: irq 62, io mem 0xbe101000
+[    5.504000] IFXUSB: Init: Power Port (0)
+[    5.512000] hub 1-0:1.0: USB hub found
+[    5.512000] hub 1-0:1.0: 1 port detected
+[    6.016000] IFXUSB: USB core #1 soft-reset
+[    6.320000] IFXUSB: USB core #1 soft-reset
+[    6.324000] ifxusb_hcd ifxusb_hcd: IFX USB Controller
+[    6.328000] ifxusb_hcd ifxusb_hcd: new USB bus registered, assigned bus number 2
+[    6.336000] ifxusb_hcd ifxusb_hcd: irq 91, io mem 0xbe106000
+[    6.340000] IFXUSB: Init: Power Port (0)
+[    6.344000] hub 2-0:1.0: USB hub found
+[    6.348000] hub 2-0:1.0: 1 port detected
+[    6.352000] ifxusb_hcd ifxusb_hcd: requested GPIO 232
+procd: - preinit -
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+jffs2 is ready
+jffs2 is ready
+[    9.832000] jffs2: notice: (267) jffs2_build_xattr_subsystem: complete building xattr subsystem, 1 of xdatum (0 unchecked, 0 orphan) and 9 of xref (0 dead, 2 orphan) found.
+switching to overlay
+procd: - early -
+procd: - watchdog -
+procd: - ubus -
+procd: - init -
+Please press Enter to activate this console.
+[   11.252000] IFXOS, Version 1.5.14 (c) Copyright 2009, Lantiq Deutschland GmbH
+
+[   11.276000] NET: Registered protocol family 10
+[   11.284000] NET: Registered protocol family 8
+[   11.288000] NET: Registered protocol family 20
+[   11.300000] sit: IPv6 over IPv4 tunneling driver
+[   11.316000] PPP generic driver version 2.4.2
+[   11.336000] nf_conntrack version 0.5.0 (947 buckets, 3788 max)
+[   11.352000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   11.388000] MEI CPE Driver, Version 1.2.0
+
+[   11.392000] (c) Copyright 2009, Infineon Technologies AG
+### MEI CPE - MEI CPE - MEI CPE - MEI CPE ###
+
+
+Lantiq CPE API Driver version: DSL CPE API V4.11.4
+[   11.420000]
+[   11.420000] Predefined debug level: 2
+[   11.428000] Loading modules backported from Linux version master-2014-05-22-0-gf2032ea
+[   11.436000] Backport generated by backports.git backports-20140320-37-g5c33da0
+[   11.444000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   11.456000] Infineon Technologies DEU driver version 2.0.0
+[   11.460000] IFX DEU DES initialized (multiblock).
+[   11.468000] IFX DEU AES initialized (multiblock).
+[   11.472000] IFX DEU ARC4 initialized (multiblock).
+[   11.476000] IFX DEU SHA1 initialized.
+[   11.480000] IFX DEU MD5 initialized.
+[   11.484000] IFX DEU SHA1_HMAC initialized.
+[   11.488000] IFX DEU MD5_HMAC initialized.
+[   11.508000] NET: Registered protocol family 24
+[   11.528000] xt_time: kernel timezone is -0000
+[   11.552000] cfg80211: Calling CRDA to update world regulatory domain
+[   11.556000] cfg80211: World regulatory domain updated:
+[   11.560000] cfg80211:  DFS Master region: unset
+[   11.564000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   11.576000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.584000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.592000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.600000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.608000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   11.616000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   18.052000] device eth0 entered promiscuous mode
+[   18.060000] br-lan: port 1(eth0) entered forwarding state
+[   18.064000] br-lan: port 1(eth0) entered forwarding state
+[   20.068000] br-lan: port 1(eth0) entered forwarding state
+procd: - init complete -</nowiki>
+</WRAP>\\
+
+
+===== Progress =====
+Starting from LEDE 17.01.01 stable and onwards this router is supported. Latest addition is the support for switch VLAN configuration.
+              
+
+===== Notes =====
+
+SIP:
+
+daemon to test:
+sofia-sip
+pjsip(already in OpenWrt)
+owsip(already in OpenWrt)
+
+driver vmmc:
+http://mirror2.openwrt.org/sources/drv_vmmc-1.9.0.tar.bz2
+drv_vmmc-1.9.0/FEATURES_and_OPEN_ISSUES
+* TAPI 3.13.0.2, drv_vmmc 1.9.0.3, KPI 2.2.0.0, MPS 2.2.2.5
+* XWAY VRX288 VoIP Firmware  2.1.0.7.0
+Original firmware 1.9.0.4
+
+need firmware dump for dsl, voip and coef + populate openwrt/package/ifx-vmmc/Makefile
+
+driver tapi: 
+[[http://mirror2.openwrt.org/sources/drv_tapi-3.13.0.tar.bz2]]
+Same level as original firmware
+
+[[http://dev.phrozen.org/ltq-mirror/]] (dsl and other stuff)
+
+DSL:
+available version 4.11.4 - my firmware version: 4.12.4 - May works
+need firmware dump
+
+SWITCH:
+look at switch_utils note at [[toh:tp-link:td-w8970_v1#switch_utility]]
+we need to decompile original firmware and recovery switch initialization params
+
+FXO:
+Si3050+Si3011 should be a FXO interface. It seems they implemented FXO using external component.
+
+WIFI:
+I haven't decapped the shield, but by looking to original SuperTask firmware, it seems to be RT3090 Minipci + NICInitRT5390RF
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>lantiq vrx288 16Flash 64RAM 4Port GigabitEthernet 1NIC 1WNIC USB 2USB ath9k MIPS MIPS32 34K VR9 VDSL2 JTAG}}

@@ -1,0 +1,1120 @@
+====== NETGEAR DM200 ======
+
+ADSL / VDSL2 Modem Router based on [[docs:techref:hardware:soc:soc.lantiq|Lantiq VRX220]] SoC.
+
+Key features:
+
+  * Works out-of-the-box with OpenWrt, //including// the ADSL/VDSL2 modem!
+  * Easy to flash with OpenWrt with vendor's web interface.
+  * 1x 10/100 wired Ethernet interface.
+  * No WiFi, no USB.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^DM200$"}
+} -->
+
+The hardware is sometimes referenced with names such as DM200-100EUR, DM200-100AUS, DM200-100NAS, DM200-100EUS. They are normally all supported by OpenWrt. It is likely that each variant simply ships with a DSL firmware that is adapted to a particular region of the world.
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "ethernet100mports", "modem"],
+  "filterColumns": {"model": "^DM200$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^DM200$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+Before installing OpenWrt, see [[#Fix U-Boot Configuration to Support Larger Kernels]] -- you might need serial access.
+
+** Installation steps with stock firmware (V1.0.0.44) **
+
+This presumes that you have a brand-new, unconfigured DM200.  If you have been using the stock firmware on the router, perform a factory reset **first**.
+
+  - Download ''openwrt-${VERSION}-lantiq-xrx200-netgear_dm200-squashfs-factory.img'' (see link above)
+  - Connect directly to the router's Ethernet interface.
+    * By default, you'll get a DHCP lease in ''192.168.5.0/24''.
+  - Access the router's advanced settings web interface via http://192.168.5.1/adv_index.htm
+    * This URL bypasses the stock firmware's setup wizard (Netgear Genie).
+  - From the left-side menu, select ''Administration'' -> ''Firmware Upgrade''.
+  - Select the OpenWrt firmware image from your hard disk and press ''Upload''.
+    * //Don't switch browser tabs or windows while this is in progress.//
+  - Once the upload has finished, you will be prompted to confirm a "downgrade" in a JavaScript confirmation box. Press ''OK'':
+    * <code>Warning! You are trying to download firmware with version
+VOpenWrt.r${VERSION} is older than the firmware with version
+V1.0.0.44 you had. Do you want to continue?</code>
+    * **Note**: Chrome automatically presses ''Cancel'' if the browser window or tab loses focus, which returns you to the upload page, and you'll need to upload the firmware again.
+  - The router will again have you confirm the uploaded version to start the process, press ''Yes'':
+    * <code>Firmware Upgrade
+Current Version    1.0.0.44
+Uploaded Version    OpenWrt.r${VERSION}</code>
+  - You will then get a progress bar with the message:
+    * <code>Note: It will take about 3 minutes for firmware upgrade.
+Please don't turn off the power or press reset button.</code>
+  - Once the firmware update has completed, the message "Updating Settings" appears with second progress bar. At this point OpenWrt is booting for the first time, and you can ignore this second progress bar (it will eventually fail).
+  - On your computer, get a new DHCP lease (disconnect and reconnect the Ethernet cable).
+    * You should get a new DHCP lease in ''192.168.1.0/24''.
+  - Access OpenWrt LuCI at http://192.168.1.1/ and continue with [[docs:guide-quick-start:walkthrough_login|standard OpenWrt setup procedures]].
+
+===== Fix U-Boot Configuration to Support Larger Kernels =====
+
+Some devices were shipped with u-boot settings which only loads the first 2MiB of the kernel from flash before trying to boot it, which is not enough for openwrt later than 18.06; see this mailing list thread:
+
+[[https://lists.openwrt.org/pipermail/openwrt-devel/2019-January/021207.html]]
+
+Practically this means that before installing openwrt you should be OK with potentially having to use the serial port to get it working, or using TFTP to load the original firmware. See [[#Restoring to Stock Firmware]].
+
+This typically causes this error on the serial console while booting the kernel:
+
+  Verifying Checksum ... Bad Data CRC
+
+To see if this is the problem, get a bootloader console (connect to the serial port, and press a key when it says "Hit any key to stop autoboot"), then run:
+
+  printenv bootcmd
+
+If it shows a read size of 0x200000 like this, then your device is affected:
+
+  bootcmd="sleep 1;nmrp;sf probe 0:3;sf read $loadaddr 0x30000 0x200000;bootm $loadaddr"
+
+To make it work with bigger kernels, run:
+
+  setenv bootcmd "sleep 1;nmrp;sf probe 0:3;sf read $loadaddr 0x30000 0x400000;bootm $loadaddr"
+  saveenv
+
+==== Check from OpenWrt ====
+
+If you already have an older version of OpenWrt running, you can check the bootcmd with this over ssh:
+
+  strings /dev/$(grep u-boot-env /proc/mtd | cut -d: -f1) | grep bootcmd=
+
+It should be possible to modify this from OpenWrt; see [[docs:techref:bootloader:uboot.config#Accessing U-Boot environment variables in OpenWrt]].
+
+===== DSL firmware =====
+
+A firmware image for the DSL chip is not //usually// required.  However, this can be extracted from the official firmware images using ''binwalk'':
+
+<code>
+$ unzip DM200_V1.0.0.44.zip
+Archive:  DM200_V1.0.0.44.zip
+  inflating: DM200-V1.0.0.44.img     
+  inflating: DM200-V1.0.0.44_Release Notes.html 
+
+$ binwalk -e DM200-V1.0.0.44.img
+
+DECIMAL       HEXADECIMAL     DESCRIPTION
+--------------------------------------------------------------------------------
+128           0x80            uImage header, header size: 64 bytes, header CRC: 0x26219D22, created: 2017-02-14 12:53:36, image size: 1633744 bytes, Data Address: 0x80002000, Entry Point: 0x8000A970, data CRC: 0x5DBDC8F3, OS: Linux, CPU: MIPS, image type: OS Kernel Image, compression type: lzma, image name: "MIPS LTQCPE Linux-3.10.12"
+192           0xC0            LZMA compressed data, properties: 0x5D, dictionary size: 8388608 bytes, uncompressed size: 4902224 bytes
+1638464       0x190040        uImage header, header size: 64 bytes, header CRC: 0xF14322D7, created: 2017-02-14 12:53:43, image size: 466944 bytes, Data Address: 0x40908000, Entry Point: 0x40908000, data CRC: 0x1706CB3, OS: Linux, CPU: MIPS, image type: OS Kernel Image, compression type: lzma, image name: "Linux-3.10.12"
+1638528       0x190080        Squashfs filesystem, little endian, version 4.0, compression:xz, size: 465783 bytes, 3 inodes, blocksize: 131072 bytes, created: 2017-02-14 12:53:43
+2162752       0x210040        uImage header, header size: 64 bytes, header CRC: 0xE9716ADE, created: 2017-02-14 12:53:43, image size: 4913152 bytes, Data Address: 0x40908000, Entry Point: 0x40908000, data CRC: 0xF19ED3AF, OS: Linux, CPU: MIPS, image type: OS Kernel Image, compression type: lzma, image name: "Linux-3.10.12"
+2162816       0x210080        Squashfs filesystem, little endian, version 4.0, compression:xz, size: 4912042 bytes, 2268 inodes, blocksize: 131072 bytes, created: 2017-02-14 12:53:42
+
+$ ls _DM200-V1.0.0.44.img.extracted/
+190080.squashfs  dsl_vr9_firmware_xdsl-05.07.09.05.01.07_05.07.03.0F.00.01.bin
+210080.squashfs  squashfs-root
+C0               squashfs-root-0
+C0.7z            xcpe_hw.bin
+</code>
+
+''C0.7z'' contains the firmware images.  ''binwalk'' should have extracted this for you:
+
+  * ''xcpe_hw.bin'': reference to the full firmware filename
+  * ''dsl_vr9*.bin'': the actual firmware image
+
+
+===== Bridged mode with OpenWrt =====
+
+The DM200 has a single Ethernet interface (''eth0''). You will need to bridge traffic to a VLAN-tagged interface (eg: ''eth0.2'') to prevent your LAN from leaking out the DSL interface.
+
+Unlike other OpenWrt routers (which have multiple Ethernet ports), there is no internal switch to configure.
+
+==== ADSL and VDSL + ATM ====
+
+**ADSL** and **VDSL + ATM** encapsulates Ethernet frames in AAL5, and requires ATM bridges (VPI / VCI).
+
+When using an ATM-based connection, you must define an ATM bridge for each VPI/VCI in use by your ISP, and then bridge each of these to tagged VLANs on ''eth0'' (eg: ''atm0'' -> ''eth0.2'').
+
+See [[docs:guide-user:firewall:fw3_network#lan_bridge| LAN bridge ]] for details.
+
+==== VDSL + PTM ====
+
+**VDSL + PTM** ([[https://en.wikipedia.org/wiki/Ethernet_in_the_first_mile|EFM / ETTH / IEEE 802.3ah]]) natively sends Ethernet frames over your VDSL connection. However, your ISP probably requires that you encapsulate traffic in a [[https://en.wikipedia.org/wiki/IEEE_802.1Q|IEEE 802.1q VLAN]].
+
+Because the device has only one wired ethernet port (''eth0''), you will need to use tagged VLANs to prevent traffic from your LAN from leaking out the VDSL connection.
+
+There are two possible strategies to bring the VDSL interface to another router:
+
+  * Define one bridge for each VDSL VLAN to different VLANs on ''eth0''. This requires more configuration on your DM200 and any managed switch you have installed between it and your router (for each VDSL VLAN), but only tags traffic with once (4 bytes/packet). OpenWrt doesn't appear to support setting [[wp>IEEE_P802.1p|802.1p priority bits]], which may be required for by your ISP for IPTV or VoIP services.
+
+  * Define one bridge for the "raw" VDSL interface to a single tagged VLAN on ''eth0''. This requires less configuration on your DM200 and any managed switch (you only configure these once for all VDSL VLANs), but tags each packet twice (8 bytes/packet). If your //other// router supports it, you can set [[wp>IEEE_P802.1p|802.1p priority bits]], or generally configure arbitrary numbers of VLANs.
+
+Both strategies don't //require// a managed switch, unless your //router// (not the DM200) has only one ethernet interface.
+
+Example ''/etc/config/network'' segment to bridge ''VDSL VLAN 10'' to ''VLAN ID 10'':
+
+<code>
+config interface 'vdslbr'
+	option type 'bridge'
+	option proto 'none'
+	option ifname 'dsl0.10 eth0.10'
+</code>
+
+Example ''/etc/config/network'' segment to bridge the entire VDSL connection (''dsl0'') to ''VLAN ID 2'', effectively //double-tagging// all traffic:
+
+<code>
+config interface 'vdslbr'
+	option type 'bridge'
+	option proto 'none'
+	option ifname 'dsl0 eth0.2'
+</code>
+
+If you have a managed switch and **two** interfaces on your router, configure your switch as follows:
+
+  - Set the DM200's port as a ''GENERAL'' port.
+  - Add ''VLAN ID 2'' in ''TAGGED'' mode to the DM200's port.
+  - Add ''VLAN ID 3'' in ''UNTAGGED'' mode to the DM200's port, and set ''PVID = 3''.
+  - Set your router's WAN interface as an ''ACCESS'' port.
+  - Assign ''VLAN ID 2'' to your router's WAN port, and set ''PVID = 2''.
+
+You can then configure your router to work with only one layer of VLAN tagging. For example, if your ISP uses PPPoE on ''VLAN ID = 10'', and your router's WAN interface is ''eth1'', you can access it with:
+
+<code>
+# Add the ISP's Internet/PPPoE VLAN as eth1.10
+vconfig add eth1 10
+
+# Look for PPPoE access concentrators on the VLAN
+pppoe-discovery -I eth1.10
+
+# Do other PPPoE configuration here...
+</code>
+
+If you don't have a managed switch, or have only **one** network interface on your router, you will need to unwrap both layers of VLAN tagging on your router.  For example, if your ISP uses PPPoE on ''VLAN ID = 10'', and you've bridged the VDSL interface to ''VLAN ID 2'', you can access it with:
+
+<code>
+# Add the VDSL bridge interface as eth0.2
+vconfig add eth0 2
+
+# Add the ISP's Internet/PPPoE VLAN as eth0.2.10
+vconfig add eth0.2 10
+
+# Look for PPPoE access concentrators on the VLAN
+pppoe-discovery -I eth0.2.10
+
+# Do other PPPoE configuration here...
+</code>
+
+
+** FIXME: There is a lot of discussion in this thread, and it is not clear why is this is relevant? **
+
+If you are considering using 'bridged mode' on an ADSL/VDSL connection, please study this thread on openwrt forum before installing LEDE/OpenWrt on the DM200: [[https://forum.openwrt.org/t/lede-device-as-adsl-bridged-modem/14329]]
+
+===== Restoring to Stock Firmware =====
+<WRAP center round important 75%>The stock firmware is based on a seriously old kernel (3.10.12, from **2013**), and is known to do some questionable things. For the sake of security, **please consider not using factory firmware**, or at least not connecting it to the internet (i.e. only as a modem, with the routing functionality disabled).</WRAP>
+
+Stock firmware can either be flashed with nmrpflash or over a serial connection.
+The stock firmware can be downloaded from [[https://www.netgear.com/support/product/DM200]]. The download is a ZIP file from which the image file (DM200-<version>.img) must be extracted.
+
+=== With ''nmrpflash'' ===
+Prerequisites:
+  - Stock firmware
+  - an ethernet cable
+  - nmrpflash by Joseph C. Lehner from [[https://github.com/jclehner/nmrpflash]], also do read README.md
+
+== Flashing stock firmware ==
+  * Give your computer a static ethernet IP in 192.168.5.0/24 but not 192.168.5.1
+  * Switch modem off
+  * Connect modem to your computer with an ethernet cable
+  * Run:
+<code>$ nmrp -i <ethernet interface> -a 192.168.5.1 -f DM200-<version>.img</code>
+  * Reboot when prompted
+
+=== Using a Serial Connection ===
+Prerequisites:
+  - Stock firmware
+  - USB to Serial adapter and jumper wires
+  - ''curl''
+  - Soldering iron (only needed if there is not already a connector soldered to the serial connector)
+
+== Serial prompt setup ==
+  - Open the case to the DM200. There should be a row of four solder pads to the right of the front panel LEDs. This is the serial port.
+  - Below the pads is a small EEPROM (8 pin IC). With the back of the device facing you, there should be four solder pads to the right of the EEPROM; this is the serial port. Their order is as follows: **EEPROM -> GND -> TX -> RX -> 3v3** (looking at the PCB with the back of the device facing you). For a better representation, see the image in the Opening Hardware section below.
+  - Hook up the USB to Serial adapter (tx to rx and rx to tx). 
+    * **MAKE SURE TO SET THE ADAPTER TO 3.3V MODE**
+    * You may want to solder a 4 way male dupont connector to the pads to make connecting easier.
+  - Now using a tool such as picocom [[https://linux.die.net/man/8/picocom]], start a serial connection to the device (baud rate = 115200). When power cycling the device, you should see some boot messages, if not, check your connections.
+
+== Entering a VR9 prompt ==
+
+  * With a serial connection to the device, power it on and mash enter until the ''VR9 #'' prompt appears
+  * If you have no such prompt, and yet you see boot messages, then it is possible your connection to the **RX** pad on the PCB is bad
+
+== Flashing stock firmware ==
+
+  - Give your computer a static ethernet IP of 192.168.5.200, and connect the modem to your computer over ethernet.
+  - In the VR9 prompt over serial, run the command ''bootm''. You should then get a flashing front panel power LED, and ''Upgrade mode'' flashing in the serial terminal.
+  - From your computer, use ''curl'' to put the firmware file on the device over tftp. Eg: ''$ curl -T /path/to/stock.img tftp:<nowiki>//</nowiki>192.168.5.1'' If all goes correctly, the firmware image should be uploaded and flashed to the device. You should get information about the flash progress in the serial terminal at this point.
+    * Do NOT touch anything now, wait until the device has finished flashing the image.
+    * You could also follow the guide on [[https://kb.netgear.com/000059633/How-to-upload-firmware-to-a-NETGEAR-router-using-TFTP-client]] if you would like to use a graphical tftp interface
+  - Once flashing has completed, the device should reboot, and the stock boot messages should appear
+
+===== Hardware =====
+
+
+==== Partitions ====
+
+''cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00020000 00001000 "uboot"
+mtd1: 00010000 00001000 "gphyfirmware"
+mtd2: 00190000 00001000 "kernel"
+mtd3: 00080000 00001000 "firmware"
+mtd4: 00500000 00001000 "rootfs"
+mtd5: 00710000 00001000 "image"
+mtd6: 00010000 00001000 "dniconfig"
+mtd7: 00010000 00001000 "log"
+mtd8: 00080000 00001000 "language"
+mtd9: 00010000 00001000 "sysconfig"
+mtd10: 00002000 00001000 "ubootconfig"
+mtd11: 00001000 00001000 "ART"
+mtd12: 00001000 00001000 "pot"
+mtd13: 0000c000 00001000 "ret"''
+
+==== Opening hardware ====
+
+There is a single Torx screw (Torx T8) between the RJ45 port and the power plug, and then you can remove the kind of plastic grid. Its clipped in quite well but some gentle persuasion with a pry tool can remove it.
+
+==== Serial pinout ====
+
+{{media:netgear:dm200:dm200_serial.jpg?400|}}
+
+Black is ground, orange is board RX (connect to TX on serial converter), yellow is board TX (connect to RX on serial converter). Serial is at 3.3V.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+
+<WRAP bootlog>
+<nowiki>ROM VER: 1.1.4
+CFG 05
+
+DDR autotuning Rev 1.0
+DDR size from 0xa0000000 - 0xa3ffffff
+DDR check ok... start booting...
+
+
+
+U-Boot 2010.06-12284-ga4702df (Mar 03 2016 - 13:07:38)
+
+DM200 (hw29765233p8p0p64p0p0) UBoot-v2010.06 dni1 V0.9 
+CLOCK CPU 500M RAM 250M
+DRAM:  64 MiB
+In:    serial
+Out:   serial
+Err:   serial
+8192 KiB W25Q64 at 0:3 is now current device
+Net:   Internal phy(FE) firmware version: 0xc434
+vr9 Switch
+
+Type "run flash_nfs" to mount root filesystem over NFS
+
+Hit any key to stop autoboot:  2  1  0 
+Unknown command 'sleep' - try 'help'
+
+ Client starts...[Listening] for ADVERTISE...TTT
+Retry count exceeded; boot the image as usual
+
+ nmrp server is stopped or failed !
+8192 KiB W25Q64 at 0:3 is now current device
+## Booting kernel from Legacy Image at 80800000 ...
+   Image Name:   MIPS LTQCPE Linux-3.10.12
+   Created:      2016-08-22  15:34:27 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1633552 Bytes = 1.6 MiB
+   Load Address: 80002000
+   Entry Point:  8000a970
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+[    0.000000] Linux version 3.10.12 (roger.luo@dni-l-sw02) (gcc version 4.8.1 20130401 (prerelease) (Linaro GCC 4.8-2013.04) ) #8 Mon Aug 22 11:34:16 EDT 2016
+[    0.000000] SoC: xRX200 rev 1.2
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019556 (MIPS 34Kc)
+[    0.000000] adding memory size:66060288 from DT
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 03f00000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 03e00000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03dfffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03dfffff]
+[    0.000000] Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 15748
+[    0.000000] Kernel command line: root=/dev/mtdblock4 ro rootfstype=squashfs ip=192.168.1.1:192.168.1.10::::eth0:on console=ttyLTQ0,115200 ethaddr=00:E0:92:00:01:40 mem=62M panic=1 mtdparts=ltq_sflash:128k(uboot),64k(gphyfirmware),1600k(kernel),512k(firmware),5120k(rootfs),7232k@0x30000(image),64k(dniconfig),64k(log),512k(language),64k(sysconfig),8k(ubootconfig),4k(ART),4k(pot),-(ret) init=/etc/preinit vpe1_load_addr=0x83f00000 vpe1_mem=1M ubootver=U-Boot-2010.06-LANTIQ-v-2.3.16.1
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=0003aaf8
+[    0.000000] Readback ErrCtl register=0003aaf8
+[    0.000000] Memory: 57696k/63488k available (3628k kernel code, 5792k reserved, 939k data, 220k init, 0k highmem)
+[    0.000000] NR_IRQS:256
+[    0.000000] Setting up vectored interrupts
+[    0.000000] CPU Clock: 500MHz
+[    0.000000] Calibrating delay loop... 331.77 BogoMIPS (lpj=1658880)
+[    0.060000] pid_max: default: 32768 minimum: 301
+[    0.060000] Mount-cache hash table entries: 512
+[    0.070000] pinctrl core: initialized pinctrl subsystem
+[    0.070000] NET: Registered protocol family 16
+[    0.090000] dma-xway 1e104100.dma: Init done - hw rev: 7, ports: 7, channels: 28
+[    0.100000] pinctrl-xway 1e100b10.pinmux: Init done
+[    0.100000] Init done
+[    0.110000] gpio-stp-xway 1e100bb0.stp: Init done
+[    0.110000] !!!! WAVE400 system registeration not needed !!!!
+[    0.120000] dcdc-xrx200 1f106a00.dcdc: Core Voltage : 1016 mV
+[    0.730000] pcie_wait_phy_link_up port 0 timeout
+[    1.240000] pcie_wait_phy_link_up port 0 timeout
+[    1.750000] pcie_wait_phy_link_up port 0 timeout
+[    2.260000] pcie_wait_phy_link_up port 0 timeout
+[    2.770000] pcie_wait_phy_link_up port 0 timeout
+[    2.780000] pcie_rc_initialize port 0 link up failed!!!!!
+[    2.780000] Lantiq PCIe Root Complex Driver - 2.0.3
+[    2.790000] Copyright(c) 2009 - 2013 LANTIQ DEUTSCHLAND GMBH
+[    2.810000] bio: create slab <bio-0> at 0
+[    2.820000] SCSI subsystem initialized
+[    2.820000] NET: Registered protocol family 8
+[    2.830000] NET: Registered protocol family 20
+[    2.830000] Switching to clocksource MIPS
+[    2.840000] NET: Registered protocol family 2
+[    2.840000] TCP established hash table entries: 512 (order: 0, 4096 bytes)
+[    2.840000] TCP bind hash table entries: 512 (order: -1, 2048 bytes)
+[    2.850000] TCP: Hash tables configured (established 512 bind 512)
+[    2.850000] TCP: reno registered
+[    2.860000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    2.860000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    2.870000] NET: Registered protocol family 1
+[    2.870000] gptu: totally 6 16-bit timers/counters
+[    2.880000] gptu: misc_register on minor 63
+[    2.880000] gptu: succeeded to request irq 126
+[    2.890000] gptu: succeeded to request irq 127
+[    2.890000] gptu: succeeded to request irq 128
+[    2.900000] gptu: succeeded to request irq 129
+[    2.900000] gptu: succeeded to request irq 130
+[    2.910000] gptu: succeeded to request irq 131
+[    2.910000] vpe1_mem = 100000
+[    2.920000] Wired TLB entries for Linux read_c0_wired() = 0
+[    2.920000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    2.930000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    2.940000] msgmni has been set to 112
+[    2.950000] io scheduler noop registered
+[    2.950000] io scheduler deadline registered (default)
+[    2.960000] lantiq,asc 1e100c00.serial: pins are not configured from the driver
+[    2.960000] 1e100c00.serial: ttyLTQ0 at MMIO 0x1e100c00 (irq = 112) is a lantiq,asc
+[    2.980000] console [ttyLTQ0] enabled, bootconsole disabled
+[    2.980000] console [ttyLTQ0] enabled, bootconsole disabled
+[    3.000000] loop: module loaded
+[    3.000000] Lantiq SoC SSC controller rev 8 (TXFS 8, RXFS 8, DMA 1)
+[    3.010000] 14 cmdlinepart partitions found on MTD device ltq_sflash
+[    3.020000] Creating 14 MTD partitions on "ltq_sflash":
+[    3.020000] 0x000000000000-0x000000020000 : "uboot"
+[    3.030000] 0x000000020000-0x000000030000 : "gphyfirmware"
+[    3.030000] 0x000000030000-0x0000001c0000 : "kernel"
+[    3.040000] 0x0000001c0000-0x000000240000 : "firmware"
+[    3.040000] 0x000000240000-0x000000740000 : "rootfs"
+[    3.050000] mtd: partition "rootfs" set to be root filesystem
+[    3.140000] 0x000000030000-0x000000740000 : "image"
+[    3.150000] 0x000000740000-0x000000750000 : "dniconfig"
+[    3.150000] 0x000000750000-0x000000760000 : "log"
+[    3.160000] 0x000000760000-0x0000007e0000 : "language"
+[    3.160000] 0x0000007e0000-0x0000007f0000 : "sysconfig"
+[    3.170000] 0x0000007f0000-0x0000007f2000 : "ubootconfig"
+[    3.180000] 0x0000007f2000-0x0000007f3000 : "ART"
+[    3.180000] 0x0000007f3000-0x0000007f4000 : "pot"
+[    3.190000] 0x0000007f4000-0x000000800000 : "ret"
+[    3.190000] ltq_sflash ver 1.2.3
+[    3.200000] IMQ driver loaded successfully. (numdevs = 3, numqueues = 1)
+[    3.200000] 	Hooking IMQ after NAT on PREROUTING.
+[    3.210000] 	Hooking IMQ after NAT on POSTROUTING.
+[    3.220000] Lantiq VRX318 Version 2.0.0 
+[    3.220000] LTQ ETH SWITCH API, Version 2.0.1.
+[    3.220000] SWAPI: Registered char device [switch_api] with major no [81]
+[    3.230000] Switch API: PCE MicroCode loaded !!
+[    3.240000] phy_port_nos[0]:0, phy_fw_type[0]:0
+[    3.240000] phy_port_nos[1]:0, phy_fw_type[1]:0
+[    3.240000] gphy_driver_init: fw_mode:22F-FW, no of phys:2, mode:0
+[    3.250000] PPP generic driver version 2.4.2
+[    3.250000] PPP BSD Compression module registered
+[    3.260000] PPP Deflate Compression module registered
+[    3.260000] PPP MPPE Compression module registered
+[    3.270000] NET: Registered protocol family 24
+[    3.270000] res = 83995300
+[    3.280000] wdt 1f8803f0.watchdog: Init done
+[    3.280000] leds-gpio gpio-leds.9: pins are not configured from the driver
+[    3.290000] Lantiq DEU driver version 2.0.0 
+[    3.300000] LTQ DEU DES initialized.
+[    3.300000] LTQ DEU AES initialized.
+[    3.300000] LTQ DEU ARC4 initialized
+[    3.310000] LTQ DEU SHA1 initialized
+[    3.310000] LTQ DEU MD5 initialized 
+[    3.310000] LTQ DEU SHA1_HMAC initialized
+[    3.320000] LTQ DEU MD5_HMAC initialized
+[    3.320000] DEU driver initialization complete!
+[    3.320000] nf_conntrack version 0.5.0 (901 buckets, 3604 max)
+[    3.330000] nf_conntrack_rtsp v0.6.21 loading
+[    3.330000] xt_time: kernel timezone is -0000
+[    3.340000] ipip: IPv4 over IPv4 tunneling driver
+[    3.350000] nf_nat_rtsp v0.6.21 loading
+[    3.350000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    3.350000] TCP: cubic registered
+[    3.360000] Initializing XFRM netlink socket
+[    3.360000] NET: Registered protocol family 10
+[    3.370000] sit: IPv6 over IPv4 tunneling driver
+[    3.370000] NET: Registered protocol family 17
+[    3.370000] NET: Registered protocol family 15
+[    3.380000] Bridge firewalling registered
+[    3.380000] Ebtables v2.0 registered
+[    3.390000] lec:lane_module_init: lec.c: initialized
+[    3.390000] mpoa:atm_mpoa_init: mpc.c: initialized
+[    3.400000] KOAM is loaded successfully.
+[    3.400000] 8021q: 802.1Q VLAN Support v1.8
+[    3.430000] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    3.440000] Freeing unused kernel memory: 220K (80479000 - 804b0000)
+mount: mounting none on /dev/pts failed: No such file or directory
+rootdir=/
+table='/etc/device_table.txt'
+makedevs: line 64: can't create node dev/ram: File exists
+makedevs: line 108: can't create node dev/vcc/: File exists
+makedevs: line 110: can't create node dev/vc/: File exists
+
+starting pid 338, tty '': '/etc/init.d/rcS S boot'
+
+Please press Enter to activate this console. Mounting ADSL firmware..
+[    5.250000] ltq_swreset_driver_probe !!
+[    5.250000] ltq_swreset driver_probe: swreset_pin = 207, swreset_bit = 1 
+[    5.250000] Initializing swreset
+[    5.510000] sw_reset_open is invoked
+Loading data from /dev/mtd6 ...
+
+Done!
+
+The data center is Running ...
+
+[    6.080000] IFXOS, Version 1.5.19 (c) Copyright 2009, Lantiq Deutschland GmbH
+[    6.260000] dni_enet: module license 'DNI' taints kernel.
+[    6.260000] Disabling lock debugging due to kernel taint
+[    6.270000] Loading DNI-ENET driver
+[    6.270000] Error, cannot find eth0 interface
+[    6.720000] Netfilter messages via NETLINK v0.30.
+[    6.840000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    7.030000] ctnetlink v0.93: registering with nfnetlink.
+[    7.050000] fuse init (API version 7.22)
+sn:4KV1655H000F0
+SN: 4KV1655H000F0
+lan mac: 10:da:43:07:3b:2e
+wan mac: 10:da:43:07:3b:2f
+Generating Rules...
+Done!
+user obj count 2
+[    9.230000] Loading A5 (MII0/1 + ATM) driver ...... 
+Inside reset_ppe ...... 
+Leaving reset_ppe ...... qsb_clk = 250000000
+[    9.260000] Succeeded!
+[    9.260000] PPE datapath driver info:
+[    9.260000]   Version ID: 64.3.7.1.0.1.4
+[    9.260000]   Family    : VR9
+[    9.260000]   DR Type   : Normal Data Path | Indirect-Fast Path
+[    9.260000]   Interface : MII0 | MII1 | ATM
+[    9.260000]   Mode      : Routing
+[    9.260000]   Release   : 0.1.4
+[    9.290000] PPE firmware info:
+[    9.290000]   Version ID: 7.4.2.16.0
+[    9.290000]   Family    : VR9
+[    9.290000]   FW Package: A5
+[    9.290000]   Release   : 2.16.0
+[    9.290000] PPE firmware feature:
+[    9.290000]   ATM/PTM TC-Layer                Support
+[    9.290000]   Packet Acceleration             Support
+[    9.290000]   IPv4                            Support
+[    9.290000]   IPv6                            Support
+[    9.290000]   6RD                             Support
+[    9.290000]   DS-Lite                         Support
+[    9.640000] PPA API --- init successfully
+ Polling Interval = 60
+ Priority Threshold = 7
+ Byte Rate based Management = 1
+ Packet	Rate based Management =	0
+ Poll history =	1
+ Maximum delete	sessions = 30
+ Mode =	0
+
+ [do_ioctl_cmd] : ioctl failed. (errno=14)
+
+ [do_ioctl_cmd] : ioctl failed. (errno=14)
+
+ [do_ioctl_cmd] : ioctl failed. (errno=14)
+
+ [do_ioctl_cmd] : ioctl failed. (errno=14)
+
+ [do_ioctl_cmd] : ioctl failed. (errno=14)
+[   11.100000] echo: The scan_unevictable_pages sysctl/node-interface has been disabled for lack of a legitimate use case.  If you have one, please send an email to linux-mm@kvack.org.
+[   11.540000] gphy-fw gphy-fw.10: proc_write_phy_fw:  Found:VR9 V1.2 GPHY FE  FW 
+[   11.550000] gphy-fw gphy-fw.10: booting GPHY0 firmware at 2D60000 for VR9
+[   11.550000] gphy-fw gphy-fw.10: booting GPHY1 firmware at 2D60000 for VR9
+[   11.560000] ltq_gphy_firmware_config: fw_mode:22F-FW, no of phys:2,data_ptr:2D60000
+insmod: can't insert 'drv_ifxos': File exists
+[   12.070000] ppa_init - init succeeded
+BR_MAC_ADDR= 10:da:43:07:3b:2e
+[   12.470000] IPv6: ADDRCONF(NETDEV_UP): br0: link is not ready
+[   12.520000] device eth0 entered promiscuous mode
+[   12.540000] br0: port 1(eth0) entered forwarding state
+[   12.540000] br0: port 1(eth0) entered forwarding state
+[   12.540000] IPv6: ADDRCONF(NETDEV_CHANGE): br0: link becomes ready
+[   12.860000] br0: port 1(eth0) entered disabled state
+[   12.920000] br0: port 1(eth0) entered forwarding state
+[   12.930000] br0: port 1(eth0) entered forwarding state
+Switch Init done 
+[   13.930000] br0: port 1(eth0) entered forwarding state
+[   14.800000] Lantiq (VRX) DSL CPE MEI driver, version 1.4.8.5, (c) 2013 Lantiq Deutschland GmbH
+[   15.700000] 
+[   15.700000] 
+[   15.700000] Lantiq CPE API Driver version: DSL CPE API V4.16.6.3
+[   15.710000] 
+[   15.710000] Predefined debug level: 3
+Saving Data... 
+Done!
+
+ltq_cpe_control_init.sh: DSL related system status:
+ltq_cpe_control_init.sh:   L2 vectoring = 1
+ltq_cpe_control_init.sh:   bonding      = 0
+sh: 2: unknown operand
+sh: 2: unknown operand
+ltq_cpe_control_init.sh: TestCfg: xTSE=05_00_04_00_0C_01_00_07
+ltq_cpe_control_init.sh: TestCfg: RETX_ENA_DS=1
+ltq_cpe_control_init.sh: TestCfg: RETX_ENA_US=1
+DTI Agent Start - @(#)Debug and Trace Interface, DTI Agent 1.2.1
+Send Fct Reg[00] - name: not_used, avail: No
+Send Fct Reg[01] - name: not_used, avail: No
+Send Fct Reg[02] - name: not_used, avail: No
+Send Fct Reg[03] - name: local_loop, avail: Yes
+DTI CLI - sendFct register IF: 0 name: DSL_API
+DTI CLI - sendFct register, IF = 0, CLI name = <DSL_API>
+listen thr - enter.
+DTI Connection Open - SERVER 10.33.5.254:9000.
+ltq_cpe_control_init.sh: Problem with pipe handling, exit dsl_cpe_control startup!!!
+nReturn=0 
+
+
+
+ltq_cpe_control_init.sh: G.Vector (best fitting, automatic MEI Driver mode)
+ltq_cpe_control_init.sh: Setting PLL offset to -30 ppm (VRX220)
+nReturn=0 
+
+
+
+ltq_cpe_control_init.sh: TestCfg: xDSL_Cfg_VdslProfileVal=7F
+ltq_cpe_control_init.sh: Firmware ready wait time 0 sec.
+nReturn=0 
+
+
+
+nReturn=0 nDirection=0
+
+nReturn=0 nDirection=1
+
+The attached devices demo is Running ...
+mkdir: can't create directory '/dev/pts': File exists
+mknod: /dev/ptmx: File exists
+mknod: /dev/pts/0: Operation not permitted
+mknod: /dev/pts/1: Operation not permitted
+The telnetenable is running ...
+[   33.340000] IPv6: ADDRCONF(NETDEV_UP): brwan: link is not ready
+WAN mode 'adsl_atm' already configured.
+To force configure the WAN, execute with option 'start_wan_configure'
+Written 'wan_mode=adsl_atm' to config file.
+Written 'conn_type=pppoe' to config file.
+Written 'vlan=' to config file.
+Written 'pri=' to config file.
+Written 'vpi=8' to config file.
+Written 'vci=35' to config file.
+Written 'encaps=vc' to config file.
+Written 'qos=' to config file.
+Written 'username=onearmed@internode.on.net' to config file.
+Written 'password=****' to config file.
+To start the WAN with these values, execute with the option 'start_connection'.
+Creating connection..
+[   92.700000] DSL[00]: Reboot on training timeout (60)!!!
+xDSL Leave SHOWTIME!!
+nReturn=0 nDirection=0
+
+nReturn=0 nDirection=1
+
+[  113.120000] qsb_clk = 250000000
+
+---------------[  116.300000] userspace registering PID
+-------------------------------------------
+ATM OAM daemon: © 2013, Lantiq Deutschland GmbH.
+This module is provided under an evaluation license only.
+Please contact Lantiq for productive usage.
+---------------------------------------------------------
+[  116.410000] device nas0 entered promiscuous mode
+[  116.410000] br0: port 2(nas0) entered forwarding state
+[  116.420000] br0: port 2(nas0) entered forwarding state
+Saving Data... 
+[  117.420000] br0: port 2(nas0) entered forwarding state
+Done!
+
+Stopping Firewall...
+Done!
+ls: /etc/net-wall/scripts/*.rule: No such file or directory
+Generating Rules...
+Done!
+Starting Firewall...
+ls: /etc/net-wall/scripts/*.rule: No such file or directory
+net.bridge.bridge-nf-call-iptables = 0
+net.bridge.bridge-nf-call-ip6tables = 0
+check new firmware comand:	net-cgi -c
+get serial number command:	net-cgi -s
+serial number file:		/tmp/Seria_Number
+time zone name:		time_zone
+
+AUTO FW CHECK: power cycle
+/etc/rc.common: line 97: detplc: not found
+FW checking ...
+week_day == 1
+syslogd can't open the temp log file: /tmp/log/log-message or /var/log/messages
+POT is Running...
+The POT-(Get/Set) Demo is Running ...
+restart the daemon telnetenable for Thin client !!!
+The telnetenable is running ...
+[DM200]***boot done***
+128+0 records in
+128+0 records out
+At least one of language_search's input parameter is wrong!
+
+Didn't find the language table we need!
+
+[  276.810000] DSL[00]: Reboot on training timeout (180)!!!
+xDSL Leave SHOWTIME!!
+nReturn=0 nDirection=0
+
+nReturn=0 nDirection=1
+
+
+
+starting pid 345, tty '/dev/ttyLTQ0': '/bin/ash --login'
+
+
+BusyBox v1.17.1 (2016-08-22 10:24:12 EDT) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+ +---------------------------------------------+
+ | Lantiq UGW Software UGW-6.1.1 on XRX200 CPE |
+ +---------------------------------------------+
+
+root@DM200:/#</nowiki>
+</WRAP>\\
+
+<code>
+root@DM200:/# cat /proc/cpuinfo 
+system type             : xRX200 rev 1.2
+machine                 : Unknown
+processor               : 0
+cpu model               : MIPS 34Kc V5.6
+BogoMIPS                : 331.77
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 16
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+isa                     : mips1 mips2 mips32r1 mips32r2
+ASEs implemented        : mips16 dsp mt
+shadow register sets    : 1
+kscratch registers      : 0
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+</code>
+
+
+==== LEDE bootlog ====
+
+<WRAP bootlog>
+<nowiki>
+root@lede:~# dmesg
+[    0.000000] Linux version 4.4.53 (builder@gcc20) (gcc version 5.4.0 (LEDE GCC 5.4.0 r3727-080c6fa) ) #0 SMP Sun Mar 12 23:13:18 2017
+[    0.000000] SoC: xRX200 rev 1.2
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019556 (MIPS 34Kc)
+[    0.000000] MIPS: machine is DM200 - Netgear DM200
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 80530e80, node_mem_map 81006b40
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16384 pages, LIFO batch:3
+[    0.000000] Detected 1 available secondary CPU(s)
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] PERCPU: Embedded 9 pages/cpu @81089000 s8112 r8192 d20560 u36864
+[    0.000000] pcpu-alloc: s8112 r8192 d20560 u36864 alloc=9*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyLTQ0,115200
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00071400
+[    0.000000] Readback ErrCtl register=00071400
+[    0.000000] Memory: 52504K/65536K available (4059K kernel code, 164K rwdata, 1180K rodata, 6676K init, 223K bss, 13032K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:256
+[    0.000000] Setting up vectored interrupts
+[    0.000000] Setting up IPI vectored interrupts
+[    0.000000] CPU Clock: 500MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041786 ns
+[    0.000013] sched_clock: 32 bits at 250MHz, resolution 4ns, wraps every 8589934590ns
+[    0.007879] Calibrating delay loop... 332.54 BogoMIPS (lpj=665088)
+[    0.042379] pid_max: default: 32768 minimum: 301
+[    0.047257] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.053797] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.065077] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.065094] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.065320] CPU1 revision is: 00019556 (MIPS 34Kc)
+[    0.124644] Synchronize counters for CPU 1: done.
+[    0.129545] Brought up 2 CPUs
+[    0.136336] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.146020] futex hash table entries: 512 (order: 2, 16384 bytes)
+[    0.152358] pinctrl core: initialized pinctrl subsystem
+[    0.158410] NET: Registered protocol family 16
+[    0.171560] pinctrl-xway 1e100b10.pinmux: Init done
+[    0.177565] dma-xway 1e104100.dma: Init done - hw rev: 7, ports: 7, channels: 28
+[    0.288921] dcdc-xrx200 1f106a00.dcdc: Core Voltage : 1016 mV
+[    0.520282] ifx_pcie_wait_phy_link_up timeout
+[    0.737352] ifx_pcie_wait_phy_link_up timeout
+[    0.954282] ifx_pcie_wait_phy_link_up timeout
+[    1.171298] ifx_pcie_wait_phy_link_up timeout
+[    1.388358] ifx_pcie_wait_phy_link_up timeout
+[    1.392584] pcie_rc_initialize link up failed!!!!!
+[    1.426377] usbcore: registered new interface driver usbfs
+[    1.431952] usbcore: registered new interface driver hub
+[    1.437347] usbcore: registered new device driver usb
+[    1.444990] clocksource: Switched to clocksource MIPS
+[    1.453026] NET: Registered protocol family 2
+[    1.458283] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    1.465189] TCP bind hash table entries: 1024 (order: 1, 8192 bytes)
+[    1.471607] TCP: Hash tables configured (established 1024 bind 1024)
+[    1.478116] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    1.483967] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    1.490642] NET: Registered protocol family 1
+[    1.495006] PCI: CLS 0 bytes, default 32
+[    1.668409] gptu: totally 6 16-bit timers/counters
+[    1.673299] gptu: misc_register on minor 63
+[    1.677468] gptu: succeeded to request irq 126
+[    1.681979] gptu: succeeded to request irq 127
+[    1.686485] gptu: succeeded to request irq 128
+[    1.690999] gptu: succeeded to request irq 129
+[    1.695512] gptu: succeeded to request irq 130
+[    1.700026] gptu: succeeded to request irq 131
+[    1.705073] phy-xrx200 gphy-xrx200: requesting lantiq/vr9_phy22f_a2x.bin
+[    1.712461] phy-xrx200 gphy-xrx200: booting GPHY0 firmware at 3A00000
+[    1.718835] phy-xrx200 gphy-xrx200: booting GPHY1 firmware at 3A00000
+[    1.826586] No VPEs reserved for AP/SP, not initialize VPE loader
+[    1.826586] Pass maxvpes=<n> argument as kernel argument
+[    1.837994] No TCs reserved for AP/SP, not initializing RTLX.
+[    1.837994] Pass maxtcs=<n> argument as kernel argument
+[    1.850891] Crashlog allocated RAM at address 0x3f00000
+[    1.875666] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    1.881450] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    1.897597] io scheduler noop registered
+[    1.901454] io scheduler deadline registered (default)
+[    1.907365] 1e100c00.serial: ttyLTQ0 at MMIO 0x1e100c00 (irq = 112, base_baud = 0) is a lantiq,asc
+[    1.916274] console [ttyLTQ0] enabled
+[    1.923612] bootconsole [early0] disabled
+[    1.933586] lantiq nor flash device: 00800000 at 10000000
+[    1.938173] ltq-nor 10000000.nor-boot: probing failed
+[    2.026260] libphy: lantiq,xrx200-mdio: probed
+[    2.049855] net-xrx200: invalid MAC, using random
+[    2.117371] eth0: attached PHY [Lantiq XWAY XRX PHY22F v1.4] (phy_addr=0:13, irq=-1)
+[    2.202745] ltq-cputemp cputemp@0: Current CPU die temperature: 46.0 °C
+[    2.208455] wdt 1f8803f0.watchdog: Init done
+[    2.215794] NET: Registered protocol family 10
+[    2.220721] NET: Registered protocol family 17
+[    2.223846] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    2.236418] 8021q: 802.1Q VLAN Support v1.8
+[    2.269073] Freeing unused kernel memory: 6676K (8054b000 - 80bd0000)
+[    2.289817] init: Console is alive
+[    2.292124] init: - watchdog -
+[    2.314223] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    2.323691] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    2.336347] init: - preinit -
+[    4.116792] eth0: port 3 got link
+[    4.628440] procd: - early -
+[    4.630200] procd: - watchdog -
+[    5.116710] eth0: port 3 lost link
+[    5.191005] procd: - ubus -
+[    5.242643] random: ubusd: uninitialized urandom read (4 bytes read, 47 bits of entropy available)
+[    5.250873] random: ubusd: uninitialized urandom read (4 bytes read, 47 bits of entropy available)
+[    5.259359] random: ubusd: uninitialized urandom read (4 bytes read, 47 bits of entropy available)
+[    5.268835] random: ubusd: uninitialized urandom read (4 bytes read, 47 bits of entropy available)
+[    5.277191] random: ubusd: uninitialized urandom read (4 bytes read, 47 bits of entropy available)
+[    5.286450] random: ubusd: uninitialized urandom read (4 bytes read, 47 bits of entropy available)
+[    5.295419] random: ubusd: uninitialized urandom read (4 bytes read, 47 bits of entropy available)
+[    5.304812] procd: - init -
+[    5.517989] kmodloader: loading kernel modules from /etc/modules.d/*
+[    5.526569] IFXOS, Version 1.5.19 (c) Copyright 2009, Lantiq Deutschland GmbH
+[    5.536810] NET: Registered protocol family 8
+[    5.539725] NET: Registered protocol family 20
+[    5.550725] PPP generic driver version 2.4.2
+[    5.560447] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    5.586134] Lantiq (VRX) DSL CPE MEI driver, version 1.5.17.6, (c) 2007-2015 Lantiq Beteiligungs-GmbH & Co. KG
+[    5.586134] 
+[    5.586134] Lantiq CPE API Driver version: DSL CPE API V4.17.18.6
+[    5.609558] 
+[    5.609558] Predefined debug level: 3
+[    5.621084] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    5.630470] Infineon Technologies DEU driver version 2.0.0 
+[    5.636496] IFX DEU DES initialized (multiblock).
+[    5.641556] IFX DEU AES initialized (multiblock).
+[    5.645521] IFX DEU ARC4 initialized (multiblock).
+[    5.649952] IFX DEU SHA1 initialized.
+[    5.653634] IFX DEU MD5 initialized.
+[    5.657197] IFX DEU SHA1_HMAC initialized.
+[    5.661278] IFX DEU MD5_HMAC initialized.
+[    5.671937] nf_conntrack version 0.5.0 (924 buckets, 3696 max)
+[    5.717155] NET: Registered protocol family 24
+[    5.736246] xt_time: kernel timezone is -0000
+[    5.748860] kmodloader: done loading kernel modules from /etc/modules.d/*
+[    6.872971] random: jshn: uninitialized urandom read (4 bytes read, 66 bits of entropy available)
+[    6.944273] random: jshn: uninitialized urandom read (4 bytes read, 66 bits of entropy available)
+[    7.141306] random: jshn: uninitialized urandom read (4 bytes read, 68 bits of entropy available)
+[   10.793933] PTM 1.0.27    PTM (E1) firmware version 0.30
+[   10.797913] ifxmips_ptm: PTM init succeed
+[   11.936431] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   11.977901] device eth0.1 entered promiscuous mode
+[   11.981401] device eth0 entered promiscuous mode
+[   12.005799] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   12.093915] IPv6: ADDRCONF(NETDEV_UP): ptm0: link is not ready
+[   12.116950] eth0: port 3 got link
+[   12.119200] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   12.280874] br-lan: port 1(eth0.1) entered forwarding state
+[   12.285183] br-lan: port 1(eth0.1) entered forwarding state
+[   12.320807] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   12.341006] random: nonblocking pool is initialized
+[   14.288710] br-lan: port 1(eth0.1) entered forwarding state
+</nowiki></WRAP>\\
+
+<code>
+root@LEDE:~# cat /proc/cpuinfo 
+system type             : xRX200 rev 1.2
+machine                 : DM200 - Netgear DM200
+processor               : 0
+cpu model               : MIPS 34Kc V5.6
+BogoMIPS                : 332.54
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 16
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+isa                     : mips1 mips2 mips32r1 mips32r2
+ASEs implemented        : mips16 dsp mt
+shadow register sets    : 1
+kscratch registers      : 0
+package                 : 0
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+VPE                     : 0
+
+processor               : 1
+cpu model               : MIPS 34Kc V5.6
+BogoMIPS                : 251.90
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 16
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+isa                     : mips1 mips2 mips32r1 mips32r2
+ASEs implemented        : mips16 dsp mt
+shadow register sets    : 1
+kscratch registers      : 0
+package                 : 0
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+VPE                     : 0
+</code>
+
+
+===== Firmware =====
+As of 20 January 2019
+
+Firmware 1.0.0.61 : [[https://www.netgear.com/support/product/DM200.aspx]]
+
+GPL Sources from Netgear : [[http://www.downloads.netgear.com/files/GPL/DM200-V1.0.0.61_gpl_src.tar.gz]]
+
+GPL source contains Lantiq xDSL firmware and drivers - integration and porting to current OpenWrt should be possible.
+
+GPL source suggests CPU Chipset - VRX220
+
+[Possibly Outdated] GPL source was forked from OpenWrt 12.09
+
+
+[Possibly Outdated] Using Ubuntu 12.04 the GPL Source can be used to build a firmware img file.
+
+[Outdated] On my attempts the file sizes are a little different and the layout appears different
+
+[Outdated] I have not attempted to flash this firmware yet.
+
+The 1.0.36 GPL source appears to have a bug in the default .config file - needs to disable wan_autodetect function before everything will compile ( this might be a mistake at my end )
+
+===== Misc =====
+
+Stock firmware Telnet / Debug can be accessed via: http://192.168.5.1/debug.htm
+
+Support for Australian NBN FTTN Service was added in 1.0.36 - initial inspection suggests VDSL firmware blob was updated with possible other minor changes.
+
+**Bug**
+
+On any version of OpenWrt, if the DM200 tries to communicate with a host of whom he already has the mac address, but 300 seconds are passed from last received packet (from the host to the DM200) then the DM200 will try to send packets to the mac address of the host but those will never arrive to the host.
+So if you have a port forwarding you'll have to wait ~15 seconds to get a response from your internal host when you are connecting via public ip.
+
+Explanation and steps to reproduce:   
+
+[[https://forum.openwrt.org/t/netgear-dm200-not-delivering-packets-on-lan/24863]]
+  
+[[https://bugs.openwrt.org/index.php?do=details&task_id=1944&pagenum=4]] 
+
+
+**FTP Upload to remote server**
+
+Netgear firmware 1.0.0.36, 1.0.0.44, 1.0.0.61 (probably others too) have a script which uploads log files to a remote server (''/usr/sbin/dni_dsl_log_upload.sh''):
+
+  * The script is triggered in ''/etc/init.d/done''
+  * Another reference is in ''/etc/init.d/lantiq_dsl_wan_connect.sh'' (commented out).
+  * Username / password and IP address are hard coded.
+  * The FTP server can be logged into with normal methods.
+
+Folders are created based on the Device Model - eg DM200 - the log files are uploaded by MAC Address and date into these files.
+
+It appears that the server server has had virus files upload into accessible locations.
+
+It appears that the majority of the server structure cannot be navigated.
+
+Script is
+
+<code>
+root@DM200:/# cat /usr/sbin/dni_dsl_log_upload.sh
+#!/bin/sh
+
+CONFIG=/bin/config
+
+
+sleep 300
+TIME=`/bin/date '+%Y%m%d%H%M'`
+curMac=`/sbin/ifconfig br0 | awk '/HWaddr/ { print $5 }'|sed 's/://g'`;
+FP=/tmp/${curMac}_BootState_$TIME
+
+dsl_wan_preference=`$CONFIG get dsl_wan_preference`
+
+ if [ "$dsl_wan_preference" = "2" ]; then
+  exit 0
+ elif [ "$dsl_wan_preference" = "1" ]; then
+  dsl_wan_type=`$CONFIG get dsl_wan_type`
+
+  if [ "$dsl_wan_type" = "adsl" ]; then
+  ##############ADSL########################
+  wan_factory_mac=`$CONFIG get wan_factory_mac`
+  dsl_wan_country=`$CONFIG get dsl_wan_country`
+  dsl_wan_isp=`$CONFIG get dsl_wan_isp`
+  wan_proto=`$CONFIG get wan_proto`
+  dsl_wan_vci=`$CONFIG get dsl_wan_vci`
+  dsl_wan_vpi=`$CONFIG get dsl_wan_vci`
+  dsl_wan_multiple=`$CONFIG get dsl_wan_multiple`
+  dsl_wan_video_vid=`$CONFIG get dsl_wan_video_vid`
+
+  echo "[DEBUG][dsl_wan_type=ADSL]" > $FP
+  echo "[DEBUG][wan_mac=$wan_factory_mac]" >> $FP
+  echo "[DEBUG][Country=$dsl_wan_country]" >> $FP
+  echo "[DEBUG][ISP=$dsl_wan_isp]" >> $FP
+  echo "[DEBUG][Proto=$wan_proto]" >> $FP
+  echo "[DEBUG][VCI=$dsl_wan_vci]" >> $FP
+  echo "[DEBUG][VPI=$dsl_wan_vpi]" >> $FP
+  echo "[DEBUG][Multiple=$dsl_wan_multiple]" >> $FP
+  echo "[DEBUG][Video_vid=$dsl_wan_video_vid]" >> $FP
+
+  elif [ "$dsl_wan_type" = "vdsl" ]; then
+  ##############VDSL########################
+  wan_factory_mac=`$CONFIG get wan_factory_mac`
+  dsl_wan_country=`$CONFIG get dsl_wan_country`
+  dsl_wan_isp=`$CONFIG get dsl_wan_isp`
+  vdsl_wan_ifname=`$CONFIG get vdsl_wan_ifname`
+  dsl_wan_data_vid=`$CONFIG get dsl_wan_data_vid`
+  dsl_wan_data_proto=`$CONFIG get dsl_wan_data_proto`
+  dsl_wan_video_vid=`$CONFIG get dsl_wan_video_vid`
+  dsl_wan_video_proto=`$CONFIG get dsl_wan_video_proto`
+  dsl_wan_voice_vid=`$CONFIG get dsl_wan_voice_vid`
+  dsl_wan_voice_proto=`$CONFIG get dsl_wan_voice_proto`
+  wan2_active=`$CONFIG get wan2_active`
+
+  echo "[DEBUG][dsl_wan_type=VDSL]" > $FP
+  echo "[DEBUG][wan_mac=$wan_factory_mac]" >> $FP
+  echo "[DEBUG][Country=$dsl_wan_country]" >> $FP
+  echo "[DEBUG][ISP=$dsl_wan_isp]" >> $FP
+  echo "[DEBUG][ifname=$vdsl_wan_ifname]" >> $FP
+  echo "[DEBUG][Data_vid=$dsl_wan_data_vid]" >> $FP
+  echo "[DEBUG][Data_proto=$dsl_wan_data_proto]" >> $FP
+  echo "[DEBUG][Video_vid=$dsl_wan_video_vid]" >> $FP
+  echo "[DEBUG][Video_proto=$dsl_wan_video_proto]" >> $FP
+  echo "[DEBUG][Voice_vid=$dsl_wan_voice_vid]" >> $FP
+  echo "[DEBUG][Voice_proto=$dsl_wan_voice_proto]" >> $FP
+  echo "[DEBUG][wan2_active=$wan2_active]" >> $FP
+
+  fi
+  down=`/opt/lantiq/bin/dsl_cpe_pipe.sh g997csg 0 1 | awk -F['='' '] '{print $8}'`
+  up=`/opt/lantiq/bin/dsl_cpe_pipe.sh g997csg 0 0 | awk -F['='' '] '{print $8}'`
+  down=$(echo $down|awk '{print $0/1000/1000}')"Mbps"
+  up=$(echo $up|awk '{print $0/1000/1000}')"Mbps"
+  down="Downstream=$down"
+  up="Upstream=$up"
+  echo $down >> $FP
+  echo $up >> $FP
+  /usr/bin/ftpput -u ftp -p ftp "60.248.155.55" DM200/${curMac}_BootState_$TIME $FP
+  rm -rf $FP
+ fi</code>
+
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>VRX220 8flash 64ram xDSL VDSL2 ADSL2+}}

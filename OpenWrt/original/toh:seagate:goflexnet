@@ -1,0 +1,659 @@
+====== Seagate GoFlexNet ======
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^GoFlexNet$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^GoFlexNet$"}
+} -->
+
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture | [[http://en.wikipedia.org/wiki/ARM_architecture|ARM ]]  armv5te |
+^ Vendor     | Marvell |
+^ [[docs:techref:bootloader]] | [[docs:techref:bootloader:uboot| U-Boot]] |
+^ System-On-Chip | Marvell [[http://www.marvell.com/products/processors/embedded/kirkwood/HW_88F6281_OpenSource.pdf|MV88F6281 A0 (DDR2)]] with ARM926EJ-S CPU (Marvell Feroceon) |
+^ CPU Speed  | 1200 MHz |
+^ Flash size | 256 MiB / 1x Micron 29F2G08AAD |
+^ RAM        | 128 MiB / 1x Nanya NT5TU64M16DG-AC |
+^ Wireless   | n/a |
+^ Ethernet   | 1x GigE port / Marvell "Alaska" 88E1116R |
+^ USB        | 1x USB 2.0 port |
+^ Serial     | [[#Serial|Yes]] |
+^ JTAG       | [[#JTAG|Yes]] |
+^ SATA       | 2x (data & power) |
+
+
+==== Opening the case ====
+There are no screws - the bottom cover is held by ten plastic snap on clips, three on the sides and two on the edges. To open the case, gently pry all around with a thin screwdriver until it is open.
+
+The serial pins are accessible without further disassembly.
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+{{media:seagate:goflex_net_1.jpg?400|}}
+
+**NOTE:** The pins to use are the ones "covered up" by the tips of the arrows, i.e. the pins in the row toward the outer edge of the PCB.
+(for comparison, see [[http://www.varkey.in/wp-content/uploads/2011/06/IMG_0771.jpg|here]])
+
+^ Serial connection parameters\\ for Seagate GoFlexNet | 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+==== Flash Layout ====
+^               u-boot original flash layout             ^^^^^
+^ mtdparts    | mtd0     | mtd1      | mtd2      | mtd3      |
+^ start (hex) | 0x000000 | 0x100000  | 0x500000  | 0x2500000 |
+^ size (hex)  | 0x100000 | 0x400000  | 0x2000000 | 0xdb00000 |
+^ size (MB)   | 1        | 4         | 32        | 219       |
+^ name        | u-boot   | kernel    | rootfs    | data      |
+^ file system | raw      | initramfs | jffs2     | overlayfs |
+ 
+^               u-boot openwrt flash layout          ^^^
+^ mtdparts    | mtd0     | mtd1                        |
+^ start (hex) | 0x000000 | 0x100000                    |
+^ size (hex)  | 0x100000 | 0xff00000                   |
+^ size (MB)   | 1        | 255                         |
+^ name        | u-boot   | ubi                         |
+^ file system | raw      | ubifs                       |
+^ partitions  |          | kernel, rootfs, rootfs_data |
+
+===== Specific Configuration =====
+==== Interfaces ====
+The default network configuration is:
+
+^ Interface Name ^ Description ^ Default configuration ^
+| eth0 | Ethernet port | DHCP |
+
+==== Failsafe ====
+The GoFlexNet cannot be put into failsafe mode by pressing the button.
+
+It can however be put in failsafe mode using serial console and pressing 'f' and <enter> when prompted during boot-up
+
+==== Buttons ====
+The GoFlexNet's only button is not configurable and inevitably performs a hard reset when pressed, the button open the bridge between the positive pole and the power cord.
+
+==== Crypto Hardware Acceleration ====
+See [[:toh:seagate:dockstar#crypto_hardware_acceleration|Crypto Hardware Acceleration]]
+
+
+==== SATA ====
+To enable 3.5" disks (3 pins sata power to +12V DC):
+
+**NOTE:** The ellipse in the picture indicates **three** pins for Serial ATA +12 V. (Multiple pins are used for current (Ampere) considerations, compare [[wp>Serial_ATA#Power_connectors]].)
+
+**NOTE:** The board is not able to provide enough wattage @5v to drive standard 3.5" hard disks, and even with 'green' disks might not be powerful enough to drive 2 3.5" hd or use a 3.5" hd and a 2.5" at the same time (i.e. Raid1). Using a 'green' 3.5" and a regular 2.5" not at the same time works perfectly for me.
+
+{{media:seagate:goflex_net_2.jpg?400|}}
+{{media:seagate:goflex_net_3.jpg?400|}}
+
+Example:
+
+{{media:seagate:goflex_net_4.jpg?400|}}
+
+
+==== SSH ====
+Connect device to Ethernet port. To prevent automatic updates by cloud engines (which will disable ssh access), use a separate switch or disconnect your router from the internet. If the ssh access was disabled by the automatic cloud engine update service, you need to login there and re-activate ssh.
+On later versions the ssh access is already disabled. The option on the pogoplug site to enable ssh is missing or may be dependent on a public ipv4 and open ssh port on the router.
+
+Find IP address, BE and EF are the last two bytes of the MAC of your device (printed on the bottom of the GoFlexNet)
+<code>
+root@host ~ # ifconfig eth0 169.254.1.0 
+root@host ~ # nmap -e eth0 -sP $(printf "169.254.%d.%d" 0xbe 0xef)
+</code>
+Connect to IP address via ssh (root / stxadmin) to see if it works.
+
+==== Backup original firmware ====
+Login to the original firmware via SSH (enable it first in popoplug site) or Serial cable (nokia's CA-52, DKU-5 and etc ttl...).
+Plug the flash drive (FAT32) to USB port in Seagate GoFlex Net, then:
+<code>
+mkdir /tmp/backup
+mount /dev/sda1 /tmp/backup
+cd /tmp/backup
+wget http://download.doozan.com/uboot/nanddump
+chmod +x nanddump
+./nanddump -nof uboot-mtd0-dump /dev/mtd0
+./nanddump -nof uboot-original -s 0 -l 0x80000 /dev/mtd0
+./nanddump -nof uImage-mtd1-dump /dev/mtd1
+./nanddump -nof rootfs-mtd2-dump /dev/mtd2
+umount /dev/sda1
+</code>
+To create an image of mtd0, you need to dump the nand without ecc. using "dd if=/dev/mtd0 of=mtd0.DOESNOTWORK" will automatically do ecc for you and will result in a corrupt image.
+
+==== Restore original firmware via serial cable and tftp-server ====
+<code>
+#set goflex net ip
+setenv ipaddr '192.168.1.1'
+#set tftp-server ip
+setenv serverip '192.168.1.2'
+
+#original uImage (backuped before)
+tftpboot 0x800000 uImage-mtd1-dump
+nand erase 0x100000 0x400000
+nand write.e 0x800000 0x100000 0x400000
+
+#original rootfs (backuped before)
+tftpboot 0x800000 rootfs-mtd2-dump
+nand erase 0x500000 0x2000000
+nand write.e 0x800000 0x500000 0x2000000
+
+resetenv
+reset
+
+Hit any key to stop autoboot:  0
+
+setenv bootcmd 'nand read.e 0x800000 0x100000 0x300000; setenv bootargs $(console) $(bootargs_root); bootm 0x800000'
+
+#change value to your device
+setenv ethaddr '00:10:75:26:3D:9F'
+setenv cesvcid '5RFAJDGYNLPLDUHN4BWUWC3EKJ'
+setenv ceserialno 'NA1Y0EG1'
+setenv ceboardver 'DISCOVERY:0.1'
+saveenv
+
+reset
+</code>
+
+==== Install u-boot and OpenWrt into NAND via serial cable and tftp-server ====
+
+**Prepare on PC**
+
+Download files:
+
+OpenWrt current:\\
+U-Boot:   [[https://downloads.openwrt.org/releases/19.07.3/targets/kirkwood/generic/u-boot-goflexhome/u-boot.kwb]]\\
+Firmware: [[https://downloads.openwrt.org/releases/19.07.3/targets/kirkwood/generic/openwrt-19.07.3-kirkwood-seagate_goflexnet-squashfs-factory.bin]]
+
+or OpenWrt snapshot:\\
+U-Boot:   [[https://downloads.openwrt.org/snapshots/targets/kirkwood/generic/u-boot-goflexhome/u-boot.kwb]]\\
+Firmware: [[https://downloads.openwrt.org/snapshots/targets/kirkwood/generic/openwrt-kirkwood-seagate_goflexnet-squashfs-factory.bin]]
+
+Start any tftp-server in same subnet and put files **uboot**, **squashfs-factory.bin** to tftp-server\\
+**Note:** The U-boot for the GoFlexNet is the same as the one for the GoFlexHome
+
+**Install u-boot**
+
+Hit any key to stop autoboot in the u-boot and set goflexhome ip, tftp-server ip, set your mac-address from bottom of the machine:
+<code>
+setenv ipaddr '192.168.1.1'
+setenv serverip '192.168.1.2'
+setenv ethaddr '00:10:75:xx:xx:xx'
+saveenv
+</code>
+
+Download from tftp-server **u-boot.kwb** file to RAM start offset 0x6400000
+<code>tftp 0x6400000 u-boot.kwb</code>
+or
+<code>tftpboot 0x6400000 u-boot.kwb</code>
+Bytes transferred = 607044 (94344 hex)
+
+Erase NAND start from 0x0 size 0x100000
+<code>nand erase 0x0 0x100000</code>
+
+Write NAND from RAM start offset 0x6400000 to nand start 0x0 size 0x100000 (1MB)
+<code>nand write 0x6400000 0x0 0x100000</code>
+
+reboot device
+<code>reset</code>
+
+Now you are rebooting in the new u-boot you installed
+
+**Install OpenWrt**
+
+Hit any key to stop autoboot in the u-boot and set goflexnet ip, tftp-server ip, set your mac-address from bottom of the machine:
+<code>
+setenv ipaddr '192.168.1.1'
+setenv serverip '192.168.1.2'
+setenv ethaddr '00:10:75:xx:xx:xx'
+saveenv
+</code>
+
+Download from tftp-server file **openwrt-19.07.3-kirkwood-seagate_goflexnet-squashfs-factory.bin** to RAM start default offset 0x800000
+<code>tftpboot openwrt-19.07.3-kirkwood-seagate_goflexnet-squashfs-factory.bin</code>
+Load address: 0x800000
+...
+Bytes transferred = 4063232 (3e0000 hex)
+
+Erase NAND UBI partition
+<code>nand erase.part ubi</code>
+
+Write NAND from RAM start offset 0x800000 to nand UBI partition size 0x3e0000
+<code>nand write 0x800000 ubi 0x600000</code>
+
+Reboot Device
+<code>reset</code>
+
+Congratulations!
+<code>
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt 19.07.3
+ -----------------------------------------------------
+</code>
+
+#for fw_printenv, fw_setenv
+<code>echo '/dev/mtd0 0xc0000 0x20000 0x20000' >/etc/fw_env.config</code>
+
+
+==== uboot rescue (kwboot)====
+<code>
+wget https://github.com/LeMaker/u-boot/raw/master/tools/kwboot.c
+wget https://github.com/LeMaker/u-boot/raw/master/tools/kwbimage.h
+gcc -o kwboot kwboot.c
+chmod +x ./kwboot
+</code>
+warning, compiled kwboot not work in BSD systems (MacOS too), do it only in linux
+
+type this command, but not run
+<code>
+kwboot -b ./uboot.2017.07-tld-1.goflexnet.mtd0.kwb /dev/ttyUSB0 -p
+</code>
+plug power to bricked device, slowly count 1000, 1001, 1002 and press enter.
+
+now you must write uboot to nand via TFTP/USB
+
+==== redstone63 rescue ====
+all files are here: [[http://us.mirror.archlinuxarm.org/mirror/ce/|redstone_v63]]
+
+Checksums:
+
+ce_kernel_redstone_v63.img: c31ca085da5999651384cf4bb9978692
+
+ce_ramdisk_v2.0b.img.gz:    80787eea2389a1fe96ffc6715ec65d4c
+
+<code>
+setenv serverip '192.168.1.1'
+setenv ipaddr '192.168.1.2'
+nand erase 0x100000 0x400000
+tftp 0x800000 ce_kernel_redstone_v63.img
+nand write.e 0x800000 0x100000 0x1e30f0
+tftp 0x1000000 ce_ramdisk_v2.0b.img.gz
+setenv bootargs $(console) root=/dev/mtdblock2 initrd=0x1000000,0xb39a59
+bootm 0x800000
+</code>
+
+==== Recovery of a bricked uboot *without* jtag ====
+Unlike the dockstar, the goflexnet has a newer bootrom which supports
+serial boot. [http://forum.doozan.com/read.php?3,7852,7852]
+
+<code>
+wget ftp://ftp.denx.de/pub/u-boot/u-boot-2013.10.tar.bz2
+tar jxf u-boot-2013.10.tar.bz2
+cd u-boot-2013.10/tools/
+gcc -o kwboot kwboot.c
+./kwboot -b /tmp/openwrt-kirkwood-goflexhome-u-boot.kwb -t -p -B 115200 /dev/ttyUSB0
+</code>
+
+Now the uboot is loaded into ram and executed. You have to flash u-boot into nand. See below how to flash it.
+
+====RECOVERY BRICKED UBOOT OF GOFLEXNET (BusPirate & Cygwin)====
+information from console of BusPirate (SeeedStudio) "HiZ>i" - Bus Pirate v3.5 Firmware v6.1 r1676  Bootloader v4.4
+in bash of Cygwin
+<code>
+git clone git://git.code.sf.net/p/openocd/code
+cd code
+./bootstrap
+./configure --enable-maintainer-mode --disable-werror --disable-at91rm9200 --enable-buspirate
+make && make install && make clean
+
+put buspirate.cfg to /usr/local/share/openocd/scripts/interface/
+put dockstar.cfg to /usr/local/share/openocd/scripts/board/
+put uboot.mtd0.goflexnet.original.kwb from http://download.doozan.com/uboot/files/uboot/uboot.mtd0.goflexnet.original.kwb to /usr/local/share/openocd/scripts/
+
+cd /usr/local/share/openocd/scripts
+
+(Seeed Studio BusPirate - GoFlex.net)  (GoFlex.net - Seeed Studio BusPirate)
+(            nc         -   1  nc   )  ( 10  GND   -    serial cable GND   )
+(     6  blue   (aux)   -   2  IN   )  (  9  RxD   -    serial cable TxD   )
+(     8  gray   (mosi)  -   3  TDI  )  (  8  TxD   -    serial cable RxD   )
+(     9  white  (cs)    -   4  TMS  )  (  7  CN    -           nc          )
+(     7  purple (clk)   -   5  TCK  )  (  6  DOT   -    10  black (miso)   )
+power on goflex.net, serial, buspirate
+
+openocd.exe -f board/dockstar.cfg
+
+in telnet 127.0.0.1 4444:
+init
+type 'halt' - press reset - press enter - release reset
+
+(repeat while not see this:
+target state: halted
+target halted in ARM state due to debug-request, current fashion: Supervisor
+CPSR: 0x000000d3 pc: 0xffff0000
+MMU: disabled, D-Cache: disabled, I-Cache: disabled
+if you not see this - you can try command 'soft_reset_halt')
+
+dockstar_init
+
+(here are two options to choose from)
+------
+load_image uboot.mtd0.goflexnet.original.kwb 0x800000
+(wait ~214 sec)
+resume 0x800200
+------
+or you can erease nand and native write to nand:
+------
+nand probe 0
+nand erase 0 0x0 0xa0000
+nand write 0 uboot.mtd0.goflexnet.original.kwb 0 oob_softecc_kw
+(wait ~569 sec)
+(then poweroff goflexnet & buspirate, wait 5 secs adns poweron goflexnet)
+------
+
+
+in serial console:
+Hit any key to stop autoboot:  0
+nand erase
+nand write.e 0x800000 0x0 0x80000
+reset
+</code>
+
+buspirate.cfg
+<code>
+interface buspirate
+buspirate_port /dev/ttyS15
+buspirate_speed fast #normal or fast
+buspirate_vreg 0
+buspirate_mode open-drain
+buspirate_pullup 0
+reset_config srst_only
+</code>
+
+dockstar.cfg
+<WRAP bootlog>
+<nowiki>
+# Marvell SheevaPlug
+
+# I'm using a wiggler compatible cable
+source [find interface/buspirate.cfg]
+source [find target/feroceon.cfg]
+jtag_khz 500
+jtag_nsrst_delay 500
+
+$_TARGETNAME configure \
+	-work-area-phys 0x100000 \
+	-work-area-size 65536 \
+	-work-area-backup 0
+
+# Disabled for the dockstar	
+#arm7_9 dcc_downloads enable
+
+# this assumes the hardware default peripherals location before u-Boot moves it
+set _FLASHNAME $_CHIPNAME.flash
+nand device $_FLASHNAME orion 0 0xd8000000
+
+proc dockstar_init { } {
+
+	# We need to assert DBGRQ while holding nSRST down.
+	# However DBGACK will be set only when nSRST is released.
+	# Furthermore, the JTAG interface doesn't respond at all when
+	# the CPU is in the WFI (wait for interrupts) state, so it is
+	# possible that initial tap examination failed.  So let's
+	# re-examine the target again here when nSRST is asserted which
+	# should then succeed.
+	jtag_reset 0 1
+	feroceon.cpu arp_examine
+	halt 0
+	jtag_reset 0 0
+	wait_halt
+
+	arm mcr 15 0 0 1 0 0x00052078
+
+	mww 0xD0001400 0x43000C30
+	mww 0xD0001404 0x39543000 
+	mww 0xD0001408 0x22125451 
+	mww 0xD000140C 0x00000833 
+	mww 0xD0001410 0x000000CC
+	mww 0xD0001414 0x00000000 
+	mww 0xD0001418 0x00000000
+	mww 0xD000141C 0x00000C52 
+	mww 0xD0001420 0x00000042 
+	mww 0xD0001424 0x0000F17F 
+	mww 0xD0001428 0x00085520 
+	mww 0xD000147c 0x00008552 
+
+	# 1st bank is 128 MB
+	mww 0xD0001504 0x07FFFFF1 
+	# 2nd bank of DRAM is not used
+	mww 0xD0001508 0x00000000 
+	mww 0xD000150C 0x00000000
+	# Commented the 3 following	lines
+	#mww 0xD0001504 0x0FFFFFF1 
+	#mww 0xD0001508 0x10000000 
+	#mww 0xD000150C 0x0FFFFFF5 
+	mww 0xD0001514 0x00000000
+	mww 0xD000151C 0x00000000
+	mww 0xD0001494 0x003C0000 
+	mww 0xD0001498 0x00000000
+	mww 0xD000149C 0x0000F80F 
+	mww 0xD0001480 0x00000001 
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+	mww 0xD0020204 0x00000000
+
+	mww 0xD0010000 0x01111111 
+	mww 0xD0010004 0x11113322 
+	mww 0xD0010008 0x00001111
+
+	mww 0xD0010418 0x003E07CF
+	mww 0xD001041C 0x000F0F0F
+	mww 0xD0010470 0x01C7D943
+
+}
+
+proc sheevaplug_reflash_uboot { } {
+
+	# reflash the u-Boot binary and reboot into it
+	sheevaplug_init
+	nand probe 0
+	nand erase 0 0x0 0xa0000
+	nand write 0 uboot.bin 0 oob_softecc_kw
+	resume
+
+}
+
+proc sheevaplug_reflash_uboot_env { } {
+
+	# reflash the u-Boot environment variables area
+	sheevaplug_init
+	nand probe 0
+	nand erase 0 0xa0000 0x40000
+	nand write 0 uboot-env.bin 0xa0000 oob_softecc_kw
+	resume
+
+}
+
+proc sheevaplug_load_uboot { } {
+
+	# load u-Boot into RAM and execute it
+	sheevaplug_init
+	#load_image uboot.elf
+	#verify_image uboot.elf
+	load_image u-boot
+	verify_image u-boot
+	resume 0x00600000
+
+}
+
+proc dockstar_reset_cpu { } {
+
+#	System and User mode registers
+#		  r0: 00000000       r1: 00000000       r2: 00000000       r3: 00000000
+#		  r4: 00000000       r5: 00000000       r6: 00000000       r7: 00000000
+#		  r8: 00000000       r9: 00000000      r10: 00000000      r11: 00000000
+#		 r12: 00000000   sp_usr: 7dddee86   lr_usr: dffebe46       pc: ffff0a42
+#		cpsr: 400000f3
+
+	reg r1 0
+	reg r2 0
+	reg r3 0
+	reg r4 0
+	reg r5 0
+	reg r6 0
+	reg r7 0
+	reg r8 0
+	reg r9 0
+	reg r10 0
+	reg r11 0
+	reg r12 0
+	reg sp_usr 0
+	reg lr_usr 0
+	reg pc 0
+	# Set the CPU in Supervisor mode
+	reg cpsr 0x13
+
+#	FIQ mode shadow registers
+#	  r8_fiq: fbcfff64   r9_fiq: d7dfafd6  r10_fiq: 1fff6d2e  r11_fiq: 1db65df4
+#	 r12_fiq: ff5a6de4   sp_fiq: 745fe7d5   lr_fiq: 89f7ae3e spsr_fiq: 00000000
+
+	reg r8_fiq 0
+	reg r9_fiq 0
+	reg r10_fiq 0
+	reg r11_fiq 0
+	reg r12_fiq 0
+	reg sp_fiq 0
+	reg lr_fiq 0
+	reg spsr_fiq 0
+
+#	Supervisor mode shadow registers
+#	  sp_svc: fffeff84   lr_svc: ffff0a43 spsr_svc: 00000000
+
+	reg sp_svc 0
+	reg lr_svc 0
+	reg spsr_svc 0
+
+#	Abort mode shadow registers
+#	  sp_abt: 51fe66f7   lr_abt: d7abaef7 spsr_abt: 00000000
+
+	reg sp_abt 0
+	reg lr_abt 0
+	reg spsr_abt 0
+
+#	IRQ mode shadow registers
+#	  sp_irq: 7fdb4ed5   lr_irq: 6d41122e spsr_irq: 00000000
+
+	reg sp_irq 0
+	reg lr_irq 0
+	reg spsr_irq 0
+	
+#	Undefined instruction mode shadow registers
+#	  sp_und: 75ffef7e   lr_und: d75b6cd1 spsr_und: 00000000
+
+	reg sp_und 0
+	reg lr_und 0
+	reg spsr_und 0
+	
+}
+</nowiki>
+</WRAP>\\
+
+==== original/default GoFlex.net uBoot environment (printenv/setenv) ====
+<code>
+baudrate=115200
+loads_echo=0
+rootpath=/mnt/ARM_FS/
+run_diag=yes
+console=console=ttyS0,115200
+CASset=min
+MALLOC_len=1
+ethprime=egiga0
+bootargs_root=root=/dev/mtdblock2 ro
+ethmtu=1500
+usb0Mode=host
+nandEcc=1bit
+bootargs=console=ttyS0,115200 root=/dev/mtdblock2 ro
+ethaddr=00:10:75:26:3D:9F
+cesvcid=5RFAJDGYNLPLDUHN4BWUWC3EKJ
+ceserialno=NA1Y0EG1
+ceboardver=DISCOVERY:0.1
+ethact=egiga0
+filesize=1b60000
+fileaddr=1000000
+netmask=255.255.0.0
+ipaddr=192.168.1.1
+serverip=192.168.1.2
+bootcmd=nand read.e 0x800000 0x100000 0x300000; setenv bootargs $(console) $(bootargs_root); bootm 0x800000
+arcNumber=3089
+stdin=serial
+stdout=serial
+stderr=serial
+mainlineLinux=no
+enaMonExt=no
+enaCpuStream=no
+enaWrAllo=no
+pexMode=RC
+disL2Cache=no
+setL2CacheWT=yes
+disL2Prefetch=yes
+enaICPref=yes
+enaDCPref=yes
+sata_dma_mode=yes
+netbsd_en=no
+vxworks_en=no
+bootdelay=3
+disaMvPnp=no
+</code>
+
+
+===== Tags =====
+{{tag>kirkwood gt32Flash 128RAM GigabitEthernet 1NIC 0WNIC no_switch USB 4USB JTAG ARM ARMv5 ARM926EJ-S crypto SATA NAS}}

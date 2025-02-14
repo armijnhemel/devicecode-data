@@ -1,0 +1,1809 @@
+====== ZTE MF286R ======
+
+/* This template is intended to be used via https://openwrt.org/meta/create_new_device_page ONLY.  */
+/* DO NOT CREATE NEW DEVICEPAGES VIA COPY & PASTE! */
+/* USE https://openwrt.org/meta/create_new_device_page */
+
+ZTE MF286R is a wireless LTE router, capable of connecting to LTE networks at download speeds up to 300Mbps using carrier aggegation. It has 3x3 2.4GHz Wi-Fi 4 and 2x2 5GHz Wi-Fi 5 Wave 2 radios, four gigabit ethernet ports, one USB 2.0 port, two RJ-11 ports for connecting landline phones that lets you use the cellular network to make calls. It is commonly used by some European ISPs for FWA(Fixed Wireless Access) services, such as Windtre on Italy, Turkcell on Türkiye, and more. Some models of the MF286 family include battery or phone ports, as well as corresponding LEDs on the front.
+
+{{media:zte:mf286r:mf286r-all-angles.jpg?512|ZTE MF286R from all angles.}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^ZTE$", "model": "^MF286R$"}
+} -->
+
+/* If no unsupported functions known, comment out the following datatable or delete it. */
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["unsupported_functions"],
+  "filterColumns": {"brand": "^ZTE$", "model": "^MF286R$"}
+} -->
+
+===== Experimental Versions =====
+
+//None at this time.//
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^ZTE$", "model": "^MF286R$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^ZTE$", "model": "^MF286R$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+TL:DR; Get a serial adapter and connect to the serial(see [[:toh:zte:mf286r#serial|Serial]]), boot the initramfs image, then apply the sysupgrade image. 
+If you don't have a serial adapter, you can use the known exploit to gain a root shell and move from there. 
+
+
+====STEP 1: Gaining root shell====
+
+===Method 1===
+Use a serial cable. It might seem inconvenient to tear apart the device and get a serial adapter for one job but it is way easier to do the install with it. Otherwise, feel free to follow the other methods mentioned below, which takes advantage of an URL RCE exploit within the Web UI. Some up-to-date firmwares patched this bug(such as T-Mobile.pl firmware.). Physical connections for serial are shown [[:toh:zte:mf286r#serial|here.]]
+
+===Method 2===
+This works if busybox has telnetd compiled in the binary. If this does not work, try method 3..
+
+Using well-known exploit to start telnetd on your router - works only if Busybox on stock firmware has telnetd included:
+- Open stock firmware web interface
+- Navigate to "URL filtering" section by going to "Advanced settings", then "Firewall" and finally "URL filter".
+- Add an entry ending with <nowiki>"&&telnetd&&"</nowiki>, for example <nowiki>"http://hostname/&&telnetd&&".</nowiki>
+- telnetd will immediately listen on port 4719.
+- After connecting to telnetd use "admin/admin" as credentials.
+
+===Method 3===
+This works if busybox does not have telnetd compiled in. Notably, this is the case in DNA.fi firmware.
+
+- Set IP of your computer to 192.168.0.22/24.
+- Have a TFTP server running at that address
+- Download MIPS build of busybox including telnetd, for example from [[https://busybox.net/downloads/binaries/1.16.1/busybox-mips|here]] and put it in it's root directory. Rename it as "telnetd".
+- As previously, login to router's web UI and navigate to "URL filtering"
+- Using "Inspect" feature, extend "maxlength" property of the input field named "addURLFilter", so it looks like this:
+<nowiki>  <input type="text" name="addURLFilter" id="addURLFilter" maxlength="332" class="required form-control"></nowiki>
+- Stay on the page - do not navigate anywhere
+- Enter <nowiki>"http://aa&zte_debug.sh 192.168.0.22 telnetd"</nowiki> as a filter.
+- Save the settings. This will download the telnetd binary over tftp and execute it. You should be able to log in at port 23, using "admin/admin" as credentials.
+
+====STEP 2: Backing up original software====
+As the stock firmware may be customized by the carrier and is not officially available in the Internet, **IT IS IMPERATIVE** to back up the stock firmware, if you ever plan to returning to stock firmware. It is highly recommended to perform backup using both methods, to avoid hassle of reassembling firmware images in future, if a restore is needed.
+
+===Method 1 - After booting OpenWrt initramfs image via TFTP===
+PLEASE NOTE: YOU CANNOT DO THIS IF USING INTERMEDIATE FIRMWARE FOR INSTALLATION.
+- Dump stock firmware located on stock kernel and ubi partitions and keep them in a safe place, should a restore be needed in future.
+
+  ssh root@192.168.1.1: cat /dev/mtd4 > mtd4_kernel.bin
+  ssh root@192.168.1.1: cat /dev/mtd9 > mtd9_ubi.bin
+
+===Method 2 - using stock firmware===
+- After booting into the stock frimware and connecting to the console either via serial or telnet, Connect an external USB drive formatted with FAT or ext4 to the USB port.
+- The drive will be auto-mounted to /var/usb_disk
+- Check the flash layout of the device:
+
+<WRAP BOX>
+  cat /proc/mtd
+</WRAP>
+
+It should show the following:
+
+  mtd0: 000a0000 00010000 "u-boot"
+  mtd1: 00020000 00010000 "u-boot-env"
+  mtd2: 00140000 00010000 "reserved1"
+  mtd3: 000a0000 00020000 "fota-flag"
+  mtd4: 00080000 00020000 "art"
+  mtd5: 00080000 00020000 "mac"
+  mtd6: 000c0000 00020000 "reserved2"
+  mtd7: 00400000 00020000 "cfg-param"
+  mtd8: 00400000 00020000 "log"
+  mtd9: 000a0000 00020000 "oops"
+  mtd10: 00500000 00020000 "reserved3"
+  mtd11: 00800000 00020000 "web"
+  mtd12: 00300000 00020000 "kernel"
+  mtd13: 01a00000 00020000 "rootfs"
+  mtd14: 01900000 00020000 "data"
+  mtd15: 03200000 00020000 "fota"
+  mtd16: 01d00000 00020000 "firmware"
+
+
+//Differences might indicate that this is NOT a MF286A device but one of other variants.//
+- Copy over all MTD partitions, for example by executing the following:
+
+  for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do cat /dev/mtd$i > \
+  /var/usb_disk/mtd$i; done
+
+"Firmware" partition(mtf16) can be skipped, it is a concatenation of "kernel" and "rootfs".
+
+- If the count of MTD partitions is different, this might indicate that this is not a MF286R device, but one of its other variants.
+- Unmount the filesystem  and then remove the drive:
+
+  umount /var/usb_disk; sync
+  
+- Store the files in safe place if you ever plan to return to stock firmware. **This is especially important, because stock firmware for this device is not available officially, and is usually customized by the mobile providers.**
+
+
+Alternatively, you can use the TFTP server you are already going to use for the openwrt initramfs image, as a storage for the MTD dumps, by using something similar to: (Thanks to cicibird at discord for this tip)
+
+  tftp -l /dev/mtd0ro -r mtd0ro_uboot.img -p 192.168.1.144
+  tftp -l /dev/mtd1ro -r mtd1ro_uenv.img -p 192.168.1.144
+  tftp -l /dev/mtd2ro -r mtd2ro_reseved1.img -p 192.168.1.144
+  tftp -l /dev/mtd3ro -r mtd3ro_foto-flag.img -p 192.168.1.144
+  tftp -l /dev/mtd4ro -r mtd4ro_art.img -p 192.168.1.144
+  tftp -l /dev/mtd5ro -r mtd5ro_mac.img -p 192.168.1.144
+  tftp -l /dev/mtd6ro -r mtd6ro_reserved2.img -p 192.168.1.144
+  tftp -l /dev/mtd7ro -r mtd7ro_cfg-param.img -p 192.168.1.144
+  tftp -l /dev/mtd8ro -r mtd8ro_log.img -p 192.168.1.144
+  tftp -l /dev/mtd9ro -r mtd9ro_oops.img -p 192.168.1.144
+  tftp -l /dev/mtd10ro -r mtd10ro_reserved3.img -p 192.168.1.144
+  tftp -l /dev/mtd11ro -r mtd11ro_web.img -p 192.168.1.144
+  tftp -l /dev/mtd12ro -r mtd12ro_kernel.img -p 192.168.1.144
+  tftp -l /dev/mtd13ro -r mtd13ro_rootfs.img -p 192.168.1.144
+  tftp -l /dev/mtd14ro -r mtd14ro_data.img -p 192.168.1.144
+  tftp -l /dev/mtd15ro -r mtd15ro_foto.img -p 192.168.1.144
+  tftp -l /dev/mtd16ro -r mtd16ro_frimware.img -p 192.168.1.144
+
+Change the IP accordingly, of course.
+
+====STEP 3: Booting initramfs image====
+
+===Method 1: using serial console (RECOMMENDED):===
+- Have TFTP server running, exposing the OpenWrt initramfs image, and set your computer's IP address as 192.168.0.22 (/24, subnet mask 255.255.255.0). This is the default expected by U-boot. You may wish to change that, and alter later commands accordingly.
+- Connect the serial console if you haven't done so already,
+- Interrupt boot sequence by pressing any key in U-boot when prompted "Hit any key to stop autoboot". You might need to power cycle the device to get the prompt again.
+- Use the following commands to boot OpenWrt initramfs through TFTP:
+  setenv serverip 192.168.0.22
+  setenv ipaddr 192.168.0.1
+  tftpboot 0x82000000 openwrt-ath79-nand-zte_mf286a-initramfs-kernel.bin
+  bootm 0x82000000
+
+(Replace server IP and router IP as needed). 
+
+There is no  emergency TFTP boot sequence triggered by buttons, contrary to MF283+.
+- When OpenWrt initramfs finishes booting, proceed to actual installation.
+
+===Method 2: using initramfs image as temporary boot kernel===
+This exploits the fact, that kernel and rootfs MTD devices are consecutive on NAND flash, so from within stock image, an initramfs can be written to this area and booted by U-boot on next reboot, because it uses "nboot" command which isn't limited by kernel partition size.
+- Download the initramfs-kernel.bin image
+- After backing up the previous MTD contents, write the images to the "firmware" MTD device, which conveniently concatenates "kernel" and "rootfs" partitions that can fit the initramfs image:
+
+  nandwrite -p /dev/<firmware-mtd> \
+  /var/usb_disk/openwrt-ath79-zte_mf286a-initramfs-kernel.bin
+
+- If the write fails with "Permission denied", then the flash can be unlocked using this hidden command:
+
+  cat /proc/driver/sensor_id
+  
+Retry the write afterwards.
+
+- If write is OK, reboot the device, it will reboot to OpenWrt initramfs:
+
+  reboot -f
+
+- After rebooting, SSH into the device and use sysupgrade to perform proper installation.
+
+===Method 3: using built-in TFTP recovery (LAST RESORT)===
+- With that method, ensure you have complete backup of system's NAND flash first. It involves deliberately erasing the kernel.
+- Download "-initramfs-kernel.bin" image for the device.
+- Prepare the recovery image by prepending 8MB of zeroes to the image, and name it root_uImage:
+
+  dd if=/dev/zero of=padding.bin bs=8M count=1
+
+  cat padding.bin openwrt-ath79-nand-zte_mf286a-initramfs-kernel.bin >
+  root_uImage
+
+- Set up a TFTP server at 192.0.0.1/8. Router will use random address from that range.
+- Put the previously generated "root_uImage" into TFTP server root directory.
+- Deliberately erase "kernel" partition" using stock firmware after taking backup.
+  
+  flash_erase /dev/mtd12
+  
+- If the erase fails with "Permission denied", then the flash can be unlocked using this hidden command:
+
+  cat /proc/driver/sensor_id
+
+Retry erasing afterwards.
+  
+Replace mtd12 with kernel partition if differrent. **THIS IS POINT OF NO RETURN.**
+
+- Restart the device. U-boot will attempt flashing the recovery initramfs image, which will let you perform actual installation using sysupgrade. This might take a considerable time, sometimes the router doesn't establish Ethernet link properly right after booting. **Be patient.**
+- After U-boot finishes flashing, the LEDs of switch ports will all light up. At this moment, perform power-on reset, and wait for OpenWrt initramfs to finish booting. Then proceed to actual installation.
+
+====STEP 4: Actual installation====
+- Set your computer IP to 192.168.1.22/24
+- scp the sysupgrade image to the device:
+
+  scp openwrt-ath79-nand-zte_mf286a-squashfs-sysupgrade.bin \
+  root@192.168.1.1:/tmp/
+
+- ssh into the device and execute sysupgrade:
+
+  sysupgrade -n /tmp/openwrt-ath79-nand-zte_mf286a-squashfs-sysupgrade.bin
+
+- Wait for router to reboot to full OpenWrt.
+
+==== Flash Layout ====
+<WRAP BOX>
+  mtd0: 000a0000 00010000 "u-boot"
+  mtd1: 00020000 00010000 "u-boot-env"
+  mtd2: 00140000 00010000 "reserved1"
+  mtd3: 000a0000 00020000 "fota-flag"
+  mtd4: 00080000 00020000 "art"
+  mtd5: 00080000 00020000 "mac"
+  mtd6: 000c0000 00020000 "reserved2"
+  mtd7: 00400000 00020000 "cfg-param"
+  mtd8: 00400000 00020000 "log"
+  mtd9: 000a0000 00020000 "oops"
+  mtd10: 00500000 00020000 "reserved3"
+  mtd11: 00800000 00020000 "web"
+  mtd12: 00300000 00020000 "kernel"
+  mtd13: 01a00000 00020000 "rootfs"
+  mtd14: 01900000 00020000 "data"
+  mtd15: 03200000 00020000 "fota"
+  mtd16: 01d00000 00020000 "firmware"
+</WRAP>
+
+
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+==== LuCI Web Upgrade Process ====
+
+  * Browse to ''<nowiki>http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/</nowiki>'' LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+==== Terminal Upgrade Process ====
+
+If you don't have a GUI (LuCI) available, you can alternatively upgrade via the command line.
+Login as root via SSH on 192.168.1.1, or connect via serial, then enter the following commands, replacing the URL and filename with the latest sysupgrade image link.
+
+<code>
+cd /tmp
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+sysupgrade /tmp/xxx.abc
+</code>
+
+</WRAP>
+
+===== Debricking =====
+See [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Failsafe mode =====
+See [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+Since the router is equipped with LTE modem as its main WAN interface, it might be useful to connect to the Internet right away after installation. To do so over Luci, you'd need to connect to Internet via other means (Ethernet or Wi-Fi STA) and then install ''luci-proto-ncm'' package. 
+
+You can also add the necessary packages when building a new image with [[https://firmware-selector.openwrt.org/|Firmware Selector]] or download the package as well as its missing dependencies after installation via OpenWrt's website, upload them to the router and install them manually, which doesn't require the router to be connected to Internet.
+As of this writing, the package and its dependencies can be found from the following page (check and update the version accordingly):
+  * https://downloads.openwrt.org/releases/23.05.5/packages/mips_24kc/luci/
+  * https://downloads.openwrt.org/releases/23.05.5/targets/ath79/nand/packages/
+  * https://downloads.openwrt.org/releases/23.05.5/packages/mips_24kc/base/
+
+If you can't access the Internet via other means or you want to set it up via console or SSH, you can put the following entries in ''/etc/config/network'', replacing the specific APN with one needed for your ISP.
+
+<code>
+config interface 'wwan'
+        option proto 'ncm'
+        option device '/dev/ttyACM0'
+        option pdptype 'IP'
+        option apn 'internet'
+</code>
+
+Please refer to [[:docs:guide-user:network:wan:wwan:ethernetoverusb_ncm#network_configuration|NCM modem configuration]] for further details.
+ 
+After configuring your LTE modem, you can follow [[docs:guide-user:base-system:start|Basic configuration]] to proceed with other configuration steps, such as [[:docs:guide-user:network:wifi:start|setting up your Wi-Fi]].
+
+===== Specific Configuration =====
+
+Other than LTE modem configuration mentioned above, no specific configuration is required. You might want to install <nowiki>luci-app-smstool, sms-tool and modemband</nowiki> in order to manage LTE bands, send/receive SMS and use USSD codes.
+
+==== Switch Ports (for VLANs) ====
+<WRAP BOX>
+FIXME **Please click EDIT to see note about this section, I need help.** 
+/*I didn't understand the format, but I have this: media:zte:mf286r:switchui.png */
+/*Also, I just discovered how to make subfolders on the media manager. If you want to move all the images to the corresponding folder, I can fix the old photos on this wiki after that. */
+/*I'll upload new images to the right folder. */
+</WRAP>
+
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | EXAMPLE 4     |
+| LAN 1            | EXAMPLE 3     |
+| LAN 2            | EXAMPLE 2     |
+| LAN 3            | EXAMPLE 1     |
+| LAN 4            | EXAMPLE 0     |
+
+</WRAP>
+
+==== Buttons ====
+
+The ZTE MF286R has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| Reset Button                 | Unknown |
+| WPS Button                   | Unknown |
+| Wi-Fi ON/OFF button          | Disconnects the Wi-Fi.|
+| Power switch                 | Turns off the power. Although it looks like a hardwired power switch, it might not be so, since sometimes some LEDs stay on even after taking the switch to the off position. |
+
+</WRAP>
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^ZTE$", "model": "^MF286R$"}
+} -->
+
+==== Photos ====
+
+//Front://\\
+{{media:zte:mf286r:mf286r-superbox-front.jpg?400|}}
+{{:media:zte:mf286d:mf286d-1.jpg?400|}}
+
+//Back://\\
+{{media:zte:mf286r:mf286r-superbox-back.jpg?400|}}
+{{:media:zte:mf286d:mf286d-2.jpg?400|}}
+
+//Top://\\
+{{:media:zte:mf286d:mf286d-3.jpg?400|}}
+
+//Right://\\
+{{:media:zte:mf286d:mf286d-4.jpg?400|}}
+
+//Under device label://\\
+{{:media:zte:mf286d:mf286d-5.jpg?400|}}
+
+//Disassembled case://\\
+{{:media:zte:mf286d:mf286d-6.jpg?400|}}
+{{:media:zte:mf286d:mf286d-7.jpg?400|}}
+{{:media:zte:mf286d:mf286d-8.jpg?400|}}
+{{:media:zte:mf286d:mf286d-9.jpg?400|}}
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+  - Take of battery lid (no battery support for this model, battery cage is dummy).
+  - Unscrew screw placed behind battery lid.
+  - Take off back cover. It attached with multiple plastic clamps.
+  - Unscrew four more screws hidden behind back case.
+  - Remove front panel from blue chassis. There are more plastic
+   clamps.
+  - Unscrew two boards, which secures the PCB in the chassis.
+  - Extract board from blue chassis.
+
+//Main PCB://\\
+{{:media:zte:mf286d:mf286d-10.jpg?400|}}
+{{:media:zte:mf286d:mf286d-11.jpg?400|}}
+
+//PCB Board Details and modem photo://\\
+{{:media:zte:mf286d:mf286d-12.jpg?400|}}
+{{:media:zte:mf286d:mf286d-13.jpg?400|}}
+{{:media:zte:mf286d:mf286d-14.jpg?400|}}
+{{:media:zte:mf286d:mf286d-15.jpg?400|}}
+{{:media:zte:mf286d:mf286d-16.jpg?400|}}
+{{:media:zte:mf286d:mf286d-17.jpg?400|}}
+{{:media:zte:mf286d:mf286d-18.jpg?400|}}
+{{:media:zte:mf286d:mf286d-19.jpg?400|}}
+{{:media:zte:mf286d:mf286d-20.jpg?400|}}
+{{:media:zte:mf286d:mf286d-21.jpg?400|}}
+{{:media:zte:mf286d:mf286d-22.jpg?400|}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+The serial console connections are identical to the [[toh:zte:mf286d|ZTE MF286D]], which is shown below. **DO NOT** connect the 3.3V line unless your serial adapter needs it.
+
+{{:media:zte:mf286d:mf286d-serial-console.jpg?320|}}
+
+It was observed, that CH340-based USB-UART converters output garbage during U-boot phase of system boot. At least CP2102 is known to work properly, which is widely available in this form:
+
+{{:media:zte:example-usb-ttl-adapter.jpeg?200|}}
+
+^ Serial connection parameters\\ for ZTE MF286R  | 115200, 8N1, 3.3V |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+There is no JTAG functionality.
+
+===== Bootloader mods =====
+None so far.
+
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+WARNING: This boot log is taken from a Turkcell MF286R, which does not have FXS functionality as well as a battery, so logs related to these functions might be faulty or might not exist. 
+Also some IPs belonging to Turkcell Superonline as well as some TR069 configs might be visible in the log.
+<code>
+U-Boot 1.1.4 (May 13 2021 - 05:37:00)
+
+ap152 - Dragonfly 1.0DRAM:  
+sri
+ath_ddr_initial_config(278): (ddr2 init)
+ath_sys_frequency: cpu 775 ddr 650 ahb 258
+Tap values = (0x10, 0x10, 0x10, 0x10)
+128 MB
+Top of RAM usable for U-Boot at: 88000000
+Reserving 659k for U-Boot at: 87f58000
+Reserving 192k for malloc() at: 87f28000
+Reserving 44 Bytes for Board Info at: 87f27fd4
+Reserving 36 Bytes for Global Data at: 87f27fb0
+Reserving 128k for boot params() at: 87f07fb0
+Stack Pointer at: 87f07f98
+Now running in RAM - U-Boot at: 87f58000
+Flash Manuf Id 0xc8, DeviceId0 0x40, DeviceId1 0x15
+flash size 2MB, sector count = 32
+Flash:  2 MB
+*** Warning - bad CRC, using default environment
+
+Power up PLL with outdiv = 0 then switch to 3
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ath_gmac_enet_initialize...
+No valid address in Flash. Using fixed address
+ath_gmac_enet_initialize: reset mask:c02200 
+athr_mgmt_init (MDC/MDIO config)::done
+Dragonfly  ----> S17 PHY *
+athrs17_reg_init: complete
+Max resets limit reached exiting...
+athr_gmac_sgmii_setup SGMII done
+: cfg1 0x80000000 cfg2 0x7114
+eth0: 00:03:7f:ff:ff:ff
+ath_gmac_phy_setup
+eth0 up
+eth0
+Qualcomm Atheros SPI NAND Driver, Version 0.1 (c) 2014  Qualcomm Atheros Inc.
+ath_spi_nand_ecc: furture feat = 0x10
+ath_spi_nand_ecc: middle feat = 0x10
+zte ath_spi_nand_read_id 0xc8d1
+zte ath_spi_nand_read_id 0xc8d1c8
+zte debug gd 128 oob
+====== NAND Parameters ======
+sc addr = 0x87fa6d10 page(write size) = 0x800 (erase size) block = 0x20000
+Setting 0x181162c0 to 0x4b962100
+Uaztemain: enter into ! 
+ZTE_InitFotaFlashPara: nand_curr_device=0
+zte_getHandOffState: read data=0x20 from 0x0
+Hit any key to stop autoboot:  2 ... 1 ... 0 
+
+Loading from device 0: ath-spi-nand (offset 0x1800000)
+   Image Name:   MIPS OpenWrt Linux-3.3.8
+   Created:      2019-07-31   6:53:07 UTC
+   Image Type:   MIPS Linux Multi-File Image (lzma compressed)
+   Data Size:    1210407 Bytes =  1.2 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Contents:
+   Image 0:  1210399 Bytes =  1.2 MB
+## Booting image at 81000000 ...
+   Image Name:   MIPS OpenWrt Linux-3.3.8
+   Created:      2019-07-31   6:53:07 UTC
+   Image Type:   MIPS Linux Multi-File Image (lzma compressed)
+   Data Size:    1210407 Bytes =  1.2 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Contents:
+   Image 0:  1210399 Bytes =  1.2 MB
+   Verifying Checksum at 0x81000040 ...OK
+   Uncompressing Multi-File Image ... OK
+No initrd
+## Transferring control to Linux (at address 80060000) ...
+## Giving linux memsize in bytes, 134217728
+
+Starting kernel ...
+
+[    0.000000] Linux version 3.3.8 (scl@scl_xa243_241) (gcc version 4.6.3 20120201 (prerelease) (Linaro GCC 4.6-2012.02) ) #1 Wed Jul 31 14:52:17 CST 2019
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019750 (MIPS 74Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA956X rev 0
+[    0.000000] Clocks: CPU:775.000MHz, DDR:650.000MHz, AHB:258.333MHz, Ref:25.000MHz
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00008000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] Early memory PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00008000
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+[    0.000000] Kernel command line:  board=AP152 console=ttyS0,115200 mtdparts=spi0.0:640k(u-boot),128k(u-boot-env),1280k(reserved1);spi0.1:640k(fota-flag),512k(art),512k(mac),768k(reserved2),4m(cfg-param),4m(log),640k(oops),5m(reserved3),8m(web),3m(kernel),26m(rootfs),25m(data),50m(fota),29m@0x1800000(firmware) mem=128M rootfstype=squashfs,jffs2 noinitrd crashkernel=10M@20M oops=panic
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 125784k/131072k available (2574k kernel code, 5288k reserved, 687k data, 228k init, 0k highmem)
+[    0.000000] SLUB: Genslabs=9, HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:83
+[    0.000000] Calibrating delay loop... 385.84 BogoMIPS (lpj=1929216)
+[    0.060000] pid_max: default: 32768 minimum: 301
+[    0.060000] Mount-cache hash table entries: 512
+[    0.060000] Performance counters: mips/74K PMU enabled, 4 32-bit counters available to each CPU, irq 13
+[    0.070000] NET: Registered protocol family 16
+[    0.080000] gpiochip_add: registered GPIOs 0 to 22 on device: ath79
+[    0.080000] MIPS: machine is Qualcomm Atheros AP152 reference board
+[    0.090000] 
+[    0.090000] WLAN firmware dump buffer allocation of 2097152 bytes @ address 0x87a00000- SUCCESS !!!
+[    0.100000] registering PCI controller with io_map_base unset
+[    0.310000] bio: create slab <bio-0> at 0
+[    0.310000] PCI host bridge to bus 0000:00
+[    0.320000] pci_bus 0000:00: root bus resource [mem 0x12000000-0x13ffffff]
+[    0.320000] pci_bus 0000:00: root bus resource [io  0x0001]
+[    0.330000] pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    0.330000] pci 0000:00:00.0: using irq 40 for pin 1
+[    0.340000] Switching to clocksource MIPS
+[    0.340000] NET: Registered protocol family 2
+[    0.350000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.350000] TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.360000] TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.360000] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.370000] TCP reno registered
+[    0.370000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.380000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.380000] NET: Registered protocol family 1
+[    0.400000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.400000] JFFS2 version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.410000] msgmni has been set to 245
+[    0.420000] io scheduler noop registered
+[    0.420000] io scheduler deadline registered (default)
+[    0.430000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.450000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11) is a 16550A
+[    0.460000] console [ttyS0] enabled, bootconsole disabled
+[    0.460000] console [ttyS0] enabled, bootconsole disabled
+[    0.470000] m25p80 spi0.0: found gd25q16csig, expected m25p80
+[    0.480000] m25p80 spi0.0: gd25q16csig (2048 Kbytes)
+[    0.490000] 3 cmdlinepart partitions found on MTD device spi0.0
+[    0.490000] Creating 3 MTD partitions on "spi0.0":
+[    0.500000] 0x000000000000-0x0000000a0000 : "u-boot"
+[    0.500000] 0x0000000a0000-0x0000000c0000 : "u-boot-env"
+[    0.510000] 0x0000000c0000-0x000000200000 : "reserved1"
+[    0.520000] ath79_spinand_read_id:id0=0xc8  id1=0xd1 id2=0xc8
+[    0.520000] ath79_spinand_read_id:id0=0xc8  id1=0xd1 id2=0xc8
+[    0.530000] ath79_spinand_read_id:id0=0xc8  id1=0xd1 id2=0xc8
+[    0.540000] ath79_spinand_read_id:id0=0xc8  id1=0xd1 id2=0xc8
+[    0.540000] zte gd nand
+[    0.540000] NAND device: Manufacturer ID: 0xc8, Chip ID: 0xd1 (Giga Device NAND 128MiB 3,3V 8-bit)
+[    0.550000] Scanning device for bad blocks
+[    0.580000] Bad eraseblock 127 at 0x000000fe0000
+[    0.770000] Bad eraseblock 1023 at 0x000007fe0000
+[    0.770000] 14 cmdlinepart partitions found on MTD device spi0.1
+[    0.780000] Creating 14 MTD partitions on "spi0.1":
+[    0.790000] 0x000000000000-0x0000000a0000 : "fota-flag"
+[    0.790000] 0x0000000a0000-0x000000120000 : "art"
+[    0.800000] 0x000000120000-0x0000001a0000 : "mac"
+[    0.800000] 0x0000001a0000-0x000000260000 : "reserved2"
+[    0.810000] 0x000000260000-0x000000660000 : "cfg-param"
+[    0.820000] 0x000000660000-0x000000a60000 : "log"
+[    0.820000] 0x000000a60000-0x000000b00000 : "oops"
+[    0.830000] 0x000000b00000-0x000001000000 : "reserved3"
+[    0.840000] 0x000001000000-0x000001800000 : "web"
+[    0.840000] part[web]: logic[0]=phys[0]
+[    0.850000] part[web]: logic[1]=phys[1]
+[    0.850000] part[web]: logic[2]=phys[2]
+[    0.850000] part[web]: logic[3]=phys[3]
+[    0.860000] part[web]: logic[4]=phys[4]
+[    0.860000] part[web]: logic[5]=phys[5]
+[    0.870000] part[web]: logic[6]=phys[6]
+[    0.870000] part[web]: logic[7]=phys[7]
+[    0.870000] part[web]: logic[8]=phys[8]
+[    0.880000] part[web]: logic[9]=phys[9]
+[    0.880000] part[web]: logic[10]=phys[10]
+[    0.890000] part[web]: logic[11]=phys[11]
+[    0.890000] part[web]: logic[12]=phys[12]
+[    0.890000] part[web]: logic[13]=phys[13]
+[    0.900000] part[web]: logic[14]=phys[14]
+[    0.900000] part[web]: logic[15]=phys[15]
+[    0.910000] part[web]: logic[16]=phys[16]
+[    0.910000] part[web]: logic[17]=phys[17]
+[    0.910000] part[web]: logic[18]=phys[18]
+[    0.920000] part[web]: logic[19]=phys[19]
+[    0.920000] part[web]: logic[20]=phys[20]
+[    0.930000] part[web]: logic[21]=phys[21]
+[    0.930000] part[web]: logic[22]=phys[22]
+[    0.940000] part[web]: logic[23]=phys[23]
+[    0.940000] part[web]: logic[24]=phys[24]
+[    0.940000] part[web]: logic[25]=phys[25]
+[    0.950000] part[web]: logic[26]=phys[26]
+[    0.950000] part[web]: logic[27]=phys[27]
+[    0.960000] part[web]: logic[28]=phys[28]
+[    0.960000] part[web]: logic[29]=phys[29]
+[    0.960000] part[web]: logic[30]=phys[30]
+[    0.970000] part[web]: logic[31]=phys[31]
+[    0.970000] part[web]: logic[32]=phys[32]
+[    0.980000] part[web]: logic[33]=phys[33]
+[    0.980000] part[web]: logic[34]=phys[34]
+[    0.980000] part[web]: logic[35]=phys[35]
+[    0.990000] part[web]: logic[36]=phys[36]
+[    0.990000] part[web]: logic[37]=phys[37]
+[    1.000000] part[web]: logic[38]=phys[38]
+[    1.000000] part[web]: logic[39]=phys[39]
+[    1.010000] part[web]: logic[40]=phys[40]
+[    1.010000] part[web]: logic[41]=phys[41]
+[    1.010000] part[web]: logic[42]=phys[42]
+[    1.020000] part[web]: logic[43]=phys[43]
+[    1.020000] part[web]: logic[44]=phys[44]
+[    1.030000] part[web]: logic[45]=phys[45]
+[    1.030000] part[web]: logic[46]=phys[46]
+[    1.030000] part[web]: logic[47]=phys[47]
+[    1.040000] part[web]: logic[48]=phys[48]
+[    1.040000] part[web]: logic[49]=phys[49]
+[    1.050000] part[web]: logic[50]=phys[50]
+[    1.050000] part[web]: logic[51]=phys[51]
+[    1.060000] part[web]: logic[52]=phys[52]
+[    1.060000] part[web]: logic[53]=phys[53]
+[    1.060000] part[web]: logic[54]=phys[54]
+[    1.070000] part[web]: logic[55]=phys[55]
+[    1.070000] part[web]: logic[56]=phys[56]
+[    1.080000] part[web]: logic[57]=phys[57]
+[    1.080000] part[web]: logic[58]=phys[58]
+[    1.080000] part[web]: logic[59]=phys[59]
+[    1.090000] part[web]: logic[60]=phys[60]
+[    1.090000] part[web]: logic[61]=phys[61]
+[    1.100000] part[web]: logic[62]=phys[62]
+[    1.100000] part[web]: logic[63]=phys[63]
+[    1.100000] 0x000001800000-0x000001b00000 : "kernel"
+[    1.110000] part[kernel]: logic[0]=phys[0]
+[    1.120000] part[kernel]: logic[1]=phys[1]
+[    1.120000] part[kernel]: logic[2]=phys[2]
+[    1.120000] part[kernel]: logic[3]=phys[3]
+[    1.130000] part[kernel]: logic[4]=phys[4]
+[    1.130000] part[kernel]: logic[5]=phys[5]
+[    1.140000] part[kernel]: logic[6]=phys[6]
+[    1.140000] part[kernel]: logic[7]=phys[7]
+[    1.140000] part[kernel]: logic[8]=phys[8]
+[    1.150000] part[kernel]: logic[9]=phys[9]
+[    1.150000] part[kernel]: logic[10]=phys[10]
+[    1.160000] part[kernel]: logic[11]=phys[11]
+[    1.160000] part[kernel]: logic[12]=phys[12]
+[    1.170000] part[kernel]: logic[13]=phys[13]
+[    1.170000] part[kernel]: logic[14]=phys[14]
+[    1.180000] part[kernel]: logic[15]=phys[15]
+[    1.180000] part[kernel]: logic[16]=phys[16]
+[    1.180000] part[kernel]: logic[17]=phys[17]
+[    1.190000] part[kernel]: logic[18]=phys[18]
+[    1.190000] part[kernel]: logic[19]=phys[19]
+[    1.200000] part[kernel]: logic[20]=phys[20]
+[    1.200000] part[kernel]: logic[21]=phys[21]
+[    1.210000] part[kernel]: logic[22]=phys[22]
+[    1.210000] part[kernel]: logic[23]=phys[23]
+[    1.220000] 0x000001b00000-0x000003500000 : "rootfs"
+[    1.220000] part[rootfs]: logic[0]=phys[0]
+[    1.230000] part[rootfs]: logic[1]=phys[1]
+[    1.230000] part[rootfs]: logic[2]=phys[2]
+[    1.230000] part[rootfs]: logic[3]=phys[3]
+[    1.240000] part[rootfs]: logic[4]=phys[4]
+[    1.240000] part[rootfs]: logic[5]=phys[5]
+[    1.250000] part[rootfs]: logic[6]=phys[6]
+[    1.250000] part[rootfs]: logic[7]=phys[7]
+[    1.260000] part[rootfs]: logic[8]=phys[8]
+[    1.260000] part[rootfs]: logic[9]=phys[9]
+[    1.260000] part[rootfs]: logic[10]=phys[10]
+[    1.270000] part[rootfs]: logic[11]=phys[11]
+[    1.270000] part[rootfs]: logic[12]=phys[12]
+[    1.280000] part[rootfs]: logic[13]=phys[13]
+[    1.280000] part[rootfs]: logic[14]=phys[14]
+[    1.290000] part[rootfs]: logic[15]=phys[15]
+[    1.290000] part[rootfs]: logic[16]=phys[16]
+[    1.290000] part[rootfs]: logic[17]=phys[17]
+[    1.300000] part[rootfs]: logic[18]=phys[18]
+[    1.300000] part[rootfs]: logic[19]=phys[19]
+[    1.310000] part[rootfs]: logic[20]=phys[20]
+[    1.310000] part[rootfs]: logic[21]=phys[21]
+[    1.320000] part[rootfs]: logic[22]=phys[22]
+[    1.320000] part[rootfs]: logic[23]=phys[23]
+[    1.330000] part[rootfs]: logic[24]=phys[24]
+[    1.330000] part[rootfs]: logic[25]=phys[25]
+[    1.330000] part[rootfs]: logic[26]=phys[26]
+[    1.340000] part[rootfs]: logic[27]=phys[27]
+[    1.340000] part[rootfs]: logic[28]=phys[28]
+[    1.350000] part[rootfs]: logic[29]=phys[29]
+[    1.350000] part[rootfs]: logic[30]=phys[30]
+[    1.360000] part[rootfs]: logic[31]=phys[31]
+[    1.360000] part[rootfs]: logic[32]=phys[32]
+[    1.370000] part[rootfs]: logic[33]=phys[33]
+[    1.370000] part[rootfs]: logic[34]=phys[34]
+[    1.370000] part[rootfs]: logic[35]=phys[35]
+[    1.380000] part[rootfs]: logic[36]=phys[36]
+[    1.380000] part[rootfs]: logic[37]=phys[37]
+[    1.390000] part[rootfs]: logic[38]=phys[38]
+[    1.390000] part[rootfs]: logic[39]=phys[39]
+[    1.400000] part[rootfs]: logic[40]=phys[40]
+[    1.400000] part[rootfs]: logic[41]=phys[41]
+[    1.400000] part[rootfs]: logic[42]=phys[42]
+[    1.410000] part[rootfs]: logic[43]=phys[43]
+[    1.410000] part[rootfs]: logic[44]=phys[44]
+[    1.420000] part[rootfs]: logic[45]=phys[45]
+[    1.420000] part[rootfs]: logic[46]=phys[46]
+[    1.430000] part[rootfs]: logic[47]=phys[47]
+[    1.430000] part[rootfs]: logic[48]=phys[48]
+[    1.440000] part[rootfs]: logic[49]=phys[49]
+[    1.440000] part[rootfs]: logic[50]=phys[50]
+[    1.440000] part[rootfs]: logic[51]=phys[51]
+[    1.450000] part[rootfs]: logic[52]=phys[52]
+[    1.450000] part[rootfs]: logic[53]=phys[53]
+[    1.460000] part[rootfs]: logic[54]=phys[54]
+[    1.460000] part[rootfs]: logic[55]=phys[55]
+[    1.470000] part[rootfs]: logic[56]=phys[56]
+[    1.470000] part[rootfs]: logic[57]=phys[57]
+[    1.480000] part[rootfs]: logic[58]=phys[58]
+[    1.480000] part[rootfs]: logic[59]=phys[59]
+[    1.480000] part[rootfs]: logic[60]=phys[60]
+[    1.490000] part[rootfs]: logic[61]=phys[61]
+[    1.490000] part[rootfs]: logic[62]=phys[62]
+[    1.500000] part[rootfs]: logic[63]=phys[63]
+[    1.500000] part[rootfs]: logic[64]=phys[64]
+[    1.510000] part[rootfs]: logic[65]=phys[65]
+[    1.510000] part[rootfs]: logic[66]=phys[66]
+[    1.510000] part[rootfs]: logic[67]=phys[67]
+[    1.520000] part[rootfs]: logic[68]=phys[68]
+[    1.520000] part[rootfs]: logic[69]=phys[69]
+[    1.530000] part[rootfs]: logic[70]=phys[70]
+[    1.530000] part[rootfs]: logic[71]=phys[71]
+[    1.540000] part[rootfs]: logic[72]=phys[72]
+[    1.540000] part[rootfs]: logic[73]=phys[73]
+[    1.550000] part[rootfs]: logic[74]=phys[74]
+[    1.550000] part[rootfs]: logic[75]=phys[75]
+[    1.550000] part[rootfs]: logic[76]=phys[76]
+[    1.560000] part[rootfs]: logic[77]=phys[77]
+[    1.560000] part[rootfs]: logic[78]=phys[78]
+[    1.570000] part[rootfs]: logic[79]=phys[79]
+[    1.570000] part[rootfs]: logic[80]=phys[80]
+[    1.580000] part[rootfs]: logic[81]=phys[81]
+[    1.580000] part[rootfs]: logic[82]=phys[82]
+[    1.590000] part[rootfs]: logic[83]=phys[83]
+[    1.590000] part[rootfs]: logic[84]=phys[84]
+[    1.590000] part[rootfs]: logic[85]=phys[85]
+[    1.600000] part[rootfs]: logic[86]=phys[86]
+[    1.600000] part[rootfs]: logic[87]=phys[87]
+[    1.610000] part[rootfs]: logic[88]=phys[88]
+[    1.610000] part[rootfs]: logic[89]=phys[89]
+[    1.620000] part[rootfs]: logic[90]=phys[90]
+[    1.620000] part[rootfs]: logic[91]=phys[91]
+[    1.630000] part[rootfs]: logic[92]=phys[92]
+[    1.630000] part[rootfs]: logic[93]=phys[93]
+[    1.630000] part[rootfs]: logic[94]=phys[94]
+[    1.640000] part[rootfs]: logic[95]=phys[95]
+[    1.640000] part[rootfs]: logic[96]=phys[96]
+[    1.650000] part[rootfs]: logic[97]=phys[97]
+[    1.650000] part[rootfs]: logic[98]=phys[98]
+[    1.660000] part[rootfs]: logic[99]=phys[99]
+[    1.660000] part[rootfs]: logic[100]=phys[100]
+[    1.660000] part[rootfs]: logic[101]=phys[101]
+[    1.670000] part[rootfs]: logic[102]=phys[102]
+[    1.670000] part[rootfs]: logic[103]=phys[103]
+[    1.680000] part[rootfs]: logic[104]=phys[104]
+[    1.680000] part[rootfs]: logic[105]=phys[105]
+[    1.690000] part[rootfs]: logic[106]=phys[106]
+[    1.690000] part[rootfs]: logic[107]=phys[107]
+[    1.700000] part[rootfs]: logic[108]=phys[108]
+[    1.700000] part[rootfs]: logic[109]=phys[109]
+[    1.710000] part[rootfs]: logic[110]=phys[110]
+[    1.710000] part[rootfs]: logic[111]=phys[111]
+[    1.720000] part[rootfs]: logic[112]=phys[112]
+[    1.720000] part[rootfs]: logic[113]=phys[113]
+[    1.720000] part[rootfs]: logic[114]=phys[114]
+[    1.730000] part[rootfs]: logic[115]=phys[115]
+[    1.730000] part[rootfs]: logic[116]=phys[116]
+[    1.740000] part[rootfs]: logic[117]=phys[117]
+[    1.740000] part[rootfs]: logic[118]=phys[118]
+[    1.750000] part[rootfs]: logic[119]=phys[119]
+[    1.750000] part[rootfs]: logic[120]=phys[120]
+[    1.760000] part[rootfs]: logic[121]=phys[121]
+[    1.760000] part[rootfs]: logic[122]=phys[122]
+[    1.770000] part[rootfs]: logic[123]=phys[123]
+[    1.770000] part[rootfs]: logic[124]=phys[124]
+[    1.780000] part[rootfs]: logic[125]=phys[125]
+[    1.780000] part[rootfs]: logic[126]=phys[126]
+[    1.780000] part[rootfs]: logic[127]=phys[127]
+[    1.790000] part[rootfs]: logic[128]=phys[128]
+[    1.790000] part[rootfs]: logic[129]=phys[129]
+[    1.800000] part[rootfs]: logic[130]=phys[130]
+[    1.800000] part[rootfs]: logic[131]=phys[131]
+[    1.810000] part[rootfs]: logic[132]=phys[132]
+[    1.810000] part[rootfs]: logic[133]=phys[133]
+[    1.820000] part[rootfs]: logic[134]=phys[134]
+[    1.820000] part[rootfs]: logic[135]=phys[135]
+[    1.830000] part[rootfs]: logic[136]=phys[136]
+[    1.830000] part[rootfs]: logic[137]=phys[137]
+[    1.830000] part[rootfs]: logic[138]=phys[138]
+[    1.840000] part[rootfs]: logic[139]=phys[139]
+[    1.840000] part[rootfs]: logic[140]=phys[140]
+[    1.850000] part[rootfs]: logic[141]=phys[141]
+[    1.850000] part[rootfs]: logic[142]=phys[142]
+[    1.860000] part[rootfs]: logic[143]=phys[143]
+[    1.860000] part[rootfs]: logic[144]=phys[144]
+[    1.870000] part[rootfs]: logic[145]=phys[145]
+[    1.870000] part[rootfs]: logic[146]=phys[146]
+[    1.880000] part[rootfs]: logic[147]=phys[147]
+[    1.880000] part[rootfs]: logic[148]=phys[148]
+[    1.890000] part[rootfs]: logic[149]=phys[149]
+[    1.890000] part[rootfs]: logic[150]=phys[150]
+[    1.890000] part[rootfs]: logic[151]=phys[151]
+[    1.900000] part[rootfs]: logic[152]=phys[152]
+[    1.900000] part[rootfs]: logic[153]=phys[153]
+[    1.910000] part[rootfs]: logic[154]=phys[154]
+[    1.910000] part[rootfs]: logic[155]=phys[155]
+[    1.920000] part[rootfs]: logic[156]=phys[156]
+[    1.920000] part[rootfs]: logic[157]=phys[157]
+[    1.930000] part[rootfs]: logic[158]=phys[158]
+[    1.930000] part[rootfs]: logic[159]=phys[159]
+[    1.940000] part[rootfs]: logic[160]=phys[160]
+[    1.940000] part[rootfs]: logic[161]=phys[161]
+[    1.940000] part[rootfs]: logic[162]=phys[162]
+[    1.950000] part[rootfs]: logic[163]=phys[163]
+[    1.950000] part[rootfs]: logic[164]=phys[164]
+[    1.960000] part[rootfs]: logic[165]=phys[165]
+[    1.960000] part[rootfs]: logic[166]=phys[166]
+[    1.970000] part[rootfs]: logic[167]=phys[167]
+[    1.970000] part[rootfs]: logic[168]=phys[168]
+[    1.980000] part[rootfs]: logic[169]=phys[169]
+[    1.980000] part[rootfs]: logic[170]=phys[170]
+[    1.990000] part[rootfs]: logic[171]=phys[171]
+[    1.990000] part[rootfs]: logic[172]=phys[172]
+[    2.000000] part[rootfs]: logic[173]=phys[173]
+[    2.000000] part[rootfs]: logic[174]=phys[174]
+[    2.000000] part[rootfs]: logic[175]=phys[175]
+[    2.010000] part[rootfs]: logic[176]=phys[176]
+[    2.010000] part[rootfs]: logic[177]=phys[177]
+[    2.020000] part[rootfs]: logic[178]=phys[178]
+[    2.020000] part[rootfs]: logic[179]=phys[179]
+[    2.030000] part[rootfs]: logic[180]=phys[180]
+[    2.030000] part[rootfs]: logic[181]=phys[181]
+[    2.040000] part[rootfs]: logic[182]=phys[182]
+[    2.040000] part[rootfs]: logic[183]=phys[183]
+[    2.050000] part[rootfs]: logic[184]=phys[184]
+[    2.050000] part[rootfs]: logic[185]=phys[185]
+[    2.050000] part[rootfs]: logic[186]=phys[186]
+[    2.060000] part[rootfs]: logic[187]=phys[187]
+[    2.060000] part[rootfs]: logic[188]=phys[188]
+[    2.070000] part[rootfs]: logic[189]=phys[189]
+[    2.070000] part[rootfs]: logic[190]=phys[190]
+[    2.080000] part[rootfs]: logic[191]=phys[191]
+[    2.080000] part[rootfs]: logic[192]=phys[192]
+[    2.090000] part[rootfs]: logic[193]=phys[193]
+[    2.090000] part[rootfs]: logic[194]=phys[194]
+[    2.100000] part[rootfs]: logic[195]=phys[195]
+[    2.100000] part[rootfs]: logic[196]=phys[196]
+[    2.110000] part[rootfs]: logic[197]=phys[197]
+[    2.110000] part[rootfs]: logic[198]=phys[198]
+[    2.110000] part[rootfs]: logic[199]=phys[199]
+[    2.120000] part[rootfs]: logic[200]=phys[200]
+[    2.120000] part[rootfs]: logic[201]=phys[201]
+[    2.130000] part[rootfs]: logic[202]=phys[202]
+[    2.130000] part[rootfs]: logic[203]=phys[203]
+[    2.140000] part[rootfs]: logic[204]=phys[204]
+[    2.140000] part[rootfs]: logic[205]=phys[205]
+[    2.150000] part[rootfs]: logic[206]=phys[206]
+[    2.150000] part[rootfs]: logic[207]=phys[207]
+[    2.160000] mtd: partition "rootfs" set to be root filesystem
+[    2.160000] 0x000003500000-0x000004e00000 : "data"
+[    2.170000] 0x000004e00000-0x000008000000 : "fota"
+[    2.170000] 0x000001800000-0x000003500000 : "firmware"
+[    2.320000] ag71xx_mdio: probed
+[    2.320000] zte_nand_local_read():Reading Flash for Calibraton data from 0x0 and partition name is mac
+[    2.330000] ***********************************************
+[    2.340000] AG71XX using MAC@ - using d4:72:xx:xx:xx:xx
+[    2.350000] ***********************************************
+[    2.350000] eth0: Atheros AG71xx at 0xb9000000, irq 4
+[    2.930000] eth0: Atheros AR8327 switch driver attached.
+[    5.830000] ag71xx ag71xx.0: eth0: connected to PHY at ag71xx-mdio.0:00 [uid=004dd036, driver=Atheros AR8216/AR8236/AR8316]
+[    5.840000] *************tian.zb test err=0***********************
+[    5.850000] input: gpio-keys-polled as /devices/platform/gpio-keys-polled/input/input0
+[    5.860000] zte gpio_keys_polled_check_state:report code=358 state=0
+[    5.860000] zte gpio_keys_polled_check_state:report code=352 state=0
+[    5.870000] zte gpio_keys_polled_check_state:report code=238 state=0
+[    5.880000] netem: version 1.3
+[    5.880000] u32 classifier
+[    5.880000]     Performance counters on
+[    5.890000]     input device check on
+[    5.890000]     Actions configured
+[    5.890000] TCP cubic registered
+[    5.900000] NET: Registered protocol family 17
+[    5.900000] 8021q: 802.1Q VLAN Support v1.8
+[    5.910000] ### of_selftest(): No testcase data in device tree; not running tests
+[    5.940000] VFS: Mounted root (squashfs filesystem) readonly on device 31:13.
+[    5.950000] Freeing unused kernel memory: 228k freed
+
+init started: BusyBox v1.19.4 (2019-07-31 13:16:27 CST)
+*****************ZTE rcS********************
+call startup scripts here\n
+[   12.130000] ssdk_plat_init start
+[   12.130000] Register QCA PHY driver
+[   12.140000] PHY ID is 0x4dd036
+[   12.240000] qca probe f1 phy driver succeeded!
+[   12.240000] qca-ssdk module init succeeded!
+[   12.800000] NET: Registered protocol family 10
+[   13.210000] SCSI subsystem initialized
+[   13.840000] usbcore: registered new interface driver usbfs
+[   13.850000] usbcore: registered new interface driver hub
+[   13.860000] usbcore: registered new device driver usb
+[   13.870000] Button Hotplug driver version 0.4.1
+[   14.210000] NTFS driver 2.1.30 [Flags: R/O MODULE].
+[   14.530000] Error: Driver 'gpio-keys-polled' is already registered, aborting...
+[   14.970000] PPP generic driver version 2.4.2
+[   15.220000] tun: Universal TUN/TAP device driver, 1.6
+[   15.220000] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[   15.250000] NET: Registered protocol family 24
+[   15.330000] bonding: Ethernet Channel Bonding Driver: v3.7.1 (April 27, 2011)
+[   15.400000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   15.710000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[   15.710000] ehci-platform ehci-platform.0: Generic Platform EHCI Controller
+[   15.720000] ehci-platform ehci-platform.0: new USB bus registered, assigned bus number 1
+[   15.760000] ehci-platform ehci-platform.0: irq 48, io mem 0x1b000000
+[   15.780000] ehci-platform ehci-platform.0: USB 2.0 started, EHCI 1.00
+[   15.780000] hub 1-0:1.0: USB hub found
+[   15.790000] hub 1-0:1.0: 1 port detected
+[   15.790000] ehci-platform ehci-platform.1: Generic Platform EHCI Controller
+[   15.800000] ehci-platform ehci-platform.1: new USB bus registered, assigned bus number 2
+[   15.840000] ehci-platform ehci-platform.1: irq 49, io mem 0x1b400000
+[   15.860000] ehci-platform ehci-platform.1: USB 2.0 started, EHCI 1.00
+[   15.860000] hub 2-0:1.0: USB hub found
+[   15.870000] hub 2-0:1.0: 1 port detected
+[   16.110000] usb 1-1: new high-speed USB device number 2 using ehci-platform
+[   16.210000] nf_conntrack version 0.5.0 (1968 buckets, 7872 max)
+[   16.460000] usb 2-1: new high-speed USB device number 2 using ehci-platform
+[   16.590000] ZTE Generic Netlink Module Inserted without Lock
+[   16.650000] xt_time: kernel timezone is -0000
+[   17.080000] nf_conntrack_rtsp v0.6.21 loading
+[   17.100000] nf_nat_rtsp v0.6.21 loading
+[   17.170000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   17.330000] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[   17.760000] AR71XX_RESET_REG_WDOG_CTRL: 0x0
+[   17.760000]  
+[   17.840000] cdc_acm 1-1:1.2: This device cannot do calls on its own. It is not a modem.
+[   17.850000] cdc_acm 1-1:1.2: ttyACM0: USB ACM device
+[   17.850000] usbcore: registered new interface driver cdc_acm
+[   17.860000] cdc_acm: USB Abstract Control Model driver for USB modems and ISDN adapters
+[   17.950000] usbcore: registered new interface driver usbserial
+[   17.950000] USB Serial support registered for generic
+[   17.960000] usbcore: registered new interface driver usbserial_generic
+[   17.960000] usbserial: USB Serial Driver core
+[   18.020000] Initializing USB Mass Storage driver...
+[   18.020000] scsi0 : usb-storage 2-1:1.0
+[   18.030000] usbcore: registered new interface driver usb-storage
+[   18.030000] USB Mass Storage support registered.
+[   18.050000] driver_info->flags 1020 idVendor 19d2 idProduct 1489
+[   18.060000] cdc_ether 1-1:1.6: ecm0: register 'cdc_ether' at usb-ehci-platform.0-1, CDC Ethernet Device, 2e:a0:xx:xx:xx:xx
+[   18.070000] usbcore: registered new interface driver cdc_ether
+[   18.150000] generic_rndis_bind: rx_urb_size: 0x3e80
+[   18.150000] generic_rndis_bind: data zero copy=1
+[   18.160000] driver_info->flags 3038 idVendor 19d2 idProduct 1489
+[   18.170000] rndis_host 1-1:1.0: usb0: register 'rndis_host' at usb-ehci-platform.0-1, RNDIS device, 2e:a0:xx:xx:xx:xx
+[   18.180000] usbcore: registered new interface driver rndis_host
+[   18.240000] USB Serial support registered for GSM modem (1-port)
+[   18.250000] usbcore: registered new interface driver option
+[   18.260000] option: v0.7.2:USB Driver for GSM modems
+[   18.320000] fuse init (API version 7.18)
+[   18.590000] yaffs: dev is 32505864 name is "mtdblock8" rw
+[   18.600000] yaffs: passed flags ""
+[   18.870000] yaffs: dev is 32505871 name is "mtdblock15" rw
+[   18.880000] yaffs: passed flags ""
+[   19.030000] scsi 0:0:0:0: Direct-Access     SanDisk  Cruzer Blade     1.26 PQ: 0 ANSI: 5 // i forgot the usb stick for the openwrt install on the device while taking the zte logs. oops
+[   19.060000] sd 0:0:0:0: [sda] 31266816 512-byte logical blocks: (16.0 GB/14.9 GiB)
+[   19.070000] sd 0:0:0:0: [sda] Write Protect is off
+[   19.070000] sd 0:0:0:0: [sda] Write cache: disabled, read cache: enabled, doesn't support DPO or FUA
+[   19.120000]  sda: sda1
+[   19.130000] sd 0:0:0:0: [sda] Attached SCSI removable disk
+rm: can't remove '/etc_rw/fota/cp_failure_flag': No such file or directory
+SOS: FLAG is mtdblock7
+SOS: /etc_rw/fota/cfg_pa[   20.260000] yaffs: dev is 32505863 name is "mtdblock7" rw
+rtiton_flag has [   20.270000] yaffs: passed flags ""
+content
+space usage of /etc_rw/config is 31%
+[   20.370000] yaffs: dev is 32505866 name is "mtdblock10" rw
+[   20.380000] yaffs: passed flags ""
+[   20.410000] ath79_spinand_read_page ecc err status=0x2
+SOS: /etc_rw/config use mtdblock7, /zte_backup use mtdblock10, now doing backup!
+rm: can't remove '/zte_backup/lost+found': Directory not empty
+[   22.730000] Load cfg new driver...
+[   22.740000] cfg init, /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/cfg-1.0/cfg_param.c 577
+[   22.750000] 
+[   22.750000] admin_password_chang
+[   22.760000] 61646d696e5f70617373776f72645f6368616e67
+[   22.850000] 
+[   22.850000]  cfg init end, /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/cfg-1.0/cfg_param.c 636
+[   22.860000] cfg init, /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/cfg-1.0/cfg_param.c 577
+[   22.880000] 
+[   22.880000] TESTBITSIGNINFO=0000
+[   22.880000] 544553544249545349474e494e464f3d30303030
+[   22.890000] 
+[   22.890000]  cfg init end, /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/cfg-1.0/cfg_param.c 636
+[   22.930000] usbcore: registered new interface driver cdc_wdm
+[   23.390000] usbcore: registered new interface driver qmi_wwan
+mkdir: can't create directory '/dev/net': File exists
+mknod: dev/net/tun: File exists
+killall: syslogd: no process killed
+*************ZTE Init Script*************
+insmod: can't insert '/lib/modules/3.3.8/xt_time.ko': File exists
+rmmod: can't unload 'shortcut_fe_drv': unknown symbol in module, or unknown parameter
+[   24.330000] usbcore: registered new interface driver cdc_ncm
+enter is_fota_update_successed.
+find a good block.
+last find blk_num = 0
+****fota_update_flag in /dev/mtd3 is  ****
+Unable to open pidfile /var/run/nvramd.pid: No such file or directory
+ussd is disabled
+reboot_schedule is disabled
+Create bridge br0..........
+[   27.950000] ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   28.990000] ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   29.010000] eth0: link up (1000Mbps/Full duplex)
+[   29.010000] 
+[   29.010000] /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/zte_genl_kernel-1.0/zte_genl_kernel_main.c[177]: ERROR:Build msg struct failed, snd_pid=-1, genl_switch=1!
+[   30.030000] eth0: link up (1000Mbps/Full duplex)
+[   30.040000] 
+[   30.040000] /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/zte_genl_kernel-1.0/zte_genl_kernel_main.c[177]: ERROR:Build msg struct failed, snd_pid=-1, genl_switch=1!
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+
+ SSDK Init OK!
+operate done.
+
+monitor:add@/devices/virtual/net/eth0.1
+monitor:ACTION=add
+monitor:DEVPATH=/devices/virtual/net/eth0.1
+monitor:SUBSYSTEM=net
+monitor:INTERFACE=eth0.1
+monitor:IFINDEX=8
+monitor:SEQNUM=642
+monitor:event { 'add', '' }
+monitor:add@/devices/virtual/net/eth0.1/queues/tx-0
+monitor:ACTION=add
+monitor:DEVPATH=/devices/virtual/net/eth0.1/queues/tx-0
+monitor:SUBSYSTEM=queues
+monitor:SEQNUM=643
+monitor:event { 'add', '' }
+monitor:add@/devices/virtual/net/eth0.2
+monitor:ACTION=add
+monitor:DEVPATH=/devices/virtual/net/eth0.2
+monitor:SUBSYSTEM=net
+monitor:INTERFACE=eth0.2
+monitor:IFINDEX=9
+monitor:SEQNUM=644
+monitor:event { 'add', '' }
+monitor:add@/devices/virtual/net/eth0.2/queues/tx-0
+monitor:ACTION=add
+monitor:DEVPATH=/devices/virtual/net/eth0.2/queues/tx-0
+monitor:SUBSYSTEM=queues
+monitor:SEQNUM=645
+monitor:event { 'add', '' }
+opms_wan_ifname=usb0
+LanIfName=br0
+CURRENT WAN MODE:PPP
+ dual_core_board_if= ....
+[   37.120000] 
+[   37.120000] /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/zte_genl_kernel-1.0/zte_genl_kernel_main.c[197]: INFO:Recv from userspace: [Connect request from userspace
+[   37.140000] ]
+[   37.140000] 
+[   37.140000] /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/zte_genl_kernel-1.0/zte_genl_kernel_main.c[169]: INFO:send msg to user ok, cmd=1, msg=1000
+[   37.160000] 
+[   37.160000] /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/zte_genl_kernel-1.0/zte_genl_kernel_main.c[169]: INFO:send msg to user ok, cmd=3, msg=
+zte_wifi_dfs_status_process: dfs=[]
+goahead initWebs info: webdir is /etc_ro/web/web!
+webs: Listening for HTTP requests at address 192.168.1.1
+internet.sh is called, the argument is []
+killall: pppoecd: no process killed
+killall: udhcpc: no process killed
+killall: zte_router: no process killed
+killall: udhcpd: no process killed
+killall: dnsmasq: no process killed
+killall: miniupnpd: no process killed
+* daemon not running. starting it now on port 5037 *
+enter launch_server server_port is 5037 
+launch_server pipe path & pid: /usr/bin/adb, 817 
+launch_server pipe path & pid: /usr/bin/adb, 0 
+pid=0 and server_port is : 5037
+launch_server temp value: O,K,
+
+* daemon started successfully *
+passwd: no record of admin in /etc/shadow, using /etc/passwd
+Changing password for admin
+New password: 
+Retype password: 
+Password for admin changed by admin
+call setPortAsAllLAN............
+lan_ip: 192.168.1.1, lan_netmask: 255.255.255.0..........
+[   39.060000] device eth0.1 entered promiscuous mode
+[   39.060000] device eth0 entered promiscuous mode
+[   39.070000] br0: port 1(eth0.1) entered forwarding state
+[   39.070000] br0: port 1(eth0.1) entered forwarding state
+[   39.080000] device eth0.2 entered promiscuous mode
+[   39.090000] br0: port 2(eth0.2) entered forwarding state
+[   39.090000] br0: port 2(eth0.2) entered forwarding state
+opms_wan_ifname=usb0
+[   39.170000] br0: port 1(eth0.1) entered forwarding state
+[   39.190000] br0: port 2(eth0.2) entered forwarding state
+opms_wan_ifname=usb0
+LanIfName=br0
+killall: udhcpd: no process killed
+killall: dnsmasq: no process killed
+begin
+middle
+else section
+mang_num: -1
+list_first_item: 
+one_num: -1
+###the format of mac_ip_list is valid###
+begin
+middle
+else section
+mang_num: -1
+list_first_item: 
+one_num: -1
+###the format of mac_ip_list is valid###
+opms_wan_ifname=usb0
+LanIfName=br0
+#######start the mtu_set.sh##########
+#######end the mtu_set.sh##########
+192.168.1.1255.255.255.0init_dns_ip:tmp_byte_netmask is 0
+init_dns_ip:tmp_byte_netmask is 255
+init_dns_ip:tmp_byte_netmask is 255
+init_dns_ip:tmp_byte_netmask is 255
+iptables: Index of deletion too big.
+enter setVoipPortAsLAN()...
+zte_port_status_monitor_create_msg_queue(): msgid = [262152]
+3 KB/s (146 bytes in 0.041s)
+/bin/sh: zte_user_connect: not found
+
+Sat Jan  1 00:00:00 UTC 2000
+opms_wan_ifname=usb0
+LanIfName=br0
+adb shell date 
+Sat Jan  1 00:00:00 CST 2000
+
+iptables v1.4.10: Couldn't load target `remote_mark':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+ip6tables: No chain/target/match by that name.
+ip6tables: No chain/target/match by that name.
+ip6tables: No chain/target/match by that name.
+ip6tables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+startsmbfilepwent_internal: file /etc/smbpasswd did not exist. File successfully created.
+account_policy_get: tdb_fetch_uint32 failed for field 1 (min password length), returning 0
+account_policy_get: tdb_fetch_uint32 failed for field 2 (password history), returning 0
+account_policy_get: tdb_fetch_uint32 failed for field 3 (user must logon to change password), returning 0
+account_policy_get: tdb_fetch_uint32 failed for field 4 (maximum password age), returning 0
+account_policy_get: tdb_fetch_uint32 failed for field 5 (minimum password age), returning 0
+account_policy_get: tdb_fetch_uint32 failed for field 6 (lockout duration), returning 0
+account_policy_get: tdb_fetch_uint32 failed for field 7 (reset count minutes), returning 0
+account_policy_get: tdb_fetch_uint32 failed for field 8 (bad lockout attempt), returning 0
+account_policy_get: tdb_fetch_uint32 failed for field 9 (disconnect time), returning 0
+account_policy_get: tdb_fetch_uint32 failed for field 10 (refuse machine password change), returning 0
+Added user admin.
+[   47.280000] +++++++http_redirect load, g_web_redirect_gateway=[192.168.1.1]...
+monitor:add@/module/zte_http_redirect
+monitor:ACTION=add
+monitor:DEVPATH=/module/zte_http_redirect
+monitor:SUBSYSTEM=module
+monitor:SEQNUM=646
+monitor:event { 'add', '' }
+[   47.640000] 
+[   47.640000] /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/zte_genl_kernel-1.0/zte_genl_kernel_main.c[197]: INFO:Recv from userspace: [5]
+[   47.680000] 
+[   47.680000] /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/zte_genl_kernel-1.0/zte_genl_kernel_main.c[197]: INFO:Recv from userspace: [5]
+[   47.740000] 
+[   47.740000] /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/zte_genl_kernel-1.0/zte_genl_kernel_main.c[197]: INFO:Recv from userspace: [5]
+[   49.560000] set 1 
+normal mode!
+Please press Enter to activate this console. /dev/mtdblock15 on /etc_rw/fota type yaffs2 (rw,relatime)
+mtdblock15 already mounted!
+opms_wan_ifname=usb0
+LanIfName=br0
+killall: miniupnpd: no process killed
+opms_wan_ifname=usb0
+LanIfName=br0
+iptables: No chain/target/match by that name.
+iptables v1.4.10: Couldn't load target `MINIUPNPD':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+Using intrapositioned negation (`--option ! this`) is deprecated in favor of extrapositioned (`! --option this`).
+iptables v1.4.10: Couldn't load target `MINIUPNPD':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+killall: miniupnpd: no process killed
+opms_wan_ifname=usb0
+LanIfName=br0
+iptables: No chain/target/match by that name.
+iptables v1.4.10: Couldn't load target `MINIUPNPD':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+Using intrapositioned negation (`--option ! this`) is deprecated in favor of extrapositioned (`! --option this`).
+iptables v1.4.10: Couldn't load target `MINIUPNPD':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+************start dos_attack_defender.sh*****************
+iptables: No chain/target/match by that name.
+iptables v1.4.10: Couldn't load target `dosattack_filter':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+************end dos_attack_defender.sh*****************
+insmod: can't insert '/lib/modules/3.3.8/nf_conntrack_sip.ko': File exists
+insmod: can't insert '/lib/modules/3.3.8/nf_nat_sip.ko': File exists
+insmod: can't insert '/lib/modules/3.3.8/nf_conntrack_pptp.ko': File exists
+insmod: can't insert '/lib/modules/3.3.8/nf_nat_pptp.ko': File exists
+insmod: can't insert '/lib/modules/3.3.8/nf_conntrack_ftp.ko': File exists
+insmod: can't insert '/lib/modules/3.3.8/nf_nat_ftp.ko': File exists
+opms_wan_ifname=usb0
+LanIfName=br0
+iptables: No chain/target/match by that name.
+iptables: Chain already exists.
+ip6tables: Chain already exists.
+opms_wan_ifname=usb0
+LanIfName=br0
+killall: miniupnpd: no process killed
+opms_wan_ifname=usb0
+LanIfName=br0
+iptables: No chain/target/match by that name.
+iptables v1.4.10: Couldn't load target `MINIUPNPD':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+Using intrapositioned negation (`--option ! this`) is deprecated in favor of extrapositioned (`! --option this`).
+iptables v1.4.10: Couldn't load target `MINIUPNPD':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+killall: miniupnpd: no process killed
+opms_wan_ifname=usb0
+LanIfName=br0
+iptables: No chain/target/match by that name.
+iptables v1.4.10: Couldn't load target `MINIUPNPD':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+Using intrapositioned negation (`--option ! this`) is deprecated in favor of extrapositioned (`! --option this`).
+iptables v1.4.10: Couldn't load target `MINIUPNPD':File not found
+
+Try `iptables -h' or 'iptables --help' for more information.
+iptables: No chain/target/match by that name.
+************start dos_attack_defender.sh*****************
+iptables: No chain/target/match by that name.
+************end dos_attack_defender.sh*****************
+iptables: Bad rule (does a matching rule exist in that chain?).
+iptables: Bad rule (does a matching rule exist in that chain?).
+iptables: Bad rule (does a matching rule exist in that chain?).
+iptables: Bad rule (does a matching rule exist in that chain?).
+00:00:12 UP>>[update_control.c:2870]########---Update_Control Start---########
+00:00:12 UP>>[update_control.c:2872]modem is ASR_MODEM
+2 KB/s (150 bytes in 0.060s)
+3 KB/s (150 bytes in 0.042s)
+3 KB/s (150 bytes in 0.042s)
+[   59.400000] 
+[   59.400000] /home/scl/ci/workspace/Soft4_TURMF286R_CPE/qsdk/build_dir/linux-ar71xx_generic/zte_genl_kernel-1.0/zte_genl_kernel_main.c[197]: INFO:Recv from userspace: [5]
+[   59.910000] USBtest: sending ioctl 540d to a partition!
+[   59.920000] USBtest: sending ioctl 540d to a partition!
+NTFS signature is missing.
+Failed to mount '/dev/sda1': Invalid argument
+The device '/dev/sda1' doesn't seem to have a valid NTFS.
+Maybe the wrong device is used? Or the whole disk instead of a
+partition (e.g. /dev/sda, not /dev/sda1)? Or the other way around?
+/bin/sh: samba_mod_conf.sh: not found
+iptables: Bad rule (does a matching rule exist in that chain?).
+iptables: Bad rule (does a matching rule exist in that chain?).
+whitelist=[85.29.0.1+85.29.63.254;85.29.13.1+85.29.13.30;]
+enter add_remote_mgr_fw_items()
+add remote manager whitelist done.
+remotemr_port_white=[80], remotemr_port=[]
+nat wan port for http
+add remote manager done.
+goto run ping_add_whitelist
+ip6tables v1.4.10: iprange: Bad value for "--src-range" option: "85.29.0.1"
+Try `ip6tables -h' or 'ip6tables --help' for more information.
+ip6tables v1.4.10: iprange: Bad value for "--src-range" option: "85.29.13.1"
+Try `ip6tables -h' or 'ip6tables --help' for more information.
+add remote manager whitelist done.
+enter add_telnet()
+disable telnetd on lan side
+open port = [7547],proto = [tcp]
+open port = [7547],proto = [tcp]
+firewall_sys_fw done
+insmod: can't insert '/lib/modules/3.3.8/shortcut-fe-cm.ko': File exists
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+iptables v1.4.10: can't initialize iptables table `filter': Bad file descriptor
+Perhaps iptables or your kernel needs to be upgraded.
+ip6tables: No chain/target/match by that name.
+ip6tables: No chain/target/match by that name.
+ip6tables: No chain/target/match by that name.
+ip6tables: No chain/target/match by that name.
+ip6tables: No chain/target/match by that name.
+ip6tables: No chain/target/match by that name.
+speed limit is disabled, so we need to enable SFE,clear iptable and tc rules
+iptables: No chain/target/match by that name.
+iptables: No chain/target/match by that name.
+RTNETLINK answers: Invalid argument
+RTNETLINK answers: Invalid argument
+</code>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<code>
+U-Boot 1.1.4 (May 13 2021 - 05:37:00)
+
+ap152 - Dragonfly 1.0DRAM:  
+sri
+ath_ddr_initial_config(278): (ddr2 init)
+ath_sys_frequency: cpu 775 ddr 650 ahb 258
+Tap values = (0x10, 0x10, 0x10, 0x10)
+128 MB
+Top of RAM usable for U-Boot at: 88000000
+Reserving 659k for U-Boot at: 87f58000
+Reserving 192k for malloc() at: 87f28000
+Reserving 44 Bytes for Board Info at: 87f27fd4
+Reserving 36 Bytes for Global Data at: 87f27fb0
+Reserving 128k for boot params() at: 87f07fb0
+Stack Pointer at: 87f07f98
+Now running in RAM - U-Boot at: 87f58000
+Flash Manuf Id 0xc8, DeviceId0 0x40, DeviceId1 0x15
+flash size 2MB, sector count = 32
+Flash:  2 MB
+*** Warning - bad CRC, using default environment
+
+Power up PLL with outdiv = 0 then switch to 3
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ath_gmac_enet_initialize...
+No valid address in Flash. Using fixed address
+ath_gmac_enet_initialize: reset mask:c02200 
+athr_mgmt_init (MDC/MDIO config)::done
+Dragonfly  ----> S17 PHY *
+athrs17_reg_init: complete
+Max resets limit reached exiting...
+athr_gmac_sgmii_setup SGMII done
+: cfg1 0x80000000 cfg2 0x7114
+eth0: 00:03:7f:ff:ff:ff
+ath_gmac_phy_setup
+eth0 up
+eth0
+Qualcomm Atheros SPI NAND Driver, Version 0.1 (c) 2014  Qualcomm Atheros Inc.
+ath_spi_nand_ecc: furture feat = 0x10
+ath_spi_nand_ecc: middle feat = 0x10
+zte ath_spi_nand_read_id 0xc8d1
+zte ath_spi_nand_read_id 0xc8d1c8
+zte debug gd 128 oob
+====== NAND Parameters ======
+sc addr = 0x87fa6d10 page(write size) = 0x800 (erase size) block = 0x20000
+Setting 0x181162c0 to 0x4b962100
+Uaztemain: enter into ! 
+ZTE_InitFotaFlashPara: nand_curr_device=0
+zte_getHandOffState: read data=0x20 from 0x0
+Hit any key to stop autoboot:  2 ... 1 ... 0 
+
+Loading from device 0: ath-spi-nand (offset 0x1800000)
+   Image Name:   MIPS OpenWrt Linux-5.10.138
+   Created:      2022-09-03   2:55:34 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    2435565 Bytes =  2.3 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+ath_spi_nand_page_read :status=0x1
+## Booting image at 81000000 ...
+   Image Name:   MIPS OpenWrt Linux-5.10.138
+   Created:      2022-09-03   2:55:34 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    2435565 Bytes =  2.3 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum at 0x81000040 ...OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 80060000) ...
+## Giving linux memsize in bytes, 134217728
+
+Starting kernel ...
+
+[    0.000000] Linux version 5.10.138 (builder@buildhost) (mips-openwrt-linux-musl-gcc (OpenWrt GCC 11.2.0 r19685-512e76967f) 11.2.0, GNU ld (GNU Binutils) 2.37) #0 Sat Sep 3 02:55:34 2022
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019750 (MIPS 74Kc)
+[    0.000000] MIPS: machine is ZTE MF286R
+[    0.000000] SoC: Qualcomm Atheros QCA956X ver 1 rev 0
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: console=ttyS0,115200n8 rootfstype=squashfs,jffs2
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 120572K/131072K available (6346K kernel code, 599K rwdata, 784K rodata, 1220K init, 214K bss, 10500K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 51
+[    0.000000] CPU clock: 775.000 MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 4932285024 ns
+[    0.000008] sched_clock: 32 bits at 387MHz, resolution 2ns, wraps every 5541893118ns
+[    0.008282] Calibrating delay loop... 385.84 BogoMIPS (lpj=1929216)
+[    0.074810] pid_max: default: 32768 minimum: 301
+[    0.079805] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.087520] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.097694] dyndbg: Ignore empty _ddebug table in a CONFIG_DYNAMIC_DEBUG_CORE build
+[    0.108427] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.118833] futex hash table entries: 256 (order: -1, 3072 bytes, linear)
+[    0.126103] pinctrl core: initialized pinctrl subsystem
+[    0.135610] NET: Registered protocol family 16
+[    0.140935] thermal_sys: Registered thermal governor 'step_wise'
+[    0.192114] clocksource: Switched to clocksource MIPS
+[    0.204961] NET: Registered protocol family 2
+[    0.209762] IP idents hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.218153] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    0.227070] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.235171] TCP bind hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.242614] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.249435] UDP hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.256373] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.264013] NET: Registered protocol family 1
+[    0.268632] PCI: CLS 0 bytes, default 32
+[    0.278586] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    0.289034] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.295234] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.307254] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 252)
+[    0.317547] pinctrl-single 1804002c.pinmux: 544 pins, size 68
+[    0.324676] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.333519] printk: console [ttyS0] disabled
+[    0.338085] 18020000.uart: ttyS0 at MMIO 0x18020000 (irq = 9, base_baud = 1562500) is a 16550A
+[    0.347228] printk: console [ttyS0] enabled
+[    0.347228] printk: console [ttyS0] enabled
+[    0.356294] printk: bootconsole [early0] disabled
+[    0.356294] printk: bootconsole [early0] disabled
+[    0.382759] spi-nand spi0.1: GigaDevice SPI NAND was found.
+[    0.388533] spi-nand spi0.1: 128 MiB, block size: 128 KiB, page size: 2048, OOB size: 128
+[    0.399376] 6 fixed-partitions partitions found on MTD device (null)
+[    0.405988] Creating 6 MTD partitions on "(null)":
+[    0.410944] 0x000000000000-0x0000000a0000 : "fota-flag"
+[    0.418233] 0x0000000a0000-0x000000120000 : "art"
+[    0.425556] 0x000000120000-0x0000001a0000 : "mac"
+[    0.432901] 0x0000001a0000-0x000001800000 : "ubiconcat0"
+[    0.469314] 0x000001800000-0x000001c00000 : "kernel"
+[    0.481371] 0x000001c00000-0x000008000000 : "ubiconcat1"
+[    0.627165] spi-nor spi0.0: gd25q16 (2048 Kbytes)
+[    0.632074] 3 fixed-partitions partitions found on MTD device spi0.0
+[    0.638669] Creating 3 MTD partitions on "spi0.0":
+[    0.643646] 0x000000000000-0x0000000a0000 : "u-boot"
+[    0.650519] 0x0000000a0000-0x0000000c0000 : "u-boot-env"
+[    0.657012] 0x0000000c0000-0x000000200000 : "reserved1"
+[    0.666148] Concatenating MTD devices:
+[    0.670033] (0): "ubiconcat0"
+[    0.673143] (1): "ubiconcat1"
+[    0.676202] into device "ubi-concat"
+[    0.679918] 1 fixed-partitions partitions found on MTD device ubi-concat
+[    0.686856] Creating 1 MTD partitions on "ubi-concat":
+[    0.692187] 0x000000000000-0x000007a60000 : "ubi"
+[    1.386364] switch0: Atheros AR8337 rev. 2 switch registered on mdio.0
+[    2.043633] ag71xx 19000000.eth: connected to PHY at mdio.0:00 [uid=004dd036, driver=Atheros AR8216/AR8236/AR8316]
+[    2.054918] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode: sgmii
+[    2.063482] NET: Registered protocol family 10
+[    2.075060] Segment Routing with IPv6
+[    2.078954] NET: Registered protocol family 17
+[    2.083694] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    2.097085] 8021q: 802.1Q VLAN Support v1.8
+[    2.105380] PCI host bridge /ahb/pcie-controller@18250000 ranges:
+[    2.111703]  MEM 0x0000000012000000..0x0000000013ffffff
+[    2.117152]   IO 0x0000000000000000..0x0000000000000000
+[    2.122733] PCI host bridge to bus 0000:00
+[    2.126974] pci_bus 0000:00: root bus resource [mem 0x12000000-0x13ffffff]
+[    2.134102] pci_bus 0000:00: root bus resource [io  0x0000]
+[    2.139859] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    2.146878] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    2.155118] pci 0000:00:00.0: [168c:0056] type 00 class 0x028000
+[    2.161352] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x001fffff 64bit]
+[    2.168500] pci 0000:00:00.0: PME# supported from D0 D3hot
+[    2.175356] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[    2.182255] pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    2.193512] UBI: auto-attach mtd9
+[    2.196962] ubi0: attaching mtd9
+[    4.974978] ubi0: scanning is finished
+[    5.013862] ubi0: attached mtd9 (name "ubi", size 122 MiB)
+[    5.019542] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    5.026680] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    5.033707] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    5.040890] ubi0: good PEBs: 977, bad PEBs: 2, corrupted PEBs: 0
+[    5.047100] ubi0: user volume: 2, internal volumes: 1, max. volumes count: 128
+[    5.054571] ubi0: max/mean erase counter: 1/0, WL threshold: 4096, image sequence number: 1798954104
+[    5.064007] ubi0: available PEBs: 0, total reserved PEBs: 977, PEBs reserved for bad PEB handling: 18
+[    5.073630] ubi0: background thread "ubi_bgt0d" started, PID 334
+[    5.082803] block ubiblock0_0: created from ubi0:0(rootfs)
+[    5.088480] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[    5.119195] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    5.133277] Freeing unused kernel memory: 1220K
+[    5.137954] This architecture does not have kernel memory protection.
+[    5.144638] Run /sbin/init as init process
+[    5.964212] init: Console is alive
+[    5.968162] init: - watchdog -
+[    7.605099] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    7.746631] usbcore: registered new interface driver usbfs
+[    7.752430] usbcore: registered new interface driver hub
+[    7.758003] usbcore: registered new device driver usb
+[    7.772889] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    7.782348] ehci-fsl: Freescale EHCI Host controller driver
+[    7.789628] ehci-platform: EHCI generic platform driver
+[    7.795421] ehci-platform 1b000000.usb: EHCI Host Controller
+[    7.801308] ehci-platform 1b000000.usb: new USB bus registered, assigned bus number 1
+[    7.809577] ehci-platform 1b000000.usb: irq 13, io mem 0x1b000000
+[    7.842154] ehci-platform 1b000000.usb: USB 2.0 started, EHCI 1.00
+[    7.849386] hub 1-0:1.0: USB hub found
+[    7.854045] hub 1-0:1.0: 1 port detected
+[    7.858929] ehci-platform 1b400000.usb: EHCI Host Controller
+[    7.864842] ehci-platform 1b400000.usb: new USB bus registered, assigned bus number 2
+[    7.873069] ehci-platform 1b400000.usb: irq 14, io mem 0x1b400000
+[    7.902136] ehci-platform 1b400000.usb: USB 2.0 started, EHCI 1.00
+[    7.909335] hub 2-0:1.0: USB hub found
+[    7.914033] hub 2-0:1.0: 1 port detected
+[    7.921445] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    7.939391] init: - preinit -
+[    8.489622] usb 1-1: new high-speed USB device number 2 using ehci-platform
+[    8.962381] random: procd: uninitialized urandom read (4 bytes read)
+[    9.383690] random: jshn: uninitialized urandom read (4 bytes read)
+[    9.465312] random: jshn: uninitialized urandom read (4 bytes read)
+[   10.919708] eth0: link up (1000Mbps/Full duplex)
+[   10.930560] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   10.943680] IPv6: ADDRCONF(NETDEV_CHANGE): eth0.1: link becomes ready
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   15.305273] UBIFS (ubi0:1): Mounting in unauthenticated mode
+[   15.322744] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 480
+[   15.499105] UBIFS (ubi0:1): recovery needed
+[   15.920900] UBIFS (ubi0:1): recovery completed
+[   15.925624] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[   15.933728] UBIFS (ubi0:1): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   15.943982] UBIFS (ubi0:1): FS size: 115294208 bytes (109 MiB, 908 LEBs), journal size 5713920 bytes (5 MiB, 45 LEBs)
+[   15.954943] UBIFS (ubi0:1): reserved for root: 4952683 bytes (4836 KiB)
+[   15.961774] UBIFS (ubi0:1): media format: w5/r0 (latest is w5/r0), UUID 09DDE122-9F2F-4923-9B45-1D1E6DFE7048, small LPT model
+[   16.007875] mount_root: switching to ubifs overlay
+[   16.052629] urandom-seed: Seeding with /etc/urandom.seed
+[   16.289832] eth0: link down
+[   16.330213] procd: - early -
+[   16.333599] procd: - watchdog -
+[   17.190938] procd: - watchdog -
+[   17.217383] procd: - ubus -
+[   17.427085] random: ubusd: uninitialized urandom read (4 bytes read)
+[   17.442997] random: ubusd: uninitialized urandom read (4 bytes read)
+[   17.462351] random: ubusd: uninitialized urandom read (4 bytes read)
+[   17.479242] procd: - init -
+Please press Enter to activate this console.
+[   19.409083] random: jshn: uninitialized urandom read (4 bytes read)
+[   19.441117] random: ubusd: uninitialized urandom read (4 bytes read)
+[   19.462489] random: ubus: uninitialized urandom read (4 bytes read)
+[   20.580254] urngd: v1.0.2 started.
+[   20.859036] random: crng init done
+[   20.862614] random: 28 urandom warning(s) missed due to ratelimiting
+[   21.022527] kmodloader: loading kernel modules from /etc/modules.d/*
+[   21.249828] GACT probability on
+[   21.254815] Mirror/redirect action on
+[   21.277469] u32 classifier
+[   21.280281]     input device check on
+[   21.284101]     Actions configured
+[   21.339741] cdc_acm 1-1:1.2: ttyACM0: USB ACM device
+[   21.345612] usbcore: registered new interface driver cdc_acm
+[   21.351460] cdc_acm: USB Abstract Control Model driver for USB modems and ISDN adapters
+[   21.383573] usbcore: registered new interface driver cdc_wdm
+[   21.393810] Loading modules backported from Linux version v5.15.58-0-g7d8048d4e064
+[   21.401636] Backport generated by backports.git v5.15.58-1-0-g42a95ce7
+[   21.509515] usbcore: registered new interface driver usbserial_generic
+[   21.516395] usbserial: USB Serial support registered for generic
+[   21.616416] xt_time: kernel timezone is -0000
+[   21.635745] cdc_ether 1-1:1.6 usb0: register 'cdc_ether' at usb-1b000000.usb-1, ZTE CDC Ethernet Device, b2:5e:c8:ab:0b:c1
+[   21.647431] usbcore: registered new interface driver cdc_ether
+[   21.674865] usbcore: registered new interface driver cdc_ncm
+[   21.748302] usbcore: registered new interface driver huawei_cdc_ncm
+[   21.994810] PPP generic driver version 2.4.2
+[   22.061821] NET: Registered protocol family 24
+[   22.077698] usbcore: registered new interface driver qmi_wwan
+[   22.089633] rndis_host 1-1:1.0 usb1: register 'rndis_host' at usb-1b000000.usb-1, ZTE RNDIS device, de:ff:ff:85:f0:87
+[   22.100868] usbcore: registered new interface driver rndis_host
+[   22.219955] ath10k 5.15 driver, optimized for CT firmware, probing pci device: 0x56.
+[   22.243891] ath10k_pci 0000:00:00.0: enabling device (0000 -> 0002)
+[   22.250668] ath10k_pci 0000:00:00.0: pci irq legacy oper_irq_mode 1 irq_mode 0 reset_mode 0
+[   24.884750] ath10k_pci 0000:00:00.0: qca9888 hw2.0 target 0x01000000 chip_id 0x00000000 sub 0000:0000
+[   24.894319] ath10k_pci 0000:00:00.0: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   24.913500] ath10k_pci 0000:00:00.0: firmware ver 10.4b-ct-9888-fW-13-5ae337bb1 api 5 features mfp,peer-flow-ctrl,txstatus-noack,wmi-10.x-CT,ratemask-CT,regdump-CT,txrate-CT,flush-all-CT,pingpong-CT,ch-regs-CT,nop-CT,set-special-CT,tx-rc-CT,cust-stats-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT,wmi-bcn-rc-CT crc32 59e741e7
+[   25.255918] ath10k_pci 0000:00:00.0: Loading BDF type 0
+[   25.264804] ath10k_pci 0000:00:00.0: board_file api 2 bmi_id 0:16 crc32 f228337a
+[   27.036946] ath10k_pci 0000:00:00.0: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   27.044733] ath10k_pci 0000:00:00.0: msdu-desc: 2500  skid: 32
+[   27.094718] ath10k_pci 0000:00:00.0: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   27.106033] ath10k_pci 0000:00:00.0: wmi print 'free: 114572 iram: 12644 sram: 29508'
+[   27.342184] ath10k_pci 0000:00:00.0: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-nvmem max-sta 32 raw 0 hwcrypto 1
+[   27.523885] usbcore: registered new interface driver option
+[   27.529718] usbserial: USB Serial support registered for GSM modem (1-port)
+[   27.605204] ieee80211 phy1: Atheros AR9561 Rev:0 mem=0xb8100000, irq=2
+[   27.651381] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   48.804622] eth0: link up (1000Mbps/Full duplex)
+[   48.809430] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   48.832668] br-lan: port 1(eth0.1) entered blocking state
+[   48.838260] br-lan: port 1(eth0.1) entered disabled state
+[   48.844278] device eth0.1 entered promiscuous mode
+[   48.849234] device eth0 entered promiscuous mode
+[   48.877628] br-lan: port 1(eth0.1) entered blocking state
+[   48.883257] br-lan: port 1(eth0.1) entered forwarding state
+[   49.852457] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+</code>
+</WRAP>\\
+
+===== Quirks and known issues =====
+- It was observed, that CH340-based USB-UART converters output garbage during U-boot phase of system boot. At least CP2102 is known to work properly.
+
+- Kernel partition size is increased to 4MB compared to stock 3MB, to accomodate future kernel updates, at this moment OpenWrt 5.10 kernel image is at 2.5MB which is dangerously close to the limit. This has no effect on booting the system - but keep that in mind when reassembling an image to restore stock firmware.
+
+- uqmi seems to be unable to change APN manually, so please use the one you used before in stock firmware first. If you need to change it, please use protocok '3g' to establish connection once, or use the following command to change APN (and optionally IP type) manually:
+  echo -ne 'AT+CGDCONT=1,"IP","<apn>' > /dev/ttyUSB0
+  
+- The only usable LED as a "system LED" is the blue debug LED hidden inside the case. All other LEDs are controlled by modem, on which the router part has some influence only on Wi-Fi LED.
+
+- Wi-Fi LED currently doesn't work while under OpenWrt, despite having correct GPIO mapping. All other LEDs are controlled by modem, including this one in stock firmware. GPIO19, mapped there only acts as a gate, while the actual signal source seems to be 5GHz Wi-Fi radio, however it seems it is not the LED exposed by ath10k as ath10k-phy0.
+
+- GPIO5 used for modem reset is a suicide switch, causing a hardware reset of whole board, not only the modem. It is attached to gpio-restart driver, to restart the modem on reboot as well, to ensure LTE connectivity after reboot, which tends to fail otherwise.
+
+- Modem, as in MF283+, exposes root shell over ADB - while not needed for OpenWrt operation at all - have fun lurking around. The same modem module is used as in older MF286.
+  
+===== Tags =====
+<WRAP BOX>
+FIXME //Add tags below, then remove this fixme. I don't know which tags are applicable, so pls help thx.//
+</WRAP>
+
+[[meta:tags|How to add tags]]
+{{tag>EXAMPLETAG}}

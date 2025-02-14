@@ -1,0 +1,2523 @@
+====== Arcadyan ARV7506PW11 (Alice IAD 4421 / o2 Box 4421) ======
+
+This device is also known as //**Alice IAD WLAN 4421**// and as //**o2 Box 4421**//.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^ARV7506PW11$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^ARV7506PW11$"}
+} -->
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^ARV7506PW11$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+==== U-boot noninvasive (serial) ====
+
+get [[http://downloads.openwrt.org/snapshots/targets/lantiq/xway/u-boot-arv7506pw11_brn/|u-boot_brn]]
+
+Linux debian:
+
+  - connect via [[toh:arcadyan:arv7506pw11#serial|serial]]
+  - sudo screen /dev/ttyUSB0 115200
+  - power on device
+    * press: [spacebar] 3 times 
+    * press: [!] -> [m] -> [enter]
+  - kill screen: [ctrl]+[a] -> [k] -> [y]
+  - sx u-boot_brn.bin  < /dev/ttyUSB0 > /dev/ttyUSB0
+  - sudo screen /dev/ttyUSB0 115200
+    * press: [enter] ->	[y] -> [enter]
+  - hit any key to stop u-boot autoboot
+
+==== Backup firmware (serial + LAN) ====
+
+get [[https://code.google.com/archive/p/tftpgui/|tftpgui_2.2]] (tftpgui_3.1 does not work)
+
+Linux debian:
+
+  - sudo apt install python2.7 python-tk
+  - connect host via lan (set host ip 192.168.1.2) -> sudo ./tftpgui.py -> setup, then press start
+  - start [[toh:arcadyan:arv7506pw11#U-boot noninvasive (serial)|u-boot noninvasive]]
+  - bdinfo
+    * flashsize   = 0x00800000
+    * flashstart  = 0xB0000000
+  - tftpput 0xB0000000 0x00800000 full_backup_flash.bin
+
+alternatively, get [[https://pypi.org/project/ptftpd/|ptftpd]] and run it in rfc1350 mode.
+
+Linux debian:
+   - sudo apt install pipenv
+   - mkdir .venv
+   - pipenv install ptftpd
+   - .venv/bin/ptftpd --rfc1350 -p 69 <lan iface> <directory to be served>
+   - ...then proceed as above at step 3
+==== Flash u-boot (serial) ====
+
+FIXME\\
+-> since [[https://archive.openwrt.org/releases/18.06.0/targets/lantiq/xway/|OpenWrt 18.06.0]] -> U-Boot hangs at: "Uncompressing Kernel Image ..."\\
+-> [[http://downloads.openwrt.org/releases/17.01.6/targets/lantiq/xway/|U-Boot LEDE 17.01.6]] works but there is none:  -> scroll bottom\\
+-> workaround: [[docs:guide-developer:toolchain:install-buildsystem|build U-boot]] -> ''git checkout v17.01.6'' -> ''make menuconfig'' -> look for bootloader
+
+-> or get working: [[https://wiki.freifunk-cottbus.de/_media/firmware:o_box4421:working_u-boot_lede_17.01.6_2013.10-openwrt4_arv7506pw11_nor.img.tar.gz|U-Boot_LEDE_17.01.6_2013.10-openwrt4_ARV7506PW11_nor]] (only tftpput missing)
+
+Linux debian:
+
+  - start [[toh:arcadyan:arv7506pw11#U-boot noninvasive (serial)|u-boot noninvasive]]
+  - help
+  - loadx
+  - kill screen: [ctrl]+[a] -> [k] -> [y]
+  - sx u-boot_nor.bin < /dev/ttyUSB0 > /dev/ttyUSB0
+  - sudo screen /dev/ttyUSB0 115200
+  - printenv
+    * loadaddr=0x81000000
+    * write-uboot-nor=protect off 0xB0000000 +$filesize && erase 0xB0000000 +$filesize && cp.b <color #ed1c24>$fileaddr</color> 0xB0000000 $filesize
+    * got to change: <color #ed1c24>$fileaddr</color> -> <color #22b14c>$loadaddr</color>
+  - protect off 0xB0000000 +$filesize && erase 0xB0000000 +$filesize && cp.b <color #22b14c>$loadaddr</color> 0xB0000000 $filesize
+  - **be aware** -> there must be: "Copy to Flash... done" -> **or it gets bricked** -> see: [[toh:arcadyan:vgv7510kw22#booting_via_uart|Booting via uart]]
+  - reset
+  - hit any key to stop u-boot autoboot
+
+==== Boot OpenWrt (serial + LAN) ====
+
+get [[http://downloads.openwrt.org/snapshots/targets/lantiq/xway/openwrt-lantiq-xway-arcadyan_arv7506pw11-initramfs-kernel.bin|openwrt-lantiq-xway-arcadyan_arv7506pw11-initramfs-kernel.bin]]
+
+Linux debian:
+
+  - [[toh:arcadyan:arv7506pw11#flash_u-boot_serial|flash u-boot]] (if not already done)
+  - connect host via lan (set host ip 192.168.1.2) -> sudo ./tftpgui.py	-> setup, then press start
+  - sudo screen /dev/ttyUSB0 115200
+  - tftpboot openwrt-lantiq-xway-arcadyan_arv7506pw11-initramfs-kernel.bin
+  - bootm
+
+==== Flash OpenWrt (serial + LAN) ====
+
+get [[http://downloads.openwrt.org/snapshots/targets/lantiq/xway/openwrt-lantiq-xway-arcadyan_arv7506pw11-squashfs-sysupgrade.bin|openwrt-lantiq-xway-arcadyan_arv7506pw11-squashfs-sysupgrade.bin]]
+
+Linux debian:
+
+  - [[toh:arcadyan:arv7506pw11#flash_u-boot_serial|flash uboot]] (if not already done)
+  - connect host via lan (set host ip 192.168.1.2) -> sudo ./tftpgui.py -> setup, then press start
+  - sudo screen /dev/ttyUSB0 115200
+  - tftpboot openwrt-lantiq-xway-arcadyan_arv7506pw11-squashfs-sysupgrade.bin
+  - printenv
+    * kernel_addr=**0xB0050000**
+  - erase **0xb0050000** +$filesize
+  - cp.b $fileaddr **0xb0050000** $filesize
+  - reset
+===== Decrypting configuration backup =====
+The device's configuration can be backupped to (and restored from) a file called //aiw4421.bin// using the web interface. This file is encrypted, however, it can be decrypted.
+
+If your box is running an old firmware (before September 2012), you can use [[http://pastebin.com/AR4t75HR|this java code I stumbled across]]. (German) usage instructions can be found [[http://www.ip-phone-forum.de/showthread.php?t=232799&page=2&p=1772424&viewfull=1#post1772424|here]].
+
+If your box is running firmware version *.18 (~September 2012) up to *.22:
+The config file comes in "CFG5" format, you can use [[http://hph.name/303|this great tool by Hanno 'hph' Heinrichs]]. Usage instructions, feedback and further discussions (in German) can be found [[http://www.ip-phone-forum.de/showthread.php?t=256873|here]].
+
+If your box is running firmware 1.01.23b or newer:
+1. Firmware 1.01.23b introduced the new config file format "OBC6".
+2. The webinterface censors PPPoE and VoIP login data from the configuration backup file. Though you can still decrypt decrypt it.
+3. If you want to extract your PPPoE/VoIP data, you need to dump the config directly from the flash as described [[http://hph.name/303|here (English)]] and [[http://www.ip-phone-forum.de/showthread.php?t=264942|here (German)]].
+4. The (static) root password is also censored by the webserver. You can still extract, if you dump the flash as described in step 2.
+
+===== Serial link =====
+Hooking up to the serial with 115200/8N1 enables you to access the [[docs:techref:bootloader:brnboot]] bootloader and save or overwrite the flash contents along with the option to change some settings like MAC address and serial number. You have to enter three spaces immediately after powerup and then enter one exclamation mark (!) to get to the more advanced "Administrator menu".
+
+Booting the router with serial attached leads to many, many messages and finally to a prompt
+<code>====== console mode ======
+  shift-0: enable debug
+  ENTER  : show this help
+==========================</code>
+
+Pressing the closing bracket ")" leads to a password prompt:
+<code>Enter PIN Code for Running Console Debug:</code>
+The needed password can be recovered from the decrypted config. Search for "root", the cryptic string some NUL bytes later is the PIN. We are presented with a "Debug Console" with various very low-level options:
+
+<code>Console Debug Menu
+| Alert Mail Testing
+| Write Web
+| Firmware Upgrage
+| Show B0,B1 Mem pool
+| Toggle AAL5 Frame Dumping
+| ADSL
+|\ Enable Annex J mode
+|| Disable Annex J mode
+| DHCP Client
+|\ Release IP
+|| Renew IP
+|| Update IP
+|| Disable DHCP Client(gConfig)
+|| Enable DHCP Client(gConfig)
+|| Disable DHCP Client(gSetting)
+|| Enable DHCP Client(gSetting)
+| Dial
+| Ethernet
+|\ Page0 Status
+|| Page1 Status
+|| Page2 Status
+|| Page3 Status
+|| rtl8306sd_dumpRegisters
+|| MIB info
+|| dump vlan
+|| rtl8306_setAsicVlanTagAware(TRUE)
+|| rtl8306_setAsicVlanTagAware(FALSE)
+|| rtl8306_setAsicVlanIngressFilter(TRUE)
+|| rtl8306_setAsicVlanIngressFilter(FALSE)
+|| rtl8306_setVlanTagOnly(TRUE)
+|| rtl8306_setVlanTagOnly(FALSE)
+| Firewall
+|\ fragment table
+|| TCP table
+|| UDP table
+|| Scan Host table
+|| Trust Clients table
+|| Last 10 drop packets info
+|| IP Spoofing run-time pool
+|| Generate dummy TCP connection
+|| Generate dummy UDP session
+|| Show CBAC Mem pool
+|| Show WAN Outbound(group 0) Access Rule
+|| Show WAN Inbound(group 1) Access Rule
+|| TCP table with Hash
+|| UDP table with Hash
+| LED
+|\ Power On/Off
+|| Status On/Off
+|| Switch On/Off
+|| Wireless On/Off
+|| PPP Red On/Off
+|| PPP Green On/Off
+|| WAN Switch On/Off
+|| VoIP FXS1 On/Off
+|| VoIP FXS2 On/Off
+|| VoIP FXO1 On/Off
+|| VoIP status On/Off
+|| VoIP FXS0 On/Off
+|| USB On/Off
+|| DSL Data On/Off
+|| Conf Y On/Off
+|| Conf G On/Off
+|| Conf R On/Off
+|| VOIP G On/Off
+|| MSG On/Off
+|| console_led_all_on/off
+|| console_blue_led_all_on/off
+|| console_red_led_all_on/off
+|| Dump GPIO register
+| UPnP
+|\ Enable UPnP function
+|| Disable UPnP function
+| SSL
+|\ show gSSLClientCount(SSL server)
+|| set server application host ip(SSL server)
+|| show server application host ip(SSL server)
+|| set ssl server host ip(SSL client)
+|| show ssl server host ip(SSL client)
+| PPPoE
+|\ Disconnect
+|| Connect
+|| Disable PPPoE
+|| Enable PPPoE
+| QoS
+|\ QM Attach & Enable
+|| QM Detach & Disable
+|| QM Enable
+|| QM Disable
+|| QM Information
+|| VoIP CAC Information
+| System
+|\ Show Routing Table
+|| Show ARP Table
+|| Show DNS Table
+|| Dump LED Table
+|| Write Flash Test
+|| Show NTP Server
+|| Show pcb Table
+|| Show socket Table
+|| Show Bridge Info
+|| Show mcforward Info
+|| Show DHCPD Hardware Address
+|| Show Interface Table
+|| Dump Kernel
+|| Dump run-time NAT table
+|| Dump NAT table
+|| Dump run-time fix-PAT table
+|| Dump fix-PAT table
+|| Dump run-time special AP table
+|| Dump special AP table
+|| Dump run-time virtual server table
+|| Dump virtual server table
+|| Dump run-time PAT server table
+|| Dump PAT server table
+|| Dump PortMap table
+|| Dump task path
+|| Production Test On (not including VoIP)
+|| Production Test Off (not including VoIP)
+|| Do firmware reload
+| WSC
+|\ led_test_pbc(1)
+|| led_test_pbc(2)
+|| led_test_pbc(3)
+|| led_test_pbc(4)
+|| PBC test
+|| disable WPS
+|| enable WPS
+|| PIN test
+| VOIP
+|\ Selected Channel Stop Tone
+|| Selected Channel Play DTMF *0~9#
+|| Selected Channel Play 1K voice file
+|| Ringing phone on Selected Channel for FXS SLIC only
+|| Stop Ringing phone on Selected Channel for FXS SLIC only
+|| PCM Link on Selected Channel to FXO for FXS only
+|| PCM Link off Selected Channel to FXO for FXS only
+|| DAA offhook on Selected Channel for FXO only
+|| DAA onhook on Selected Channel for FXO only
+|| Set FXO type as ISDN
+|| Set FXO type as PSTN
+|| Production Test On and selecting test Channel
+|| Production Test Off
+|| Turn on all LED: FXS,FXO,VOIP,WLAN,USB,and ADSL DATA
+|| Turn off all LED: FXS,FXO,VOIP,WLAN,USB,and ADSL DATA
+|| Ring FXS with FSK CID
+|| Relay on Selected Channel to FXO for FXS only
+|| Relay off Selected Channel to FXO for FXS only
+|| Dump VoIP account state pool
+|| Test BYE fail case
+|| Dump VoIP account registe command queue
+|| set registe command queue
+|| get registe command from queue
+|| Rx gain plus
+|| Rx gain minus
+|| Tx gain plus
+|| Tx gain minus
+|| Reset DSP
+|| Enable SIP ALG debug log
+|| Enable SIP ALG debug log
+| Wireless
+|\ Enable/Disable Wireless Config
+|| Shutdown Wireless Interface
+|| Manually Reset Wireless
+|| Current channel
+|| Show AP List
+|| Switch to RT61 ATE mode
+|| Switch to Ralink QA mode
+|| Switch to RT61 SoftAP mode
+|| Reset for COR=0x80
+|| Trigger wireless data flash
+|| Show failed External Registrar authen attempts and lockdown state
+|| Add an fake External Registrar authen failure record
+|| Set External Registrar authen lockdown
+|| Clear External Registrar authen lockdown
+| Enable SIP Packet Display
+| Disable SIP Packet Display
+| Change SIP Bandwidth (20~800)
+| Enable VOIP Bandwidth Management
+| Disable VOIP Bandwidth Management
+| Dump Tel Session Status
+| Dump Voice Session Status
+| IPTV
+|\ Show used bandwidth
+|| Show existing IGMP sessions
+|| Show existing RTSP sessions
+</code>
+
+===== Flash layout =====
+====Default flash layout====
+This is the default flash layout as reported by the bootloader:
+<code>---------------------------------------
+    Area            Address      Length 
+--------------------------------------- 
+[0] Boot            0xB0000000     128K
+[1] Configuration   0xB0020000     256K
+[2] None            0xB0060000      64K
+[3] Special Area    0xB0070000      64K
+[4] Primary Setting 0xB0080000      64K
+[5] Code Image 0    0xB0090000    3776K
+[6] Code Image 1    0xB0440000    3776K
+[7] Boot Params     0xB07F0000      64K
+[8] Flash Image     0xB0000000    8192K
+---------------------------------------</code>
+
+Please note that area/partition "[8] Flash Image" is the complete flash, so do **never** try to erase or reflash this area. Also don't try to mess with areas 0 and 7 as you might brick your device otherwise.
+
+==== Proposed flash layout for OpenWrt ====
+^ Arcadyan ARV7506PW11  Flash Layout (Proposal) ^^^^^^^^^^
+^ Layer0 | **//[8] Flash Image//** |||||||||
+^ Size | 8192KiB (64KiB block size) |||||||||
+^ Address | 0xB0000000 |||||||||
+^ Layer1 (brn-boot) | @#ffc0c0:**//[0] Boot//** | **//[1] Configuration//** | **//[2] None//** | **//[3] Special Area//** | **//[4] Primary Setting//** | **//[5] Code Image 0//** | **//[6] Code Image 1//** || @#ffc0c0:**//[7] Boot Params//** |
+^ Size | @#ffc0c0:128KiB | 256KiB | 64KiB | 64KiB | 64KiB | 3776KiB | 3776KiB || @#ffc0c0:64KiB |
+^ Address | @#ffc0c0:0xB0000000 | 0xB0020000 | 0xB0060000 | 0xB0070000 | 0xB0080000 | 0xB0090000 | 0xB0440000 || @#ffc0c0:0xB07F0000 |
+^ Layer2 (OpenWrt) | @#ffc0c0:**//brn-boot//** | @#c0ffc0:**//rootfs-data//** ||||| @#c0c0ff:**//kernel//** | @#ffffc0:**//rootfs//** | @#ffc0c0:**//art//** |
+^ Size | @#ffc0c0:128KiB | @#c0ffc0:4224KiB ||||| @#c0c0ff:1280KiB | @#ffffc0:2496KiB | @#ffc0c0:64KiB |
+^ Address | @#ffc0c0:0xB0000000 | @#c0ffc0:0xB0020000 ||||| @#c0c0ff:0xB0440000 | @#ffffc0:0xB0580000 | @#ffc0c0:0xB07F0000 |
+^ Device | @#ffc0c0:mtd0 | @#c0ffc0:mtd1 ||||| @#c0c0ff:mtd2 | @#ffffc0:mtd3 | @#ffc0c0:mtd4 |
+^ mountpoint | @#ffc0c0:none | @#c0ffc0:/overlay, / ||||| @#c0c0ff:none | @#ffffc0:/rom, / | @#ffc0c0:none |
+^ filesystem | @#ffc0c0:none | @#c0ffc0:[[docs:techref:filesystems#jffs2|JFFS2]] ||||| @#c0c0ff:none | @#ffffc0:[[docs:techref:filesystems#squashfs|SquashFS]] | @#ffc0c0:none |
+
+===== Create firmware image for brnboot =====
+<color red>//**WARNING: This is work in progress, so be careful and only try this out if you know what you are doing!**//</color>
+
+The router comes with the [[docs:techref:bootloader:brnboot]] bootloader, which can boot either Code Image 0 (0xB0090000) or Code Image 1 (0xB0440000), if they are signed and obfuscated correctly (see below). The bootloader checks both locations, and the default image can be set in the brnboot menu via the UART interface.
+This means that we can store the kernel image at 0xB0440000, and that we can use the area from 0xB0020000 to 0xB043FFFF (4224 KiB) for JFFS2.
+
+By using the existing brnboot instead of u-boot, we avoid the risk of bricking the device. brnboot is accessible via the serial interface, but it also offers a [[docs:techref:bootloader:brnboot#recovery_web_interface| recovery web interface]] on ''%%http://192.168.1.1/%%'' when it doesn't find a //valid// code image in any of the two "Code Image" sections in flash.
+
+//Valid// code image means that the code image must be "[[https://sviehb.wordpress.com/2011/09/06/reverse-engineering-an-obfuscated-firmware-image-e01-unpacking/ | encrypted]]" and "[[https://sviehb.wordpress.com/2011/09/09/reverse-engineering-an-obfuscated-firmware-image-e02-analysis/ | signed]]" ([[https://dev.openwrt.org/browser/trunk/tools/firmware-utils/src/mkbrnimg.c | obfuscated]]) with two model/firmware specific keys. On my Alice IAD4421, these keys can be found in the "Boot" section of the flash at 0xB001FBEC (4 byte value "0x7AB7ADAD") and at 0xB001FC00 (null-terminated ASCII string "BRNDA4421").
+
+With these keys, the OpenWrt build environment [[https://dev.openwrt.org/changeset/30532/ | can]] create us a kernel image (vmlinux-ARV7506PW11-brn.lzma) that can be booted by brnboot if it is flashed into one of the two "Code Image" sections in flash.
+
+<color red>//**WARNING: Do not overwrite the sections "Boot" (0xB0000000 to 0xB001FFFF) or "Boot Params" (0xB07F0000 to 0xB07FFFFF) or you may brick your device!**//</color>
+
+I've [[https://dev.openwrt.org/browser/trunk/target/linux/lantiq/image/ARV752DPW.dts|derived]] a [[http://devicetree.org/Device_Tree_Usage|device tree source]] file from the [[toh:arcadyan:arv752dpw|ARV752DPW]], but it isn't perfect yet.
+
+Add the following in
+
+====target/linux/lantiq/image/Makefile====
+<code>
+Image/BuildKernel/Profile/ARV7506PW11=$(call Image/BuildKernel/Template,ARV7506PW11)
+#Image/Build/Profile/ARV7506PW11=$(call Image/Build/$(1),$(1),ARV7506PW11)
+Image/Build/Profile/ARV7506PW11=$(call Image/Build/$(1),$(1),ARV7506PW11,BRNDA4421,0x7AB7ADAD,memsize=64)
+</code>
+
+Then create the file
+====target/linux/lantiq/image/ARV7506PW11.dts====
+<code>/dts-v1/;
+
+/include/ "danube.dtsi"
+
+/ {
+	model = "ARV7506PW11 - Alice/O2 IAD 4421";
+
+	chosen {
+		#bootargs = "console=ttyLTQ0,115200 root=/dev/mtdblock1 init=/etc/preinit";
+		bootargs = "root=/dev/mtdblock2 rw rootfstype=squashfs,jffs2 console=ttyLTQ0,115200 init=/etc/preinit";
+	};
+
+	memory@0 {
+		reg = <0x0 0x4000000>;
+	};
+
+	sram@1F000000 {
+		vmmc@107000 {
+			status = "okay";
+			gpios = <&gpiomm 1 0>;
+		};
+	};
+
+	fpi@10000000 {
+		localbus@0 {
+			nor-boot@0 {
+				compatible = "lantiq,nor";
+				bank-width = <2>;
+				reg = <0 0x0 0x800000>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				partition@0 {
+					label = "brnboot";
+					reg = <0x00000 0x20000>;
+					read-only;
+				};
+
+				partition@20000 {
+					label = "stuff";
+					reg = <0x20000 0x70000>;
+				};
+				
+				partition@90000 {
+					label = "rootfs_data";
+					reg = <0x90000 0x3B0000>;
+				};
+				
+				partition@440000 {
+					label = "kernel";
+					reg = <0x440000 0x180000>;
+				};
+				
+				partition@5C0000 {
+					label = "rootfs";
+					reg = <0x5C0000 0x230000>;
+				};
+				
+				partition@7f0000 {
+					label = "board_config";
+					reg = <0x7f0000 0x10000>;
+					read-only;
+				};
+			};
+
+			mac_addr {
+				compatible = "lantiq,eth-mac";
+				reg = <0 0x7f0016 0x6>;
+				mac-increment = <2>;
+			};
+
+			gpiomm: gpiomm@4000000 {
+				compatible = "lantiq,gpio-mm";
+				reg = <1 0x0 0x10 >;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				#gpio-cells = <2>;
+				gpio-controller;
+				lantiq,shadow = <0x3>;
+			};
+		};
+
+		gpio: pinmux@E100B10 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&state_default>;
+
+			state_default: pinmux {
+				ebu {
+					lantiq,groups = "ebu cs1";
+					lantiq,function = "ebu";
+				};
+				exin {
+					lantiq,groups = "exin1";
+					lantiq,function = "exin";
+					lantiq,pull = <2>;
+					lantiq,output = <0>;
+				};
+				pci_in {
+					lantiq,groups = "req2", "req1";
+					lantiq,function = "pci";
+					lantiq,open-drain = <1>;
+					lantiq,pull = <2>;
+					lantiq,output = <0>;
+				};
+				pci_out {
+					lantiq,groups = "gnt1";
+					lantiq,function = "pci";
+					lantiq,output = <1>;
+				};
+				pci_rst {
+					lantiq,pins = "io21";
+					lantiq,pull = <2>;
+					lantiq,output = <1>;
+				};
+				leds {
+					lantiq,pins = "io2", "io3", "io4", "io5", "io6", "io7", "io8", "io9";
+					lantiq,output = <1>;
+					lantiq,pull = <0>;
+				};
+				keys {
+					lantiq,pins = "io11";
+					lantiq,output = <0>;
+					lantiq,pull = <2>;
+					lantiq,open-drain = <1>;
+				};
+			};
+		};
+
+		ifxhcd@E101000 {
+			status = "okay";
+			gpios = <&gpiomm 0 0>;
+		};
+
+		etop@E180000 {
+			phy-mode = "rmii";
+		};
+
+		pci@E105400 {
+			status = "okay";
+			lantiq,internal-clock;
+			gpio-reset = <&gpio 21 0>;
+			interrupt-map = <0x7000 0 0 1 &icu0 135>;
+			req-mask = <0x3>;
+		};
+
+	};
+
+	ralink_eep {
+		compatible = "ralink,eeprom";
+		ralink,eeprom = "RT2860.eeprom";
+	};
+
+	gpio-keys-polled {
+		compatible = "gpio-keys-polled";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		poll-interval = <100>;
+		
+		wps {
+			label = "wps";
+			gpios = <&gpio 11 1>;
+			linux,code = <0x211>;
+		};
+	};
+
+	gpio-leds {
+		compatible = "gpio-leds";
+		wlan {
+			label = "wlan";
+			gpios = <&gpio 2 1>;
+		};
+		power {
+			label = "power";
+			gpios = <&gpio 3 1>;
+		};
+		dsl {
+			label = "dsl";
+			gpios = <&gpio 4 1>;
+		};
+		internet {
+			label = "internet";
+			gpios = <&gpio 5 1>;
+		};
+		power1 {
+			label = "power1";
+			gpios = <&gpio 6 1>;
+		};
+		internet1 {
+			label = "internet1";
+			gpios = <&gpio 7 1>;
+		};
+		info {
+			label = "info";
+			gpios = <&gpio 8 1>;
+		};
+		telefon {
+			label = "telefon";
+			gpios = <&gpio 9 1>;
+		};
+	};
+};</code>
+
+Now do:
+<code bash>
+make defconfig
+make prereq
+make menuconfig
+</code>
+
+If the device doesn't show up in the menuconfig, you might have to do:
+<code bash>
+rm -Rf tmp
+mkdir tmp
+</code>
+
+And finally:
+<code bash>
+make
+</code>
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture   | MIPS                                 |
+^ Target         | lantiq                               |
+^ Vendor         | [[toh:arcadyan:|Arcadyan]]           |
+^ Bootloader     | [[docs:techref:bootloader:brnboot]]   |
+^ System-On-Chip | Infineon/[[docs:techref:hardware:soc:soc.lantiq|Lantiq]] Xway Danube |
+^ CPU Speed      | 333 MHz |
+^ Flash chip     | [[http://www.mxic.com.tw/QuickPlace/hq/PageLibrary4825740B00298A3B.nsf/h_Index/6F878CF760C559BD482576E00022E6CC/?OpenDocument&EPN=MX29LV640E%20T/B|MXIC MX29LV640EBTI-70G]] parallel NOR flash, 64KiB block size |
+^ Flash size | 8 MiB / 64 Mibit |
+^ RAM chip   | [[http://www.zentel.com.tw/download/A3S12D3040ETP_I%20ver_v1.1_Zentel.zip|Zentel A3S12D40ETP-G6]] |
+^ RAM size   | 64 MiB (DDR400 SDRAM) / 512 Mibit                                |
+^ WAN        | 1x RJ45 (only DSL, no Ethernet)                                  |
+^ Modem      | ADSL (G.992.1 & T1.413, V2), ADSL2 (G.992.3), ADSL2+ (G.992.5)   |
+^ Ethernet   | [[http://www.realtek.com.tw/products/productsView.aspx?Langid=1&PFid=20&Level=5&Conn=4&ProdID=196|Realtek RTL8306G]], 4x LAN 100MBit/s |
+^ Wireless   | Ralink RT3060F, 802.11n 300MBit/s |
+^ Phone      | [[http://www.lantiq.com/products/voice-access/voicevoip-slictm/slictm/slictm-dc/|Lantiq SLIC-DC]] [[http://media.digikey.com/pdf/Data%20Sheets/Infineon%20PDFs/PEF%204268%20T,F%20Product%20Brief.pdf|PEF-4268T V1.2]], 2x FXS\\ ([[wp>TAE ports]] which provide POTS via a SIP gateway) |
+^ Serial     | [[#Serial|yes]]                                 |
+^ JTAG       | supported by SOC but no pads found on PCB yet   |
+^ Buttons    | power switch, WPS button, reset button          |
+^ Power      | external PSU, 12V DC, 1A, polarity: -(+)        |
+
+
+==== Photos ====
+{{https://dl.dropboxusercontent.com/u/3680600/ARV7506PW11-WLAN-Router.jpg?500}} FIXME DEAD LINK  --- //[[tmo26@gmx.de|tmomas]] 2019/10/14 17:51//
+
+==== Serial ====
+You can reach the serial interface pins without opening the case through the ventilation slots if you are patient enough and like to tinker:\\
+{{:media:arcadyan:arv7506-pcb-serial.jpg?400}}
+
+===== Bootlogs =====
+
+==== OEM bootlog ====
+<WRAP bootlog><nowiki>
+ROM VER: 1.0.3
+CFG 01
+Read<0xe0>
+ROM VER: 1.0.3
+CFG 01
+Read EEPROMX
+ X
+
+
+
+=======================================================================
+Wireless VDSL2 Gateway DANUBE Loader V1.06.05 build Feb  8 2011 19:44:37
+                    Arcadyan Technology Corporation
+=======================================================================
+MXIC MX29LV640BB bottom boot 16-bit mode found
+
+Copying boot params.....DONE
+
+
+Press Space Bar 3 times to enter command mode ...
+Flash Checking [0] Passed.
+Image[1] at 0xb0090000, len:1543266, type:0
+Image[2] at 0xb0209000, len:209634, type:10
+Image[3] at 0xb023c400, len:193259, type:11
+Image[4] at 0xb026b800, len:173140, type:12
+Image[5] at 0xb0296000, len:150724, type:50
+Image[6] at 0xb02bb000, len:163864, type:60
+Image[7] at 0xb02e3400, len:452105, type:90
+Firmware image at 0, ART image at -1
+
+Run-up ART Firmware... Fail
+Back to run-up Normal Firmware...
+
+Unzipping firmware [0(5)] at 0x80002000 ... [ZIP 3] [ZIP 1]  done
+Run-time code running ...
+
+In c_entry() function ...
+install_exception 
+Co config = 80008483
+[INIT] Interrupt ...
+
+
+ DANUBE_BCU_CON:0x4009FFFF
+ DANUBE_BCU_ECON:0x00000000
+ DANUBE_BCU_EADD:0x00000000
+ DANUBE_BCU_ECON:0x00000000
+
+ DANUBE_SLAVE_BCU_CON:0x4009FFFF
+ DANUBE_SLAVE_BCU_ECON:0x00000000
+ DANUBE_SLAVE_BCU_EADD:0x00000000
+ DANUBE_SLAVE_BCU_EDAT:0x00000000##### _ftext      = 0x80002000
+##### _fdata      = 0x805FDEB0
+##### __bss_start = 0x806A8014
+##### end         = 0x827B71C0
+allocate_memory_after_end> len 696676, ptr 0x827bf1c0
+##### Backup Data from 0x805FDEB0 to 0x827BF1C0~0x82869324 len 696676
+##### Backup Data completed
+##### Backup Data verified
+[GPIO FLOW] SetGpio() Begin ..
+gptu: totally 6 16-bit timers/counters
+Init timer = 0
+************************ LED all ON
+************************ LED all OFF
+[GPIO FLOW] SetGpio() End.
+[INIT] System Log Pool startup ...
+[INIT] MTinitialize ..
+[INIT] usrclk
+CPU Clock 333333334 Hz
+mips_counter_frequency:166666667
+r4k_offset: 00028b0a(166666)
+init_US_counter : time1 = 260441 , time2 = 40260463, diff 40000022
+US_counter = 48
+ cnt1 40987750 cnt2 40990007, diff 2257
+Runtime code version: 1.01.20
+System startup...
+[INIT] Memory COLOR 0, 3000000 bytes ..
+[INIT] Memory COLOR 1, 1048576 bytes ..
+[INIT] Memory COLOR 2, 4565152 bytes ..
+
+rzMemory start: 0x81324614, end 0x81483E14, size 1439744MXIC MX29LV640BB bottom boot 16-bit mode found
+Set flash memory layout to Boot Parameters found !!!
+Bootcode version: V1.06.05
+Serial number: 1052049752
+Hardware version: 01
+Mar 19 2014 18:47:53
+[BUILD:PIN] PIN:XXXX, MAC:XXXXXXX
+[BUILD-PIN]: PIN:XXXX, len=8
+MXIC MX29LV640BB bottom boot 16-bit mode found
+MXIC MX29LV640BB bottom boot 16-bit mode found
+decode_config> remain buffer len=3859799
+Signature matched at offset 221832
+Add-on new config tail> oldSize:221856, oldCfgSize:12312, adjust length to -1
+[CONFIG] read_config_from_flash ret=0
+
+my CFGVersionMagic = 33343536, old CFGVersionMagic on flash = 33343536
+my CFGsize = 221856, my CFGDescSize = 37343
+my Version = 1.01.20, Version on flash= 1.01.20
+[CONFIG] old cfg version:[1.01.20], [1.1.20.100.4.0]
+source CFGsize = 221856, CFGDescSize = 37343
+(oldCfg) Warning! nLen, 259199 > cfg_src_size, 234168
+OldCfgHexSize:12304
+Unzipping from 80FE70D0 to 80FDDEE0 ... [ZIP 2] allocate_memory_after_end> len 81516, ptr 0x82869340
+done
+Uncompressed size = 37341
+Tail1 : END_III_Config_t
+
+Size of Old CFG_DESC is :37341!!!
+useCfgDesc:1
+MyCfgHexSize:12304
+Unzipping from 80FDAEB8 to 80FD1CC8 ... [ZIP 2] done
+Uncompressed size = 37341
+My CFGDescSize:37343
+useCfgDesc:1
+Tail : END_III_Config_t
+
+useCfgDesc:3
+
+Restore Config file from ver:1.01.20!!!
+
+[CONFIG] DS_Tail:[t_ARV752DPW]
+[CONFIG] load_config ret=1
+[updateConfig] flash version:[1.01.20], [1.1.20.100]
+[updateConfig] code version:[1.01.20], [1.1.20.100]
+check_WAN_switch returns -1
+default route: 0.0.0.0
+BufferInit:
+BUF_HDR_SZ=192 BUF_ALIGN_SZ=28 BUFFER_OFFSET=448
+BUF_BUFSZ0=576 BUF_BUFSZ1=4352
+NUM_OF_B0=0 NUM_OF_B1=2400
+BUF_POOL0_SZ=0 BUF_POOL1_SZ=10905600
+sizeof(BUFFER0)=768,sizeof(BUFFER1)=4544
+*BUF0=0x81f7fa74 *BUF1=0x81519254
+Altgn *BUF0=0x81f7fa80 *BUF1=0x81519260
+End at BUF0:0x81f7fa80, BUF1:0x81f7fa60
+
+BUF0[0]=0x81f7fa80 BUF1[0]=0x81519260
+
+buffer0 pointer init OK!
+buffer1 pointer init OK!
+[qm_lnk_init] CLOCKHZ=1000 ...
+[qm_lnk_init] add if 3 into QM link 0
+[qm_lnk_init] add if 4 into QM link 0
+[qm_lnk_init] add if 5 into QM link 0
+[qm_cbq_enable] no QM attached
+[qm_cbq_detach] no QM is attached at link 0
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1025000/100000, ns_per_byte=780487/1000
+ptime=2000000000/1000, cptime=0/1000, offtime=0/1000
+New cls: id=0, bw=780 ns/byte, maxd=0 ms,
+         maxb=32, minb=2, avgpktsz=250, maxpktsz=1600,
+         offtime=0, parent=0, borrow=0
+         pri=0, maxidle=31, minidle=-2497,
+         maxq=96, clsfg=17
+pkt_avgsz=1600, pkt_maxsz=1600, mtu=1600
+f=10249/100000, ns_per_byte=78048781/1000
+ptime=18446744073709551615/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=1, bw=78048 ns/byte, maxd=0 ms,
+         maxb=16, minb=1, avgpktsz=1600, maxpktsz=1600,
+         offtime=112078, parent=827a49f0, borrow=827a49f0
+         pri=5, maxidle=29864, minidle=-249756,
+         maxq=48, clsfg=21
+qm_cbq_attach(): cbqp->cbq_res=64
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1014750/100000, ns_per_byte=788371/1000
+ptime=2000000000/1000, cptime=0/1000, offtime=0/1000
+New cls: id=2, bw=788 ns/byte, maxd=0 ms,
+         maxb=32, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=0, parent=827a49f0, borrow=827a49f0
+         pri=5, maxidle=31, minidle=-2522,
+         maxq=48, clsfg=21
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=2000000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=3, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1366279, parent=827a33f0, borrow=827a33f0
+         pri=6, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=20
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=2000000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=4, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1366279, parent=827a33f0, borrow=827a33f0
+         pri=0, maxidle=0, minidle=-4294966,
+         maxq=96, clsfg=21
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=2000000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=5, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1366279, parent=827a33f0, borrow=827a33f0
+         pri=1, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=23
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=2000000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=6, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1366279, parent=827a33f0, borrow=827a33f0
+         pri=2, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=23
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=2000000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=7, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1366279, parent=827a33f0, borrow=827a33f0
+         pri=3, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=23
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1/100000, ns_per_byte=4294967295/1000
+[qm_cbq_newcls] warning: bandwidth of the class may be low enough to cause INT overflow
+ptime=2000000000/1000, cptime=18446744073709551615/1000, offtime=18446744073709551615/1000
+New cls: id=8, bw=1342177 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=1366279, parent=827a33f0, borrow=827a33f0
+         pri=4, maxidle=0, minidle=-4294966,
+         maxq=48, clsfg=23
+pkt_avgsz=250, pkt_maxsz=1600, mtu=1600
+f=1014750/100000, ns_per_byte=788371/1000
+ptime=2000000000/1000, cptime=0/1000, offtime=0/1000
+New cls: id=9, bw=788 ns/byte, maxd=0 ms,
+         maxb=16, minb=4, avgpktsz=250, maxpktsz=1600,
+         offtime=0, parent=827a33f0, borrow=827a33f0
+         pri=6, maxidle=31, minidle=-2522,
+         maxq=48, clsfg=20
+CLOCKHZ=1000
+gConfig.Interface[0].IP_Addr = 127.0.0.1
+gConfig.Interface[0].Subnet_Mask = 255.255.255.255
+gConfig.Interface[0].Description = LOCAL_LOOPBACK
+***** [iput_IpLinkUp] ifno=0, link_type:12
+TRAP(linkUp) : send ok!
+Interface 0 ip = 127.0.0.1
+
+gConfig.Interface[1].IP_Addr = 192.168.1.1
+gConfig.Interface[1].Subnet_Mask = 255.255.255.0
+gConfig.Interface[1].Description = LAN
+ifno=1, vlan=0, vid=1, port_mask=0x1f
+DANUBE_RCU_RST_STAT Watchdog 0 reset cause flag 0 Watchdog 1 reset cause flag 0
+DMA g_desc_list=0x80FCCA80
+danube_sw_chip_init: in Reverse MII mode
+Probe switch chip....RTL8306 ver.series 2 ver.chipid 22920 ver.revision 4
+RTL8306 detected
+chip_id = 1
+init switch chip deriverdanube_sw_chip_init: switch_chip= 1
+[rtl8306_setLedMode] modeCur 7bff mode 3
+[rtl8306_setLedMode] modeCur 7bff mode 3
+[VLAN] port: 0x001f, ifCount=1
+------->add port 0 to vlan 1
+------->add port 1 to vlan 1
+------->add port 2 to vlan 1
+------->add port 3 to vlan 1
+------->add port 4 to vlan 1
+mac_0_init: interface 1 registered to VLAN 1, port_mask=1f
+MAC Address: XXXXXXXX
+***** [iput_IpLinkUp] ifno=1, link_type:12
+TRAP(linkUp) : send ok!
+Interface 1 ip = 192.168.1.1
+
+gConfig.Interface[2].IP_Addr = 0.0.0.0
+gConfig.Interface[2].Subnet_Mask = 0.0.0.0
+gConfig.Interface[2].Description = WLAN
+danube pci startup...
+PCI clock 33.3MHz
+cut-off PCI internal clock
+DANUBE_GPIO_P1_ALTSEL0=85c7
+DANUBE_GPIO_P1_ALTSEL1=0
+DANUBE_GPIO_P1_DIR=91fe
+[PCI-SCAN] get PCI dev-0e, func-00(0x70), class:0x0280, vid:0x1814, did:0x3592
+Scanning bus 00
+Found 00:70 [1814/3592] 000280 00
+Fixups for bus 00
+Bus scan for 00 returning with max=00
+[pcibios_init] PCI slot 0e, function 00...
+35921814 04300007 02800000 00008000 18000000 00000000 00000000 00000000 
+00000000 00000000 ffffffff 35921814 00000000 00000040 00000000 04020100 
+
+[HWLAN] ifno=2 irno=7 port=0x00000000
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+pci_find_slot bus 0 devfn 70
+dev->bus->number 0 dev->devfn 70
+===> rt2860_probe
+PCI: Enabling device 00:0e.0 (0007 -> 0006)
+pcibios_set_master> lat=0x80
+--> RTMPAllocAdapterBlock
+RTMP_ADAPTER_mem : 808a004c, sizeof(RTMP_ADAPTER) 415360
+
+
+=== pAd = FFFFFFFF808A004C, size = 415360 ===
+
+<-- RTMPAllocAdapterBlock, Status=0
+pAd->CSRBaseAddress =0xffffffffb8000000
+AP Driver version-2.2.5.0
+NVM is EEPROM
+Allocate a net device with private data size=0!
+RtmpOSNetDevAttach()--->
+<---RtmpOSNetDevAttach(), ret=0
+<=== rt2860_probe
+***** [iput_IpLinkUp] ifno=2, link_type:12
+TRAP(linkUp) : send ok!
+Interface 2 ip = 192.168.1.1
+
+gConfig.Interface[3].IP_Addr = 0.0.0.0
+gConfig.Interface[3].Subnet_Mask = 0.0.0.0
+gConfig.Interface[3].Description = ATM1
+ppe: ATM init succeeded (firmware version 1.1.0.2.1.13)
+ATM_UBR
+Init SAR ifno:3 g_atm_vcc[0] VC 0 CONN:1 VPI/VCI:1/32
+IF3 MAC Address : XXXXXXXX
+Interface 3 ip = 0.0.0.0
+
+gConfig.Interface[4].IP_Addr = 0.0.0.0
+gConfig.Interface[4].Subnet_Mask = 0.0.0.0
+gConfig.Interface[4].Description = ATM2
+ATM_VBR_RT
+Init SAR ifno:4 g_atm_vcc[1] VC 1 CONN:2 VPI/VCI:1/35
+IF4 MAC Address : XXXXXXXX
+Interface 4 ip = 0.0.0.0
+
+gConfig.Interface[5].IP_Addr = 0.0.0.0
+gConfig.Interface[5].Subnet_Mask = 0.0.0.0
+gConfig.Interface[5].Description = ATM3
+ATM_UBR
+Init SAR ifno:5 g_atm_vcc[2] VC 2 CONN:3 VPI/VCI:1/34
+IF5 MAC Address : XXXXXXXX
+Interface 5 ip = 0.0.0.0
+
+gConfig.Interface[11].IP_Addr = 0.0.0.0
+gConfig.Interface[11].Subnet_Mask = 0.0.0.0
+gConfig.Interface[11].Description = PPPoE1
+IFLNK_PPPOE init : (Linkp)ifno = 11 idx = 2
+IFLNK_PPPOE init : (Driverp)ifno = 11 idx = 3
+pppInit> set (PPPShutdownRequest[ifno] = 0)
+[change_phase] start to release the allocated memory in if_table[0].ppp_p->state
+[pppoe_init]
+Interface 11 ip = 0.0.0.0
+
+gConfig.Interface[12].IP_Addr = 0.0.0.0
+gConfig.Interface[12].Subnet_Mask = 0.0.0.0
+gConfig.Interface[12].Description = PPPoE2
+IFLNK_PPPOE init : (Linkp)ifno = 12 idx = 2
+IFLNK_PPPOE init : (Driverp)ifno = 12 idx = 3
+pppInit> set (PPPShutdownRequest[ifno] = 0)
+[change_phase] start to release the allocated memory in if_table[0].ppp_p->state
+[pppoe_init]
+[PPPoE]gInitOk==1 , So Not Do pppoe_init
+Interface 12 ip = 0.0.0.0
+
+gConfig.Interface[20].IP_Addr = 0.0.0.0
+gConfig.Interface[20].Subnet_Mask = 0.0.0.0
+gConfig.Interface[20].Description = WDS1
+[HWLAN] ifno=20 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=20, link_type:12
+TRAP(linkUp) : send ok!
+Interface 20 ip = 192.168.1.1
+
+gConfig.Interface[21].IP_Addr = 0.0.0.0
+gConfig.Interface[21].Subnet_Mask = 0.0.0.0
+gConfig.Interface[21].Description = WDS2
+[HWLAN] ifno=21 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=21, link_type:12
+TRAP(linkUp) : send ok!
+Interface 21 ip = 192.168.1.1
+
+gConfig.Interface[22].IP_Addr = 0.0.0.0
+gConfig.Interface[22].Subnet_Mask = 0.0.0.0
+gConfig.Interface[22].Description = WDS3
+[HWLAN] ifno=22 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=22, link_type:12
+TRAP(linkUp) : send ok!
+Interface 22 ip = 192.168.1.1
+
+gConfig.Interface[23].IP_Addr = 0.0.0.0
+gConfig.Interface[23].Subnet_Mask = 0.0.0.0
+gConfig.Interface[23].Description = WDS4
+[HWLAN] ifno=23 irno=7 port=0x00000000
+***** [iput_IpLinkUp] ifno=23, link_type:12
+TRAP(linkUp) : send ok!
+Interface 23 ip = 192.168.1.1
+
+ruleCheck()> Group: 0,  Error: Useless rule index will be truncated, from idx:1
+ruleCheck()> Group: 1,  Error: Useless rule index will be truncated, from idx:22
+ruleCheck()> Group: 2,  Error: Useless rule index will be truncated, from idx:0
+CBAC rule format check succeed !!
+reqCBACBuf()> init match pool, Have: 1000
+Memory Address: 0xffffffff82731484 ~ 0xffffffff82738200
+reqCBACBuf()> init timeGap pool, Have: 10000
+Memory Address: 0xffffffff82738200 ~ 0xffffffff82768f54
+reqCBACBuf()> init sameHost pool, Have: 2000
+Memory Address: 0xffffffff82768f54 ~ 0xffffffff82778974
+CBAC rule pool initialized !!
+[init_if] local_if_mask=0xf80007
+[init_if] local_wiredif_mask=0x80002
+[init_if] local_wirelessif_mask=0xf00004
+[init_if] localorVPN_if_mask=0xf80007
+Init NAT data structure
+RUNTASK id=2 if_task if0...
+RUNTASK id=3 if_task if1...
+RUNTASK id=4 if_task if2...
+RUNTASK id=5 if_task if3...
+RUNTASK id=6 if_task if4...
+RUNTASK id=7 if_task if5...
+RUNTASK id=8 if_task if20...
+RUNTASK id=9 if_task if21...
+RUNTASK id=10 if_task if22...
+RUNTASK id=11 if_task if23...
+RUNTASK id=12 timer_task...
+RUNTASK id=13 conn_mgr...
+RUNTASK id=14 main_8021x...
+Build Day = Mar 19 2014
+RUNTASK id=15 saveRandomSeedTask...
+InitCommSys: RESOURCE_BASE = 82, NUMRES = 640
+InitCommSys: EVENT_BASE = 214, NUMEVT = 768
+InitCommSys: MAILBOX_BASE = 6, NUMMBX = 64
+RUNTASK id=16 period_task...
+
+========== ADSL Modem initialization OK ! ======
+
+[Dhcpd_Start]
+RUNTASK id=17 dhcp_daemon...
+RUNTASK id=18 dhcp_clt...on interface 5
+Primary image: 0, flash area 5
+found signature: 78h 56h 34h 12h
+ulImgLens=1543266, LENGTH[5]-12=3866612, type:0
+length checking OK
+[0]2 find End at 0xFFFFFFFFB0208C00 len=1543266, type=0
+found signature: 78h 56h 34h 12h
+ulImgLens=209634, LENGTH[5]-12=3866612, type:10
+length checking OK
+[1]2 find End at 0xFFFFFFFFB023C000 len=209634, type=10
+found signature: 78h 56h 34h 12h
+ulImgLens=193259, LENGTH[5]-12=3866612, type:11
+length checking OK
+[2]2 find End at 0xFFFFFFFFB026B400 len=193259, type=11
+found signature: 78h 56h 34h 12h
+ulImgLens=173140, LENGTH[5]-12=3866612, type:12
+length checking OK
+[3]2 find End at 0xFFFFFFFFB0295C00 len=173140, type=12
+---[ LZMA head start in 0xFFFFFFFFB0296000 ]---
+found signature: 78h 56h 34h 12h
+ulImgLens=150724, LENGTH[5]-12=3866612, type:50
+length checking OK
+[4]2 find End at 0xFFFFFFFFB02BAC00 len=150724, type=50
+---[ LZMA head start in 0xFFFFFFFFB02BB000 ]---
+found signature: 78h 56h 34h 12h
+ulImgLens=163864, LENGTH[5]-12=3866612, type:60
+length checking OK
+[5]2 find End at 0xFFFFFFFFB02E3000 len=163864, type=60
+---[ LZMA head start in 0xFFFFFFFFB02E3400 ]---
+found signature: 78h 56h 34h 12h
+ulImgLens=452105, LENGTH[5]-12=3866612, type:90
+length checking OK
+[6]2 find End at 0xFFFFFFFFB0351800 len=452105, type=90
+Image[1] at 0xB0090000, len=1543266, type=0
+Image[2] at 0xB0209000, len=209634, type=10
+Image[3] at 0xB023C400, len=193259, type=11
+Image[4] at 0xB026B800, len=173140, type=12
+Image[5] at 0xB0296000, len=150724, type=50
+Image[6] at 0xB02BB000, len=163864, type=60
+Image[7] at 0xB02E3400, len=452105, type=90
+[get_web_address] Web-0:  addr:0xb0209000, len:209634, type:10
+[get_web_address] Web-1:  addr:0xb023c400, len:193259, type:11
+[get_web_address] Web-2:  addr:0xb026b800, len:173140, type:12
+getUnZipFileLength: [ZIP 3]
+getUnZipFileLength: [ZIP 1]
+Unzipping from B0209000 to 83E8EC00 ... [ZIP 3] [ZIP 2] done
+Uncompressed size = 397420
+getUnZipFileLength: [ZIP 3]
+getUnZipFileLength: [ZIP 1]
+[absread] flash_init: pfs image found at ffffffffb023c400, size is 1033319 bytes
+Unzipping from B023C400 to 83D92400 ... [ZIP 3] [ZIP 2] done
+Uncompressed size = 1033319
+RUNTASK httpd...
+RUNTASK id=21 SSLClient ...
+g_Client_Cert_Array=0x81324480
+RUNTASK id=22 dnsproxy...
+startNBIOSTask()...
+RUNTASK id=23 nbios_main...
+RUNTASK id=24 dhcpd_mgmt_task...
+UPnP is disabled
+update_device_OUI: OUI_str=7C4FB5
+[0] Allocate mailbox 6
+[0] Allocate mailbox 7
+FirstUseDate:2014-04-09T06:44:42
+RUNTASK id=27 wscmain...
+RUNTASK id=28 wsc_Send_eap_packet...
+RUNTASK id=29 wsc_Send_UPNP_packet...
+RUNTASK id=30 WSC_WaitUserAction_Task...
+UART RX Input
+[0] Allocate resource 82, FreeResource = 1
+fpiclk=83333333, rmc=16, fpiclk/rmc=5208333
+ifx_ssc_clock = 5208333, baud=2000000
+ifx_ssc_set_baud: br = 0
+
+call ifx_ssc_init() = 0
+call ifx_ssc_open() = 0
+SPI_Init!
+RUNTASK id=33 apAppInit...
+RUNTASK id=35 pppFailBackPeriodCheckTask()...
+RUNTASK id=36 pid_cc_err_stats_task...
+RUNTASK id=37 ncidd_main...,  in run_project_task()
+Access Network Discovery mechanism is enabled!
+
+>>>>> ACCESS NETWORK DISCOVERY already succeeded, accessnetwork = 2 <<<<<
+Starting Multitask...
+enter adsl_disable_annex_j_b43_carrier_set()
+Danube MEI version:1.00.07
+Image[1] at 0xB0090000, len=1543266, type=0
+Image[2] at 0xB0209000, len=209634, type=10
+Image[3] at 0xB023C400, len=193259, type=11
+Image[4] at 0xB026B800, len=173140, type=12
+Image[5] at 0xB0296000, len=150724, type=50
+Image[6] at 0xB02BB000, len=163864, type=60
+Image[7] at 0xB02E3400, len=452105, type=90
+[get_datapump_address] Datapump for Annex A0:4, B0:5, C0:-1
+[get_datapump_address] Datapump for Annex A1:-1, B1:-1, C1:-1
+[get_datapump_address] r_img=5, t_img=7
+Unzip DSP firmware ...
+Unzipping from B02BB000 to 825D8C00 ... [ZIP 2] done
+Uncompressed size = 327184
+ifno2dot1x_if[2]=0
+dot1x_wireless_if_mask=0x4
+fwrite_specialConfigPara() Save random seed:18446744072634611440
+Reset Duslic High begin
+MXIC MX29LV640BB bottom boot 16-bit mode found
+init psock cnt=1
+RUNTASK id=40 Atheros_NetTask ...
+<-- RTMPAllocTxRxRingMemory, Status=0
+update_img_hdr = FFFFFFFFA25D8C00
+idx=0 mem_ptr=0xA25D8C00 size=65536
+idx=1 mem_ptr=0xA25E8C00 size=65536
+idx=2 mem_ptr=0xA25F8C00 size=65536
+idx=3 mem_ptr=0xA2608C00 size=65536
+idx=4 mem_ptr=0xA2618C00 size=65040
+Got MODEM_READY_MSG
+erase from location b0070000Reset Duslic end
+IFX TAPI, version 3.7.1.5, (c) 2001-2008 Infineon Technologies AG
+[42] Allocate mailbox 8
+TAPI_init_task_queue: enter loop..8
+[34] Allocate resource 83, FreeResource = 2
+IFX VMMC device driver, version 1.3.0.5, (c) 2006-2008 Infineon Technologies AG
+IFX MIPS24KEc MPS driver, version 2.0.0.0, (c) 2006-2008 Infineon Technologies AG
+123ifx_mps_init_structures request_irq 1 146
+ifx_mps_init_structures request_irq 2 147
+ifx_mps_init_structures request_irq 3 0 142
+ifx_mps_init_structures request_irq 3 1 143
+ifx_mps_init_structures request_irq 3 2 144
+ifx_mps_init_structures request_irq 3 3 145
+VMMC_Open : Major 122 Minor 10 
+ADSL Firmware: 2.4.6.7.1.2 IFX_TAPI_Create_Device: ndev = 0, TapiDev 81322100
+[34] Allocate resource 84, FreeResource = 3
+[Annex B:0x4a08 0x2]
+[34] Allocate resource 85, FreeResource = 4
+[34] Allocate resource 86, FreeResource = 5
+[34] Allocate resource 87, FreeResource = 6
+[34] Allocate resource 88, FreeResource = 7
+[34] Allocate event 214
+Channel=0
+>>>>>>>>>> OS_GetEventNumber: event 214
+VMMC_AddCaps: CODECS = 0
+VMMC_AddCaps: CODECS = 0
+ifx_tapi_Prepare_Ch: nChannel 0
+[34] Allocate resource 89, FreeResource = 8
+[34] Allocate resource 90, FreeResource = 9
+[34] Allocate resource 91, FreeResource = 10
+VMMC_Prepare_Ch: nChannel = 1
+[34] Allocate resource 92, FreeResource = 11
+[34] Allocate event 215
+>>>>>>>>>> OS_GetEventNumber: event 215
+ifx_tapi_Prepare_Ch: nChannel 1
+[34] Allocate resource 93, FreeResource = 12
+[34] Allocate resource 94, FreeResource = 13
+[34] Allocate resource 95, FreeResource = 14
+VMMC_Prepare_Ch: nChannel = 2
+[34] Allocate resource 96, FreeResource = 15
+[34] Allocate event 216
+>>>>>>>>>> OS_GetEventNumber: event 216
+ifx_tapi_Prepare_Ch: nChannel 2
+[34] Allocate resource 97, FreeResource = 16
+[34] Allocate resource 98, FreeResource = 17
+[34] Allocate resource 99, FreeResource = 18
+VMMC_Prepare_Ch: nChannel = 3
+[34] Allocate resource 100, FreeResource = 19
+[34] Allocate event 217
+rtmp_read_wds_from_file() is called !!!
+rtmp_read_wds_from_file : WDS disabled 
+>>>>>>>>>> OS_GetEventNumber: event 217
+ifx_tapi_Prepare_Ch: nChannel 3
+[34] Allocate resource 101, FreeResource = 20
+[34] Allocate resource 102, FreeResource = 21
+[34] Allocate resource 103, FreeResource = 22
+VMMC_Prepare_Ch: nChannel = 4
+[34] Allocate resource 104, FreeResource = 23
+[34] Allocate event 218
+>>>>>>>>>> OS_GetEventNumber: event 218
+ifx_tapi_Prepare_Ch: nChannel 4
+[34] Allocate resource 105, FreeResource = 24
+[34] Allocate resource 106, FreeResource = 25
+[34] Allocate resource 107, FreeResource = 26
+VMMC_Prepare_Ch: nChannel = 5
+[34] Allocate resource 108, FreeResource = 27
+[34] Allocate event 219
+>>>>>>>>>> OS_GetEventNumber: event 219
+ifx_tapi_Prepare_Ch: nChannel 5
+[34] Allocate resource 109, FreeResource = 28
+[34] Allocate resource 110, FreeResource = 29
+[34] Allocate resource 111, FreeResource = 30
+VMMC_Prepare_Ch: nChannel = 6
+[34] Allocate resource 112, FreeResource = 31
+[34] Allocate event 220
+[RTMPSetProfileParameter] AntDiversity=1
+>>>>>>>>>> OS_GetEventNumber: event 220
+ifx_tapi_Prepare_Ch: nChannel 6
+[34] Allocate resource 113, FreeResource = 32
+[34] Allocate resource 114, FreeResource = 33
+[34] Allocate resource 115, FreeResource = 34
+VMMC_Prepare_Ch: nChannel = 7
+[34] Allocate resource 116, FreeResource = 35
+[34] Allocate event 221
+>>>>>>>>>> OS_GetEventNumber: event 221
+ifx_tapi_Prepare_Ch: nChannel 7
+[34] Allocate resource 117, FreeResource = 36
+[34] Allocate resource 118, FreeResource = 37
+[34] Allocate resource 119, FreeResource = 38
+VMMC_Prepare_Ch: nChannel = 8
+[34] Allocate resource 120, FreeResource = 39
+[34] Allocate event 222
+>>>>>>>>>> OS_GetEventNumber: event 222
+VMMC_LL_Open, nDev 0, inode 0 mpsCh 1
+ifx_mps_open, inode 1
+VMMC_Open --> 81322100
+VMMC_handle[0] : 81322100
+VMMC_Open : Major 122 Minor 11 
+VMMC_LL_Open, nDev 0, inode 1 mpsCh 2
+ifx_mps_open, inode 2
+VMMC_Open --> 8131fd90
+VMMC_handle[1] : 8131fd90
+VMMC_Open : Major 122 Minor 12 
+VMMC_LL_Open, nDev 0, inode 2 mpsCh 3
+ifx_mps_open, inode 3
+VMMC_Open --> 813201fc
+VMMC_handle[2] : 813201fc
+VMMC_Open : Major 122 Minor 13 
+VMMC_LL_Open, nDev 0, inode 3 mpsCh 4
+ifx_mps_open, inode 4
+VMMC_Open --> 81320668
+VMMC_handle[3] : 81320668
+VMMC_Open : Major 122 Minor 14 
+VMMC_LL_Open, nDev 0, inode 4 mpsCh 5
+ifx_mps_open, inode 5
+VMMC_Open --> 81320ad4
+VMMC_handle[4] : 81320ad4
+VMMC_Open : Major 122 Minor 15 
+VMMC_LL_Open, nDev 0, inode 5 mpsCh 6
+ifx_mps_open, inode 6
+VMMC_Open --> 81320f40
+VMMC_handle[5] : 81320f40
+VMMC_Open : Major 122 Minor 16 
+VMMC_LL_Open, nDev 0, inode 6 mpsCh 7
+ifx_mps_open, inode 7
+VMMC_Open --> 813213ac
+VMMC_handle[6] : 813213ac
+VMMC_Open : Major 122 Minor 17 
+VMMC_LL_Open, nDev 0, inode 7 mpsCh 8
+VMMC_Open --> 81321818
+VMMC_handle[7] : 81321818
+VMMC_Open : Major 122 Minor 18 
+VMMC_LL_Open, nDev 0, inode 8 mpsCh 9
+VMMC_Open --> 81321c84
+VMMC_handle[8] : 81321c84
+===> 
+Set PCM I/F 0 VMMC_handle:81322100
+ done
+ifx_mps_ioctl: FIO_MPS_DOWNLOAD...1
+[get_vcpufirmware_address] DSP firmware: [6 -1], dCnt:1
+write length 0x5b0
+0Unzipping from B02E3400 to 820C3364 ... [ZIP 2] Magic No. in Boot Param check OK!!!
+sould check E2PROM MAC ?????????????????
+NICReadEEPROMParameters 885 
+NICReadEEPROMParameters 948 
+NICReadEEPROMParameters 973 
+ADSL> READY
+done
+Uncompressed size = 642816
+IFX_MPS: Download firmware (size 642816 bytes)... 123[dhcp_clt] enable dhcp client in interface ATM3[5]
+[21] SSLClient> SSLClient() run
+[21] sslc_conf_init> ssl client info:
+[21] PrivateKey=
+[21] MyCertificate=
+[21] CaCertificate=
+[21] SSL_method=31
+[21] verify_mode=1
+[21] cipher_suites=ADH:SHA1:HIGH:EXP
+[21] tftp_server_ip=140.92.61.131
+[21] fn_myCerttificate=ServCert.pem
+[21] fn_privateKey=PrivKey.pem
+[21] fn_caCertificate=CaCert.pem
+[21] sslc_conf_init> ssl client info end:
+PKCS12_PBE_add>
+PKCS12_PBE_add> support RC4
+PKCS12_PBE_add> support DES
+PKCS12_PBE_add> support RC2
+[21] sslc_conf_init> pCtx=0x81305cf0 in ssld_conf_init
+
+[21] sslc_ctx_reset_cert> re-LoadCACertificate( 3rdCA ) ok!!
+[21] sslc_ctx_reset_cert> re-LoadCACertificate( 2ndCA ) ok!!
+[21] sslc_ctx_reset_cert> re-LoadCACertificate( 1stCA ) ok!!sslc_ctx_reset_cert> this is pkcs12 type certificate
+
+[21] sslc_ctx_reset_cert : re-LoadServerCertAndKey() ok!!
+[21] sslc_conf_init> sslc_conf_init() ok
+[21] SSLClient> want to bind socket for client application!
+ok!
+Version 11.2.4.1.0 up and running...
+*********************************************
+****Wi-Fi Simple Config Application***** 
+Version: Build 2.02.2.DTM1.1, Mar 19 2014 18:46:32
+*********************************************
+[ncidd]: [ncidd]: <Network Port: 3333>
+[HWLAN] [41] rapi_tmr_task running 
+scan channel 1 rssi -87
+max_rssi[0] -87
+scan channel 1 rssi -83
+max_rssi[0] -83
+scan channel 1 rssi -81
+max_rssi[0] -81
+scan channel 1 rssi -87
+scan channel 1 rssi -83
+scan channel 1 rssi -93
+scan channel 3 rssi -87
+max_rssi[2] -87
+scan channel 5 rssi -85
+max_rssi[4] -85
+scan channel 5 rssi -89
+scan channel 5 rssi -89
+scan channel 6 rssi -87
+max_rssi[5] -87
+scan channel 6 rssi -93
+scan channel 6 rssi -89
+scan channel 6 rssi -85
+max_rssi[5] -85
+scan channel 6 rssi -87
+scan channel 6 rssi -87
+scan channel 7 rssi -95
+max_rssi[6] -95
+scan channel 8 rssi -56
+max_rssi[7] -56
+scan channel 10 rssi -91
+max_rssi[9] -91
+scan channel 11 rssi -93
+max_rssi[10] -93
+scan channel 11 rssi -93
+scan channel 11 rssi -93
+scan channel 11 rssi -77
+max_rssi[10] -77
+scan channel 11 rssi -77
+scan channel 11 rssi -91
+scan channel 13 rssi -48
+max_rssi[12] -48
+scan channel 13 rssi -50
+Dirtyness = 13.3.15.5.16.16.16.17.5.16.15.3.14.
+APAutoSelectChannel pick up ch#2
+<==== rt28xx_init, Status=0
+0x1300 = 00064320
+ND 2 ???
+ND 1 ???
+pAd->VirtualIfCnt 1
+VMMC_AddCaps: CODECS = 7df
+[34] Allocate event 223
+>>>>>>>>>> OS_GetEventNumber: event 223
+[34] Allocate event 224
+>>>>>>>>>> OS_GetEventNumber: event 224
+===> 
+ VMMC_Ioctl: Phone 1 IFX_TAPI_LINE_TYPE ok!
+ VMMC_Ioctl: Phone 1 IFXPHONE_SET_LINEFEED ok!
+Set PCM I/F 1 VMMC_handle:8131fd90
+===> 
+Set PCM I/F 2 VMMC_handle:813201fc
+===> 
+Set PCM I/F 3 VMMC_handle:81320668
+===> 
+Set PCM I/F 4 VMMC_handle:81320ad4
+===> 
+Set PCM I/F 5 VMMC_handle:81320f40
+===> 
+Set PCM I/F 6 VMMC_handle:813213ac
+===> 
+Set PCM I/F 7 VMMC_handle:81321818
+===> 
+Set PCM I/F 8 VMMC_handle:81321c84
+Setting HOOK Related Parameters 0
+Setting HOOKFLASH_TIME min 80 ms max 900 ms
+Setting HOOKON_TIME min 370 max 370
+Setting HOOK Related Parameters 1
+Setting HOOKFLASH_TIME min 80 ms max 900 ms
+Setting HOOKON_TIME min 370 max 370
+Setting HOOK Related Parameters 2
+Setting HOOK Related Parameters 3
+RUNTASK id=45 VINETIC_DRV_Task...
+[46] Allocate mailbox 9
+RUNTASK id=46 VINETIC_T38_Task...
+RUNTASK id=48 FXO_flash_task...
+RUNTASK id=47 VOICE_API_task...
+************** Enable ProDaaCheckInterrupt() detect 6020
+[htf_dbg]     - OnlineActiveWirless() 1368
+Do APScan()
+Reset Duslic High begin
+Reset Duslic end
+ProDAAInitialize: begin now
+ProDAAInitialize: Line-Side Device Status ff
+Port 2 sytem-side revision ff, line-side revision f
+init_DTMF_data: time 6890
+force_daa_offhook ch 2 onoff 1 time 6890
+ProDaaOffhook ff 2 onoff 1
+CID_Detect CH 2 onoff 0
+FXO_PolState_DTMFCID --> Disable DTMF CID
+force_daa_offhook ch 2 onoff 0 time 6949
+ProDaaOffhook ff 2 onoff 0
+CID_Detect CH 2 onoff 1
+FXO_PolState_DTMFCID --> Detect Polarity Changed Enable DTMF CID
+
+[TEL_MGR_GetActiveCallChannel] phoneIdx:1, channel_id: 0 ********
+When * the value is 60000
+When * the value is 60000
+When * the value is 60000
+sys_voip_cfg->cpt.reorder = 425@-280;60(.25/.25/1)
+TEL_DRV_TONE_REORDER  duration = 500
+When * the value is 60000
+[34] Allocate resource 121, FreeResource = 40
+[34] Allocate mailbox 10
+TEL_MGR_Init
+[34] Allocate resource 122, FreeResource = 41
+tel_mgr_mutex=122
+[34] Allocate mailbox 11
+ TEL_DM_Init
+[34] Allocate resource 123, FreeResource = 42
+[34] Allocate resource 124, FreeResource = 43
+
+[TEL_MGR_SetDigitMap] , 20
+
+[TEL_MGR_SetDigitMap] , 21
+
+[TEL_MGR_SetDigitMap] , 23
+
+[TEL_MGR_SetDigitMap] , 24
+
+[TEL_MGR_SetDigitMap] , 25
+
+[TEL_MGR_SetDigitMap] , 26
+
+[TEL_MGR_SetDigitMap] , 27
+
+[TEL_MGR_SetDigitMap] , 28
+
+[TEL_MGR_SetDigitMap] , 37
+
+[TEL_MGR_SetDigitMap] , 38
+
+[TEL_MGR_SetDigitMap] , 6
+
+[TEL_MGR_SetDigitMap] , 7
+
+[TEL_MGR_SetDigitMap] , 8
+
+[TEL_MGR_SetDigitMap] , 9
+
+[TEL_MGR_SetDigitMap] , 10
+
+[TEL_MGR_SetDigitMap] , 11
+
+[TEL_MGR_SetDigitMap] , 12
+
+[TEL_MGR_SetDigitMap] , 13
+
+[TEL_MGR_SetDigitMap] , 16
+
+[TEL_MGR_SetDigitMap] , 17
+
+[TEL_MGR_SetDigitMap] , 18
+
+[TEL_MGR_SetDigitMap] , 19
+
+[TEL_MGR_SetDigitMap] , 31
+
+[TEL_MGR_SetDigitMap] , 32
+
+[TEL_MGR_SetDigitMap] , 33
+
+[TEL_MGR_SetDigitMap] , 34
+
+[TEL_MGR_SetDigitMap] , 35
+
+[TEL_MGR_SetDigitMap] , 36
+
+[TEL_MGR_SetDigitMap] , 1
+
+[TEL_MGR_SetDigitMap] , 4
+
+[TEL_MGR_SetDigitMap] , 5
+
+[TEL_MGR_SetDigitMap] , 2
+
+[TEL_MGR_SetDigitMap] , 3
+
+[TEL_MGR_SetDigitMap] [2-9]#, 47
+
+[TEL_MGR_SetDigitMap] , 48
+
+[TEL_MGR_SetDigitMap] , 41
+
+[TEL_MGR_SetDigitMap] , 42
+
+[TEL_MGR_SetDigitMap] , 43
+
+[TEL_MGR_SetDigitMap] , 44
+
+[TEL_MGR_SetDigitMap] , 45
+
+[TEL_MGR_SetDigitMap] , 46
+
+[TEL_MGR_SetDigitMap] (*xx*xx.#|#xx#|*#xx#|xx.), 74
+
+[TEL_MGR_SetDigitMap] #15#, 73
+
+[TEL_MGR_SetDigitMap] *43#, 20
+
+[TEL_MGR_SetDigitMap] #43#, 21
+
+[TEL_MGR_SetDigitMap] *#43#, 22
+
+[TEL_MGR_SetDigitMap] , 27
+
+[TEL_MGR_SetDigitMap] , 28
+
+[TEL_MGR_SetDigitMap] , 50
+
+[TEL_MGR_SetDigitMap] , 51
+
+[TEL_MGR_SetDigitMap] , 52
+
+[TEL_MGR_SetDigitMap] , 54
+
+[TEL_MGR_SetDigitMap] , 55
+
+[TEL_MGR_SetDigitMap] , 56
+
+[TEL_MGR_SetDigitMap] , 57
+
+[TEL_MGR_SetDigitMap] , 58
+
+[TEL_MGR_SetDigitMap] , 59
+
+[TEL_MGR_SetDigitMap] , 60
+
+[TEL_MGR_SetDigitMap] , 61
+
+[TEL_MGR_SetDigitMap] , 62
+
+[TEL_MGR_SetDigitMap] , 63
+
+[TEL_MGR_SetDigitMap] , 64
+
+[TEL_MGR_SetDigitMap] , 65
+
+[TEL_MGR_SetDigitMap] , 66
+
+[TEL_MGR_SetDigitMap] , 67
+
+[TEL_MGR_SetDigitMap] , 68
+
+[TEL_MGR_SetDigitMap] , 69
+
+[TEL_MGR_SetDigitMap] , 70
+
+[TEL_MGR_SetDigitMap] , 71
+
+[TEL_MGR_SetDigitMap] , 72
+
+[TEL_MGR_SetDigitMap] , 97
+
+[TEL_MGR_SetDigitMap] , 98
+
+[TEL_MGR_SetDigitMap] , 99
+ TEL_MGR_VoiceChannelInit
+
+[RestoreSpeedDialDataFromGSetting] p1: 01756136457
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 01756136457
+
+[RestoreSpeedDialDataFromGSetting] p1: 01756136457
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 03029665130
+
+[RestoreSpeedDialDataFromGSetting] p1: 03029665130
+
+[RestoreSpeedDialDataFromGSetting] p1: 03029665130
+
+[RestoreSpeedDialDataFromGSetting] p1: 03557508700
+
+[RestoreSpeedDialDataFromGSetting] p1: 380700
+
+[RestoreSpeedDialDataFromGSetting] p1: 00902427569859
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 03356659606
+
+[RestoreSpeedDialDataFromGSetting] p1: 7508700
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 870336
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 089787979400
+
+[RestoreSpeedDialDataFromGSetting] p1: 017610150230
+
+[RestoreSpeedDialDataFromGSetting] p1: 03029665130
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 017664248326
+
+[RestoreSpeedDialDataFromGSetting] p1: 01636057865
+
+[RestoreSpeedDialDataFromGSetting] p1: 01636057865
+
+[RestoreSpeedDialDataFromGSetting] p1: 01636057865
+
+[RestoreSpeedDialDataFromGSetting] p1: 6202458
+
+[RestoreSpeedDialDataFromGSetting] p1: 01636057865
+
+[RestoreSpeedDialDataFromGSetting] p1: 03356659606
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 017610150230
+
+[RestoreSpeedDialDataFromGSetting] p1: 038434655406
+
+[RestoreSpeedDialDataFromGSetting] p1: 038434655406
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 03356659606
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 01622144743
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 01636057865
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 01756136457
+
+[RestoreSpeedDialDataFromGSetting] p1: 12163470
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 015126331005
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 791089
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+[reset_802dot1x] wireless module ready
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+config->enablePreAuthen=1
+install group key to Mac ASIC ????????????????????????
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+[reset_802dot1x] 802.1Xv2 ready
+
+[RestoreSpeedDialDataFromGSetting] p1: 01756136457
+
+[RestoreSpeedDialDataFromGSetting] p1: 03356659606
+
+[RestoreSpeedDialDataFromGSetting] p1: 015120208885
+
+[RestoreSpeedDialDataFromGSetting] p1: 03029665130
+
+[RestoreSpeedDialDataFromGSetting] p1: 03029665130
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 015126331005
+
+[RestoreSpeedDialDataFromGSetting] p1: 015120208885
+
+[RestoreSpeedDialDataFromGSetting] p1: 0335556990
+
+[RestoreSpeedDialDataFromGSetting] p1: 822113
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 03352849029
+
+[RestoreSpeedDialDataFromGSetting] p1: 015126331005
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 01636057865
+
+[RestoreSpeedDialDataFromGSetting] p1: 01636057865
+
+[RestoreSpeedDialDataFromGSetting] p1: 01636057865
+
+[RestoreSpeedDialDataFromGSetting] p1: 03356659606
+
+[RestoreSpeedDialDataFromGSetting] p1: 03356659606
+
+[RestoreSpeedDialDataFromGSetting] p1: 03356659606
+
+[RestoreSpeedDialDataFromGSetting] p1: 03356659606
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 4992897
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+
+[RestoreSpeedDialDataFromGSetting] p1: 03029665130
+
+[RestoreSpeedDialDataFromGSetting] p1: 01636057865
+
+[RestoreSpeedDialDataFromGSetting] p1: 03356659606
+
+[RestoreSpeedDialDataFromGSetting] p1: 0355872266
+[34] Allocate resource 125, FreeResource = 44
+[34] Allocate mailbox 12
+[50] Allocate resource 126, FreeResource = 45
+[50] Allocate resource 127, FreeResource = 46
+[SIP_CORE_Task] sip_core_ready
+TEL_MGR_SetVoipPhoneEvtHookFunc
+[34] Allocate resource 128, FreeResource = 47
+[34] Allocate mailbox 13
+VOICE_IVR_Init: voice_ivr_channel[0].ivrQueueId = 13
+[34] Allocate mailbox 14
+VOICE_IVR_Init: voice_ivr_channel[1].ivrQueueId = 14
+[34] Allocate mailbox 15
+VOICE_IVR_Init: voice_ivr_channel[2].ivrQueueId = 15
+[34] Allocate mailbox 16
+VOICE_IVR_Init: voice_ivr_channel[3].ivrQueueId = 16
+TEL_MGR_DisableDebug
+*********************************************
+***Waiting for Registrar to connect...***
+*********************************************
+scan channel 1 rssi -87
+max_rssi[0] -87
+scan channel 1 rssi -89
+scan channel 1 rssi -83
+max_rssi[0] -83
+scan channel 1 rssi -81
+max_rssi[0] -81
+scan channel 1 rssi -89
+scan channel 1 rssi -87
+scan channel 3 rssi -85
+max_rssi[2] -85
+scan channel 5 rssi -89
+max_rssi[4] -89
+scan channel 5 rssi -85
+max_rssi[4] -85
+scan channel 5 rssi -93
+scan channel 6 rssi -83
+max_rssi[5] -83
+scan channel 6 rssi -87
+scan channel 6 rssi -89
+scan channel 6 rssi -95
+scan channel 6 rssi -89
+scan channel 7 rssi -97
+max_rssi[6] -97
+scan channel 8 rssi -52
+max_rssi[7] -52
+scan channel 10 rssi -91
+max_rssi[9] -91
+scan channel 11 rssi -87
+max_rssi[10] -87
+scan channel 11 rssi -95
+scan channel 11 rssi -95
+scan channel 11 rssi -81
+max_rssi[10] -81
+scan channel 11 rssi -81
+scan channel 11 rssi -93
+scan channel 11 rssi -93
+scan channel 13 rssi -50
+max_rssi[12] -50
+scan channel 13 rssi -50
+Dirtyness = 13.3.15.5.16.16.16.17.5.16.15.3.14.
+APAutoSelectChannel pick up ch#2
+WirelessMode 9 BasicRate 15
+AutochannelSelect 0 Channel 0 
+autoChannel : 2
+NEW : channel 2, BW 1(40MHZ), EXTCHA 1(ABOVE)
+Set_PreAuth_Proc called, PreAuth=1
+[signal_1x_reset] ...
+>>>>>>>>>>>>>>>>>>>>>>tick 10564
+ifno2dot1x_if[2]=0
+dot1x_wireless_if_mask=0x4
+[reset_802dot1x] wireless module ready
+config->enablePreAuthen=1
+install group key to Mac ASIC ????????????????????????
+[reset_802dot1x] 802.1Xv2 ready
+Got MODEM_READY_MSG
+ADSL Firmware: 2.4.6.7.1.2 [Annex B:0x4a08 0x2]
+ADSL> READY
+</nowiki></WRAP>\\
+
+==== OpenWrt 19.07.02 ====
+<WRAP bootlog><nowiki>
+[    0.000000] Linux version 4.14.171 (builder@buildhost) (gcc version 7.5.0 (OpenWrt GCC 7.5.0 r10947-65030d81f3)) #0 Thu Feb 27 21:05:12 2020
+[    0.000000] SoC: Danube rev 1.5
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019641 (MIPS 24KEc)
+[    0.000000] MIPS: machine is Alice/O2 IAD 4421
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 16kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 16kB, 4-way, VIPT, no aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 805690f0, node_mem_map 810071c0
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16384 pages, LIFO batch:3
+[    0.000000] random: get_random_bytes called from 0x8056c740 with crng_init=0
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line: console=ttyLTQ0,115200
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=0007543d
+[    0.000000] Readback ErrCtl register=0007543d
+[    0.000000] Memory: 57884K/65536K available (4713K kernel code, 194K rwdata, 628K rodata, 1232K init, 213K bss, 7652K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 256
+[    0.000000] CPU Clock: 333MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 11467562657 ns
+[    0.000021] sched_clock: 32 bits at 166MHz, resolution 6ns, wraps every 12884901885ns
+[    0.007986] Calibrating delay loop... 221.18 BogoMIPS (lpj=442368)
+[    0.054211] pid_max: default: 32768 minimum: 301
+[    0.059328] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.065893] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.083777] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.093476] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.099775] pinctrl core: initialized pinctrl subsystem
+[    0.110469] NET: Registered protocol family 16
+[    0.123129] pinctrl-xway 1e100b10.pinmux: Init done
+[    0.129461] dma-xway 1e104100.dma: Init done - hw rev: 3, ports: 5, channels: 20
+[    0.141658] PCI host bridge /fpi@10000000/pci@e105400 ranges:
+[    0.147348]  MEM 0x0000000018000000..0x0000000019ffffff
+[    0.152634]   IO 0x000000001ae00000..0x000000001affffff
+[    0.213981] usbcore: registered new interface driver usbfs
+[    0.219625] usbcore: registered new interface driver hub
+[    0.225087] usbcore: registered new device driver usb
+[    0.230739] PCI host bridge to bus 0000:00
+[    0.234791] pci_bus 0000:00: root bus resource [mem 0x18000000-0x19ffffff]
+[    0.241714] pci_bus 0000:00: root bus resource [io  0x1ae00000-0x1affffff]
+[    0.248658] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.255511] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.263591] pci 0000:00:0e.0: [1814:3592] type 00 class 0x028000
+[    0.263674] pci 0000:00:0e.0: reg 0x10: [mem 0xffff0000-0xffffffff]
+[    0.263823] pci 0000:00:0e.0: PME# supported from D0 D3hot D3cold
+[    0.264305] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[    0.264371] pci 0000:00:0e.0: BAR 0: assigned [mem 0x18000000-0x1800ffff]
+[    0.281343] clocksource: Switched to clocksource MIPS
+[    0.288960] NET: Registered protocol family 2
+[    0.295057] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.302016] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.308404] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.315098] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.320920] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.327660] NET: Registered protocol family 1
+[    0.332093] PCI: CLS 0 bytes, default 32
+[    0.338501] gptu: totally 6 16-bit timers/counters
+[    0.343456] gptu: misc_register on minor 63
+[    0.347603] gptu: succeeded to request irq 126
+[    0.352105] gptu: succeeded to request irq 127
+[    0.356619] gptu: succeeded to request irq 128
+[    0.361132] gptu: succeeded to request irq 129
+[    0.365649] gptu: succeeded to request irq 130
+[    0.370159] gptu: succeeded to request irq 131
+[    0.376408] Crashlog allocated RAM at address 0x3f00000
+[    0.385794] workingset: timestamp_bits=30 max_order=14 bucket_order=0
+[    0.405870] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.411645] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.451474] io scheduler noop registered
+[    0.455338] io scheduler deadline registered (default)
+[    0.463032] 1e100c00.serial: ttyLTQ0 at MMIO 0x1e100c00 (irq = 112, base_baud = 0) is a lantiq,asc
+[    0.472012] console [ttyLTQ0] enabled
+[    0.479111] bootconsole [early0] disabled
+[    0.488908] lantiq nor flash device: 00800000 at 10000000
+[    0.493151] ltq_nor: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x0000c2 Chip ID 0x0022cb
+[    0.502142] Amd/Fujitsu Extended Query Table at 0x0040
+[    0.507136]   Amd/Fujitsu Extended Query version 1.1.
+[    0.512003] number of CFI chips: 1
+[    0.515372] 4 fixed-partitions partitions found on MTD device ltq_nor
+[    0.521554] Creating 4 MTD partitions on "ltq_nor":
+[    0.526295] 0x000000000000-0x000000040000 : "uboot"
+[    0.532941] 0x000000040000-0x000000050000 : "uboot_env"
+[    0.538613] 0x000000050000-0x0000007f0000 : "firmware"
+[    0.583289] 2 uimage-fw partitions found on MTD device firmware
+[    0.587745] 0x000000050000-0x00000020b222 : "kernel"
+[    0.594473] 0x00000020b222-0x0000007f0000 : "rootfs"
+[    0.599727] mtd: device 4 (rootfs) set to be root filesystem
+[    0.604012] 1 squashfs-split partitions found on MTD device rootfs
+[    0.609953] 0x0000004a0000-0x0000007f0000 : "rootfs_data"
+[    0.617001] 0x0000007f0000-0x000000800000 : "board_config"
+[    0.627050] libphy: Fixed MDIO Bus: probed
+[    0.661687] libphy: ltq_mii: probed
+[    0.763712] Registering RTL8306SDM switch with Chip ID: 0x5988, version: 0x0000
+[    0.769549] Realtek RTL8306S 1e180000.etop-ffffffff:00: attached PHY driver [Realtek RTL8306S] (mii_bus:phy_addr=1e180000.etop-ffffffff:00, irq=POLL)
+[    0.785063] wdt 1f8803f0.watchdog: Init done
+[    0.794328] NET: Registered protocol family 10
+[    0.812690] Segment Routing with IPv6
+[    0.815121] NET: Registered protocol family 17
+[    0.819367] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    0.831839] 8021q: 802.1Q VLAN Support v1.8
+[    0.844674] OF: fdt: not creating '/sys/firmware/fdt': CRC check failed
+[    0.864774] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    0.878108] Freeing unused kernel memory: 1232K
+[    0.881121] This architecture does not have kernel memory protection.
+[    1.153781] random: fast init done
+[    2.445076] init: Console is alive
+[    2.447608] init: - watchdog -
+[    4.473866] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    4.742697] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    4.759198] init: - preinit -
+[    6.181584] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[    6.225963] random: procd: uninitialized urandom read (4 bytes read)
+[    7.201532] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    9.688332] mount_root: jffs2 not ready yet, using temporary tmpfs overlay
+[    9.738752] urandom-seed: Seed file not found (/etc/urandom.seed)
+[   10.120248] procd: - early -
+[   10.122003] procd: - watchdog -
+[   10.882390] procd: - watchdog -
+[   10.884962] procd: - ubus -
+[   11.112091] random: ubusd: uninitialized urandom read (4 bytes read)
+[   11.122721] random: ubusd: uninitialized urandom read (4 bytes read)
+[   11.128503] random: ubusd: uninitialized urandom read (4 bytes read)
+[   11.137105] procd: - init -
+[   12.170371] urandom_read: 5 callbacks suppressed
+[   12.170387] random: jshn: uninitialized urandom read (4 bytes read)
+[   12.762770] kmodloader: loading kernel modules from /etc/modules.d/*
+[   12.786288] NET: Registered protocol family 8
+[   12.789139] NET: Registered protocol family 20
+[   12.819614] PPP generic driver version 2.4.2
+[   12.851665] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   12.877283] IFX MEI Version 5.00.00
+[   12.905634] Infineon CPE API Driver version: DSL CPE API V3.24.4.4
+[   12.937262] Loading modules backported from Linux version v4.19.98-0-gd183c8e2647a
+[   12.943335] Backport generated by backports.git v4.19.98-1-0-g8204eb99
+[   12.971927] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   13.003589] nf_conntrack version 0.5.0 (1024 buckets, 4096 max)
+[   13.150841] NET: Registered protocol family 24
+[   13.205198] xt_time: kernel timezone is -0000
+[   13.552105] PCI: Enabling device 0000:00:0e.0 (0000 -> 0002)
+[   13.557255] rt2800pci 0000:00:0e.0: loaded eeprom from mtd device "board_config"
+[   13.563503] ieee80211 phy0: rt2x00_set_rt: Info - RT chipset 3572, rev 0223 detected
+[   13.571106] ieee80211 phy0: rt2x00_set_rf: Info - RF chipset 0005 detected
+[   13.578774] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[   13.745718] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   13.916076] urngd: v1.0.2 started.
+[   14.615492] random: crng init done
+[   56.580853] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   56.601460] jffs2_build_filesystem(): unlocking the mtd device... 
+[   56.601478] done.
+[   56.607937] jffs2_build_filesystem(): erasing all blocks after the end marker... 
+[   57.392179] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   57.435151] br-lan: port 1(eth0.1) entered blocking state
+[   57.439128] br-lan: port 1(eth0.1) entered disabled state
+[   57.445009] device eth0.1 entered promiscuous mode
+[   57.449014] device eth0 entered promiscuous mode
+[   57.480975] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   58.433593] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   58.453574] br-lan: port 1(eth0.1) entered blocking state
+[   58.457528] br-lan: port 1(eth0.1) entered forwarding state
+[   58.493489] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   90.392989] done.
+[   90.393611] jffs2: notice: (1233) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[   90.854202] overlayfs: upper fs does not support tmpfile.
+[  169.017499] ieee80211 phy0: rt2x00lib_request_firmware: Info - Loading firmware file 'rt2860.bin'
+[  169.153732] ieee80211 phy0: rt2x00lib_request_firmware: Info - Firmware detected - version: 0.40
+[  169.289077] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+[  195.133189] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+[  196.385269] wlan0: authenticate with 9e:c7:a6:89:e0:f0
+[  196.397774] wlan0: send auth to 9e:c7:a6:89:e0:f0 (try 1/3)
+[  196.421928] wlan0: authenticated
+[  196.425933] wlan0: associate with 9e:c7:a6:89:e0:f0 (try 1/3)
+[  196.447868] wlan0: RX AssocResp from 9e:c7:a6:89:e0:f0 (capab=0x421 status=0 aid=5)
+[  196.454263] wlan0: associated
+[  196.461017] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+root@OpenWrt:~# iw list
+Wiphy phy0
+	max # scan SSIDs: 4
+	max scan IEs length: 2257 bytes
+	max # sched scan SSIDs: 0
+	max # match sets: 0
+	max # scan plans: 1
+	max scan plan interval: -1
+	max scan plan iterations: 0
+	Retry short long limit: 2
+	Coverage class: 0 (up to 0m)
+	Available Antennas: TX 0 RX 0
+	Supported interface modes:
+		 * IBSS
+		 * managed
+		 * AP
+		 * AP/VLAN
+		 * monitor
+		 * mesh point
+	Band 1:
+		Capabilities: 0x17e
+			HT20/HT40
+			SM Power Save disabled
+			RX Greenfield
+			RX HT20 SGI
+			RX HT40 SGI
+			RX STBC 1-stream
+			Max AMSDU length: 3839 bytes
+			No DSSS/CCK HT40
+		Maximum RX AMPDU length 32767 bytes (exponent: 0x002)
+		Minimum RX AMPDU time spacing: 2 usec (0x04)
+		HT TX/RX MCS rate indexes supported: 0-7, 32
+		Frequencies:
+			* 2412 MHz [1] (20.0 dBm)
+			* 2417 MHz [2] (20.0 dBm)
+			* 2422 MHz [3] (20.0 dBm)
+			* 2427 MHz [4] (20.0 dBm)
+			* 2432 MHz [5] (20.0 dBm)
+			* 2437 MHz [6] (20.0 dBm)
+			* 2442 MHz [7] (20.0 dBm)
+			* 2447 MHz [8] (20.0 dBm)
+			* 2452 MHz [9] (20.0 dBm)
+			* 2457 MHz [10] (20.0 dBm)
+			* 2462 MHz [11] (20.0 dBm)
+			* 2467 MHz [12] (20.0 dBm) (no IR)
+			* 2472 MHz [13] (20.0 dBm)
+			* 2484 MHz [14] (20.0 dBm) (no IR)
+	valid interface combinations:
+		 * #{ managed, AP, mesh point } <= 8,
+		   total <= 8, #channels <= 1
+	HT Capability overrides:
+		 * MCS: ff ff ff ff ff ff ff ff ff ff
+		 * maximum A-MSDU length
+		 * supported channel width
+		 * short GI for 40 MHz
+		 * max A-MPDU length exponent
+		 * min MPDU start spacing
+	Supported extended features:
+		* [ RRM ]: RRM
+		* [ CQM_RSSI_LIST ]: multiple CQM_RSSI_THOLD records
+		* [ CONTROL_PORT_OVER_NL80211 ]: control port over nl80211
+</nowiki></WRAP>\\
+
+==== Freifunk Berlin (Dev-SAm0815 rev dd2f75e) ====
+
+[[https://github.com/freifunk-berlin/firmware|Freifunk Berlin (Dev-SAm0815 rev dd2f75e)]]
+
+<WRAP bootlog><nowiki>
+ROM VER: 1.0.3
+CFG 01
+Rea<0xe4>
+ROM VER: 1.0.3
+CFG 01
+Read EEPROMX
+ X
+
+
+U-Boot 2013.10-openwrt4 (Jul 18 2019 - 14:36:36) ARV7506PW11
+
+Board: Arcadyan ARV7506PW11
+SoC:   Lantiq Danube-S v1.5
+CPU:   333.333 MHz
+IO:    166.667 MHz
+BUS:   83.333 MHz
+BOOT:  NOR
+DRAM:  64 MiB
+Flash: 8 MiB
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   rtl8306_probe: chipid 5988, chipver 0, chiptype 3
+rtl8306_setup: CPU link up: 1
+ltq-eth
+Hit any key to stop autoboot:  2 <0x08><0x08><0x08> 1 <0x08><0x08><0x08> 0 
+## Booting kernel from Legacy Image at b0050000 ...
+   Image Name:   MIPS Freifunk Berlin Linux-4.19.
+   Created:      2019-07-09  21:05:51 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1864050 Bytes = 1.8 MiB
+   Load Address: 80002000
+   Entry Point:  80002000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+[    0.000000] Linux version 4.19.57 (human@rechenknecht37) (gcc version 7.4.0 (OpenWrt GCC 7.4.0 r10459-1174b94bc9)) #0 Tue Jul 9 21:05:51 2019
+[    0.000000] SoC: Danube rev 1.5
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019641 (MIPS 24KEc)
+[    0.000000] MIPS: machine is Alice/O2 IAD 4421
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 16kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 16kB, 4-way, VIPT, no aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] random: get_random_bytes called from 0x8057b748 with crng_init=0
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 16240
+[    0.000000] Kernel command line: console=ttyLTQ0,115200
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00059cd8
+[    0.000000] Readback ErrCtl register=00059cd8
+[    0.000000] Memory: 57764K/65536K available (4758K kernel code, 206K rwdata, 632K rodata, 1236K init, 214K bss, 7772K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS: 256
+[    0.000000] CPU Clock: 333MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 11467562657 ns
+[    0.000016] sched_clock: 32 bits at 166MHz, resolution 6ns, wraps every 12884901885ns
+[    0.007986] Calibrating delay loop... 221.18 BogoMIPS (lpj=442368)
+[    0.054249] pid_max: default: 32768 minimum: 301
+[    0.059557] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.066117] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.084650] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.094349] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.100786] pinctrl core: initialized pinctrl subsystem
+[    0.108010] NET: Registered protocol family 16
+[    0.121373] pinctrl-xway 1e100b10.pinmux: Init done
+[    0.127703] dma-xway 1e104100.dma: Init done - hw rev: 3, ports: 5, channels: 20
+[    0.138499] PCI host bridge /fpi@10000000/pci@e105400 ranges:
+[    0.144213]  MEM 0x0000000018000000..0x0000000019ffffff
+[    0.149480]   IO 0x000000001ae00000..0x000000001affffff
+[    0.226274] usbcore: registered new interface driver usbfs
+[    0.231976] usbcore: registered new interface driver hub
+[    0.237415] usbcore: registered new device driver usb
+[    0.243131] PCI host bridge to bus 0000:00
+[    0.247191] pci_bus 0000:00: root bus resource [mem 0x18000000-0x19ffffff]
+[    0.254111] pci_bus 0000:00: root bus resource [io  0x1ae00000-0x1affffff]
+[    0.261055] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.267908] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.278734] pci 0000:00:0e.0: BAR 0: assigned [mem 0x18000000-0x1800ffff]
+[    0.286925] clocksource: Switched to clocksource MIPS
+[    0.294745] NET: Registered protocol family 2
+[    0.300725] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes)
+[    0.308486] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.315444] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.321841] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.328531] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.334371] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.341332] NET: Registered protocol family 1
+[    0.361480] gptu: totally 6 16-bit timers/counters
+[    0.366446] gptu: misc_register on minor 63
+[    0.370609] gptu: succeeded to request irq 126
+[    0.375101] gptu: succeeded to request irq 127
+[    0.379608] gptu: succeeded to request irq 128
+[    0.384126] gptu: succeeded to request irq 129
+[    0.388636] gptu: succeeded to request irq 130
+[    0.393150] gptu: succeeded to request irq 131
+[    0.399748] Crashlog allocated RAM at address 0x3f00000
+[    0.409577] workingset: timestamp_bits=14 max_order=14 bucket_order=0
+[    0.434532] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.440316] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.492802] io scheduler noop registered
+[    0.496690] io scheduler deadline registered (default)
+[    0.505736] 1e100c00.serial: ttyLTQ0 at MMIO 0x1e100c00 (irq = 112, base_baud = 0) is a lantiq,asc
+[    0.514703] console [ttyLTQ0] enabled
+[    0.514703] console [ttyLTQ0] enabled
+[    0.521817] bootconsole [early0] disabled
+[    0.521817] bootconsole [early0] disabled
+[    0.530565] cacheinfo: Failed to find cpu0 device node
+[    0.534253] cacheinfo: Unable to detect cache hierarchy for CPU 0
+[    0.540912] lantiq nor flash device: 00800000 at 10000000
+[    0.545714] ltq_nor: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x0000c2 Chip ID 0x0022cb
+[    0.554723] Amd/Fujitsu Extended Query Table at 0x0040
+[    0.559706]   Amd/Fujitsu Extended Query version 1.1.
+[    0.564570] number of CFI chips: 1
+[    0.567929] 4 fixed-partitions partitions found on MTD device ltq_nor
+[    0.574116] Creating 4 MTD partitions on "ltq_nor":
+[    0.578859] 0x000000000000-0x000000040000 : "uboot"
+[    0.585646] 0x000000040000-0x000000050000 : "uboot_env"
+[    0.591514] 0x000000050000-0x0000007f0000 : "firmware"
+[    0.638581] 2 uimage-fw partitions found on MTD device firmware
+[    0.643044] 0x000000050000-0x0000002171b2 : "kernel"
+[    0.649801] 0x0000002171b2-0x0000007f0000 : "rootfs"
+[    0.655356] mtd: device 4 (rootfs) set to be root filesystem
+[    0.659641] 1 squashfs-split partitions found on MTD device rootfs
+[    0.665563] 0x000000630000-0x0000007f0000 : "rootfs_data"
+[    0.672830] 0x0000007f0000-0x000000800000 : "board_config"
+[    0.683203] libphy: Fixed MDIO Bus: probed
+[    0.720338] libphy: ltq_mii: probed
+[    0.821354] Registering RTL8306SDM switch with Chip ID: 0x5988, version: 0x0000
+[    0.827191] Realtek RTL8306S 1e180000.etop-ffffffff:00: attached PHY driver [Realtek RTL8306S] (mii_bus:phy_addr=1e180000.etop-ffffffff:00, irq=POLL)
+[    0.843122] wdt 1f8803f0.watchdog: Init done
+[    0.852716] NET: Registered protocol family 10
+[    0.873288] Segment Routing with IPv6
+[    0.875744] NET: Registered protocol family 17
+[    0.880020] 8021q: 802.1Q VLAN Support v1.8
+[    0.892833] OF: fdt: not creating '/sys/firmware/fdt': CRC check fai[    0.913632] VFS: Mounted root (squashfs filesystem) readonly on device 31:4.
+[    0.927070] Freeing unused kernel memory: 1236K
+[    0.930088] This architecture does not have kernel memory protection.
+[    0.936408] Run /sbin/init as init process
+[    1.158975] random: fast init done
+[    2.566141] init: Console is alive
+[    2.568698] init: - watchdog -
+[    4.662036] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    4.815387] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    4.824202] init: - preinit -
+[    6.673531] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[    6.705175] random: procd: uninitialized urandom read (4 bytes read)
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    7.687114] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   10.312474] jffs2: notice: (433) jffs2_build_xattr_subsystem: complete building xattr subsystem, 3 of xdatum (2 unchecked, 1 orphan) and 14 of xref (1 dead, 0 orphan) found.
+[   10.329374] mount_root: switching to jffs2 overlay
+[   10.394382] overlayfs: upper fs does not support tmpfile.
+[   10.414221] urandom-seed: Seeding with /etc/urandom.seed
+[   10.678706] procd: - early -
+[   10.680466] procd: - watchdog -
+[   11.696981] procd: - watchdog -
+[   11.699607] procd: - ubus -
+[   11.954738] random: ubusd: uninitialized urandom read (4 bytes read)
+[   12.058112] random: ubusd: uninitialized urandom read (4 bytes read)
+[   12.063896] random: ubusd: uninitialized urandom read (4 bytes read)
+[   12.072796] procd: - init -
+Please press Enter to activate this console.
+[   12.992736] urandom_read: 5 callbacks suppressed
+[   12.992751] random: jshn: uninitialized urandom read (4 bytes read)
+[   13.767617] kmodloader: loading kernel modules from /etc/modules.d/*
+[   13.908641] urngd: v1.0.0 started.
+[   13.987568] ipip: IPv4 and MPLS over IPv4 tunneling driver
+[   14.169141] Mirror/redirect action on
+[   14.208986] u32 classifier
+[   14.210233]     input device check on
+[   14.213848]     Actions configured
+[   14.298680] Loading modules backported from Linux version v4.19.32-0-g3a2156c839c7
+[   14.304752] Backport generated by backports.git v4.19.32-1-0-g1c4f7569
+[   14.556551] xt_time: kernel timezone is -0000
+[   14.971806] batman_adv: B.A.T.M.A.N. advanced openwrt-2019.2-3 (compatibility version 15) loaded
+[   15.085711] random: crng init done
+[   15.097921] rt2800pci 0000:00:0e.0: enabling device (0000 -> 0002)
+[   15.103652] rt2800pci 0000:00:0e.0: loaded eeprom from mtd device "board_config"
+[   15.109813] ieee80211 phy0: rt2x00_set_rt: Info - RT chipset 3572, rev 0223 detected
+[   15.117429] ieee80211 phy0: rt2x00_set_rf: Info - RF chipset 0005 detected
+[   15.175371] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   41.814512] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   41.857738] br-lan: port 1(eth0.1) entered blocking state
+[   41.861725] br-lan: port 1(eth0.1) entered disabled state
+[   41.867758] device eth0.1 entered promiscuous mode
+[   41.871586] device eth0 entered promiscuous mode
+[   41.943445] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   42.639335] IPv6: ADDRCONF(NETDEV_UP): ffuplink: link is not ready
+[   42.820949] IPv6: ADDRCONF(NETDEV_CHANGE): ffuplink: link becomes ready
+[   42.832378] br-wan: port 1(ffuplink_wan) entered blocking state
+[   42.837057] br-wan: port 1(ffuplink_wan) entered disabled state
+[   42.843497] device ffuplink_wan entered promiscuous mode
+[   42.855307] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   42.887173] br-lan: port 1(eth0.1) entered blocking state
+[   42.891133] br-lan: port 1(eth0.1) entered forwarding state
+[   42.924937] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   42.947930] br-wan: port 1(ffuplink_wan) entered blocking state
+[   42.952403] br-wan: port 1(ffuplink_wan) entered forwarding state
+[   42.958695] IPv6: ADDRCONF(NETDEV_UP): br-wan: link is not ready
+[   43.847199] IPv6: ADDRCONF(NETDEV_CHANGE): br-wan: link becomes ready
+
+
+
+BusyBox v1.31.0 () built-in shell (ash)
+
+  _____        _  __             _
+ |  ___|      (_)/ _|           | |
+ | |_ _ __ ___ _| |_ _   _ _ __ | | __
+ |  _| '__/ _ \ |  _| | | | '_ \| |/ /
+ | | | | |  __/ | | | |_| | | | |   <
+ \_| |_|  \___|_|_|  \__,_|_| |_|_|\_\
+
+ Firmware Freifunk Berlin (Dev-SAm0815 rev dd2f75e)
+ Generic - lantiq/xway
+ https://wiki.freifunk.net/Berlin:Firmware
+ https://github.com/freifunk-berlin
+ -----------------------------------------------------
+
+ If you find bugs please report them at:
+
+   https://github.com/freifunk-berlin/firmware/issues
+
+ For questions write a mail to <berlin@berlin.freifunk.net>
+ or check https://berlin.freifunk.net/contact for our weekly meetings.
+
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@gib-mir-einen-namen:/# iw list
+Wiphy phy0
+	max # scan SSIDs: 4
+	max scan IEs length: 2257 bytes
+	max # sched scan SSIDs: 0
+	max # match sets: 0
+	max # scan plans: 1
+	max scan plan interval: -1
+	max scan plan iterations: 0
+	Retry short long limit: 2
+	Coverage class: 0 (up to 0m)
+	Available Antennas: TX 0 RX 0
+	Supported interface modes:
+		 * IBSS
+		 * managed
+		 * AP
+		 * AP/VLAN
+		 * monitor
+		 * mesh point
+	Band 1:
+		Capabilities: 0x17e
+			HT20/HT40
+			SM Power Save disabled
+			RX Greenfield
+			RX HT20 SGI
+			RX HT40 SGI
+			RX STBC 1-stream
+			Max AMSDU length: 3839 bytes
+			No DSSS/CCK HT40
+		Maximum RX AMPDU length 32767 bytes (exponent: 0x002)
+		Minimum RX AMPDU time spacing: 2 usec (0x04)
+		HT TX/RX MCS rate indexes supported: 0-7, 32
+		Frequencies:
+			* 2412 MHz [1] (20.0 dBm)
+			* 2417 MHz [2] (20.0 dBm)
+			* 2422 MHz [3] (20.0 dBm)
+			* 2427 MHz [4] (20.0 dBm)
+			* 2432 MHz [5] (20.0 dBm)
+			* 2437 MHz [6] (20.0 dBm)
+			* 2442 MHz [7] (20.0 dBm)
+			* 2447 MHz [8] (20.0 dBm)
+			* 2452 MHz [9] (20.0 dBm)
+			* 2457 MHz [10] (20.0 dBm)
+			* 2462 MHz [11] (20.0 dBm)
+			* 2467 MHz [12] (20.0 dBm) (no IR)
+			* 2472 MHz [13] (20.0 dBm) (no IR)
+			* 2484 MHz [14] (20.0 dBm) (no IR)
+	valid interface combinations:
+		 * #{ managed, AP, mesh point } <= 8,
+		   total <= 8, #channels <= 1
+	HT Capability overrides:
+		 * MCS: ff ff ff ff ff ff ff ff ff ff
+		 * maximum A-MSDU length
+		 * supported channel width
+		 * short GI for 40 MHz
+		 * max A-MPDU length exponent
+		 * min MPDU start spacing
+	Supported extended features:
+		* [ RRM ]: RRM
+		* [ CQM_RSSI_LIST ]: multiple CQM_RSSI_THOLD records
+		* [ CONTROL_PORT_OVER_NL80211 ]: control port over nl80211
+root@gib-mir-einen-namen:/#
+</nowiki></WRAP>\\
+===== Link dump =====
+
+  * [[http://www.linux-mips.org/wiki/Danube]]
+  * [[http://pastebin.com/AR4t75HR]]
+  * [[http://hilfe.o2online.de/t5/Router-Co/o2-Box-4421/ta-p/214793]]
+  * [[http://hilfe.o2online.de/o2de/attachments/o2de/7000_1@tkb/8/7/Handbuch_o2_Box_4421.pdf]]
+  * [[http://hilfe.o2online.de/o2de/attachments/o2de/7000_1@tkb/8/8/Kurzanleitung__o2_Box_4421.pdf]]
+  * [[http://www.mxic.com.tw/QuickPlace/hq/PageLibrary4825740B00298A3B.nsf/h_Index/6F878CF760C559BD482576E00022E6CC/?OpenDocument&EPN=MX29LV640E%20T/B]]
+  * [[http://www.zentel.com.tw/download/A3S12D3040ETP_I%20ver_v1.1_Zentel.zip]]
+  * [[https://sviehb.wordpress.com/?p=4]]
+  * [[https://sviehb.wordpress.com/?p=49]]
+  * [[http://hph.name/269]]
+  * [[http://www.ip-phone-forum.de/showthread.php?t=256873]]
+  * [[http://www.ip-phone-forum.de/showthread.php?t=250734&page=2]]
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>0USB 1WNIC 2ant 2core 2x2 4port 64ram 802.11b 802.11bgn 802.11g 802.11n 8flash adsl2+ adsl brnboot ddr ethernet fastethernet fxo hwvlan internalantenna mips mips32 24kec rt2860 rt3060 rtl8306 serial lantiq danube TAE_port}}

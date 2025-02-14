@@ -1,0 +1,1189 @@
+====== TP-Link Archer C60 ======
+
+{{section>meta:infobox:864_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+<WRAP alert>The C60v3 is leaking LAN traffic through WAN port during boot, due to lack of port isolation.</WRAP>
+
+Dual Band wireless 5GHz and 2.4GHz. Based on Atheros chipset. Four 100MB LAN ethernet. One 100MB WAN.
+
+/*****/
+/* How to add images ========> http://openwrt.org/meta/adding_images_to_openwrt_wiki */
+/*****/
+
+{{:media:tplink:archerc60:archer_c60.jpg?400|}}
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^Archer C60$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^Archer C60$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^Archer C60$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]] (Latest OEM firmware of C60v2, 2.0.0 Build 20161206 rel.69298, accepts upgrade using method 1, via OEM firmware WebUI, described in this page.)
+
+//Latest OEM firmware prevents installation via OEM firmware upgrade paths (tftp and WebUI).//
+
+NOTE: At least for Archer C60 v1, using the WebUI to install OpenWRT works fine as of March 2022. The v1 devices haven't had a firmware update since 2016, so this is unlikely to stop working in the future.
+
+Installation via UART/Uboot (see GIT commit). See also **Opening the Case** and **Serial** section below for serial connection and parameters.
+
+Connect LAN cable.
+
+Interrupt boot during Autoboot delay. You only have 1 second to type "tpl<enter>" to get //Ath>// prompt. Reboot router until you get //Ath>// Uboot prompt.
+
+Setup TFTP server on IP address 192.168.0.10 and store OpenWRT system upgrade image for Archer C60v2 into root directory.
+
+As per commit message:
+
+//Note: Replace $filesize below with value in hex reported after tftp command completes below. Uboot should replace the variable automatically, but it didn't seem to.//
+
+<code>Ath> tftp 0x81000000 openwrt-18.06.1-ar71xx-generic-archer-c60-v2-squashfs-sysupgrade.bin
+Ath> erase 0x9f030000 +//$filesize//
+Ath> cp.b 0x81000000 0x9f030000 //$filesize//
+Ath> reset</code>
+
+Another possible method of installation is directly to the flash chip (W25Q64). First you need to obtain a dump of the chip (by reading the chip from your device or by finding a dump on the internet). The partition map is located at the address 0x7df800 on the chip:
+
+<code>partition factory-boot base 0x00000 size 0x1fb00
+partition default-mac base 0x1fb00 size 0x00200
+partition pin base 0x1fd00 size 0x00100
+partition product-info base 0x1fe00 size 0x00100
+partition device-id base 0x1ff00 size 0x00100
+partition fs-uboot base 0x20000 size 0x10000
+partition os-image base 0x30000 size 0x100000
+partition file-system base 0x130000 size 0x6a9500
+partition soft-version base 0x7d9500 size 0x00100
+partition support-list base 0x7d9600 size 0x00100
+partition extra-para base 0x7d9700 size 0x00100
+partition profile base 0x7d9800 size 0x03000
+partition default-config base 0x7dc800 size 0x03000
+partition partition-table base 0x7df800 size 0x00800
+partition user-config base 0x7e0000 size 0x0c000
+partition certificate base 0x7ec000 size 0x04000
+partition radio base 0x7f0000 size 0x10000</code>
+
+To install OpenWrt, we need to replace the os-image and file-system partitions with the OpenWrt firmware, and copy everything else. First copy everything preceding these two partitions:
+
+''dd if=archer_c60_ac1350_v2.bin of=owrt_frankenstein.bin bs=1 count=196608''
+
+Then copy the OpenWrt image:
+
+''dd if=openwrt-19.07.3-ath79-generic-tplink_archer-c60-v3-squashfs-sysupgrade.bin bs=1 count=4653056 >> owrt_frankenstein.bin''
+
+Add padding to match the size of os-image+file-system:
+
+''dd if=/dev/zero bs=1 count=3380480 | tr "\000" "\377" >>owrt_frankenstein.bin''
+
+And lastly, copy everything else:
+
+''dd if=archer_c60_ac1350_v2.bin bs=1 skip=8230144 >> owrt_frankenstein.bin''
+
+To verify, you can check that the file size is equal to the size of your original dump.
+
+The resulting file can be written to the flash chip. This method has been successfully tested with a v3 device, although using a flash dump from v2.
+==== Flash Layout ====
+
+<code>dev:    size   erasesize  name
+mtd0: 00030000 00010000 "u-boot"
+mtd1: 007a0000 00010000 "firmware"
+mtd2: 00180000 00010000 "kernel"
+mtd3: 00620000 00010000 "rootfs"
+mtd4: 00360000 00010000 "rootfs_data"
+mtd5: 00020000 00010000 "tplink"
+mtd6: 00010000 00010000 "art"</code>
+
+==== OEM easy installation ====
+
+For Archer C60 v1.x, v2.0, v2.1, v3.0 installing OpenWrt is confirmed to work by simply uploading the OpenWrt firmware in the stock OEM's firmware-upgrade page. Please note however that this page will refuse to install firmware uploaded with a long filename. To bypass this limitation, download the relevant factory-flash bin-file and then rename the file to something shorter like firmware.bin before uploading. 
+==== OEM installation using the TFTP method ====
+
+->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+=== Specific values needed for tftp ===
+
+Latest OEM firmware seems to prevent flashing via TFTP.
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+==== LuCI Web Upgrade Process ====
+
+  * Browse to ''<nowiki>http://192.168.1.1/cgi-bin/luci/admin/system/flashops</nowiki>'' LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+==== Terminal Upgrade Process ====
+
+If you don't have a GUI (LuCI) available, you can alternatively upgrade via the command line.
+There is one command line method for upgrading:
+
+  * ''sysupgrade''
+
+Note: It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== sysupgrade ===
+
+  * Locate the URL to the sysupgrade file, below is only an example. If the device has internet access, you can use wget. Otherwise transfer the image to /tmp with scp.
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget http://downloads.openwrt.org/releases/18.06.2/targets/ar71xx/generic/openwrt-18.06.2-ar71xx-generic-archer-c60-v1-squashfs-sysupgrade.bin
+sysupgrade /tmp/openwrt-18.06.2-ar71xx-generic-archer-c60-v1-squashfs-sysupgrade.bin
+</code>
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+
+[[https://forum.openwrt.org/t/help-in-unbricking-tp-link-archer-c60-v3/62642|Debricking C60 v3]]
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+
+</WRAP>
+
+==== Switch Ports (for VLANs) ====
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+Numbers 0-3 are Ports 1-4 as labeled on the unit, number 4 is the Internet (WAN) on the unit, 5 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+^ Port             ^ Switch port   ^
+| Internet (WAN)   | EXAMPLE 4     |
+| LAN 1            | EXAMPLE 3     |
+| LAN 2            | EXAMPLE 2     |
+| LAN 3            | EXAMPLE 1     |
+| LAN 4            | EXAMPLE 0     |
+
+</WRAP>
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+The TP-Link Archer C60 has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+
+</WRAP>
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^Archer C60$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+//Front://\\
+{{:media:tplink:archerc60:archer_c60_front.jpg?400|}}
+
+//Back://\\
+{{:media:tplink:archerc60:archer_c60_back.jpg?400|}}
+
+//Backside label://\\
+{{:media:tplink:archerc60:archer_c60_label.jpg?400|}}
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+Remove Phillips screws on bottom of case.
+Gently pry top from base. Use a putty knife inserted between the top and bottom and gentle pressure to release the plastic catches. The ones near the ethernet ports at the back of the unit seem to release the easiest, so start there and work around the perimeter. This takes some patience, but can be done without damage to the case.
+
+Reassembly: press top and bottom together until snaps. Replace screws in bottom of unit.
+
+//Main PCB://\\
+
+{{:media:tplink:archerc60:archer_c60_pcb.jpg?400|}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+There is an unpopulated 4 pin serial header (J1) present on the left side of the PCB. The pin close to the rear of the unit (TX) is marked with a sideways triangle. Otherwise, the pins are unmarked.
+
+**Note: UART operates at 3.3V! Do not connect 5V or 12V serial cables to this unit.**
+
+''> o  TX
+  o  RX
+  o  Gnd
+  o  Vcc (3.3V)
+''
+
+How to connect to the Serial Port of this specific device:\\
+
+{{:media:tplink:archerc60:archer_c60_serial_header.jpg?400|}}
+{{:media:tplink:archerc60:archer_c60_serial_header_ann.jpg|}}
+
+Note that in this photo, there is a header soldered to the PCB to facilitate serial connection. Factory units do not have this header installed.
+
+^ Serial connection parameters\\ for TP-Link Archer C60 v2 | 115200 (or 118000((for CH341A serial adapter))), 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+N/A
+
+===== Bootloader mods =====
+-> [[docs:techref:bootloader]]
+
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>
+(OEM Firmware: Archer C60(CA)_V2_161206)
+
+U-Boot 1.1.4 (Nov 29 2016 - 15:25:42)
+
+ap151 - Dragonfly 1.0
+
+DRAM:  64 MB
+Top of RAM usable for U-Boot at: 84000000
+Reserving 402k for U-Boot at: 83f98000
+Reserving 32832k for malloc() at: 81f88000
+Reserving 44 Bytes for Board Info at: 81f87fd4
+Reserving 36 Bytes for Global Data at: 81f87fb0
+Reserving 128k for boot params() at: 81f67fb0
+Stack Pointer at: 81f67f98
+Now running in RAM - U-Boot at: 83f98000
+Flash Manuf Id 0xc8, DeviceId0 0x40, DeviceId1 0x17
+flash size 8MB, sector count = 128
+Flash:  8 MB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ath_gmac_enet_initialize...
+No valid address in Flash. Using fixed address
+No valid address in Flash. Using fixed address
+ath_gmac_enet_initialize: reset mask:c02200 
+Dragonfly----> S27 PHY *
+: cfg1 0x80000000 cfg2 0x7114
+eth0: 00:03:7f:09:0b:ad
+athrs27_phy_setup ATHR_PHY_CONTROL 4 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 4 :10
+eth0 up
+ATHRS27: resetting s27
+ATHRS27: s27 reset done
+: cfg1 0x800c0000 cfg2 0x7214
+eth1: 00:03:7f:09:0b:ad
+athrs27_phy_setup ATHR_PHY_CONTROL 0 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 0 :50
+athrs27_phy_setup ATHR_PHY_CONTROL 1 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 1 :50
+athrs27_phy_setup ATHR_PHY_CONTROL 2 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 2 :50
+athrs27_phy_setup ATHR_PHY_CONTROL 3 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 3 :50
+eth1 up
+eth0, eth1
+Setting 0x181162c0 to 0x82
+Reading Partition Table from NVRAM ... OK
+
+Parsing Partition Table ... OK
+
+factory boot check integer ok.
+
+load fs uboot at 0x10000.
+Autobooting in 1 seconds
+## Starting application at 0x80010000 ...
+
+
+U-Boot 1.1.4 (Nov 29 2016 - 15:25:24)
+
+ap151 - Dragonfly 1.0
+
+DRAM:  64 MB
+Top of RAM usable for U-Boot at: 84000000
+Reserving 120k for U-Boot at: 83fe0000
+Reserving 32832k for malloc() at: 81fd0000
+Reserving 44 Bytes for Board Info at: 81fcffd4
+Reserving 36 Bytes for Global Data at: 81fcffb0
+Reserving 128k for boot params() at: 81faffb0
+Stack Pointer at: 81faff98
+Now running in RAM - U-Boot at: 83fe0000
+Flash Manuf Id 0xc8, DeviceId0 0x40, DeviceId1 0x17
+flash size 8MB, sector count = 128
+Flash:  8 MB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ath_gmac_enet_initialize...
+No valid address in Flash. Using fixed address
+No valid address in Flash. Using fixed address
+ath_gmac_enet_initialize: reset mask:c02200 
+Dragonfly----> S27 PHY *
+: cfg1 0x80000000 cfg2 0x7114
+eth0: 00:03:7f:09:0b:ad
+athrs27_phy_setup ATHR_PHY_CONTROL 4 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 4 :10
+eth0 up
+ATHRS27: resetting s27
+ATHRS27: s27 reset done
+: cfg1 0x800c0000 cfg2 0x7214
+eth1: 00:03:7f:09:0b:ad
+athrs27_phy_setup ATHR_PHY_CONTROL 0 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 0 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 1 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 1 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 2 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 2 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 3 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 3 :10
+eth1 up
+eth0, eth1
+Setting 0x181162c0 to 0x82
+Autobooting in 1 seconds
+## Booting image at 9f030000 ...
+   Image Name:   MIPS OpenWrt Linux-3.3.8
+   Created:      2016-12-06   7:00:35 UTC
+   Image Type:   MIPS Linux Multi-File Image (lzma compressed)
+   Data Size:    1042944 Bytes = 1018.5 kB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Contents:
+   Image 0:  1042936 Bytes = 1018.5 kB
+   Verifying Checksum at 0x9f030040 ...OK
+   Uncompressing Multi-File Image ... OK
+No initrd
+## Transferring control to Linux (at address 80060000) ...
+## Giving linux memsize in bytes, 67108864
+
+Starting kernel ...
+
+[    0.000000] Linux version 3.3.8 (cwghdw@andy-buddy) (gcc version 4.6.3 20120201 (prerelease) (Linaro GCC 4.6-2012.02) ) #1 Tue Nov 29 15:33:39 CST 2016
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019750 (MIPS 74Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA956X rev 0
+[    0.000000] Clocks: CPU:775.000MHz, DDR:650.000MHz, AHB:258.333MHz, Ref:25.000MHz
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00004000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] Early memory PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00004000
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line:  console=ttyS0,115200 board=AP151 rootfstype=squashfs init=/etc/preinit mtdparts=spi0.0:128k(factory-boot),64k(u-boot),1024k(uImage),6822k(rootfs),64k@0x7f0000(ART) mem=64M rootfstype=squashfs,jffs2 noinitrd
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 61388k/65536k available (2224k kernel code, 4148k reserved, 550k data, 176k init, 0k highmem)
+[    0.000000] SLUB: Genslabs=9, HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:83
+[    0.000000] Calibrating delay loop... 385.84 BogoMIPS (lpj=1929216)
+[    0.060000] pid_max: default: 32768 minimum: 301
+[    0.060000] Mount-cache hash table entries: 512
+[    0.070000] NET: Registered protocol family 16
+[    0.070000] gpiochip_add: registered GPIOs 0 to 22 on device: ath79
+[    0.080000] MIPS: machine is TP-LINK ARCHER_C60V1 reference board
+[    0.080000] registering PCI controller with io_map_base unset
+[    0.090000] ar71xx: invalid MDIO id 1
+[    0.490000] bio: create slab <bio-0> at 0
+[    0.500000] PCI host bridge to bus 0000:00
+[    0.500000] pci_bus 0000:00: root bus resource [mem 0x12000000-0x13ffffff]
+[    0.510000] pci_bus 0000:00: root bus resource [io  0x0001]
+[    0.510000] pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    0.520000] pci 0000:00:00.0: using irq 40 for pin 1
+[    0.520000] Switching to clocksource MIPS
+[    0.530000] NET: Registered protocol family 2
+[    0.530000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.530000] TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+[    0.540000] TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.540000] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.550000] TCP reno registered
+[    0.550000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.560000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.560000] NET: Registered protocol family 1
+[    0.580000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.580000] msgmni has been set to 119
+[    0.590000] io scheduler noop registered
+[    0.590000] io scheduler deadline registered (default)
+[    0.590000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.620000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11) is a 16550A
+[    0.630000] console [ttyS0] enabled, bootconsole disabled
+[    0.630000] console [ttyS0] enabled, bootconsole disabled
+[    0.640000] m25p80 spi0.0: found gd25q128c, expected m25p80
+[    0.650000] m25p80 spi0.0: gd25q128c (16384 Kbytes)
+[    0.650000] 5 cmdlinepart partitions found on MTD device spi0.0
+[    0.660000] Creating 5 MTD partitions on "spi0.0":
+[    0.660000] 0x000000000000-0x000000020000 : "factory-boot"
+[    0.670000] 0x000000020000-0x000000030000 : "u-boot"
+[    0.680000] 0x000000030000-0x000000130000 : "uImage"
+[    0.680000] 0x000000130000-0x0000007d9800 : "rootfs"
+[    0.690000] mtd: partition "rootfs" must either start or end on erase block boundary or be smaller than an erase block -- forcing read-only
+[    0.700000] mtd: partition "rootfs" set to be root filesystem
+[    0.710000] 0x0000007f0000-0x000000800000 : "ART"
+[    0.710000] flash_chrdev : flash_chrdev_init 
+[    0.740000] ag71xx_mdio: probed
+[    0.860000] ag71xx_mdio: probed
+[    0.870000] eth0: Atheros AG71xx at 0xb9000000, irq 4
+[    1.420000] ag71xx ag71xx.0: eth0: connected to PHY at ag71xx-mdio.1:04 [uid=004dd042, driver=Generic PHY]
+[    1.430000] eth1: Atheros AG71xx at 0xba000000, irq 5
+[    1.990000] eth1: Found an AR934X built-in switch
+[    3.020000] TCP cubic registered
+[    3.020000] NET: Registered protocol family 17
+[    3.020000] Bridge firewalling registered
+[    3.030000] 8021q: 802.1Q VLAN Support v1.8
+[    3.030000] ### of_selftest(): No testcase data in device tree; not running tests
+[    3.050000] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    3.050000] Freeing unused kernel memory: 176k freed
+[    5.450000] [ag71xx_hw_start:554]ag71xx_hw_start 
+- preinit -
+- regular preinit -
+jffs2 not ready yet; using ramdisk
+- init -
+[    6.090000] [ag71xx_rings_cleanup:348]ag71xx_rings_cleanup
+[    7.270000] liblog: module license 'unspecified' taints kernel.
+[    7.280000] Disabling lock debugging due to kernel taint
+[    7.510000] NET: Registered protocol family 10
+[    7.990000] SCSI subsystem initialized
+[    8.150000] Button Hotplug driver version 0.4.1
+[    8.180000] PPP generic driver version 2.4.2
+[    8.280000] tun: Universal TUN/TAP device driver, 1.6
+[    8.280000] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[    8.390000] PPP MPPE Compression module registered
+[    8.530000] L2TP core driver, V2.0
+[    8.540000] L2TP netlink interface
+[    8.650000] IPv6 over IPv4 tunneling driver
+[    8.780000] GRE over IPv4 demultiplexor driver
+[    8.790000] GRE over IPv4 tunneling driver
+[    9.010000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    9.170000] NET: Registered protocol family 24
+[    9.300000] nf_conntrack version 0.5.0 (961 buckets, 3844 max)
+[    9.650000] PPPoL2TP kernel driver, V2.0
+[    9.660000] PPTP driver version 0.8.5
+[   10.030000] xt_time: kernel timezone is -0000
+[   10.480000] nf_conntrack_rtsp v0.6.21 loading
+[   10.490000] nf_nat_rtsp v0.6.21 loading
+[   10.510000] Netfilter messages via NETLINK v0.30.
+[   10.530000] ctnetlink v0.93: registering with nfnetlink.
+[   10.650000] ssdk_plat_init start
+[   10.660000] chip_version:0x0
+[   10.660000] chip_version:0x2
+[   10.660000] Register QCA PHY driver
+[   10.670000] register switch!!
+[   10.680000] qca-ssdk module init succeeded!
+reloadconfig() begin:
+reloadconfig() end:
+reload_profile() begin:
+reload_profile() end:
+sh: iqos-db-parser: not found
+
+Please press Enter to activate this console. GMT+05:00	
+Mon Aug  1 00:00:00 GMT 2016
+[   16.580000] [ag71xx_hw_start:554]ag71xx_hw_start 
+[   16.580000] ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   17.430000] ADDRCONF(NETDEV_UP): lo: link is not ready
+[   17.440000] ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   17.440000] ADDRCONF(NETDEV_UP): eth1: link is not ready
+[   17.450000] ADDRCONF(NETDEV_UP): ip6tnl0: link is not ready
+[   17.450000] ADDRCONF(NETDEV_UP): sit0: link is not ready
+[   17.460000] ADDRCONF(NETDEV_UP): gre0: link is not ready
+Loading defaults
+Loading synflood protection
+Adding custom chains
+Loading zones
+Loading forwardings
+Loading rules
+Loading redirects
+Loading includes
+Optimizing conntrack
+Loading interfaces
+Loading tpcmd
+loading access_control
+loading basic_security
+[   25.880000] [ag71xx_hw_start:554]ag71xx_hw_start 
+[   25.880000] ADDRCONF(NETDEV_UP): eth1: link is not ready
+[   25.900000] device eth1 entered promiscuous mode
+[   25.900000] ADDRCONF(NETDEV_UP): br-lan: link is not ready
+Normal env generate
+Flush nat forwarding chain
+loading administration management
+fw unload_local_mgnt
+loading parental_control
+[   34.960000] Lan Domain: tplinklogin.net
+[   34.970000] Lan Domain: www.tplinklogin.net
+[   45.830000] ath_hal: 0.9.17.1 (AR9380, REGOPS_FUNC, WRITE_EEPROM, 11D)
+[   46.020000] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+[   46.400000] ath_tx99: Version 2.0
+[   46.400000] Copyright (c) 2010 Atheros Communications, Inc, All Rights Reserved
+[   46.450000] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+[   47.450000] __ath_attach: Set global_scn[0]
+[   47.450000] *** All the minfree values should be <= ATH_TXBUF-32, otherwise default value will be used instead ***
+[   47.460000] ACBKMinfree = 48
+[   47.470000] ACBEMinfree = 32
+[   47.470000] ACVIMinfree = 16
+[   47.470000] ACVOMinfree = 0
+[   47.480000] CABMinfree = 48
+[   47.480000] UAPSDMinfree = 0
+[   47.480000] ATH_TXBUF=2700
+[   47.490000] Enterprise mode: 0x03bda000
+[   47.500000] Restoring Cal data from DRAM
+[   47.500000] 
+[   47.500000] ART Version : -48.0.0
+[   47.510000] SW Image Version : -48.0.0.0.0
+[   47.510000] Board Revision :  
+[   47.510000] ar9300_attach: nf_2_nom -110 nf_2_max -60 nf_2_min -125 
+[   47.530000] ath_get_caps[6328] rx chainmask mismatch actual 7 sc_chainmak 0
+[   47.530000] ath_get_caps[6303] tx chainmask mismatch actual 7 sc_chainmak 0
+[   47.550000] ath_tx_paprd_init sc 82940000 PAPRD Enabled
+[   47.560000] wifi0: Atheros 956X: mem=0xb8100000, irq=47
+[   47.570000] ath_pci:  (Atheros/multi-bss)
+[   47.570000] ol_ath_pci_probe: PCI device id 0056 :0056
+[   47.580000] ath_pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[   47.580000] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[   47.590000]  *********** Besra *************
+[   47.590000] 
+[   47.590000] __ol_ath_attach() Allocated scn 81f80380
+[   47.600000] ath_pci 0000:00:00.0: ath DEBUG: sc=0x8296d000
+[   47.610000] 
+[   47.610000]  ol_ath_pci_configure : num_desired MSI set to 0
+[   47.610000] 
+[   47.610000]  Using PCI Legacy Interrupt
+[   47.620000] chip_id 0xc chip_revision 0x0 
+[   47.630000] 
+[   47.630000]  CLOCK PLL skipped 
+[   47.640000] HIF_PCIDeviceProbed: setting the target pll frac ffffffff intval ffffffff
+[   47.650000] HIF_PCIDeviceProbed: no frac provided, skipping pre-configuring PLL
+[   47.660000] __ol_ath_attach: dev name wifi1
+[   47.660000] ol_ath_attach interface_id 1
+[   47.670000] ol_ath_attach() BMI inited.
+[   47.680000] ol_ath_attach() BMI Get Target Info.
+[   47.680000] Chip id: 0xc, chip version: 0x1000000
+[   47.690000] 
+[   47.690000]  CE WAR Disabled
+[   47.700000] NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+[   47.700000] ol_ath_attach() configure Target .
+[   47.720000] 
+[   47.720000]  Target Version is 1000000
+[   47.720000] 
+[   47.720000]  Flash Download Address  c0000 
+[   47.730000] ol_transfer_bin_file: flash data file defined
+[   47.730000] Cal location [0]: 00004000
+[   47.740000] 
+[   47.740000]  wifi1 NAND FLASH Select OFFSET 0x5000
+[   47.750000] qc98xx_verify_checksum: flash checksum passed: 0x5193
+[   47.760000] ol_transfer_bin_file 3443: Download Flash data len 12064
+[   47.810000] Board extended Data download address: 0x0
+[   47.840000] 
+[   47.840000]  Board data initialized
+[   47.840000] ol_ath_download_firmware: Download OTP, flash download ADDRESS 0xc0000
+[   47.850000] 
+[   47.850000]  Selecting  OTP binary for CHIP Version 0
+[   48.000000] ol_transfer_bin_file 3263: downloading file 0, Download data len 8964
+[   48.040000] 
+[   48.040000]  First OTP send param 8000
+[   48.290000] ol_ath_download_firmware :First OTP download and Execute is good address:0x5000 return param 4660
+[   48.300000] ol_ath_download_firmware:##Board Id 20 , CHIP Id 0
+[   48.300000] ol_ath_download_firmware: BOARDDATA DOWNLOAD TO address 0xc0000
+[   48.310000] Warning : No board id matched. Selecting default boarddata file
+[   48.320000] 
+[   48.320000]  wifi1: Selecting board data file name boarddata_0.bin
+[   48.330000] ol_transfer_bin_file: Board Data File download to address=0xc0000 file name=QCA9888/hw.2/boarddata_0.bin
+[   48.350000] ol_transfer_bin_file 3263: downloading file 3, Download data len 12064
+[   48.360000] Board extended Data download address: 0x0
+[   48.390000] ol_ath_download_firmware: Using 0x1234 for the remainder of init
+[   48.400000] 
+[   48.400000]  Selecting  OTP binary for CHIP Version 0
+[   48.420000] ol_transfer_bin_file 3263: downloading file 0, Download data len 8964
+[   48.460000] 
+[   48.460000]  [Flash] : Ignore Module param
+[   48.470000] 
+[   48.470000]  Second otp download Param 10000 
+[   48.720000] ol_ath_download_firmware : Second OTP download and Execute is good, param=0x0 
+[   48.730000] 
+[   48.730000]  Mission mode: Firmware CHIP Version 0
+[   48.750000] ol_swap_seg_alloc: Successfully allocated memory for SWAP size=262144 
+[   48.780000] Swap: bytes_left to copy: fw:16; dma_page:61485
+[   48.780000] Swap: wrong length read:0
+[   48.790000] ol_swap_wlan_memory_expansion: Swap total_bytes copied: 200659 Target address 419530 
+[   48.800000] scn=81f80380  target_write_addr=419530 seg_info=82845010 
+[   48.800000] ol_transfer_swap_struct:Code swap structure successfully downloaded for bin type =2 
+[   48.810000] bin_filename=QCA9888/hw.2/athwlan.bin swap_filename=/lib/firmware/QCA9888/hw.2/athwlan.codeswap.bin 
+[   48.820000] ol_transfer_bin_file: Downloading firmware file: QCA9888/hw.2/athwlan.bin
+[   49.190000] ol_transfer_bin_file 3263: downloading file 1, Download data len 354424
+[   50.570000] ol_ath_attach() Download FW done. 
+[   50.570000] ol_ath_attach() HT Create .
+[   50.580000] ol_ath_attach() HIF Claim.
+[   50.580000] ol_ath_attach() BMI Done. 
+[   50.590000] ol_ath_attach 7540 host_enable 0 nss_nwifi_offload 0
+[   50.590000] ol_ath_set_default_tgt_config : AC Minfree buffer allocation through module param (umac.ko)
+[   50.600000]  OL_ACBKMinfree : 0
+[   50.610000]  OL_ACBEMinfree : 0
+[   50.610000]  OL_ACVIMinfree : 0
+[   50.610000]  OL_ACVOMinfree : 0
+[   50.620000] ol_ath_attach() WMI attached. wmi_handle 81fd0000 
+[   50.630000] CE_recv_buf_enqueue 877 Populate last entry 512 for CE 5
+[   50.630000] CE_recv_buf_enqueue 886 CE 5 wi 511 dest_ptr 0x19cb820 nbytes 0 recv_ctxt 0x819b5d80
+[   50.640000] Startup Mode-0 set
+[   50.640000] 
+[   50.640000] <=== cfg max peer id 1056 ====>
+[   50.650000] HTC Service:0x0300 ep:1 TX flow control disabled
+[   50.660000] htt_peer_map_timer_init Enter pdev 81a58000 hrtimer 81a5c7c0
+[   50.670000] 
+[   50.670000]  htt_alloc_peer_map_mem : Alloc Success : host q vaddr 81a62000 paddr 1a62000
+[   50.680000] 
+[   50.680000]  htt_alloc_peer_map_mem : Flush Interval Configured to 256 pkts
+[   50.690000] CE_pkt_dl_len_set CE 4 Pkt download length 64
+[   50.690000] ol_txrx_pdev_attach: 2500 tx desc's allocated ; range starts from 81700000
+[   50.700000] HTC Service:0x0100 ep:2 TX flow control disabled
+[   50.710000] wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event 
+[   50.720000] Firmware_Build_Number:99 
+[   50.720000] host/RAM_fw Build Ver Mismatch: H:0x5D, F:0x63 ! 
+[   50.730000] num_rf_chain:0x00000002  ht_cap_info:0x0000085b  vht_cap_info:0x339979f2  vht_supp_mcs:0x0000fffa
+[   50.740000] 
+[   50.740000]  RES CFG Support wmi_service_bitmap 9778 
+[   50.740000] 
+[   50.740000]  Sending Ext resource cfg: HOST PLATFORM as 1 and fw_feature_bitmap as 50 to TGT 
+[   50.750000] ol_ath_service_ready_event: tt_support: 1
+[   50.760000] ol_ath_service_ready_event: periodic_chan_stats: 0
+[   50.760000] Peer Caching Enabled ; num_peers = 530, num_active_peers = 52 num_tids = 104, num_vdevs = 17
+[   50.770000] idx 1 req 2  num_units 1 num_unit_info 12 unit size 256 actual units 53 
+[   50.780000] ol_ath_alloc_host_mem_chunk req_id 2 idx 0 num_units 53 unit_len 256,
+[   50.790000] idx 2 req 3  num_units 1 num_unit_info 12 unit size 1024 actual units 53 
+[   50.800000] ol_ath_alloc_host_mem_chunk req_id 3 idx 1 num_units 53 unit_len 1024,
+[   50.810000] idx 3 req 4  num_units 1 num_unit_info 12 unit size 4096 actual units 53 
+[   50.820000] ol_ath_alloc_host_mem_chunk req_id 4 idx 2 num_units 53 unit_len 4096,
+[   50.820000] idx 0 req 1  num_units 0 num_unit_info 2 unit size 872 actual units 531 
+[   50.830000] ol_ath_alloc_host_mem_chunk req_id 1 idx 3 num_units 265 unit_len 872,
+[   50.840000] ol_ath_alloc_host_mem_chunk req_id 1 idx 4 num_units 266 unit_len 872,
+[   50.850000] idx 4 req 5  num_units 0 num_unit_info 2 unit size 1892 actual units 531 
+[   50.860000] ol_ath_alloc_host_mem_chunk req_id 5 idx 5 num_units 132 unit_len 1892,
+[   50.870000] ol_ath_alloc_host_mem_chunk req_id 5 idx 6 num_units 133 unit_len 1892,
+[   50.880000] ol_ath_alloc_host_mem_chunk req_id 5 idx 7 num_units 133 unit_len 1892,
+[   50.890000] ol_ath_alloc_host_mem_chunk req_id 5 idx 8 num_units 133 unit_len 1892,
+[   50.890000] chunk 0 len 13568 requested ,ptr  0x16e8000 
+[   50.900000] chunk 1 len 54272 requested ,ptr  0x16f0000 
+[   50.910000] chunk 2 len 217088 requested ,ptr  0x1740000 
+[   50.910000] chunk 3 len 231080 requested ,ptr  0x1780000 
+[   50.920000] chunk 4 len 231952 requested ,ptr  0x17c0000 
+[   50.920000] chunk 5 len 249744 requested ,ptr  0xc00000 
+[   50.930000] chunk 6 len 251636 requested ,ptr  0xc40000 
+[   50.930000] chunk 7 len 251636 requested ,ptr  0xc80000 
+[   50.940000] chunk 8 len 251636 requested ,ptr  0xcc0000 
+[   50.970000] wmi_ready_event_rx:  WMI UNIFIED READY event 
+[   50.970000] ol_ath_connect_htc() WMI is ready
+[   50.980000] target uses HTT version 2.2; host uses 2.2
+[   50.990000] ol_ath_attach() connect HTC. 
+[   50.990000] bypasswmi : 0
+[   50.990000] ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+[   51.010000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2) flags 0x2150
+[   51.010000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4) flags 0xa0
+[   51.020000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x8) flags 0xc0
+[   51.030000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x20) flags 0xd0
+[   51.030000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x40) flags 0x150
+[   51.040000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x800) flags 0x10080
+[   51.050000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2000) flags 0x20080
+[   51.060000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4000) flags 0x40080
+[   51.070000] Add VHT80 channel: 5210
+[   51.070000] Add VHT80 channel: 5290
+[   51.070000] Add VHT80 channel: 5530
+[   51.080000] Add VHT80 channel: 5610
+[   51.080000] Add VHT80 channel: 5690
+[   51.080000] Add VHT80 channel: 5775
+[   51.090000] Skipping VHT80 channel 5825
+[   51.090000] OL Resmgr Init-ed
+[   51.100000] rate power table override is only supported for AR98XX
+[   51.100000] ol_ath_attach() UMAC attach . 
+[   51.110000] 
+[   51.110000]  BURSTING enabled by default
+[   51.110000] __ol_ath_attach: needed_headroom reservation 44
+[   51.120000] ol_ath_thermal_mitigation_attach: --
+[   51.590000] [wifi1] FWLOG: [56511] WAL_DBGID_TX_AC_BUFFER_SET ( 0x3, 0x1e, 0x94c, 0x94c, 0x0 )
+[   51.600000] [wifi1] FWLOG: [56511] WAL_DBGID_TX_AC_BUFFER_SET ( 0x12, 0x1e, 0x94c, 0x94c, 0x0 )
+[   51.610000] [wifi1] FWLOG: [56511] WAL_DBGID_TX_AC_BUFFER_SET ( 0x45, 0x1e, 0x94c, 0x94c, 0x0 )
+[   51.620000] [wifi1] FWLOG: [56511] WAL_DBGID_TX_AC_BUFFER_SET ( 0x67, 0x1e, 0x94c, 0x94c, 0x0 )
+[   51.620000] [wifi1] FWLOG: [56511] WAL_DBGID_TX_AC_BUFFER_SET ( 0x100, 0x11e1a300 )
+[   52.670000] wlan_vap_create : enter. devhandle=0x82970380, opmode=IEEE80211_M_HOSTAP, flags=0x3
+[   52.670000] 
+[   52.680000] ieee80211_mbo_vattach:MBO Initialized 
+[   52.690000] wlan_vap_create : exit. devhandle=0x82970380, opmode=IEEE80211_M_HOSTAP, flags=0x3.
+[   52.690000] 
+[   52.700000] VAP device ath0 created osifp: (833f6380) os_if: (81724000)
+[   52.720000] siwfreq
+[   52.730000] Set freq vap 0 stop send + 81724000
+[   52.730000] Set freq vap 0 stop send -81724000
+[   52.770000] Set wait done --81724000
+[   52.800000] Not supported in this vap 
+[   52.820000] WARNING: Fragmentation with HT mode NOT ALLOWED!!
+[   52.830000] siwfreq
+[   52.840000] Set freq vap 0 stop send + 81724000
+[   52.840000] Set freq vap 0 stop send -81724000
+[   52.880000] Set wait done --81724000
+[   53.030000]  
+[   53.030000]  DES SSID SET= 
+[   53.040000]  
+[   53.040000]  DES SSID SET=TP-Link_5A93 
+[   53.510000]  ieee80211_ioctl_siwmode: imr.ifm_active=131712, new mode=3, valid=1 
+[   53.520000]  DEVICE IS DOWN ifname=ath0
+[   53.520000]  DEVICE IS DOWN ifname=ath0
+[   53.650000] Warning: node not in table 0x8172b000
+[   53.730000] 8021q: adding VLAN 0 to HW filter on device ath0
+[   53.960000] Switching to Tx Mode-0
+[   54.040000] [ol_ath_iw_setcountry][1680] *p=43, *(p+1)=41
+[   54.040000] isCountryCodeValid: EEPROM regdomain 0x0
+[   54.050000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2) flags 0x2150
+[   54.050000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4) flags 0xa0
+[   54.060000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x8) flags 0xc0
+[   54.070000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x20) flags 0xd0
+[   54.080000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x40) flags 0x150
+[   54.080000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x800) flags 0x10080
+[   54.090000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2000) flags 0x20080
+[   54.100000] ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4000) flags 0x40080
+[   54.110000] Add VHT80 channel: 5210
+[   54.110000] Add VHT80 channel: 5290
+[   54.110000] Add VHT80 channel: 5530
+[   54.120000] Add VHT80 channel: 5610
+[   54.120000] Add VHT80 channel: 5690
+[   54.120000] Add VHT80 channel: 5775
+[   54.130000] Skipping VHT80 channel 5825
+[   54.190000] set TXBF_SND_PERIOD: value 100 wmi_status 0
+[   54.230000] wmi_unified_vdev_create_send: ID = 0 Type = 1, Subtype = 0 VAP Addr = 0c:80:63:34:5a:92:
+[   54.240000] ieee80211_mbo_vattach:MBO Initialized 
+[   54.240000] VAP device ath1 created osifp: (816edb80) os_if: (81e08000)
+[   54.270000] siwfreq
+[   54.280000] Set freq vap 0 stop send + 81e08000
+[   54.280000] Set freq vap 0 stop send -81e08000
+[   54.320000] Set wait done --81e08000
+[   54.330000] siwfreq
+[   54.330000] Set freq vap 0 stop send + 81e08000
+[   54.340000] Set freq vap 0 stop send -81e08000
+[   54.370000] Set wait done --81e08000
+[   54.400000] WARNING: Fragmentation with HT mode NOT ALLOWED!!
+[   54.420000] siwfreq
+[   54.420000] Set freq vap 0 stop send + 81e08000
+[   54.430000] Set freq vap 0 stop send -81e08000
+[   54.460000] Set wait done --81e08000
+[   54.500000] ME Pool succesfully initialized vaddr - 80d20000 paddr - 0
+[   54.500000] num_elems = 1424 buf_size - 64 pool_size = 102528
+[   54.520000] Enable MCAST_TO_UCAST
+[   54.580000] su bfee 1 mu bfee 0 su bfer 1 mu bfer 1 impl bf 0 sounding dim 1
+[   54.620000] su bfee 1 mu bfee 0 su bfer 0 mu bfer 1 impl bf 0 sounding dim 1
+[   54.630000] su bfee 1 mu bfee 0 su bfer 0 mu bfer 0 impl bf 0 sounding dim 1
+[   54.640000] su bfee 0 mu bfee 0 su bfer 0 mu bfer 0 impl bf 0 sounding dim 1
+[   54.660000]  
+[   54.660000]  DES SSID SET= 
+[   54.670000]  
+[   54.670000]  DES SSID SET=TP-Link_5A93_5G 
+[   54.800000]  ieee80211_ioctl_siwmode: imr.ifm_active=66176, new mode=3, valid=1 
+[   54.810000]  DEVICE IS DOWN ifname=ath1
+[   54.820000]  DEVICE IS DOWN ifname=ath1
+[   54.970000] 8021q: adding VLAN 0 to HW filter on device ath1
+[   55.120000] device ath0 entered promiscuous mode
+[   55.130000] br-lan: port 2(ath0) entered forwarding state
+[   55.130000] br-lan: port 2(ath0) entered forwarding state
+[   55.180000] device ath1 entered promiscuous mode
+[   55.180000] br-lan: port 3(ath1) entered forwarding state
+[   55.190000] br-lan: port 3(ath1) entered forwarding state
+[   55.240000] ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   55.600000] [wifi1] FWLOG: [60586] WAL_DBGID_SECURITY_ENCR_EN (  )
+[   55.600000] [wifi1] FWLOG: [60586] WAL_DBGID_SECURITY_MCAST_KEY_SET ( 0x1 )
+[   55.610000] [wifi1] FWLOG: [60611] WAL channel change freq=5180, mode=0 flags=0 rx_ok=1 tx_ok=1
+[   55.620000] [wifi1] FWLOG: [60925] WAL channel change freq=5200, mode=0 flags=0 rx_ok=1 tx_ok=1
+[   55.630000] [wifi1] FWLOG: [61240] WAL channel change freq=5220, mode=0 flags=0 rx_ok=1 tx_ok=1
+[   56.080000] ieee80211_extap_detect_stop: stop.
+[   56.600000] [wifi1] FWLOG: [61554] WAL channel change freq=5240, mode=0 flags=0 rx_ok=1 tx_ok=1
+[   56.610000] [wifi1] FWLOG: [61868] WAL channel change freq=5745, mode=0 flags=0 rx_ok=1 tx_ok=1
+[   56.620000] [wifi1] FWLOG: [62182] WAL channel change freq=5765, mode=0 flags=0 rx_ok=1 tx_ok=1
+[   57.600000] [wifi1] FWLOG: [62496] WAL channel change freq=5785, mode=0 flags=0 rx_ok=1 tx_ok=1
+[   57.610000] [wifi1] FWLOG: [62810] WAL channel change freq=5805, mode=0 flags=0 rx_ok=1 tx_ok=1
+[   57.620000] [wifi1] FWLOG: [63124] WAL channel change freq=5825, mode=0 flags=0 rx_ok=1 tx_ok=1
+[   57.730000] wmi_unified_vdev_down_send for vap 0 (81fd0000)
+[   57.730000] ieee80211_extap_detect_stop: stop.
+[   57.740000] OL vap_start +
+[   57.740000] wmi_unified_vdev_start_send for vap 0 (81fd0000)
+[   57.750000] OL vap_start -
+[   57.750000] ol_ath_vap_set_param: Now supported MGMT RATE is 6000(kbps) and rate code: 0x3
+[   57.930000] ol_vdev_start_resp_ev for vap 0 (81fd0000)
+[   57.940000] su bfee 0 mu bfee 0 su bfer 0 mu bfer 0 impl bf 0 sounding dim 1
+[   57.950000] wmi_unified_vdev_up_send for vap 0 (81fd0000)
+[   58.600000] [wifi1] FWLOG: [63443] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+[   58.600000] [wifi1] FWLOG: [63443] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+[   58.610000] [wifi1] FWLOG: [63457] vap-0 VDEV_MGR_VDEV_START ( 0x1671, 0x2, 0x0, 0x0 )
+[   58.620000] [wifi1] FWLOG: [63457] WAL channel change freq=5745, mode=10 flags=0 rx_ok=1 tx_ok=1
+[   58.630000] [wifi1] FWLOG: [63666] VDEV_MGR_HP_START_TIME ( 0x0, 0x1671, 0x6bd001 )
+[   58.640000] [wifi1] FWLOG: [63666] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x1 )
+[   58.640000] [wifi1] FWLOG: [63666] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+[   58.650000] [wifi1] FWLOG: [63666] VDEV_MGR_AP_TBTT_CONFIG ( 0x0, 0x1671, 0x0, 0x0 )
+phyport start .......
+SETUP port (5) duplex: 1000 full autoneg: on!
+loading qos
+http://192.168.0.1/webpages/wan_error.html 
+192.168.0.1 
+http://192.168.0.1/webpages/wan_error.html 
+192.168.0.1 
+ 3461 root      1716 S    /usr/sbin/crond -c /etc/crontabs -l 5
+wifi check in.
+</nowiki>
+</WRAP>\\
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.4 (Nov 29 2016 - 15:25:42)
+
+ap151 - Dragonfly 1.0
+
+DRAM:  64 MB
+Top of RAM usable for U-Boot at: 84000000
+Reserving 402k for U-Boot at: 83f98000
+Reserving 32832k for malloc() at: 81f88000
+Reserving 44 Bytes for Board Info at: 81f87fd4
+Reserving 36 Bytes for Global Data at: 81f87fb0
+Reserving 128k for boot params() at: 81f67fb0
+Stack Pointer at: 81f67f98
+Now running in RAM - U-Boot at: 83f98000
+Flash Manuf Id 0xc8, DeviceId0 0x40, DeviceId1 0x17
+flash size 8MB, sector count = 128
+Flash:  8 MB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ath_gmac_enet_initialize...
+No valid address in Flash. Using fixed address
+No valid address in Flash. Using fixed address
+ath_gmac_enet_initialize: reset mask:c02200 
+Dragonfly----> S27 PHY *
+: cfg1 0x80000000 cfg2 0x7114
+eth0: 00:03:7f:09:0b:ad
+athrs27_phy_setup ATHR_PHY_CONTROL 4 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 4 :10
+eth0 up
+ATHRS27: resetting s27
+ATHRS27: s27 reset done
+: cfg1 0x800c0000 cfg2 0x7214
+eth1: 00:03:7f:09:0b:ad
+athrs27_phy_setup ATHR_PHY_CONTROL 0 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 0 :50
+athrs27_phy_setup ATHR_PHY_CONTROL 1 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 1 :50
+athrs27_phy_setup ATHR_PHY_CONTROL 2 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 2 :50
+athrs27_phy_setup ATHR_PHY_CONTROL 3 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 3 :50
+eth1 up
+eth0, eth1
+Setting 0x181162c0 to 0x82
+Reading Partition Table from NVRAM ... OK
+
+Parsing Partition Table ... OK
+
+factory boot check integer ok.
+
+load fs uboot at 0x10000.
+Autobooting in 1 seconds
+## Starting application at 0x80010000 ...
+
+
+U-Boot 1.1.4 (Nov 29 2016 - 15:25:24)
+
+ap151 - Dragonfly 1.0
+
+DRAM:  64 MB
+Top of RAM usable for U-Boot at: 84000000
+Reserving 120k for U-Boot at: 83fe0000
+Reserving 32832k for malloc() at: 81fd0000
+Reserving 44 Bytes for Board Info at: 81fcffd4
+Reserving 36 Bytes for Global Data at: 81fcffb0
+Reserving 128k for boot params() at: 81faffb0
+Stack Pointer at: 81faff98
+Now running in RAM - U-Boot at: 83fe0000
+Flash Manuf Id 0xc8, DeviceId0 0x40, DeviceId1 0x17
+flash size 8MB, sector count = 128
+Flash:  8 MB
+Using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Net:   ath_gmac_enet_initialize...
+No valid address in Flash. Using fixed address
+No valid address in Flash. Using fixed address
+ath_gmac_enet_initialize: reset mask:c02200 
+Dragonfly----> S27 PHY *
+: cfg1 0x80000000 cfg2 0x7114
+eth0: 00:03:7f:09:0b:ad
+athrs27_phy_setup ATHR_PHY_CONTROL 4 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 4 :10
+eth0 up
+ATHRS27: resetting s27
+ATHRS27: s27 reset done
+: cfg1 0x800c0000 cfg2 0x7214
+eth1: 00:03:7f:09:0b:ad
+athrs27_phy_setup ATHR_PHY_CONTROL 0 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 0 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 1 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 1 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 2 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 2 :10
+athrs27_phy_setup ATHR_PHY_CONTROL 3 :1000
+athrs27_phy_setup ATHR_PHY_SPEC_STAUS 3 :10
+eth1 up
+eth0, eth1
+Setting 0x181162c0 to 0x82
+Autobooting in 1 seconds
+## Booting image at 9f030000 ...
+   Image Name:   MIPS OpenWrt Linux-4.9.120
+   Created:      2018-08-16   7:51:15 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1367486 Bytes =  1.3 MB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum at 0x9f030040 ...OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 80060000) ...
+## Giving linux memsize in bytes, 67108864
+
+Starting kernel ...
+
+[    0.000000] Linux version 4.9.120 (buildbot@builds-03.infra.lede-project.org) (gcc version 7.3.0 (OpenWrt GCC 7.3.0 r7102-3f3a2c9) ) #0 Thu Aug 16 07:51:15 2018
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019750 (MIPS 74Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA956X ver 1 rev 0
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line:  board=ARCHER-C60-V2 mtdparts=spi0.0:192k(u-boot)ro,7808k(firmware),128k(tplink)ro,64k(art)ro console=ttyS0,115200 rootfstype=squashfs noinitrd
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 60020K/65536K available (3363K kernel code, 172K rwdata, 444K rodata, 300K init, 219K bss, 5516K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:51
+[    0.000000] Clocks: CPU:775.000MHz, DDR:650.000MHz, AHB:258.333MHz, Ref:25.000MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 4932285024 ns
+[    0.000007] sched_clock: 32 bits at 387MHz, resolution 2ns, wraps every 5541893118ns
+[    0.008222] Calibrating delay loop... 385.84 BogoMIPS (lpj=1929216)
+[    0.071035] pid_max: default: 32768 minimum: 301
+[    0.075988] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.082968] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.092717] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.103117] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.110588] NET: Registered protocol family 16
+[    0.116588] MIPS: machine is TP-LINK Archer C60 v2
+[    0.600011] registering PCI controller with io_map_base unset
+[    0.606105] Can't analyze schedule() prologue at 803a5594
+[    0.621101] PCI host bridge to bus 0000:00
+[    0.625427] pci_bus 0000:00: root bus resource [mem 0x12000000-0x13ffffff]
+[    0.632709] pci_bus 0000:00: root bus resource [io  0x0001]
+[    0.638574] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    0.645730] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.654108] pci 0000:00:00.0: invalid calibration data
+[    0.659876] pci 0000:00:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    0.667600] pci 0000:00:00.0: using irq 40 for pin 1
+[    0.675640] clocksource: Switched to clocksource MIPS
+[    0.681863] NET: Registered protocol family 2
+[    0.687293] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.694651] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.701394] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.708184] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.714349] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.721209] NET: Registered protocol family 1
+[    0.728274] Crashlog allocated RAM at address 0x3f00000
+[    0.734703] workingset: timestamp_bits=30 max_order=14 bucket_order=0
+[    0.747433] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.753577] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.772077] io scheduler noop registered
+[    0.776248] io scheduler deadline registered (default)
+[    0.782029] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.790922] console [ttyS0] disabled
+[    0.814760] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 1562500) is a 16550A
+[    0.823856] console [ttyS0] enabled
+[    0.823856] console [ttyS0] enabled
+[    0.831406] bootconsole [early0] disabled
+[    0.831406] bootconsole [early0] disabled
+[    0.845196] m25p80 spi0.0: found gd25q64, expected m25p80
+[    0.853076] m25p80 spi0.0: gd25q64 (8192 Kbytes)
+[    0.857904] 4 cmdlinepart partitions found on MTD device spi0.0
+[    0.864011] Creating 4 MTD partitions on "spi0.0":
+[    0.868989] 0x000000000000-0x000000030000 : "u-boot"
+[    0.875755] 0x000000030000-0x0000007d0000 : "firmware"
+[    0.895267] 2 uimage-fw partitions found on MTD device firmware
+[    0.901427] 0x000000030000-0x0000001b0000 : "kernel"
+[    0.907725] 0x0000001b0000-0x0000007d0000 : "rootfs"
+[    0.914226] mtd: device 3 (rootfs) set to be root filesystem
+[    0.920153] 1 squashfs-split partitions found on MTD device rootfs
+[    0.926556] 0x000000470000-0x0000007d0000 : "rootfs_data"
+[    0.933964] 0x0000007d0000-0x0000007f0000 : "tplink"
+[    0.940851] 0x0000007f0000-0x000000800000 : "art"
+[    0.948312] libphy: Fixed MDIO Bus: probed
+[    0.988357] libphy: ag71xx_mdio: probed
+[    1.003584] libphy: ag71xx_mdio: probed
+[    1.638150] ag71xx ag71xx.0: connected to PHY at ag71xx-mdio.1:04 [uid=004dd042, driver=Generic PHY]
+[    1.648172] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:MII
+[    2.277824] ag71xx-mdio.1: Found an AR934X built-in switch
+[    2.330507] eth1: Atheros AG71xx at 0xba000000, irq 5, mode:GMII
+[    2.338480] NET: Registered protocol family 10
+[    2.346829] NET: Registered protocol family 17
+[    2.351472] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    2.364974] 8021q: 802.1Q VLAN Support v1.8
+[    2.370853] hctosys: unable to open rtc device (rtc0)
+[    2.381051] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    2.390005] Freeing unused kernel memory: 300K
+[    2.394594] This architecture does not have kernel memory protection.
+[    2.565653] random: fast init done
+[    3.054564] init: Console is alive
+[    3.058323] init: - watchdog -
+[    3.974301] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    4.017856] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    4.026659] init: - preinit -
+[    4.646249] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[    4.672393] random: procd: uninitialized urandom read (4 bytes read)
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    7.918063] jffs2: notice: (474) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[    7.936002] mount_root: switching to jffs2 overlay
+[    7.965347] urandom-seed: Seeding with /etc/urandom.seed
+[    8.076769] procd: - early -
+[    8.079826] procd: - watchdog -
+[    8.684320] procd: - watchdog -
+[    8.687846] procd: - ubus -
+[    8.788107] random: ubusd: uninitialized urandom read (4 bytes read)
+[    8.796559] random: ubusd: uninitialized urandom read (4 bytes read)
+[    8.804088] random: ubusd: uninitialized urandom read (4 bytes read)
+[    8.811531] procd: - init -
+Please press Enter to activate this console.
+[    9.119854] kmodloader: loading kernel modules from /etc/modules.d/*
+[    9.130076] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    9.144918] Loading modules backported from Linux version wt-2017-11-01-0-gfe248fc2c180
+[    9.153238] Backport generated by backports.git v4.14-rc2-1-31-g86cf0e5d
+[    9.163969] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    9.176448] nf_conntrack version 0.5.0 (1024 buckets, 4096 max)
+[    9.226147] xt_time: kernel timezone is -0000
+[    9.273771] PPP generic driver version 2.4.2
+[    9.280292] NET: Registered protocol family 24
+[    9.305138] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)
+[    9.311330] ath10k_pci 0000:00:00.0: pci irq legacy oper_irq_mode 1 irq_mode 0 reset_mode 0
+[    9.510654] ath10k_pci 0000:00:00.0: Direct firmware load for ath10k/QCA9888/hw2.0/firmware-6.bin failed with error -2
+[    9.521749] ath10k_pci 0000:00:00.0: Falling back to user helper
+[    9.589973] firmware ath10k!QCA9888!hw2.0!firmware-6.bin: firmware_loading_store: map pages failed
+[   10.181865] ath10k_pci 0000:00:00.0: qca9888 hw2.0 target 0x01000000 chip_id 0x00000000 sub 0000:0000
+[   10.191429] ath10k_pci 0000:00:00.0: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 1
+[   10.211932] ath10k_pci 0000:00:00.0: firmware ver 10.4-3.5.3-00053 api 5 features no-p2p,mfp,peer-flow-ctrl,allows-mesh-bcast,no-ps crc32 a9603656
+[   10.528160] ath10k_pci 0000:00:00.0: failed to fetch board data for bus=pci,bmi-chip-id=0,bmi-board-id=20 from ath10k/QCA9888/hw2.0/board-2.bin
+[   10.542164] ath10k_pci 0000:00:00.0: board_file api 1 bmi_id 0:20 crc32 91de85e9
+[   12.697514] ath10k_pci 0000:00:00.0: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-file max-sta 512 raw 0 hwcrypto 1
+[   12.877887] ieee80211 phy1: Atheros AR9561 Rev:0 mem=0xb8100000, irq=47
+[   12.951674] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   13.998369] urandom_read: 5 callbacks suppressed
+[   13.998375] random: jshn: uninitialized urandom read (4 bytes read)
+[   21.254951] IPv6: ADDRCONF(NETDEV_UP): eth1: link is not ready
+[   21.311079] br-lan: port 1(eth1.1) entered blocking state
+[   21.316715] br-lan: port 1(eth1.1) entered disabled state
+[   21.322615] device eth1.1 entered promiscuous mode
+[   21.327610] device eth1 entered promiscuous mode
+[   21.393532] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   21.459699] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   22.887035] eth1: link up (1000Mbps/Full duplex)
+[   22.891833] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+[   22.916430] br-lan: port 1(eth1.1) entered blocking state
+[   22.922015] br-lan: port 1(eth1.1) entered forwarding state
+[   22.954754] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+
+
+
+BusyBox v1.28.3 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt 18.06.1, r7258-5eb055306f
+ -----------------------------------------------------
+root@OpenWrt:/# </nowiki>
+</WRAP>\\
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * ...
+
+===== Tags =====
+
+{{tag>ath79 QCA9561 8Flash 64ram 5port fastethernet QCA9882 802.11ac 802.11abgn U-boot 12v_powered Serial}}

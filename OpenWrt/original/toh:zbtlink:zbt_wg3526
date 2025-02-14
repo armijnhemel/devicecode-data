@@ -1,0 +1,492 @@
+====== ZBT WG3526 ======
+
+/* This template is intended to be used via https://openwrt.org/meta/create_new_device_page ONLY.  */
+/* DO NOT CREATE NEW DEVICEPAGES VIA COPY & PASTE! */
+/* USE https://openwrt.org/meta/create_new_device_page */
+
+A MediaTek MT7621AT based 802.11bgn + 802.11ac + mPCIe + USB 3.0 + microSD + SIM slot network appliance.
+
+Also marketed as Cioswi CSW-WR646 or Digineo AC1200 Pro.
+
+This device has an optional, internal SATA3 port. If you want that, make sure it's included by your seller.
+
+The Router has a SIM card slot on the side and is also offered with a bundled miniPCIe LTE modem. If you want to buy a new LTE router, make sure that your provider allows the router on its network. Some providers have a list of pre-approved routers (technically IMEIs) and cheap Chinese routers never seem to make it on the list.
+
+/*****/
+/* How to add images ========> http://openwrt.org/meta/adding_images_to_openwrt_wiki */
+/*****/
+
+{{:media:zbt:zbt-wg3526_in_cioswi_csw-wr646_router.jpg?400|ZBT WG3526 board from an Cioswi CSW-WR646 Router}}
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^ZBT$", "model": "^WG3526$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^ZBT$", "model": "^WG3526$"}
+} -->
+
+
+===== Installation =====
+The device already has a customized version of OpenWrt pre-installed, thus there are no "installation" links below.
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^ZBT$", "model": "^WG3526$"}
+} -->
+
+See [[toh:zbtlink:wg2626#installation|installation instructions for the wg2626]] as this is basically the same device. It involves booting the router into recovery mode and uploading the image through the Chinese recovery page. (Thanks [[https://forum.openwrt.org/u/wg3526_201908|wg3526_201908]]) If you upload the OpenWrt image through the original web interface, you will get an ''incorrect model'' message.
+
+==== Flash Layout ====
+
+^ Flash Layout           ^^^^^^^
+^ Layer0       | m25p80 [[wp>Serial Peripheral Interface Bus|spi]]0.0: w25q128 16384KiB ||||||
+^ Layer1       | mtd0 **//u-boot//** 192KiB  | mtd1 **//u-boot-env//** 64KiB | mtd2 **//factory//** 64KiB | mtd4 **//firmware//** 16064KiB |||
+^ Layer2       | | | | mtd4 **//kernel//** | mtd5 **//rootfs//** ||
+^ Layer3       | | | | | | mtd6 **//rootfs_data//** |
+^ filesystem   | | ''fw_env'' | ''eeprom'' | ''uImage'' | [[docs:techref:filesystems#squashfs|squashfs]] ''/rom'' | [[docs:techref:filesystems#jffs2|jffs2]] ''/overlay'' |
+^              | | | | | [[docs:techref:filesystems#overlayfs|overlayfs]] <color magenta>''/''</color> ||
+
+
+
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+==== LTE configuration using LuCI====
+The WG3526 is optionally sold as a bundle with an internal miniPCIe cellular card. These are usually distinguishable by having 6 instead of 4 antennas.
+
+There already is a section about [[docs/guide-user/network/wan/wwan/start|WWAN aka 3G/4G/LTE/5G and similar]] in the main Wiki. But if you (like me) are new to WWANs (Wireless Wide Area Networks), it can be a bit confusing.
+
+But fear not! Since the WG3526 already came with OpenWrt installed, you usually //should// be good to go.
+
+First you need to install the drivers. In LuCI go to //System => Software// and press the "Update list" button. Then search for qmi and install these 2 packages: ''kmod-usb-net-qmi-wwan'' and ''uqmi''. And yes, the first is an USB package, even though you have a miniPCIe card.
+
+Reboot your router.
+
+After a reboot, your modem should be detected. Check that by going to //System => System Log// (or //System => Kernel Log// for versions <20) and search for "qmi". You should see something like this:
+
+''[   15.445069] qmi_wwan 1-2:1.4: cdc-wdm0: USB WDM device''
+
+''[   15.452658] qmi_wwan 1-2:1.4 wwan0: register 'qmi_wwan' at [...]''
+
+''[   15.463443] usbcore: registered new interface driver qmi_wwan''
+
+That means your modem was recognized by OpenWrt and you can continue with installing the package ''luci-proto-qmi''. :!: If your modem is not correctly detected by OpenWrt, the installation will fail with a "missing dependencies: wwan" type of error.
+
+Next go to //Network => Interfaces// and hit the "Add new Interface" button at the bottom. Give it a name, for this example I'll use "WWAN". As protocol, you should be able to select the new protocol "QMI cellular". Hit the "Create Interface" button, it will open the "General Settings" tab of the interface configuration:
+  * **Modem device**: there should be only one, select that
+  * **APN**: A quick Google search for "APN YourProvider" should give you the answer
+  * **PIN**: You should know that, the PIN for your SIM card
+  * **Authentication type**: Follow your provider's instructions
+  * **PDP Type**: That's really up to you, IPv4 and/or IPv6
+:!: If your provider provides AP-information for both IPv6 and IPv4, you need to choose IPv4, for some reason. This will also give you an IPv6 prefix, if IPv6 is available.
+
+Then switch to the "Firewall Settings" tab at the top and select the firewall-zone "WAN". Hit "Save". Back in the Interface list, apply the pending changes.
+
+To test your connection, go to //Network => Diagnostics//, hit "IPv4 Ping" and wait a bit. In the output you should see something like ''5 packets transmitted, 5 packets received, 0% packet loss'' near the bottom. If that's the case you're good to go, as far as LTE is concerned. For other configurations, please [[docs/start|check the wiki]].
+
+Under //Network => Interfaces// you now have 2 additional interfaces "WWAN" and "WWAN_4". That's OK, ignore the "WWAN_4" interface, it's only used to get and display your IPv4 address.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24   |
+| vlan1 (eth0.1)   | LAN ports (1 to 4)   | None             |
+| vlan2 (eth0.2)   | WAN port             | DHCP             |
+| wl0              | WiFi                 | Disabled         |
+
+==== Switch Ports (for VLANs) ====
+
+Numbers 0-3 are Ports LAN4-LAN1 as labeled on the unit, number 5 is the Internet (WAN) on the unit, 6 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 3 when configuring VLANs. vlan1 = eth0.1, vlan2 = eth0.2 and so on.
+^ Port             ^ Switch port   ^
+| CPU (internal)   | 6     |
+| Internet (WAN)   | 4     |
+| LAN 1            | 3     |
+| LAN 2            | 2     |
+| LAN 3            | 1     |
+| LAN 4            | 0     |
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+The ZBT WG3526 has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| Reset                |  reset  |
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^ZBT$", "model": "^WG3526$"}
+} -->
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+//Front://\\
+**Insert photo of front of the casing**
+
+//Back://\\
+**Insert photo of back of the casing**
+
+//Backside label://\\
+**Insert photo of backside label**
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+To remove the cover and open the device, just flip it over and remove the 3 screws on the bottom. The center screw may be hidden beneath a warranty seal sticker, remove that. Again: **This will void your warranty!** Then you can slide open the case.
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+You'll need an USB-TTL converter with pins to plug into the holes in the board:
+
+{{media:zbt:zbt-wg3526_in_cioswi_csw-wr646_router_serial.jpg?400|Serial connector holes}}
+
+^ Serial connection parameters\\ for ZBT WG3526  | 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+The JTAG port is the 2 rows of 3 holes to the lower right of the miniPCIe Card (see photo above).
+
+===== Bootloader mods =====
+-> [[docs:techref:bootloader]]
+
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 4.14.180 (builder@buildhost) (gcc version 7.5.0 (OpenWrt GCC 7.5.0 r11063-85e04e9f46)) #0 SMP Sat May 16 18:32:20 2020
+[    0.000000] SoC Type: MediaTek MT7621 ver:1 eco:3
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] MIPS: machine is ZBT-WG3526 (16M)
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 1c000000 @ 00000000 (usable)
+[    0.000000]  memory: 04000000 @ 20000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] VPE topology {2,2} total 4
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000]   HighMem  [mem 0x0000000010000000-0x0000000023ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x000000001bffffff]
+[    0.000000]   node   0: [mem 0x0000000020000000-0x0000000023ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000023ffffff]
+[    0.000000] On node 0 totalpages: 131072
+[    0.000000] free_area_init_node: node 0, pgdat 805727a0, node_mem_map 81003000
+[    0.000000]   Normal zone: 512 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 65536 pages, LIFO batch:15
+[    0.000000]   HighMem zone: 65536 pages, LIFO batch:15
+[    0.000000] random: get_random_bytes called from 0x80575744 with crng_init=0
+[    0.000000] percpu: Embedded 14 pages/cpu s26224 r8192 d22928 u57344
+[    0.000000] pcpu-alloc: s26224 r8192 d22928 u57344 alloc=14*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 [0] 2 [0] 3
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 130560
+[    0.000000] Kernel command line: console=ttyS0,115200 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Writing ErrCtl register=00050900
+[    0.000000] Readback ErrCtl register=00050900
+[    0.000000] Memory: 512048K/524288K available (4748K kernel code, 239K rwdata, 588K rodata, 1260K init, 255K bss, 12240K reserved, 0K cma-reserved, 262144K highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS: 256
+[    0.000000] CPU Clock: 880MHz
+[    0.000000] clocksource: GIC: mask: 0xffffffffffffffff max_cycles: 0xcaf478abb4, max_idle_ns: 440795247997 ns
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 4343773742 ns
+[    0.000010] sched_clock: 32 bits at 440MHz, resolution 2ns, wraps every 4880645118ns
+[    0.007828] Calibrating delay loop... 586.13 BogoMIPS (lpj=2930688)
+[    0.073988] pid_max: default: 32768 minimum: 301
+[    0.078763] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.085272] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.094151] Hierarchical SRCU implementation.
+[    0.099312] smp: Bringing up secondary CPUs ...
+[    0.105384] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.105393] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.105405] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.105547] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.164059] Synchronize counters for CPU 1: done.
+[    0.205246] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.205255] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.205262] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.205335] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.255121] Synchronize counters for CPU 2: done.
+[    0.286418] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.286426] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.286432] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.286510] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.340307] Synchronize counters for CPU 3: done.
+[    0.370162] smp: Brought up 1 node, 4 CPUs
+[    0.377913] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.387708] futex hash table entries: 1024 (order: 3, 32768 bytes)
+[    0.394024] pinctrl core: initialized pinctrl subsystem
+[    0.400752] NET: Registered protocol family 16
+[    0.410913] FPU Affinity set after 11720 emulations
+[    0.411649] pull PCIe RST: RALINK_RSTCTRL = 0
+[    0.716387] release PCIe RST: RALINK_RSTCTRL = 7000000
+[    0.721436] ***** Xtal 40MHz *****
+[    0.724791] release PCIe RST: RALINK_RSTCTRL = 7000000
+[    0.729888] Port 0 N_FTS = 1b105000
+[    0.733360] Port 1 N_FTS = 1b105000
+[    0.736798] Port 2 N_FTS = 1b102800
+[    1.892090] PCIE2 no card, disable it(RST&CLK)
+[    1.896448]  -> 21007f2
+[    1.898852] PCIE0 enabled
+[    1.901443] PCIE1 enabled
+[    1.904050] PCI host bridge /pcie@1e140000 ranges:
+[    1.908832]  MEM 0x0000000060000000..0x000000006fffffff
+[    1.913981]   IO 0x000000001e160000..0x000000001e16ffff
+[    1.919176] PCI coherence region base: 0xbfbf8000, mask/settings: 0x60000000
+[    1.935973] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    1.941863] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    1.947592] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    1.954756] i2c-mt7621 1e000900.i2c: clock 100KHz, re-start not support
+[    1.961924] PCI host bridge to bus 0000:00
+[    1.965979] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff]
+[    1.972762] pci_bus 0000:00: root bus resource [io  0xffffffff]
+[    1.978665] pci_bus 0000:00: root bus resource [??? 0x00000000 flags 0x0]
+[    1.985383] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    1.993318] pci 0000:00:00.0: [0e8d:0801] type 01 class 0x060400
+[    1.993361] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    1.993373] pci 0000:00:00.0: reg 0x14: [mem 0x60300000-0x6030ffff]
+[    1.993438] pci 0000:00:00.0: supports D1
+[    1.993447] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    1.993718] pci 0000:00:01.0: [0e8d:0801] type 01 class 0x060400
+[    1.993759] pci 0000:00:01.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    1.993777] pci 0000:00:01.0: reg 0x14: [mem 0x60310000-0x6031ffff]
+[    1.993849] pci 0000:00:01.0: supports D1
+[    1.993858] pci 0000:00:01.0: PME# supported from D0 D1 D3hot
+[    1.994356] pci 0000:01:00.0: [14c3:7603] type 00 class 0x028000
+[    1.994421] pci 0000:01:00.0: reg 0x10: [mem 0x00000000-0x000fffff]
+[    1.994555] pci 0000:01:00.0: PME# supported from D0 D3hot D3cold
+[    1.994763] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    1.995003] pci 0000:02:00.0: [14c3:7662] type 00 class 0x028000
+[    1.995073] pci 0000:02:00.0: reg 0x10: [mem 0x00000000-0x000fffff 64bit]
+[    1.995121] pci 0000:02:00.0: reg 0x30: [mem 0x00000000-0x0000ffff pref]
+[    1.995216] pci 0000:02:00.0: PME# supported from D0 D3hot D3cold
+[    1.995426] pci_bus 0000:02: busn_res: [bus 02-ff] end is updated to 02
+[    1.995455] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 02
+[    1.995541] pci 0000:00:00.0: BAR 0: no space for [mem size 0x80000000]
+[    2.002055] pci 0000:00:00.0: BAR 0: failed to assign [mem size 0x80000000]
+[    2.008993] pci 0000:00:01.0: BAR 0: no space for [mem size 0x80000000]
+[    2.015537] pci 0000:00:01.0: BAR 0: failed to assign [mem size 0x80000000]
+[    2.022466] pci 0000:00:00.0: BAR 8: assigned [mem 0x60000000-0x600fffff]
+[    2.029190] pci 0000:00:01.0: BAR 8: assigned [mem 0x60100000-0x601fffff]
+[    2.035948] pci 0000:00:01.0: BAR 9: assigned [mem 0x60200000-0x602fffff pref]
+[    2.043095] pci 0000:00:00.0: BAR 1: assigned [mem 0x60300000-0x6030ffff]
+[    2.049857] pci 0000:00:01.0: BAR 1: assigned [mem 0x60310000-0x6031ffff]
+[    2.056591] pci 0000:01:00.0: BAR 0: assigned [mem 0x60000000-0x600fffff]
+[    2.063333] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    2.068243] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    2.075009] pci 0000:02:00.0: BAR 0: assigned [mem 0x60100000-0x601fffff 64bit]
+[    2.082244] pci 0000:02:00.0: BAR 6: assigned [mem 0x60200000-0x6020ffff pref]
+[    2.089420] pci 0000:00:01.0: PCI bridge to [bus 02]
+[    2.094330] pci 0000:00:01.0:   bridge window [mem 0x60100000-0x601fffff]
+[    2.101089] pci 0000:00:01.0:   bridge window [mem 0x60200000-0x602fffff pref]
+[    2.109776] clocksource: Switched to clocksource GIC
+[    2.116466] NET: Registered protocol family 2
+[    2.121617] TCP established hash table entries: 2048 (order: 1, 8192 bytes)
+[    2.128504] TCP bind hash table entries: 2048 (order: 2, 16384 bytes)
+[    2.134934] TCP: Hash tables configured (established 2048 bind 2048)
+[    2.141351] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    2.147121] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    2.153581] NET: Registered protocol family 1
+[    2.157908] PCI: CLS 0 bytes, default 32
+[    2.389716] 4 CPUs re-calibrate udelay(lpj = 2924544)
+[    2.396308] Crashlog allocated RAM at address 0x3f00000
+[    2.401743] workingset: timestamp_bits=30 max_order=17 bucket_order=0
+[    2.412659] random: fast init done
+[    2.418834] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    2.424646] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    2.438074] bounce: pool size: 64 pages
+[    2.441920] io scheduler noop registered
+[    2.445743] io scheduler deadline registered (default)
+[    2.452155] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    2.462169] console [ttyS0] disabled
+[    2.465719] 1e000c00.uartlite: ttyS0 at MMIO 0x1e000c00 (irq = 19, base_baud = 3125000) is a 16550A
+[    2.474778] console [ttyS0] enabled
+[    2.481655] bootconsole [early0] disabled
+[    2.492081] MediaTek Nand driver init, version v2.1 Fix AHB virt2phys error
+[    2.499420] spi-mt7621 1e000b00.spi: sys_freq: 220000000
+[    2.514315] m25p80 spi0.0: w25q128 (16384 Kbytes)
+[    2.519063] 4 fixed-partitions partitions found on MTD device spi0.0
+[    2.525413] Creating 4 MTD partitions on "spi0.0":
+[    2.530214] 0x000000000000-0x000000030000 : "u-boot"
+[    2.536168] 0x000000030000-0x000000040000 : "u-boot-env"
+[    2.542455] 0x000000040000-0x000000050000 : "factory"
+[    2.548358] 0x000000050000-0x000001000000 : "firmware"
+[    2.554696] 2 uimage-fw partitions found on MTD device firmware
+[    2.560664] Creating 2 MTD partitions on "firmware":
+[    2.565616] 0x000000000000-0x0000001c989b : "kernel"
+[    2.571572] 0x0000001c989b-0x000000fb0000 : "rootfs"
+[    2.577360] mtd: device 5 (rootfs) set to be root filesystem
+[    2.583185] 1 squashfs-split partitions found on MTD device rootfs
+[    2.589349] 0x000000480000-0x000000fb0000 : "rootfs_data"
+[    2.596482] libphy: Fixed MDIO Bus: probed
+[    2.671791] libphy: mdio: probed
+[    4.074715] mtk_soc_eth 1e100000.ethernet: loaded mt7530 driver
+[    4.081442] mtk_soc_eth 1e100000.ethernet eth0: mediatek frame engine at 0xbe100000, irq 22
+[    4.092443] NET: Registered protocol family 10
+[    4.098495] Segment Routing with IPv6
+[    4.102296] NET: Registered protocol family 17
+[    4.106795] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    4.119705] 8021q: 802.1Q VLAN Support v1.8
+[    4.126527] hctosys: unable to open rtc device (rtc0)
+[    4.139690] VFS: Mounted root (squashfs filesystem) readonly on device 31:5.
+[    4.151639] Freeing unused kernel memory: 1260K
+[    4.156169] This architecture does not have kernel memory protection.
+[    4.963265] init: Console is alive
+[    4.966935] init: - watchdog -
+[    6.298027] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    6.477445] usbcore: registered new interface driver usbfs
+[    6.483085] usbcore: registered new interface driver hub
+[    6.488544] usbcore: registered new device driver usb
+[    6.501602] SCSI subsystem initialized
+[    6.516477] libata version 3.00 loaded.
+[    6.525407] xhci-mtk 1e1c0000.xhci: 1e1c0000.xhci supply vbus not found, using dummy regulator
+[    6.534215] xhci-mtk 1e1c0000.xhci: 1e1c0000.xhci supply vusb33 not found, using dummy regulator
+[    6.543200] xhci-mtk 1e1c0000.xhci: xHCI Host Controller
+[    6.548522] xhci-mtk 1e1c0000.xhci: new USB bus registered, assigned bus number 1
+[    6.559916] xhci-mtk 1e1c0000.xhci: hcc params 0x01401198 hci version 0x96 quirks 0x0000000000210010
+[    6.569096] xhci-mtk 1e1c0000.xhci: irq 21, io mem 0x1e1c0000
+[    6.575902] hub 1-0:1.0: USB hub found
+[    6.579793] hub 1-0:1.0: 2 ports detected
+[    6.584467] xhci-mtk 1e1c0000.xhci: xHCI Host Controller
+[    6.589837] xhci-mtk 1e1c0000.xhci: new USB bus registered, assigned bus number 2
+[    6.597301] xhci-mtk 1e1c0000.xhci: Host supports USB 3.0  SuperSpeed
+[    6.603923] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    6.612916] hub 2-0:1.0: USB hub found
+[    6.616738] hub 2-0:1.0: 1 port detected
+[    6.693372] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    6.710172] init: - preinit -
+[    7.109832] usb 1-2: new high-speed USB device number 2 using xhci-mtk
+[    7.370361] random: procd: uninitialized urandom read (4 bytes read)
+[    7.702351] mtk_soc_eth 1e100000.ethernet: PPE started
+[   11.153748] jffs2: notice: (510) jffs2_build_xattr_subsystem: complete building xattr subsystem, 6 of xdatum (2 unchecked, 4 orphan) and 94 of xref (4 dead, 0 orphan) found.
+[   11.177323] mount_root: switching to jffs2 overlay
+[   11.258682] overlayfs: upper fs does not support tmpfile.
+[   11.280164] urandom-seed: Seeding with /etc/urandom.seed
+[   11.421254] mtk_soc_eth 1e100000.ethernet: 0x100 = 0x6060000c, 0x10c = 0x80818
+[   11.475436] procd: - early -
+[   11.478424] procd: - watchdog -
+[   12.269962] procd: - watchdog -
+[   12.273446] procd: - ubus -
+[   12.452470] random: ubusd: uninitialized urandom read (4 bytes read)
+[   12.462441] random: ubusd: uninitialized urandom read (4 bytes read)
+[   12.469201] random: ubusd: uninitialized urandom read (4 bytes read)
+[   12.476453] procd: - init -
+[   12.541193] random: crng init done
+[   12.544624] random: 5 urandom warning(s) missed due to ratelimiting
+[   13.116820] kmodloader: loading kernel modules from /etc/modules.d/*
+[   13.128444] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   13.141626] Loading modules backported from Linux version v4.19.120-0-gfdc072324f3c
+[   13.149283] Backport generated by backports.git v4.19.120-1-0-g60c3a249
+[   13.157797] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   13.170818] nf_conntrack version 0.5.0 (8192 buckets, 32768 max)
+[   13.221394] xt_time: kernel timezone is -0000
+[   13.287520] urngd: v1.0.2 started.
+[   13.294174] bus=0x1, slot = 0x0, irq=0xff
+[   13.298437] mt7603e 0000:01:00.0: ASIC revision: 76030010
+[   14.391317] mt7603e 0000:01:00.0: Firmware Version: ap_pcie
+[   14.396892] mt7603e 0000:01:00.0: Build Time: 20160107100755
+[   14.439768] mt7603e 0000:01:00.0: firmware init done
+[   14.607974] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[   14.619101] bus=0x2, slot = 0x1, irq=0xff
+[   14.623401] mt76x2e 0000:02:00.0: ASIC revision: 76120044
+[   15.344472] mt76x2e 0000:02:00.0: ROM patch build: 20141115060606a
+[   15.354294] mt76x2e 0000:02:00.0: Firmware Version: 0.0.00
+[   15.359830] mt76x2e 0000:02:00.0: Build: 1
+[   15.363906] mt76x2e 0000:02:00.0: Build Time: 201507311614____
+[   15.389773] mt76x2e 0000:02:00.0: Firmware running!
+[   15.397790] ieee80211 phy1: Selected rate control algorithm 'minstrel_ht'
+[   15.407334] PPP generic driver version 2.4.2
+[   15.413290] NET: Registered protocol family 24
+[   15.420838] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   21.894324] mtk_soc_eth 1e100000.ethernet: PPE started
+[   21.908123] br-lan: port 1(eth0.1) entered blocking state
+[   21.913690] br-lan: port 1(eth0.1) entered disabled state
+[   21.919943] device eth0.1 entered promiscuous mode
+[   21.924813] device eth0 entered promiscuous mode
+[   21.934477] br-lan: port 1(eth0.1) entered blocking state
+[   21.939942] br-lan: port 1(eth0.1) entered forwarding state
+[   21.946203] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   22.920572] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   23.442859] IPv6: ADDRCONF(NETDEV_UP): lan-client: link is not ready
+[   24.265910] br-lan: port 2(lan-client) entered blocking state
+[   24.271736] br-lan: port 2(lan-client) entered disabled state
+[   24.277953] device lan-client entered promiscuous mode
+[   27.646684] lan-client: authenticate with b0:be:76:23:85:bb
+[   28.012603] lan-client: send auth to b0:be:76:23:85:bb (try 1/3)
+[   28.020400] lan-client: authenticated
+[   28.039862] lan-client: associate with b0:be:76:23:85:bb (try 1/3)
+[   28.047804] lan-client: RX AssocResp from b0:be:76:23:85:bb (capab=0x11 status=0 aid=1)
+[   28.056158] lan-client: associated
+[   28.192107] IPv6: ADDRCONF(NETDEV_CHANGE): lan-client: link becomes ready
+[   28.199380] br-lan: port 2(lan-client) entered blocking state
+[   28.205150] br-lan: port 2(lan-client) entered forwarding state
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * ...
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ramips MT7621 16flash 512ram 5port GigabitEthernet 802.11bgn 802.11ac minipciexpress 1USB USB3.0 1SIM}}

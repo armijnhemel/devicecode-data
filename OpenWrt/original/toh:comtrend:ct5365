@@ -1,0 +1,421 @@
+====== Comtrend CT-5365 ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+Comtrend CT 5365 is based on a Broadcom processor (brcm63xx/96348A-122). OpenWrt correct firmware is **openwrt-brcm63xx-generic-CT-5365-squashfs-cfe.bin**, which can be directly flashed from the original firmware page.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^CT-5365$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "supportedsincerel", "firmwareopenwrtinstallurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^CT-5365$"}
+} -->
+==== Flashing ANY Firmware ====
+You must set your TCP/IP v4 protocol to:
+  - IP: 192.168.1.2
+  - Netmask: 255.255.255.0
+  - Gateway: 192.168.1.1
+  - DNS: (optional, can be blank).
+Then:
+  - Power off the router.
+  - Press reset button near the antenna.
+  - Keep it pressed while powering up during ~20+ seconds.
+  - Acces to http://192.168.1.1 and upload binary file.
+  - Wait until router reboots.
+
+===== Hardware =====
+==== Info ====
+| **[[wp>Instruction set|Architecture]]:**   | [[wp>MIPS architecture|MIPS]]    |
+| **Vendor:**                                | [[wp>Broadcom]]                  |
+| **[[docs:techref:bootloader]]:**            | [[docs:techref:bootloader:cfe]]   |
+| **Board Id**                               | 96348A-122                       |
+| **[[docs:techref:hardware:soc|System-On-Chip]]:**   | {{:media:datasheets:bcm6348_product_brief.pdf|Broadcom BCM6348}} b0 |
+| **[[docs:techref:hardware:cpu|CPU]]/Speed**         | BMIPS3300 V0.7 / 240 MHz         |
+| **Flash-Chip:**                            | MX29LV320AB                      |
+| **Flash size**                             | 4 MiB                            |
+| **RAM**                                    | 16 MiB                           |
+| **Wireless**                               | BRCM4318 (Rev 9) 802.11b/g       |
+| **Ethernet:**                              | Broadcom  {{:media:datasheets:bcm5325_datasheet.pdf|BCM5325}} w/ vlan support [[docs:techref:swconfig]] |
+| **USB**                                    | [[#usb_mod|USB mod]] 1x 1.1 |
+| **Power adapter**                          | 18VDC, 500 mA / ELEMENTECH AU1091806e   |
+| **Antenna**                                | 1x                                      |
+| **[[docs:techref:hardware:port.serial|Serial]]:**   | [[#Serial|Yes]]                         |
+| **[[docs:techref:hardware:port.jtag|JTAG]]:**       | [[#JTAG|?]]                             |
+
+==== BGA exposed ====
+
+{{:media:comtrend:ct-5365-bga_board.jpg?400x300|}}    {{:media:datasheets:bcm6348_skfbg_pinout.png?0x300|}}
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG port of this specific device:\\
+**Insert photo of PCB with markings**
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+{{media:comtrend:ct-5365_serial.jpg?500x300|}}
+
+==== Wifi Antennas ====
+{{media:comtrend:ct-5365_wifi_antennas.jpg?500x300|}}
+
+===== GPIO =====
+==== LEDs ====
+Read: [[docs:guide-user:base-system:led_configuration|System configuration: Leds]] to configure the leds
+^ GPIO   ^ Event   ^
+| 0      | Power   |
+| 2      | Alarm   |
+| 6      | WPS     |
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+^ GPIO   ^ Event   ^
+| 33     | Reset   |
+| 34     | Wifi    |
+| 35     | WPS     |
+
+
+==== Other ====
+
+^ GPIO ^ PCB markings ^
+| 1 | {{:media:comtrend:ct-5365-gios_extra.jpg?linkonly|}} |
+| 4 | ::: |
+| 5 | ::: |
+| 29 | ::: |
+
+===== Hardware mods =====
+As a beginner, you really should inform yourself about [[docs:techref:hardware:soldering]] in general and then obtain some practical experience!
+
+==== USB Mod ====
+We will wire the 2nd USB port at the SoC externally to an USB socket:
+
+{{:media:comtrend:ct-5365-usb-mod.jpg?direct&500|}}
+
+Note: The USB1 PWRFLT VIA must be totally isolated from ground before soldering on that area the pullup resistor.
+
+Now for making it work we need to patch the kernel. This is the patch for Backfire:
+<code diff>--- a/drivers/usb/host/ohci-bcm63xx.c
++++ b/drivers/usb/host/ohci-bcm63xx.c
+@@ -24,7 +24,6 @@
+          * port 2 can be shared with USB slave, but all boards seem to
+          * have only one host port populated, so we can hardcode it
+          */
+-	ohci->num_ports = 1;
+ 
+ 	ret = ohci_init(ohci);
+ 	if (ret < 0)
+@@ -80,7 +79,7 @@
+ 
+ 		clk_enable(clk);
+ 		usb_host_clock = clk;
+-		bcm_rset_writel(RSET_OHCI_PRIV, 0, OHCI_PRIV_REG);
++		bcm_rset_writel(RSET_OHCI_PRIV, 1, OHCI_PRIV_REG);
+ 
+ 	} else if (BCMCPU_IS_6358()) {
+ 		reg = bcm_rset_readl(RSET_USBH_PRIV, USBH_PRIV_SWAP_REG);
+</code>
+Build Openwrt with this patch and flash the new firmware, or just replace your ohci-hcd.ko module with the new one in the router.
+
+The patch used for versions ≥ BB is a bit different. You need to define 2 USB ports on the board data, and touch a different file for OHCI_PRIV_REG register. FIXME
+
+===== Network =====
+==== Interfaces ====
+Default network configuration:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| eth0             | LAN ports (1 to 4)   | None                    |
+| radio0           | WiFi                 | Disabled                |
+
+==== Switch ====
+^ Switch Port   ^ Ethernet Connector   ^
+| 0             | 4                    |
+| 1             | 3                    |
+| 2             | 2                    |
+| 3             | 1                    |
+| 4             | -                    |
+| 5             | CPU                  |
+
+==== Example Network-VLAN Configuration (Movistar FTTH) ====
+Path: **/etc/config/network**
+<code>
+config 'switch' 'eth0'
+option 'enable' '1'
+option 'enable_vlan' '1'
+option 'reset' '1'
+
+config 'switch_vlan' 'vlan2'
+option 'vlan' '2'
+option 'device' 'eth0'
+option 'ports' '1 2 3 5'
+
+config 'switch_vlan' 'vlan6'
+option 'vlan' '6'
+option 'device' 'eth0'
+option 'ports' '0t 5'
+
+config 'interface' 'loopback'
+option 'ifname' 'lo'
+option 'proto' 'static'
+option 'ipaddr' '127.0.0.1'
+option 'netmask' '255.0.0.0'
+
+config 'interface' 'lan'
+option 'type' 'bridge'
+option 'ifname' 'eth0.2'
+option 'proto' 'static'
+option 'ipaddr' '192.168.1.1'
+option 'netmask' '255.255.255.0'
+option 'gateway' '192.168.1.1'
+option 'dns' '8.8.8.8'
+option 'nat' '1'
+option 'defaultroute' '0'
+option 'peerdns' '0'
+
+config 'interface' 'wan'
+option 'ifname' 'eth0.6'
+option 'proto' 'pppoe'
+option 'username' 'adslppp@telefonicanetpa'
+option 'password' 'adslppp'
+</code>
+
+===== Bootlogs =====
+==== OEM Bootlog ====
+<WRAP bootlog>
+<nowiki>CFE version 1.0.37-6.8-39 for BCM96348 (32bit,SP,BE)
+Build Date: äº  9æ  9 18:04:58 CST 2008 (tony@broadcom2.comtrend.com)
+Copyright (C) 2000-2005 Broadcom Corporation.
+
+Boot Address 0xbfc00000
+
+Initializing Arena.
+Initializing Devices.
+Parallel flash device: name MX29LV320AB, id 0x22a8, size 4096KB
+CPU type 0x29107: 240MHz, Bus: 133MHz, Ref: 26MHz
+Total memory: 16777216 bytes (16MB)
+
+Total memory used by CFE:  0x80401000 - 0x80525830 (1198128)
+Initialized Data:          0x8041CF50 - 0x8041EF50 (8192)
+BSS Area:                  0x8041EF50 - 0x80423830 (18656)
+Local Heap:                0x80423830 - 0x80523830 (1048576)
+Stack Area:                0x80523830 - 0x80525830 (8192)
+Text (code) segment:       0x80401000 - 0x8041CF48 (114504)
+Boot area (physical):      0x00526000 - 0x00566000
+Relocation Factor:         I:00000000 - D:00000000
+
+Board IP address                  : 192.168.1.1
+Host IP address                   : 192.168.1.100
+Gateway IP address                :
+Run from flash/host (f/h)         : f
+Default host run file name        : vmlinux
+Default host flash file name      : bcm963xx_fs_kernel
+Boot delay (0-9 seconds)          : 1
+Board Id Name                     : 96348A-122
+Psi size in KB                    : 24
+Number of MAC Addresses (1-32)    : 11
+Base MAC Address                  : 64:68:0c:95:04:87
+Ethernet PHY Type                 : Internal
+Memory size in MB                 : 16
+CMT Thread Number                 : 0
+ 
+*** Press any key to stop auto run (3 seconds) ***
+Auto run second count down: 33210
+Code Address: 0x80010000, Entry Address: 0x801c8018
+Decompression OK!
+Entry at 0x801c8018
+Closing network.
+Starting program at 0x801c8018
+
+Linux version 2.6.8.1 (roger@broadcom2.comtrend.com) (gcc version 3.4.2) #1 Thu Jul 9 18:29:01 CST 2009
+Parallel flash device: name MX29LV320AB, id 0x22a8, size 4096KB
+Total Flash size: 4096K with 71 sectors
+96348A-122 prom init
+CPU revision is: 00029107
+Determined physical RAM map:
+ memory: 00fa0000 @ 00000000 (usable)
+On node 0 totalpages: 4000
+  DMA zone: 4000 pages, LIFO batch:1
+  Normal zone: 0 pages, LIFO batch:1
+  HighMem zone: 0 pages, LIFO batch:1
+Built 1 zonelists
+Kernel command line: root=31:0 ro noinitrd
+brcm mips: enabling icache and dcache...
+Primary instruction cache 16kB, physically tagged, 2-way, linesize 16 bytes.
+Primary data cache 8kB 2-way, linesize 16 bytes.
+PID hash table entries: 64 (order 6: 512 bytes)
+Using 120.000 MHz high precision timer.
+Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+Memory: 13820k/16000k available (1529k kernel code, 2160k reserved, 227k data, 72k init, 0k highmem)
+Calibrating delay loop... 239.20 BogoMIPS
+Mount-cache hash table entries: 512 (order: 0, 4096 bytes)
+Checking for 'wait' instruction...  unavailable.
+NET: Registered protocol family 16
+MPI: No Card is in the PCMCIA slot
+Can't analyze prologue code at 8018ccb4
+usbcore: registered new driver hub
+Initializing Cryptographic API
+PPP generic driver version 2.4.2
+NET: Registered protocol family 24
+Using noop io scheduler
+bcm963xx_mtd driver v1.0
+ohci_hcd: 2004 Feb 02 USB 1.1 'Open' Host Controller (OHCI) Driver (PCI)
+ohci_hcd: block sizes: ed 64 td 64
+PCI: Enabling device 0000:00:09.0 (0000 -> 0002)
+ohci_hcd 0000:00:09.0: OHCI Host Controller
+PCI: Setting latency timer of device 0000:00:09.0 to 64
+ohci_hcd 0000:00:09.0: irq 20, pci mem c0000b00
+ohci_hcd 0000:00:09.0: new USB bus registered, assigned bus number 1
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 2 ports detected
+usbcore: registered new driver usblp
+drivers/usb/class/usblp.c: v0.13: USB Printer Device Class driver
+brcmboard: brcm_board_init entry
+SES: Button GPIO 0x8006 is enabled
+SES: Button Interrupt 0x3 is enabled
+SES: LED GPIO 0x8006 is enabled
+bcm963xx_serial driver v2.0
+NET: Registered protocol family 2
+IP: routing cache hash table of 512 buckets, 4Kbytes
+TCP: Hash tables configured (established 512 bind 1024)
+Initializing IPsec netlink socket
+NET: Registered protocol family 1
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+Ebtables v2.0 registered
+NET: Registered protocol family 8
+NET: Registered protocol family 20
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted root (squashfs filesystem) readonly.
+Freeing unused kernel memory: 72k freed
+
+init started:  BusyBox v1.00 (2009.07.09-10:31+0000) multi-call binary
+Algorithmics/MIPS FPU Emulator v1.5
+
+
+BusyBox v1.00 (2009.07.09-10:31+0000) Built-in shell (msh)
+Enter 'help' for a list of built-in commands.
+
+Loading drivers and kernel modules... 
+atmapi: module license 'Proprietary' taints kernel.
+blaadd: blaa_detect entry
+adsl: adsl_init entry
+Broadcom BCMPROCFS v1.0 initialized
+Broadcom BCM6348B0 Ethernet Network Device v0.3 Jul  9 2009 18:28:13
+Config Ethernet Switch Through SPI Slave Select 0
+dgasp: kerSysRegisterDyingGaspHandler: eth0 registered 
+eth0: MAC Address: 64:68:0C:95:04:87
+Broadcom BCM6348B0 USB Network Device v0.4 Jul  9 2009 18:28:15
+usb0: MAC Address: 64 68 0C 95 04 88
+usb0: Host MAC Address: 64 68 0C 95 04 89
+PCI: Setting latency timer of device 0000:00:01.0 to 64
+PCI: Enabling device 0000:00:01.0 (0004 -> 0006)
+wl: srom not detected, using main memory mapped srom info (wombo board)
+wl0: wlc_attach: use mac addr from the system pool by id: 0x776c0000
+wl0: MAC Address: 64:68:0C:95:04:8A
+wl0: Broadcom BCM4318 802.11 Wireless Controller 4.150.10.5.cpe2.0
+dgasp: kerSysRegisterDyingGaspHandler: wl0 registered 
+StartHandler
+BcmAdsl_Initialize=0xC00734B8, g_pFnNotifyCallback=0xC0092B04
+AnnexCParam=0x2AAF5140 AnnexAParam=0x10002984 adsl2=0x00000000
+pSdramPHY=0xA0FFFFF8, 0xFDFFFFFF 0xDFFFFFFF
+AdslCoreSharedMemInit: shareMemAvailable=20032
+AdslCoreHwReset:  AdslOemDataAddr = 0xA0FEFFC4
+AnnexCParam=0x2AAF5140 AnnexAParam=0x10002984 adsl2=0x00000000
+dgasp: kerSysRegisterDyingGaspHandler: dsl0 registered 
+ip_tables: (C) 2000-2002 Netfilter core team
+ip_conntrack version 2.1 (125 buckets, 0 max) - 368 bytes per conntrack
+ip_conntrack_pptp version 2.1 loaded
+ip_nat_pptp version 2.0 loaded
+ip_conntrack_h323: init 
+ip_nat_h323: initialize the module!
+ip_conntrack_rtsp v0.01 loading
+ip_nat_rtsp v0.01 loading
+
+==>   Comtrend Router Software Version: A111-306TLF-C02_R16   <==
+device usb0 entered promiscuous mode
+br0: port 1(usb0) entering learning state
+br0: topology change detected, propagating
+br0: port 1(usb0) entering forwarding state
+device eth0 entered promiscuous mode
+br0: port 2(eth0) entering learning state
+br0: topology change detected, propagating
+br0: port 2(eth0) entering forwarding state
+wsc_del_ie: no valid ie was saved, len = -1
+wsc_del_ie: no valid ie was saved, len = -1
+killall: lld2d: no process killed
+killall: wsccmd: no process killed
+killall: wps_btn: no process killed
+wlctl: Unsupported
+Setting SSID "WLAN_0487"
+Setting SSID "Guest"
+Setting country code using abbreviation: "ES"
+wl0: current channel 11
+device wl0 entered promiscuous mode
+br0: port 3(wl0) entering learning state
+br0: topology change detected, propagating
+br0: port 3(wl0) entering forwarding state
+device wl0.1 entered promiscuous mode
+pvc2684d: Interface "nas_8_32" created sucessfully
+pvc2684d: Communicating over ATM 0.8.32, encapsulation: LLC
+device nas_8_32 entered promiscuous mode
+br0: port 5(nas_8_32) entering learning state
+br0: topology change detected, propagating
+br0: port 5(nas_8_32) entering forwarding state
+device eth0 left promiscuous mode
+br0: port 2(eth0) entering disabled state
+eth0.2: MAC Address: 64:68:0C:95:04:87
+eth0.3: MAC Address: 64:68:0C:95:04:87
+eth0.4: MAC Address: 64:68:0C:95:04:87
+eth0.5: MAC Address: 64:68:0C:95:04:87
+device usb0 left promiscuous mode
+br0: port 1(usb0) entering disabled state
+device usb0 entered promiscuous mode
+br0: port 1(usb0) entering learning state
+br0: topology change detected, propagating
+br0: port 1(usb0) entering forwarding state
+device eth0.2 entered promiscuous mode
+br0: port 2(eth0.2) entering learning state
+br0: topology change detected, propagating
+br0: port 2(eth0.2) entering forwarding state
+device eth0.3 entered promiscuous mode
+br0: port 6(eth0.3) entering learning state
+br0: topology change detected, propagating
+br0: port 6(eth0.3) entering forwarding state
+device eth0.4 entered promiscuous mode
+br0: port 7(eth0.4) entering learning state
+br0: topology change detected, propagating
+br0: port 7(eth0.4) entering forwarding state
+device eth0.5 entered promiscuous mode
+br0: port 8(eth0.5) entering learning state
+br0: topology change detected, propagating
+br0: port 8(eth0.5) entering forwarding state
+#### br_mc_fdb_add:166 #### Some thing NULL? br!=NULL prt=NULL dest!=NULL host!=NULL
+br0: port 2(eth0.2) entering disabled state
+br0: port 6(eth0.3) entering disabled state
+br0: port 7(eth0.4) entering disabled state
+br0: port 8(eth0.5) entering disabled state
+br0: port 1(usb0) entering disabled state
+#### br_mc_fdb_add:166 #### Some thing NULL? br!=NULL prt=NULL dest!=NULL host!=NULL
+#### br_mc_fdb_add:166 #### Some thing NULL? br!=NULL prt=NULL dest!=NULL host!=NULL
+
+Login: 1234</nowiki>
+</WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>bcm63xx bcm6348 4flash 16ram 4port fastethernet 802.11bg b43 USBmod}}

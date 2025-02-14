@@ -1,0 +1,310 @@
+====== HiWiFi HC6361 ======
+HC6361 is a wireless router designed by HiWiFi.
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^HC6361$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^HC6361$"}
+} -->
+
+This device has a 4GB on-board NAND flash chip via SK6226 USB 2.0 controller.
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^HC6361$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Flash Layout ====
+
+<code>
+64k(u-boot)ro,64k(bdinfo)ro,1280k(kernel),14848k(rootfs),64k(backup)ro,64k(art)ro,16128k@0x20000(firmware)
+</code>
+
+''bdinfo'' has at least the following OEM-specific information.
+
+  - A RSA public key in text form.
+  - MAC address(es) in text form with the following format at offset ''0x180''.
+
+<code>
+	"fac_mac = XX:XX:XX:XX:XX:XX"   "\x0a"
+	"BDINFO_END"                    "\x0a"
+</code>
+
+According to code distributed by HiWiFi, there can be multiple mac addresses present.  But for HC6361, only ''fac_mac'' is there.
+
+For further information on general information about flash layout, please check out the article [[docs:techref:flash.layout]]. It contains an example and a couple of explanations.
+
+==== OEM easy installation ====
+HiWiFi distributes their upgrade firmwares through some automatic process in the background.  There is currently no way to flash a customized image using HiWiFi's web management page.
+
+==== OEM installation using the TFTP method ====
+
+=== IMPORTANT ===
+
+**NOTE: Do bear in mind the risks of bricking the device when flashing a ''flashsmt'' image!**
+
+**NOTE: Since oem firmware version 0.9006, the u-boot there utilized cryptographical signature in addition to the details put forward below.  An un-official ''flashsmt'' image based on Barrier Breaker was created to allow owners of such devices to start using OpenWrt and upgrade from there.  It also reverts the u-boot to an earlier version without the cryptographical signature verification.  The firmware can be downloaded from this wiki {{ media:hiwifi:openwrt-ar71xx-generic-hiwifi-hc6361-squashfs-factory.zip |}}. Extract the .bin file from the zip archive before flashing.  MD5SUM of the .bin file should be ''f623ae97d12c133b928236679088ddcc''**
+
+**NOTE: Due to increase of kernel size, starting from OpenWrt 18.06, sysupgrade image cannot fulfil the requirement that squashfs signature string ''hsqs'' be positioned at file offset 0x140000.  Use sysupgrade image from 17.01 when you need to do tftp recovery.bin as described below**
+
+U-Boot shipped by the OEM is capable of automatically flashing a new firmware through TFTP protocol.  The TFTP image is called recovery image by HiWiFi U-Boot.  That U-Boot currently supports 3 kinds of recovery images.  Normally, only the 2nd type is supported by OpenWrt.
+
+  - HiWiFi has released a recovery image of type ''flashsmt'' which includes both ''u-boot'' and ''bdinfo'' partition.  ''bdinfo'' parition of that file can be all zero and will not be written to the flash chip.  But ''u-boot'' and ''firmware'' partition will be updated.  That means ''flashsmt'' image should not normally be used by OpenWrt users because of the high risk of bricking the device by flashing ''u-boot'' parition.
+  - It also supports OpenWrt sysupgrade style image containing only ''firmware'' partition.
+  - The 3rd type image is called ''god'' recovery image.  OEM U-Boot will only use it to update the ''bdinfo'' partition.  As with ''flashsmt'' image, ''god'' image is not recommended for regular use.
+
+For ''flashsmt'' and ''sysupgrade'' image, the ''ih_name'' field of the uImage header for ''kernel'' partition must start with string ''tw150v1'' and contain at least one dash character for the OEM U-Boot to properly accept it.
+
+  - A image will be recognized as ''flashsmt'' image by OEM U-Boot if it starts with the following signature.
+<code>
+\x10\x00\x00\xFF\x00\x00\x00\x00\x10\x00\x00\xFD
+</code>
+  - A image will be recognized as sysupgrade style image by OEM U-Boot if it has squashfs signature ''hsqs'' at file offset ''0x140000''.
+  - A image will be recognized as ''god'' image by OEM U-Boot if it contains five continuous dashes at file offset ''0x4''.
+
+=== Specific values you need ===
+
+You need to compile or download OpenWrt sysupgrade image for it, then rename it to **exactly** ''recovery.bin'' for the image to be accepted by TFTP client of the OEM U-Boot.
+
+| Tftp server IPv4 address | 192.168.1.88 |
+| Firmware tftp image | (**''NOTE:''** Name must be exactly //"recovery.bin"//) |
+
+OEM bootloader will set its ip address as ''192.168.1.119''.
+
+=== Steps for flashing a new firmware ===
+
+  - Setup TFTP server on your host.
+  - Hold down the reset button.
+  - Plug in the router power supply.
+  - Wait for the transfer and flashing to complete.
+
+==== Upgrading OpenWrt ====
+
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+===== Specific Configuration =====
+
+==== Serial ====
+
+  - Wire up TP1 with TP3, TP2 with TP4 at the back side of the PCB (the side with nearly no chips).
+  - With the antenna connector at the top-left position, pins for TTL connection are at the bottom-right with the following layout
+
+        (Antenna Connector)----------
+        |                           |
+        |                           |
+        |                 GND,RX,TX |
+        -----------------------------
+
+Information about serial port connection for this device can be found at [[https://wikidevi.com/wiki/HiWiFi_HC6361|WikiDevi for HiWiFi HC6361]]
+
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+===== Bootlogs =====
+
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 3.10.36 (yousong@debian) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.01 r39975) ) #1 Sun Apr 13 10:52:04 CST 2014
+[    0.000000] MyLoader: sysp=2bccb559, boardp=691895de, parts=de5c09c5
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019374 (MIPS 24Kc)
+[    0.000000] SoC: Atheros AR9330 rev 1
+[    0.000000] Clocks: CPU:400.000MHz, DDR:400.000MHz, AHB:200.000MHz, Ref:25.000MHz
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 8030a9b0, node_mem_map 81000000
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16384 pages, LIFO batch:3
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line:  board=HiWiFi-HC6361 console=ttyATH0,115200 mtdparts=spi0.0:64k(u-boot)ro,64k(bdinfo)ro,1280k(kernel),14848k(rootfs),64k(backup)ro,64k(art)ro,16128k@0x20000(firmware) rootfstype=squashfs,jffs2 noinitrd
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 61272k/65536k available (2220k kernel code, 4264k reserved, 597k data, 252k init, 0k highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:51
+[    0.080000] Calibrating delay loop... 265.42 BogoMIPS (lpj=1327104)
+[    0.080000] pid_max: default: 32768 minimum: 301
+[    0.080000] Mount-cache hash table entries: 512
+[    0.090000] NET: Registered protocol family 16
+[    0.100000] MIPS: machine is HiWiFi HC6361
+[    0.550000] bio: create slab <bio-0> at 0
+[    0.560000] Switching to clocksource MIPS
+[    0.560000] NET: Registered protocol family 2
+[    0.570000] TCP established hash table entries: 512 (order: 0, 4096 bytes)
+[    0.570000] TCP bind hash table entries: 512 (order: -1, 2048 bytes)
+[    0.570000] TCP: Hash tables configured (established 512 bind 512)
+[    0.580000] TCP: reno registered
+[    0.580000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.590000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.600000] NET: Registered protocol family 1
+[    0.600000] PCI: CLS 0 bytes, default 32
+[    0.620000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.620000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.630000] msgmni has been set to 119
+[    0.640000] io scheduler noop registered
+[    0.640000] io scheduler deadline registered (default)
+[    0.650000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.650000] ar933x-uart: ttyATH0 at MMIO 0x18020000 (irq = 11) is a AR933X UART
+[    0.660000] console [ttyATH0] enabled, bootconsole disabled
+[    0.670000] ath79-spi ath79-spi: master is unqueued, this is deprecated
+[    0.680000] m25p80 spi0.0: found s25fl129p1, expected m25p80
+[    0.680000] m25p80 spi0.0: s25fl129p1 (16384 Kbytes)
+[    0.690000] 7 cmdlinepart partitions found on MTD device spi0.0
+[    0.690000] Creating 7 MTD partitions on "spi0.0":
+[    0.700000] 0x000000000000-0x000000010000 : "u-boot"
+[    0.710000] 0x000000010000-0x000000020000 : "bdinfo"
+[    0.710000] 0x000000020000-0x000000160000 : "kernel"
+[    0.720000] 0x000000160000-0x000000fe0000 : "rootfs"
+[    0.720000] mtd: device 3 (rootfs) set to be root filesystem
+[    0.730000] 1 squashfs-split partitions found on MTD device rootfs
+[    0.730000] 0x000000410000-0x000000fe0000 : "rootfs_data"
+[    0.740000] 0x000000fe0000-0x000000ff0000 : "backup"
+[    0.750000] 0x000000ff0000-0x000001000000 : "art"
+[    0.750000] 0x000000020000-0x000000fe0000 : "firmware"
+[    0.770000] libphy: ag71xx_mdio: probed
+[    1.320000] ag71xx-mdio.1: Found an AR7240/AR9330 built-in switch
+[    2.360000] eth0: Atheros AG71xx at 0xba000000, irq 5, mode:GMII
+[    2.910000] ag71xx ag71xx.0: connected to PHY at ag71xx-mdio.1:04 [uid=004dd041, driver=Generic PHY]
+[    2.920000] eth1: Atheros AG71xx at 0xb9000000, irq 4, mode:MII
+[    2.930000] TCP: cubic registered
+[    2.930000] NET: Registered protocol family 17
+[    2.930000] 8021q: 802.1Q VLAN Support v1.8
+[    2.950000] VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+[    2.950000] Freeing unused kernel memory: 252K (80321000 - 80360000)
+[    7.320000] usbcore: registered new interface driver usbfs
+[    7.320000] usbcore: registered new interface driver hub
+[    7.340000] usbcore: registered new device driver usb
+[    7.430000] SCSI subsystem initialized
+[    7.450000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    7.450000] ehci-platform: EHCI generic platform driver
+[    7.460000] ehci-platform ehci-platform: EHCI Host Controller
+[    7.460000] ehci-platform ehci-platform: new USB bus registered, assigned bus number 1
+[    7.470000] ehci-platform ehci-platform: irq 3, io mem 0x1b000000
+[    7.500000] ehci-platform ehci-platform: USB 2.0 started, EHCI 1.00
+[    7.510000] hub 1-0:1.0: USB hub found
+[    7.510000] hub 1-0:1.0: 1 port detected
+[    7.540000] usbcore: registered new interface driver usb-storage
+[    7.840000] usb 1-1: new high-speed USB device number 2 using ehci-platform
+[    7.990000] usb-storage 1-1:1.0: USB Mass Storage device detected
+[    7.990000] scsi0 : usb-storage 1-1:1.0
+[    8.410000] eth0: link up (1000Mbps/Full duplex)
+[    9.940000] scsi 0:0:0:0: Direct-Access     Skymedi  PenDrive         1.21 PQ: 0 ANSI: 4
+[    9.950000] sd 0:0:0:0: [sda] 7831552 512-byte logical blocks: (4.00 GB/3.73 GiB)
+[    9.960000] sd 0:0:0:0: [sda] Write Protect is off
+[    9.960000] sd 0:0:0:0: [sda] Mode Sense: 2f 00 00 00
+[    9.960000] sd 0:0:0:0: [sda] Write cache: disabled, read cache: enabled, doesn't support DPO or FUA
+[    9.980000]  sda: unknown partition table
+[    9.990000] sd 0:0:0:0: [sda] Attached SCSI removable disk
+[   11.160000] eth0: link down
+[   14.420000] NET: Registered protocol family 10
+[   14.430000] sit: IPv6 over IPv4 tunneling driver
+[   14.450000] gre: GRE over IPv4 demultiplexor driver
+[   14.450000] ip_gre: GRE over IPv4 tunneling driver
+[   14.490000] nf_conntrack version 0.5.0 (961 buckets, 3844 max)
+[   14.520000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   14.590000] Loading modules backported from Linux version master-2014-03-31-1-0-g5c109d2
+[   14.590000] Backport generated by backports.git backports-20140221-0-g8e94650
+[   14.610000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   14.750000] usbcore: registered new interface driver usbserial
+[   14.750000] usbcore: registered new interface driver usbserial_generic
+[   14.770000] usbserial: USB Serial support registered for generic
+[   14.810000] xt_time: kernel timezone is -0000
+[   14.880000] cfg80211: Calling CRDA to update world regulatory domain
+[   14.910000] cfg80211: World regulatory domain updated:
+[   14.920000] cfg80211:  DFS Master region: unset
+[   14.920000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   14.930000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   14.940000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   14.950000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   14.950000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   14.960000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   14.970000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   15.040000] PPP generic driver version 2.4.2
+[   15.040000] PPP MPPE Compression module registered
+[   15.060000] NET: Registered protocol family 24
+[   15.060000] PPTP driver version 0.8.5
+[   15.160000] ath: EEPROM regdomain: 0x0
+[   15.160000] ath: EEPROM indicates default country code should be used
+[   15.160000] ath: doing EEPROM country->regdmn map search
+[   15.160000] ath: country maps to regdmn code: 0x3a
+[   15.160000] ath: Country alpha2 being used: US
+[   15.160000] ath: Regpair used: 0x3a
+[   15.170000] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[   15.180000] ieee80211 phy0: Atheros AR9330 Rev:1 mem=0xb8100000, irq=2
+[   15.190000] cfg80211: Calling CRDA for country: US
+[   15.190000] cfg80211: Regulatory domain changed to country: US
+[   15.200000] cfg80211:  DFS Master region: FCC
+[   15.200000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   15.210000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 3000 mBm), (N/A)
+[   15.220000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 1700 mBm), (N/A)
+[   15.230000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz), (N/A, 2300 mBm), (0 s)
+[   15.230000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 3000 mBm), (N/A)
+[   15.240000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+[   26.910000] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+[   26.950000] jffs2_build_filesystem(): unlocking the mtd device... done.
+[   31.150000] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   31.150000] device eth0 entered promiscuous mode
+[   31.180000] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   31.180000] IPv6: ADDRCONF(NETDEV_UP): eth1: link is not ready
+[   31.750000] eth0: link up (1000Mbps/Full duplex)
+[   31.750000] br-lan: port 1(eth0) entered forwarding state
+[   31.760000] br-lan: port 1(eth0) entered forwarding state
+[   31.760000] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   31.800000] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   33.760000] br-lan: port 1(eth0) entered forwarding state
+[   26.950000] jffs2_build_filesystem(): erasing all blocks after the end marker... done.
+[   59.560000] jffs2: notice: (1090) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[  213.860000] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+[  213.880000] device wlan0 entered promiscuous mode
+[  213.890000] br-lan: port 2(wlan0) entered forwarding state
+[  213.890000] br-lan: port 2(wlan0) entered forwarding state
+[  213.900000] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+[  215.890000] br-lan: port 2(wlan0) entered forwarding state</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+There is an abandoned page with pictures for this device: [[toh:hiwifi:hc6361_old|HiWiFi HC6361 pictures]]. Seems to be a mod, but without further information / english description quite useless.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR9331 FastEthernet 2NIC 1WNIC 2Port ath9k DetachableAntenna 64RAM 16Flash 4096NAND MIPS MIPS32 24Kc}}
+

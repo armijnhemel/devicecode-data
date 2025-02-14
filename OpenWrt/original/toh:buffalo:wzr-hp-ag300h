@@ -1,0 +1,279 @@
+====== Buffalo WZR-HP-AG300H ======
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^WZR-HP-AG300H$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^WZR-HP-AG300H$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^WZR-HP-AG300H$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Installation using the OEM web interface ====
+The easiest way to install OpenWrt is by using the firmware utility of the OEM web interface:
+  - Connect to the WebInterface at [[http://192.168.11.1]] and go to //"Administration"// -> //"Firmware Upgrade"//
+  - Upload the OpenWrt factory image you want to install
+  - Make your PC obtain a new IP address from OpenWrt (''dhclient eth0'' or ''pump -i eth0'' or ''ipconfig /renew'')
+  - proceed with [[docs:guide-quick-start:checks_and_troubleshooting]] to complete installation
+
+**NOTE:** It may happen, that the squashfs-factory.bin does not work for this device, if the factory image is based on __DD-WRT__. See [[https://www.mail-archive.com/openwrt-users@lists.openwrt.org/msg02637.html|this thread]]. Please update the thread with your experience or file a bug if you run into a problem. According to the user, for installation from DD-WRT the instructions on the [[:toh:buffalo/wzr-600dhp?s[]=wzr&s[]=hp&s[]=ag300h#installation.using.the.oem.web.interface|WZR-600DHP]] page worked for him.
+
+==== Installation using the TFTP method (always working) ====
+
+->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+=== Specific values you need ===
+
+| Bootloader tftp server IPv4 address | 192.168.11.1 |
+| Bootloader MAC address (special) | 02:aa:bb:cc:dd:20 |
+| Latest firmware tftp image | [[https://downloads.openwrt.org/releases/21.02.0/targets/ath79/generic/openwrt-21.02.0-ath79-generic-buffalo_wzr-hp-ag300h-squashfs-tftp.bin]] (**''NOTE:''** Name must contain //"tftp"//) |
+| TFTP Transfer Window | 4 seconds |
+| TFTP Window Start | approximately 10-20 seconds after power on |
+| TFTP Client Required IP Address | 192.168.11.2 |
+
+
+Here is a link to the console output of the boot process, with all led's in view for reference [[http://www.youtube.com/watch?v=mAZNTKhpHig]]
+
+=== Flashing Notes ===
+  * If your router has two red flashes of the DIAG LED followed by no flash and repeats then the flash failed or the image given is corrupt.
+    * You can still recover with tftp.  Start over and try again.
+  * The red //"DIAG"//-LED begins to flash rapidly when the router has received the image and is currently booting the new firmware.
+  * Successful flashes via tftp using Windows 7 directly plugged into the router have been done.  It helps to add arp entries and disable media sensing as per the generic tftp instructions.
+  * Flash should have reset all settings as well.  The IP address of the router should be 192.168.1.1 now since 192.168.11.1 is only for the bootloader at boot-time
+
+
+=== TFTP advice, wrong region ===
+<hidden>
+There are apparently several regional versions of the OEM firmware. You may have to adjust the region in u-boot first. Below is example of a successful region change and flash procedure. Source: [[https://forum.openwrt.org/viewtopic.php?pid=187714#p187714 | forum article]]
+
+This is how to do it from serial console:
+
+  - Power on the router and wait until you see "Load address" appear shortly after the tftp message: <code>tftp server(receive) go, waiting:4[sec]
+...
+Load address: 0x84000000</code>
+  - Immediately press Control+c
+  - After prompt apears do:
+    * setenv accept_open_rt_fmt 1
+    * setenv region EU
+    * saveenv
+    * reset 
+    * (it reboots now)
+  - After Reboot Power your Device down!
+  - Set Your LAN IP to 192.168.11.2
+  - In a linux terminal use these commands
+    * wget -O firmware-tftp.bin "http://downloads.openwrt.org/attitude_adjustment/12.09/ar71xx/generic/openwrt-ar71xx-generic-wzr-hp-ag300h-squashfs-tftp.bin"
+    * sudo ip neigh add 192.168.11.1 dev eth0 lladdr 02:aa:bb:cc:dd:20 nud permanent <enter>
+    * tftp 192.168.11.1 <enter>
+    * verbose <enter>
+    * bin <enter>
+    * trace <enter>
+    * timeout 60 <enter>
+    * <powerup your device and wait 12 seconds>
+    * put firmware-tftp.bin <enter>
+  - In Windows cmd put that Line:
+    * arp -s 192.168.11.1 02-AA-BB-CC-DD-20
+    * tftp -i 192.168.11.1 PUT wzrhpag300h-pro-v24sp2-19154.enc  **(don't hit enter, yet)**
+  - Power on the Device and 10 Seconds after that **hit enter in Windows CMD** to start the TFTP. (it tooks about ten Minutes to Complete the flash procedure)
+</hidden>
+
+=== Network Manager Issues on Linux ===
+
+Doing a power cycle may trigger a disconnect of the Ethernet which causes a reset the ARP info. Workaround:
+    * In one terminal have (but do not yet execute)
+    * ''ip address add 192.168.11.2/24 dev enps20; arp -s 192.168.11.1 02:aa:bb:cc:dd:20; curl -T openwrt-tftp.bin %%tftp//:192.168.11.1%%''
+      * Change enps20 out for your eth name ip address show
+      * Change openwrt-tftp.bin for the version you downloaded
+    * Power on the router
+    * Count to 3
+    * Press enter on the terminal command from before
+    * Wait
+
+Alternatively, use a switch in between your PC and the router, to prevent the link from going down while rebooting the router.
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+==== Failsafe mode ====
+
+Press the 'USB/eject' button while the red 'DIAG' LED is blinking to enter Failsafe mode.
+
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+
+===== Specific Configuration =====
+==== LED for USB-Devices ====
+
+If you want to trigger a LED as soon as an USB-Device is connected to your USB-Port,
+add this to /etc/config/system:
+
+<code>
+config 'led'
+	option 'default' '0'
+	option 'name' 'USB'
+	option 'sysfs' 'buffalo:red:diag'
+	option 'trigger' 'usbdev'
+	option 'dev' '1-1'
+</code>
+
+This switches on the little red circle of the DIAG-LED everytime you connect something to your USB-Port.
+
+===== Debricking =====
+  * It's very unlikely that you completely bricked the device, so first try the TFTP Method above.  Note that a red diagnostics light blinking twice means your flash failed, but the device is ok and tftp will work (keep trying).  If you still get nowhere, more drastic measures:
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set|Architecture]]  | [[wp>MIPS architecture|MIPS]]                      |
+^ Vendor                               | [[wp>Qualcomm Atheros]]                            |
+^ [[docs:techref:bootloader]]          | crippled [[docs:techref:bootloader:uboot|U-Boot]]   |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | AR7161 rev 2 (MIPS 24Kc V7.4)                      |
+^ [[docs:techref:hardware:cpu|CPU]]/Speed       | 24Kc V7.4 680 MHz                                  |
+^ Flash-Chip  |     ?     |
+^ Flash size  | 32 MiB    |
+^ RAM         | 128 MiB   |
+^ Wireless    | Atheros AR9223 (2.4GHz) and AR9220 (5.0GHz) 802.11abgn |
+^ Ethernet    | AR8316            |
+^ Internet    | n/a               |
+^ USB         | Yes 1 x 2.0       |
+^ Serial      | [[#Serial|Yes]]   |
+^ JTAG        | [[#JTAG|Yes]]     |
+
+<code>
+root@OpenWrt:~# lspci -vv
+00:11.0 Network controller: Atheros Communications Inc. AR922X Wireless Network Adapter (rev 01)
+	Subsystem: Atheros Communications Inc. Device a097
+	Control: I/O- Mem+ BusMaster+ SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B- DisINTx-
+	Status: Cap+ 66MHz+ UDF- FastB2B+ ParErr- DEVSEL=medium >TAbort- <TAbort- <MAbort- >SERR- <PERR- INTx-
+	Latency: 168, Cache Line Size: 32 bytes
+	Interrupt: pin A routed to IRQ 72
+	Region 0: Memory at 10000000 (32-bit, non-prefetchable) [size=64K]
+	Capabilities: [44] <chain broken>
+	Kernel driver in use: ath9k
+
+00:12.0 Network controller: Atheros Communications Inc. AR922X Wireless Network Adapter (rev 01)
+	Subsystem: Atheros Communications Inc. Device a096
+	Control: I/O- Mem+ BusMaster+ SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B- DisINTx-
+	Status: Cap+ 66MHz+ UDF- FastB2B+ ParErr- DEVSEL=medium >TAbort- <TAbort- <MAbort- >SERR- <PERR- INTx-
+	Latency: 168, Cache Line Size: 32 bytes
+	Interrupt: pin A routed to IRQ 73
+	Region 0: Memory at 10010000 (32-bit, non-prefetchable) [size=64K]
+	Capabilities: [44] Power Management version 2
+		Flags: PMEClk- DSI- D1- D2- AuxCurrent=100mA PME(D0+,D1-,D2-,D3hot+,D3cold-)
+		Status: D0 NoSoftRst- PME-Enable- DSel=0 DScale=0 PME-
+	Kernel driver in use: ath9k
+</code>
+
+
+==== Flash Layout ====
+->[[docs:techref:flash.layout]] has an example flash layout and all explanations required to understand this. Here the naked hex-values for the WZR-HP-AG300H:
+
+|''root@**DD-WRT**:~# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00050000 00010000 "RedBoot"
+mtd1: 01f80000 00010000 "linux"
+mtd2: 00b11000 00010000 "rootfs"
+mtd3: 01380000 00010000 "ddwrt"
+mtd4: 00010000 00010000 "nvram"
+mtd5: 00010000 00010000 "FIS directory"
+mtd6: 00010000 00010000 "board_config"
+mtd7: 02000000 00010000 "fullflash"
+mtd8: 00010000 00010000 "uboot-env"
+''|''root@**OpenWrt**:~# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 01000000 00001000 "spi0.0"
+mtd1: 01000000 00001000 "spi0.1"
+mtd2: 00040000 00001000 "u-boot"
+mtd3: 00010000 00001000 "u-boot-env"
+mtd4: 00010000 00001000 "art"
+mtd5: 00100000 00001000 "kernel"
+mtd6: 01e90000 00001000 "rootfs"
+mtd7: 01d2c000 00001000 "rootfs_data"
+mtd8: 00010000 00001000 "user_property"
+mtd9: 01f90000 00001000 "firmware"''|
+
+
+
+==== Photos ====
+
+
+A collection of photos on how to open the case, of the PCB and the serial port can be found on https://picasaweb.google.com/111743287730172647732/BuffaloWZRHPAG300HHardwarePhotos .
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:
+
+Correct serial pinout:\\
+{{media:buffalo:wzr-hp-ag300h_serial.jpg?400}}
+
+  - Open case
+  - Locate serial port pads next to the Movie Engine switch
+  - Pinouts beginning from the square pad: vcc, gnd, tx, rx
+  - Sends at 115200 8N1 as shipped
+  - Voltage is 3.3 V
+
+For USB/Serial I used a B&B Electronics TTL convertor with a ATEN UC232A. The VCC is not needed. Don't forget TX on the TTL goes to RX on the PCB etc. CuteCom on Linux works great (if you chmod 777 /dev/ttyUSB0)
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+==== Network Port Assignments ====
+
+| **port 0**   | CPU     |
+| **port 1**   | LAN 4   |
+| **port 2**   | LAN 3   |
+| **port 3**   | LAN 2   |
+| **port 4**   | LAN 1   |
+
+{{:media:buffalo:wzr-hp-ag300h.png|}}
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on how to use and configure the hardware buttons.
+
+^ Button               ^ Event                             ^
+| Reset                | reset/BTN_0 (pressed, released)   |
+| AOSS                 | wps/BTN_1 (pressed, released)     |
+| USB Eject            | BTN_2 (pressed, released)         |
+| Movie Engine (on)    | BTN_3 released, BTN_4 pressed     |
+| Movie Engine (off)   | BTN_3 pressed, BTN_4 released     |
+| Router (on)          | BTN_5 released, BTN_6 released    |
+| Router (off)         | BTN_5 pressed, BTN_6 released     |
+| Router (auto)        | BTN_5 released, BTN_6 pressed     |
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR7161 GigabitEthernet 5Port 2NIC USB 802.11abgn 802.11abgn_simultan ath9k 128RAM 32Flash MIPS MIPS32 24Kc}}

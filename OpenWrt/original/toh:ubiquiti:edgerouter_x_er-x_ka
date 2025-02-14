@@ -1,0 +1,1485 @@
+====== Ubiquiti EdgeRouter X (ER-X), EdgeRouter X-SFP (ER-X-SFP) and EdgePoint R6 (EP-R6) ======
+This family of devices are small routers based on the MT7621 SoC with 5 x 1Gbit Ethernet and several differences:
+
+  * PoE output(s) (Passive 24V)
+    * 1 port (ER-X)
+    * 5 ports (ER-X-SFP, EP-R6)
+  * PoE input (Passive 24V)
+    * 1 port (ER-X, EP-R6)
+  * SFP module (ER-X-SFP, EP-R6)
+  * Outdoor case (EP-R6)
+
+The EdgeRouter X-SFP (ER-X-SFP) and the EdgePoint R6 (EP-R6) are hardware compatible (OpenWrt image for the former can be used for the latter).
+
+{{:media:ubiquiti:ubiquiti-edgerouter-x.png?430|ER-X}}
+{{:media:ubiquiti:ubiquiti-edgerouter-x-sfp.png?400|ER-X SFP}}
+{{:media:ubiquiti:ubiquiti_edgepoint_r6_ep-r6.png?225|EP-R6}}
+
+
+===== Initial Warning =====
+
+It is recommended to update to the latest [[https://www.ui.com/download/software/er-x|v2 firmware]] and [[https://help.ui.com/hc/en-us/articles/360009932554-EdgeRouter-How-to-Update-the-Bootloader|Bootloader]] prior to installing OpenWRT, for the safer bootloader.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "deviceid"],
+  "filterColumns": {"brand": "^Ubiquiti$", "model": "EdgeRouter X"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "ethernet1gports", "commentsnetworkports", "usbports", "deviceid"],
+  "filterColumns": {"brand": "^Ubiquiti$", "model": "EdgeRouter X"}
+} -->
+
+The EdgeRouter X and X-SFP can be configured to use dual 1Gbps CPU/switch links, allowing for up to 1Gbps/1Gbps routing throughput.
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Ubiquiti$", "model": "EdgeRouter X"}
+} -->
+
+==== User Experience ====
+
+While SSH and SCP are available in the EdgeOS firmware, you cannot directly flash OpenWrt (initramfs-kernel.bin) image because you will receive the following error:
+
+<code>
+Checking upgrade image...Upgrade image does not support the device. Upgrade failed.
+</code>
+
+To install OpenWrt first flash the ''factory'' OpenWrt image, and then the ''sysupgrade'' image to the desired (latest stable or snapshot) image of OpenWrt.
+
+The steps below will guide you through backing up of the original partitions and then flashing OpenWrt on these routers.
+
+==== Backup the original firmware ====
+
+If you can RAM boot the OpenWrt image, you can backup the mtd partitions with:
+
+<code>
+mount -o remount,size=240M tmpfs /tmp
+dd if=/dev/mtd0ro | gzip > /tmp/mtd0.gz
+dd if=/dev/mtd1ro | gzip > /tmp/mtd1.gz
+dd if=/dev/mtd2ro | gzip > /tmp/mtd2.gz
+dd if=/dev/mtd3ro | gzip > /tmp/mtd3.gz
+dd if=/dev/mtd4ro | gzip > /tmp/mtd4.gz
+dd if=/dev/mtd5ro | gzip > /tmp/mtd5.gz
+</code>
+
+You can then download those /tmp/mtd*.gz files with SCP to your local machine.
+
+An alternative more generic method, e.g. ER-X running EdgeOS 2.0.6 shows a slightly different partition layout, would be the following which transfers compressed partition images to a different host (172.16.174.4 in this example) that has more storage.
+
+This is what I have in my /proc/mtd:
+<code>
+dev:    size   erasesize  name
+mtd0: 10000000 00020000 "ALL"
+mtd1: 10000000 00020000 "ALL"
+mtd2: 00080000 00020000 "Bootloader"
+mtd3: 00060000 00020000 "Config"
+mtd4: 00060000 00020000 "eeprom"
+mtd5: 00300000 00020000 "Kernel1"
+mtd6: 00300000 00020000 "Kernel2"
+mtd7: 0f7c0000 00020000 "RootFS"
+</code>
+
+I'm not sure if I have to copy the "ALL" partitions, but I'll copy them anyway. I created the ubiquiti folder on the remote storage host previously and I'll have to type my password for each file.
+
+Keep in mind you need to run this code as (actual) ''root'' user, which you can probably get via ''sudo -i'' if you weren't already.
+
+<code>
+REMOTE_USER="type_backup_host_username_here"
+REMOTE_HOST="172.16.174.4"
+REMOTE_DIR="~/ubiquiti"
+
+echo mtd0 mtd1 mtd2 mtd3 mtd4 mtd5 mtd6 mtd7 | tr ' ' '\n' | while read part; do dd if=/dev/${part}ro | gzip --best | ssh -l $REMOTE_USER $REMOTE_HOST "cat > $REMOTE_DIR/$part.img.gz"; done; cat /proc/mtd | ssh -l $REMOTE_USER $REMOTE_HOST "cat > $REMOTE_DIR/proc-mtd.txt"
+</code>
+
+The resulting files on my remote storage host is this:
+
+<code>
+160M    mtd0.img.gz
+160M    mtd1.img.gz
+77K     mtd2.img.gz
+2.2K    mtd3.img.gz
+41K     mtd4.img.gz
+2.1M    mtd5.img.gz
+1.7M    mtd6.img.gz
+156M    mtd7.img.gz
+295     proc-mtd.txt
+</code>
+
+Where mtd0.img and mtd1.img are bit-identical 256MB files when **uncompressed**. So I'm deleting mtd1.img. In v1.x.x releases of vendor-os mtd0 was the 2mbit NOR flash and mtd1 then full NAND-flash.
+
+Please do verify if they're bit-identical for you too via ''sha256sum'' for example; in my (diederik) case they weren't. I ended up removing the compression ('' | gzip --best'' + ''.gz'') part of the script.
+==== Flash Layout ====
+
+The factory layout is not using the whole flash, 524288 bytes (256 pages) are missing.
+
+We should keep in that line for easier return to stock firmware in case Ubiquiti is storing something there.
+
+^ offset(dez) ^ size(dez) ^ name ^ offset(hex) ^ size(hex) ^
+|  0|  524288|  bootloader  |  0x00000000|  0x00080000|
+|  524288|  393216|  config  |  0x00080000|  0x00060000|
+|  917504|  393216|  eeprom  |  0x000E0000|  0x00060000|
+|  1310720|  3145728|  kernel  |  0x00140000|  0x00300000|
+|  4456448|  3145728|  kernel2 (squashfs later)  |  0x00440000|  0x00300000|
+|  7602176|  259784704|  rootfs (overlay later)  |  0x00740000|  0x0F7C0000|
+
+==== Factory firmware installation method ====
+
+Installing OpenWrt requires two main steps: First install the "factory" image (filename includes ''initramfs-factory'') aka kernel image. Then flash "sysupgrade" image (filename includes ''squashfs-sysupgrade'').
+
+Both image files are tar format archives, the factory file is set up such that the OEM upgrade process will accept it as a legitimate (OEM) firmware image. The factory file is typically suffixed ''tar'', the sysupgrade image as ''bin''.
+
+Unfortunately, as of at least sometime around 19.07.2, the OpenWrt build for the factory image fails to produce a valid factory tar file. According to [[https://github.com/stman/OpenWRT-19.07.2-factory-tar-file-for-Ubiquiti-EdgeRouter-x|stman/OpenWRT-19.07.2-factory-tar-file-for-Ubiquiti-EdgeRouter-x]], the cause is a slightly-too-large kernel image. The stman repo provides a customized build configuration that produces a working factory tar file, and a built images (19.07.2, 21.02, and 22.03) for the ERX. The prebuilt ERX factory image is verified to work with the ERX-SFP and presumably will also work for the EP-R6. For the ERX-SFP (and EP-R6?) when it comes to install the full OpenWrt firmware via sysupgrade, the ''--force'' option is required to "switch" back to the right platform.
+
+Refer to: [[https://github.com/openwrt/openwrt/issues/5090|OpenWRT issue 5090 (closed without fix) for details]]
+
+1. Download the factory OpenWrt image for the ERX or the ERX-SFP:
+
+  * [[https://github.com/stman/OpenWRT-19.07.2-factory-tar-file-for-Ubiquiti-EdgeRouter-x|GitHub repository with ERX OpenWrt 19/21/22 initramfs.factory.tar images]]
+  * [[https://github.com/cyounkins/edgerouter-factory|GitHub repository (alternative) with ERX and ERX-SFP OpenWRT 21 initramfs.factory.tar images]]
+
+2a. Flash the factory OpenWrt image (via SSH):
+
+<code>
+>scp /path/to/openwrt-ramips-mt7621-ubnt-erx-initramfs-factory.tar ubnt@192.168.1.1:/tmp/
+>ssh ubnt@192.168.1.1
+ubnt@ubnt:/$ add system image /tmp/openwrt-ramips-mt7621-ubnt-erx-initramfs-factory.tar
+Checking upgrade image...Done
+Preparing to upgrade...Done
+Copying upgrade image.../usr/bin/ubnt-upgrade: line 509: [: too many arguments
+Done
+Removing old image...Done
+Checking upgrade image...Done
+Copying config data...Done
+Finishing upgrade...Done
+Upgrade completed
+
+ubnt@ubnt:/$ reboot
+</code> 
+
+2b. Flash the factory OpenWrt image (via Web-UI):
+
+Alternatively you can use the EdgeOS Web-UI and upload the file via the "System" tab.
+
+<WRAP center round info 70%>
+Be aware that when setting up the router with the factory EdgeOS, SSH admin is done on eth0 with user/IP: ubnt@192.168.1.1, while once OpenWrt image is installed (the minimal/factory or full), SSH admin is done on eth1 with user/IP: root@192.168.1.1.
+</WRAP>
+
+3. Download the latest/release OpenWrt sysupgrade image from the device links above.
+
+4. Update to the latest/release OpenWrt image:
+
+<code>
+>scp /path/to/openwrt-23.05.3-ramips-mt7621-ubnt_edgerouter-x-squashfs-sysupgrade.bin root@192.168.1.1:/tmp/
+>ssh root@192.168.1.1
+root@OpenWrt:/$ sysupgrade -n /tmp/openwrt-23.05.3-ramips-mt7621-ubnt_edgerouter-x-squashfs-sysupgrade.bin
+</code> 
+
+:!: Do not forget the "-n" on the sysupgrade command :!:
+
+If you have an ERX-SFP device but booted an ''ubnt-erx'' factory image (e.g. per step 1), you'll need to provide the ''-force'' argument to ''sysupgrade'' with the ''ubnt-erx-sfp'' image.  Using an ERX-SFP image (based on OpenWRT 21) may sidestep this issue (untested).
+
+After the sysupgrade step the router should update to the specified OpenWrt image and reboot. You may then proceed with configuring your renewed EdgeRouter running OpenWrt!
+
+If at any point you soft-brick your router, you can recover it with the EdgeOS image following instructions here: [[https://help.ui.com/hc/en-us/articles/360019289113]].
+
+If you're trying to follow the above on ERX SFP, and getting "upgrade failed" or "invalid firmware", here's what worked for me (@noseratio):
+
+- Installed the stock v2.0.9: [[https://dl.ui.com/firmwares/edgemax/v2.0.9/ER-e50.v2.0.9.5346345.tar]]
+
+- Downgraded to the stock v2.0.3: [[https://dl.ubnt.com/firmwares/edgemax/v2.0.x/ER-e50.v2.0.3.5189349.tar]]
+
+- Installed OpenWrt v18.06 from here: [[http://openwrt.jaru.eu.org/openwrt-18.06/targets/ramips/mt7621/openwrt-18.06-snapshot-r7911-f65330d27d-ramips-mt7621-ubnt-erx-sfp-initramfs-factory.tar]]
+
+Then I was able to install the current OpenWrt version.
+
+The preparation and installation can be done by this script: https://github.com/damadmai/edgemax_openwrt
+
+==== Serial installation with TFTP ====
+
+A nice Blog post with the full story to get it installed can be found [[http://sector5d.org/openwrt-on-the-ubiquiti-edgerouter-x.html|here]].
+There is also a [[https://github.com/digineo/erx-recovery|program]] to automate all the steps.
+
+The initramfs-kernel.bin file can be booted via option 1 in the boot menu available via a [[#Serial|serial connection]]. Enter the IP and filename for TFTP on eth0. The TFTP server must be connected to eth0, as the bootloader does not activate the other ports.  After this factory image boots, use 'sysupgrade -n' to flash the sysupgrade image. (not supported by 17.01.4)
+
+->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+===== Upgrading OpenWrt =====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+==== LuCI Web Upgrade Process ====
+
+  * Browse to http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/ LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+==== Terminal Upgrade Process ====
+
+If you don't have a GUI (LuCI) available, you can alternatively upgrade via the command line.
+
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget http://downloads.openwrt.org/snapshots/trunk/XXX/xxx.abc
+sysupgrade /tmp/xxx.abc
+</code>
+=====Migrating to 24.10.x=====
+
+The OEM layout on the Edgerouter X has two kernel slots that are 3MB each. Starting with [[https://github.com/openwrt/openwrt/commit/2967e24d02775f63d9e363e6e0d351716dcc3f7c | Linux 6.6 commit 2967e24]] the kernel images no longer fit into this layout. This means a special migration is required to adjust the partition layout and upgrade successfully to 24.10.x releases (include current RC images). Attempting to use normal `sysupgrade` will provide an error advising to use this migration process. Updating without following the migration instructions will break the device. 
+
+The scripts in this [[https://github.com/darkxst/erx-migration|repository]] can be used to migrate existing installs 21.02, 22.03 or 23.05 to the new layout. It will install the latest 24.10 release candidate to your device.
+
+====Upgrade Process====
+**WARNING** All settings will be wiped make sure to backup your settings before proceeding.
+
+1. If you are still on Stock OS install factory images for [[https://github.com/stman/OpenWRT-19.07.2-factory-tar-file-for-Ubiquiti-EdgeRouter-x|22.03]] first
+
+2. Login to router using ssh
+
+3. Copy both scripts from [[https://github.com/darkxst/erx-migration|Edgerouter-X migration scripts]] to the "/tmp" folder on your router:
+  *  	 ubnt_erx_migrate.sh
+  *  	 ubnt_erx_stage2.sh
+4. Run below shell commands
+
+<code>
+cd /tmp
+./ubnt_erx_migrate.sh
+</code>
+
+
+5. This will download firmware update, check sha256 sums, then flash new kernel and rootfs and finally reboot.
+
+Further details and documentation can be found here:
+
+  * [[https://github.com/darkxst/erx-migration#migration|Github repository with Edgerouter-X migration scripts]]
+
+====New Layout====
+The new partition layout after upgrading should look like this:
+
+<code>
+root@OpenWrt:/# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00080000 00020000 "u-boot"
+mtd1: 00060000 00020000 "u-boot-env"
+mtd2: 00060000 00020000 "factory"
+mtd3: 00600000 00020000 "kernel"
+mtd4: 0f7c0000 00020000 "ubi"
+</code>
+
+
+
+===== Reverting to Stock Firmware =====
+
+You can reflash the EdgeOS image following instructions here: [[https://help.ui.com/hc/en-us/articles/360019289113]]. Alternatively, you can follow the (possibly outdated) instructions below.
+
+The Ubiquiti EdgeOS distributions cannot be directly re-installed by OpenWrt.  This section describes how to use a Linux PC to prepare Ubiquiti firmware into a file that can be flashed as an OpenWrt sysupgrade.  The router will then be running the stock firmware instead of OpenWrt.  This has been tested with version v1.10.11.5274269 on an Edgerouter-X running OpenWrt 19.07.2.  To fully remove OpenWrt, it is recommended to flash stock a second time from the EdgeOS firmware so that both kernel partitions contain EdgeOS. If uploading the stock image from within EdgeOS fails, the device might be out of space.
+  * Download a v1 stock firmware tar from Ubiquiti site.  Extract it in an empty new directory on your PC.  All commands below are run in this directory.
+<code>
+tar -xf ER-e50.v1.10.11.5274269.tar
+</code>
+The files of interest are vmlinux.tmp and squashfs.tmp.  vmlinux is the kernel image and squashfs is the root filesystem, however this squashfs image needs to be placed within a ubifs filesystem for use.
+  * Make a tree for the OpenWrt compatible sysupgrade tar.  This directory must be named exactly sysupgrade-ubnt-erx.
+<code>
+mkdir sysupgrade-ubnt-erx
+echo "BOARD=ubnt-erx" > sysupgrade-ubnt-erx/CONTROL
+mv vmlinux.tmp sysupgrade-ubnt-erx/kernel
+mkdir rootfs
+mv squashfs.tmp rootfs/squashfs.img
+mkfs.ubifs -r rootfs -m 2048 -e 126976 -c 2047 -o sysupgrade-ubnt-erx/root
+</code>
+  * Tar up the upgrade for OpenWrt.
+<code>
+tar -cf erx-stock-sysupgrade.tar sysupgrade-ubnt-erx
+</code>
+This tar file can be submitted to the CLI or GUI.  Be sure to specify don't save settings (-n) and force upgrade (-F).  Using exactly this same version of EdgeOS, the md5sum of the tar file should be 5311d49cf70a667a04e5558c576cab6a.
+
+Addendum: above procedure did not work on an Edgerouter X SFP as somehow the version information did not get set; any attempt to upgrade from the EdgeOS caused kernel panic. But found another way on the Ubnt forum, so all credits there. Have put it in the form of a script.
+  * 1. get the latest official firmware and decompress it.
+  * 2. follow all the steps, using a USB/serial interface and tftp server to make OpenWrt boot from RAM. 
+Upload to /tmp the files: version.tmp  squashfs.tmp  squashfs.tmp.md5  vmlinux.tmp and start this script after having uploaded it and chmod 755 to be executable:
+
+<code>
+#!/bin/sh
+
+# prepare ubi file system for rootfs 
+ubidetach -p /dev/mtd5 
+ubiformat /dev/mtd5
+ubiattach -p /dev/mtd5
+ubimkvol /dev/ubi0 --vol_id=0 --lebs=1925 --name=troot
+# define a mount point and mount the ubi fs
+mkdir -p /mnt/debrick
+mount -o sync -t ubifs ubi0:troot /mnt/debrick/
+# flash the file system
+cp /tmp/version.tmp /mnt/debrick/version 
+cp /tmp/squashfs.tmp /mnt/debrick/squashfs.img 
+cp /tmp/squashfs.tmp.md5 /mnt/debrick/squashfs.img.md5
+# flash the kernel twice; equal now but after a later update it will retain the previous as back-up
+dd if=/tmp/vmlinux.tmp of=/dev/mtdblock3
+dd if=/tmp/vmlinux.tmp of=/dev/mtdblock4
+
+echo 'Success!; rebooting now'
+reboot
+exit
+</code>
+
+
+===== Debricking =====
+Follow [[#Serial installation with TFTP|Serial installation]] instructions.
+
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+Bootloader has 172.16.3.211 and is waiting for a tftp-server from 172.16.3.210 wich should provide a matching openwrt-initramfs with filename vme50 and device should be connected via lan port 0.
+
+on serial console, you will get:
+Please choose the operation:
+   1: Load system code to SDRAM via TFTP.
+   2: Load system code then write to Flash via TFTP.
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   7: Load Boot Loader code then write to Flash via Serial.
+   9: Load Boot Loader code then write to Flash via TFTP.
+default: 3
+You choosed 2
+
+device will reboot after flashing
+
+===== Failsafe mode =====
+
+For generic information regarding Failsafe mode, see:
+
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+For EdgeRouter X the LEDs on the top panel somehow doesn't show a fast blinking pattern during device start up, nor does the typical UDP broadcast message is sent during the failsafe prompt, to enter failsafe mode one could try the following procedure:
+
+  - Connect the computer to the eth1 port of the device
+  - Power on the device, after 2 seconds press the reset button in 1 second interval for at most 20 seconds
+  - Wait for the eth1 activity LED is steadily lit (a few blinking due to activity is fine) failsafe mode should now be activated
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+==== PoE out on EdgeRouter X ====
+The router can supply PoE out (passthrough) on the eth4 port. This is controlled with GPIO 0.
+
+Note: Supported Voltage Range is 9 to 26VDC. The original power supply has 12VDC. For e.g. a 24VDC passive PoE a new 24VDC power supply is needed.
+
+To enable PoE out (passthrough) set the corresponding ''value'' variable in ''/etc/config/system'':
+<code>
+config gpio_switch 'poe_passthrough'
+        option name 'PoE Passthrough'
+        option gpio_pin '0'
+        option value '1'
+</code>
+A reboot is require to activate the change.
+
+** !!! Update: **
+Snapshots with Kernel 5.4 may use a different GPIO number for PoE passthrough.
+It has been verified that version 23.05.03 (i.e. Kernel 5.15.150) definitely uses 480.
+Try 480 instead:
+<code>
+config gpio_switch 'poe_passthrough'
+        option name 'PoE Passthrough'
+        option gpio_pin '480'
+        option value '1'
+</code>
+
+** !!! Update: **
+Snapshots with Kernel 6.6.63 use a different GPIO number for PoE passthrough.
+It has been verified that version 24.10 (i.e. Kernel 6.6.63) definitely uses 512.
+Try 512 instead:
+<code>
+config gpio_switch 'poe_passthrough'
+        option name 'PoE Passthrough'
+        option gpio_pin '512'
+        option value '1'
+</code>
+==== PoE out on EdgeRouter X-SFP and EdgePoint R6====
+The routers can supply PoE on the LAN ports. This is controlled by a PCA9555A with GPIO 0..4.
+
+For documentation purposes - in order to get this running you need, already integrated into OpenWrt:
+  * install "kmod-i2c-gpio-custom" (pulls gpio and algo-bitbang)
+  * install "kmod-gpio-pca953x"
+  * "insmod i2c-gpio-custom bus0=0,3,4"
+  * "echo pca9555 0x25 >/sys/bus/i2c/devices/i2c-0/new_device"
+  * export the GPIOs 496..500 (/sys/class/gpio/)
+
+After reboot you need to run insmod and the echo line below to allow on/off functionality. 
+<code>
+Turn on POE all ports except eth0(WAN)
+#eth0 WAN port
+echo "out" > /sys/class/gpio/gpio496/direction
+echo "0" > /sys/class/gpio/gpio496/value
+#eth1
+echo "out" > /sys/class/gpio/gpio497/direction
+echo "1" > /sys/class/gpio/gpio497/value
+#eth2
+echo "out" > /sys/class/gpio/gpio498/direction
+echo "1" > /sys/class/gpio/gpio498/value
+#eth3
+echo "499" > /sys/class/gpio/export
+echo "out" > /sys/class/gpio/gpio499/direction
+echo "1" > /sys/class/gpio/gpio499/value
+#eth4
+echo "out" > /sys/class/gpio/gpio500/direction
+echo "1" > /sys/class/gpio/gpio500/value
+
+#turn all POE off
+echo "0" > /sys/class/gpio/gpio496/value
+echo "0" > /sys/class/gpio/gpio497/value
+echo "0" > /sys/class/gpio/gpio498/value
+echo "0" > /sys/class/gpio/gpio499/value
+echo "0" > /sys/class/gpio/gpio500/value
+</code>
+
+** !!! Update: **
+While using kernel 5.4.33 on an ubnt-erx-sfp I noticed that the gpio numbers had changed as the pca9555 is attributed another gpio base number which is 400.
+So 496 .. 500 become 400 .. 404.
+
+** !!! Update: **
+While using kernel 6.6.73 on an ubnt-x-sfp I noticed that the gpio numbers had changed as the pca9555 is attributed another gpio base number which is 608.
+So 496 .. 500 become 608 .. 612.
+
+==== Switch Ports (for VLANs) ====
+**ER-X & ER-X SFP:**
+^ Port  ^ Switch port   ^ Label ^
+| WAN        | 0 | eth0               |
+| LAN 1      | 1 | eth1               |
+| LAN 2      | 2 | eth2               |
+| LAN 3      | 3 | eth3               |
+| LAN 4      | 4 | eth4               |
+| N/A        | 5 | eth5 (Only on SFP) |
+| CPU (eth0) | 6 |                    |
+
+==== Buttons ====
+
+^ BUTTON                       ^ Event   ^
+| Reset                |  reset  |
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedcurrentrel", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Ubiquiti$", "model": "EdgeRouter X"}
+} -->
+
+Voltage: Ubiquiti EdgerouterX uses [[https://kz.y-ic.com/datasheet/34/LCCH1-0-12-X.pdf|RT7272B]] DC/DC voltage regulator that works from 4.5V to 36V input voltage range. Ubiquiti EdgerouterX SFP and EdgePoint R6 uses [[http://www.alldatasheet.com/datasheet-pdf/pdf/483035/AOSMD/AOZ1212AI.html|AOZ1212]] DC/DC voltage regulator that works from a 4.5V to 27V input voltage range.
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+//Front://\\
+{{:media:ubiquiti:edgerouter-x-sfp-case-front.jpg?400|}}
+
+//Back://\\
+{{:media:ubiquiti:edgerouter-x-sfp-case-back.jpg?400|}}
+
+//Backside label://\\
+{{:media:ubiquiti:edgerouter-x-sfp-case-side.jpg?400|}}
+
+==== Opening the case ====
+(valid for "EdgeRouter X" and "EdgePoint R6")
+
+Two crosshead (PH0) screws are present on one side of the router, unscrew these and the top of the casing comes right off. No warranty-void stickers present of any kind. The serial port is prepopulated with header pins.
+
+
+**EdgeRouter X SFP**
+//Main PCB://\\
+{{media:ubiquiti:edgerouter-x-sfp_top.jpg?400|PCB top}}
+{{media:ubiquiti:edgerouter-x-sfp_bottom.jpg?400|PCB bottom}}
+{{media:ubiquiti:edgerouter-x-sfp_poe-section.jpg?400|PCB PoE-section}}
+
+**EdgePoint R6**
+//Main PCB://\\
+{{media:ubiquiti:edgepoint-r6:edgepoint-r6_top.jpg?400|ER6 PCB top}}
+{{media:ubiquiti:edgepoint-r6:edgepoint-r6_bottom.jpg?400|ER6 PCB bottom}}
+{{media:ubiquiti:edgepoint-r6:edgepoint-r6_poe.jpg.JPG?400|ER6 PCB PoE}}
+
+==== Serial ====
+//EdgeRouter X SFP://\\
+{{media:ubiquiti:edgerouter-x-sfp2.jpg?400|ERX-SFP Serial Port location and pin indentification}}
+
+//EdgePoint R6://\\
+{{media:ubiquiti:edgepoint-r6:edgepoint-r6_serial.jpg?400|EP-R6 Serial Port location and pin indentification}}
+
+^ Serial connection parameters | 57600, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+There seems to be an unpopulated JTAG port on the PCB.
+
+**Insert photo of PCB with markings for JTAG port**
+
+
+===== Hardware mods =====
+
+==== PoE MOD EdgeRouter X ====
+
+ETH0 PoE IN to PoE OUT  ->  find diode D26 and reverse it
+
+
+add PoE to ETH1 
+
+  - remove  R137 & R138
+  - connect R137 pad to R131
+  - connect R138 pad to gnd or R131
+
+add PoE to ETH2
+
+  - remove  R142 & R143
+  - connect R142 pad to R131
+  - connect R143 pad to gnd or R131
+
+add PoE to ETH3
+
+  - remove  R126 & R127
+  - connect R126 pad to R131
+  - connect R127 pad to gnd or R131
+
+transformer MAX 600mA!
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>===================================================================
+
+     		MT7621   stage1 code 10:33:11 (ASIC)
+
+     		CPU=50000000 HZ BUS=16666666 HZ
+
+==================================================================
+
+Change MPLL source from XTAL to CR...
+
+do MEMPLL setting..
+
+MEMPLL Config : 0x11100000
+
+3PLL mode + External loopback
+
+=== XTAL-40Mhz === DDR-1200Mhz ===
+
+PLL3 FB_DL: 0xb, 1/0 = 660/364 2D000000
+
+PLL4 FB_DL: 0xf, 1/0 = 549/475 3D000000
+
+PLL2 FB_DL: 0x16, 1/0 = 586/438 59000000
+
+do DDR setting..[00320381]
+
+Apply DDR3 Setting...(use customer AC)
+
+          0    8   16   24   32   40   48   56   64   72   80   88   96  104  112  120
+
+      --------------------------------------------------------------------------------
+
+0000:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0001:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0002:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0003:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0004:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0005:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0006:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0007:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0008:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0009:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+000A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+000B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+000C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+000D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    1
+
+000E:|    0    0    0    0    0    0    0    0    0    0    1    1    1    1    1    1
+
+000F:|    0    0    0    0    0    1    1    1    1    1    1    1    1    1    0    0
+
+0010:|    1    1    1    1    1    1    1    1    1    0    0    0    0    0    0    0
+
+0011:|    1    1    1    1    0    0    0    0    0    0    0    0    0    0    0    0
+
+0012:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0013:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0014:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0015:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0016:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0017:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0018:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+0019:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001E:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+001F:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+
+rank 0 coarse = 16
+
+rank 0 fine = 32
+
+B:|    0    0    0    0    0    0    0    0    1    1    1    0    0    0    0    0
+
+opt_dle value:9
+
+DRAMC_R0DELDLY[018]=00001C1C
+
+==================================================================
+
+		RX	DQS perbit delay software calibration 
+
+==================================================================
+
+1.0-15 bit dq delay value
+
+==================================================================
+
+bit|     0  1  2  3  4  5  6  7  8  9
+
+--------------------------------------
+
+0 |    11 8 11 10 11 6 12 6 7 9 
+
+10 |    8 13 8 11 9 9 
+
+--------------------------------------
+
+
+
+==================================================================
+
+2.dqs window
+
+x=pass dqs delay value (min~max)center 
+
+y=0-7bit DQ of every group
+
+input delay:DQS0 =28 DQS1 = 28
+
+==================================================================
+
+bit	DQS0	 bit      DQS1
+
+0  (1~53)27  8  (1~53)27
+
+1  (2~53)27  9  (1~54)27
+
+2  (1~54)27  10  (0~53)26
+
+3  (0~54)27  11  (2~52)27
+
+4  (1~56)28  12  (1~53)27
+
+5  (1~54)27  13  (1~55)28
+
+6  (1~55)28  14  (1~55)28
+
+7  (1~55)28  15  (1~54)27
+
+==================================================================
+
+3.dq delay value last
+
+==================================================================
+
+bit|    0  1  2  3  4  5  6  7  8   9
+
+--------------------------------------
+
+0 |    12 9 12 11 11 7 12 6 8 10 
+
+10 |    10 14 9 11 9 10 
+
+==================================================================
+
+==================================================================
+
+     TX  perbyte calibration 
+
+==================================================================
+
+DQS loop = 15, cmp_err_1 = ffff0000 
+
+dqs_perbyte_dly.last_dqsdly_pass[0]=15,  finish count=1 
+
+dqs_perbyte_dly.last_dqsdly_pass[1]=15,  finish count=2 
+
+DQ loop=15, cmp_err_1 = ffff00aa
+
+dqs_perbyte_dly.last_dqdly_pass[1]=15,  finish count=1 
+
+DQ loop=14, cmp_err_1 = ffff0080
+
+DQ loop=13, cmp_err_1 = ffff0080
+
+DQ loop=12, cmp_err_1 = ffff0000
+
+dqs_perbyte_dly.last_dqdly_pass[0]=12,  finish count=2 
+
+byte:0, (DQS,DQ)=(9,8)
+
+byte:1, (DQS,DQ)=(8,8)
+
+20,data:89
+
+[EMI] DRAMC calibration passed
+
+
+
+
+===================================================================
+
+     		MT7621   stage1 code done 
+
+     		CPU=50000000 HZ BUS=16666666 HZ
+
+===================================================================
+
+
+
+U-Boot 1.1.3 (Jan 27 2015 - 17:52:09)
+
+Board: Ralink APSoC DRAM:  256 MB
+relocate_code Pointer at: 8ffb0000
+
+Config XHCI 40M PLL 
+******************************
+Software System Reset Occurred
+******************************
+Allocate 16 byte aligned buffer: 8ffe13a0
+Enable NFI Clock
+# MTK NAND # : Use HW ECC
+NAND ID [01 DA 90 95 46]
+Device found in MTK table, ID: 1da, EXT_ID: 909546
+Support this Device in MTK table! 1da 
+
+select_chip
+[NAND]select ecc bit:12, sparesize :112 spare_per_sector=28
+Signature matched and data read!
+load_fact_bbt success 2047
+load fact bbt success
+[mtk_nand] probe successfully!
+mtd->writesize=2048 mtd->oobsize=112,	mtd->erasesize=131072  devinfo.iowidth=8
+..
+UBNT e50 13-02079-18 44D9E707138C
+UBNT BD type=e50, mac=44D9E707138C, s/n=44D9E707138C, mrev=18, k_idx=0
+============================================ 
+Ralink UBoot Version: 4.3.S.0
+-------------------------------------------- 
+ASIC MT7621A DualCore (MAC to MT7530 Mode)
+DRAM_CONF_FROM: Auto-Detection 
+DRAM_TYPE: DDR3 
+DRAM bus: 16 bit
+Xtal Mode=3 OCP Ratio=1/3
+Flash component: NAND Flash
+Date:Jan 27 2015  Time:17:52:09
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:256, ways:4, linesz:32 ,total:32768 
+
+ ##### The CPU freq = 880 MHZ #### 
+ estimate memory size =256 Mbytes
+#Reset_MT7530
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. 
+default: 4
+ 4  3 
+
+You choosed 3
+
+ 0 
+   
+3: System Boot system code via Flash.
+## Booting image at bfd40000 ...
+   Image Name:   Linux Kernel Image
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1676117 Bytes =  1.6 MB
+   Load Address: 80001000
+   Entry Point:  803654a0
+..........................   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 803654a0) ...
+## Giving linux memsize in MB, 256
+
+Starting kernel ...
+
+
+LINUX started...
+
+ THIS IS ASIC
+Linux version 3.10.14-UBNT (root@edgeos-builder2) (gcc version 4.6.3 (Buildroot 2012.11.1) ) #1 SMP Mon Feb 16 12:59:27 PST 2015
+
+ The CPU feqenuce set to 880 MHz
+GCMP present
+CPU0 revision is: 0001992f (MIPS 1004Kc)
+Software DMA cache coherency
+Determined physical RAM map:
+ memory: 10000000 @ 00000000 (usable)
+Zone ranges:
+  Normal   [mem 0x00000000-0x0fffffff]
+Movable zone start for each node
+Early memory node ranges
+  node   0: [mem 0x00000000-0x0fffffff]
+Detected 3 available secondary CPU(s)
+Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+PERCPU: Embedded 7 pages/cpu @81203000 s6656 r8192 d13824 u32768
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 65024
+Kernel command line: console=ttyS1,57600n8 ubi.mtd=7 root=ubi0_0 rootfstype=ubifs rootsqimg=squashfs.img rootsqwdir=w rw
+PID hash table entries: 1024 (order: 0, 4096 bytes)
+Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+Writing ErrCtl register=00050184
+Readback ErrCtl register=00050184
+Memory: 254860k/262144k available (3507k kernel code, 7284k reserved, 1010k data, 212k init, 0k highmem)
+Hierarchical RCU implementation.
+NR_IRQS:128
+console [ttyS1] enabled
+Calibrating delay loop... 577.53 BogoMIPS (lpj=1155072)
+pid_max: default: 32768 minimum: 301
+Security Framework initialized
+Mount-cache hash table entries: 512
+launch: starting cpu1
+launch: cpu1 gone!
+CPU1 revision is: 0001992f (MIPS 1004Kc)
+Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+Synchronize counters for CPU 1: done.
+launch: starting cpu2
+launch: cpu2 gone!
+CPU2 revision is: 0001992f (MIPS 1004Kc)
+Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+Synchronize counters for CPU 2: done.
+launch: starting cpu3
+launch: cpu3 gone!
+CPU3 revision is: 0001992f (MIPS 1004Kc)
+Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+Synchronize counters for CPU 3: done.
+Brought up 4 CPUs
+devtmpfs: initialized
+NET: Registered protocol family 16
+bio: create slab <bio-0> at 0
+Switching to clocksource MIPS
+NET: Registered protocol family 2
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 2, 16384 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP: reno registered
+UDP hash table entries: 256 (order: 1, 8192 bytes)
+UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+NET: Registered protocol family 1
+4 CPUs re-calibrate udelay(lpj = 1167360)
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+Registering unionfs 2.5.13 (for 3.10.34)
+aufs 3.10.x-20140915
+msgmni has been set to 497
+io scheduler noop registered
+io scheduler cfq registered (default)
+Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x1e000d00 (irq = 27) is a 16550A
+serial8250: ttyS1 at MMIO 0x1e000c00 (irq = 26) is a 16550A
+Ralink gpio driver initialized
+i2cdrv_major = 218
+loop: module loaded
+flash manufacture id: 1c, device id 70 15
+EN25QH16(1c 70151c70) (2048 Kbytes)
+mtd .name = raspi, .size = 0x00200000 (2M) .erasesize = 0x00010000 (64K) .numeraseregions = 0
+Creating 1 MTD partitions on "raspi":
+0x000000000000-0x000000080000 : "SPI_FLASH"
+MediaTek Nand driver init, version v2.1 Fix AHB virt2phys error
+Allocate 16 byte aligned buffer: 804b0430
+Enable NFI Clock
+# MTK NAND # : Use HW ECC
+NAND ID [01 DA 90 95 46, 00909546]
+Device found in MTK table, ID: 1da, EXT_ID: 909546
+Support this Device in MTK table! 1da 
+
+NAND device: Manufacturer ID: 0x01, Chip ID: 0xda (AMD/Spansion NAND 256MiB 3,3V 8-bit), 256MiB, page size: 2048, OOB size: 112
+[NAND]select ecc bit:12, sparesize :112 spare_per_sector=28
+Scanning device for bad blocks
+Signature matched and data read!
+load_fact_bbt success 2047
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+Creating 7 MTD partitions on "MT7621-NAND":
+0x000000000000-0x00000ff80000 : "ALL"
+0x000000000000-0x000000080000 : "Bootloader"
+0x000000080000-0x0000000e0000 : "Config"
+0x0000000e0000-0x000000140000 : "eeprom"
+0x000000140000-0x000000440000 : "Kernel"
+0x000000440000-0x000000740000 : "Kernel2"
+0x000000740000-0x00000ff00000 : "RootFS"
+[mtk_nand] probe successfully!
+UBNT BD mac 44d9e707138c kidx 0 mrev 18 serial 44D9E707138C type e50
+rdm_major = 253
+GMAC1_MAC_ADRH -- : 0x000044d9
+GMAC1_MAC_ADRL -- : 0xe707138c
+Ralink APSoC Ethernet Driver Initilization. v3.1  512 rx/tx descriptors allocated, mtu = 1500!
+GMAC1_MAC_ADRH -- : 0x000044d9
+GMAC1_MAC_ADRL -- : 0xe707138c
+PROC INIT OK!
+Ralink I2C Init
+TCP: cubic registered
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+UBI: attaching mtd7 to ubi0
+UBI: scanning is finished
+UBI: attached mtd7 (name "RootFS", size 247 MiB) to ubi0
+UBI: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+UBI: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+UBI: VID header offset: 2048 (aligned 2048), data offset: 4096
+UBI: good PEBs: 1982, bad PEBs: 0, corrupted PEBs: 0
+UBI: user volume: 1, internal volumes: 1, max. volumes count: 128
+UBI: max/mean erase counter: 1/0, WL threshold: 4096, image sequence number: 1428435120
+UBI: available PEBs: 0, total reserved PEBs: 1982, PEBs reserved for bad PEB handling: 40
+UBI: background thread "ubi_bgt0d" started, PID 51
+UBIFS: background thread "ubifs_bgt0_0" started, PID 52
+UBIFS: mounted UBI device 0, volume 0, name "troot"
+UBIFS: LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+UBIFS: FS size: 244428800 bytes (233 MiB, 1925 LEBs), journal size 12189696 bytes (11 MiB, 96 LEBs)
+UBIFS: reserved for root: 4952683 bytes (4836 KiB)
+UBIFS: media format: w4/r0 (latest is w4/r0), UUID E6F01834-6938-4C48-AB84-503A3CF12D34, small LPT model
+VFS: Mounted root (aufs filesystem) on device 0:12.
+devtmpfs: mounted
+Freeing unused kernel memory: 212K (8046b000 - 804a0000)
+Algorithmics/MIPS FPU Emulator v1.5
+
+INIT: version 2.88 booting
+
+aufs au_lkup_dentry:223:date[68]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:date[68]: I/O Error, both of real entry and whiteout found, localtime, err -5
+mkdir: can't create directory '/dev/shm/network': No such file or directory
+aufs au_lkup_dentry:223:ntpdate[173]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:init[1]: I/O Error, both of real entry and whiteout found, localtime, err -5
+
+INIT: Entering runlevel: 2
+
+Unable to open file: /dev/tpm0
+can't open any entropy source
+Maybe RNG device modules are not loaded
+
+aufs au_lkup_dentry:223:rsyslogd[308]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:cron[321]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:cron[322]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:ubnt-cfgd[332]: I/O Error, both of real entry and whiteout found, localtime, err -5
+[....] Starting routing daemon: ribaufs au_lkup_dentry:223:zebra[349]: I/O Error, both of real entry and whiteout found, localtime, err -5
+[?25l[?1c7[1G[[32m ok [39;49m8[?25h[?0c.
+[....] Starting EdgeOS router: migrateaufs au_lkup_dentry:223:sg[388]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[400]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[407]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:date[422]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:vyatta_config_m[389]: I/O Error, both of real entry and whiteout found, localtime, err -5
+ rl-system configureaufs au_lkup_dentry:223:sg[462]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:date[464]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:date[467]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:date[469]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:date[470]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[472]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[475]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:rsyslogd[502]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[509]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:ln[510]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:ln[510]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:ln[510]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:netplugd[306]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[523]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[525]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[537]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[539]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[551]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[553]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[565]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[567]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[583]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[587]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[589]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[603]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[605]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[611]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:ntpd[634]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[637]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:usermod[640]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[646]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[649]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[653]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[659]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[658]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sshd[688]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[690]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[696]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[698]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[700]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:sudo[704]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:lighttpd[707]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:logger[722]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:date[723]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:php-cgi[708]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:date[725]: I/O Error, both of real entry and whiteout found, localtime, err -5
+aufs au_lkup_dentry:223:date[726]: I/O Error, both of real entry and whiteout found, localtime, err -5
+[?25l7[1G[[31mFAIL[39;49m8[?25h [31mfailed![39;49m
+
+Welcome to EdgeOS ubnt ttyS1
+
+By logging in, accessing, or using the Ubiquiti product, you
+acknowledge that you have read and understood the Ubiquiti
+License Agreement (available in the Web UI at, by default,
+http://192.168.1.1) and agree to be bound by its terms.
+
+ubnt login:</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>===================================================================
+                MT7621   stage1 code 10:33:11 (ASIC)
+                CPU=50000000 HZ BUS=16666666 HZ
+==================================================================
+Change MPLL source from XTAL to CR...
+do MEMPLL setting..
+MEMPLL Config : 0x11100000
+3PLL mode + External loopback
+=== XTAL-40Mhz === DDR-1200Mhz ===
+PLL2 FB_DL: 0xc, 1/0 = 741/283 31000000
+PLL3 FB_DL: 0xd, 1/0 = 517/507 35000000
+PLL4 FB_DL: 0x15, 1/0 = 543/481 55000000
+do DDR setting..[00320381]
+Apply DDR3 Setting...(use customer AC)
+          0    8   16   24   32   40   48   56   64   72   80   88   96  104  112  120
+      --------------------------------------------------------------------------------
+0000:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0001:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0002:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0003:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0004:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0005:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0006:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0007:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0008:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0009:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    1
+000E:|    0    0    0    0    0    0    0    0    0    1    1    1    1    1    1    1
+000F:|    0    0    0    0    0    1    1    1    1    1    1    1    1    1    0    0
+0010:|    1    1    1    1    1    1    1    1    1    0    0    0    0    0    0    0
+0011:|    1    1    1    1    0    0    0    0    0    0    0    0    0    0    0    0
+0012:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0013:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0014:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0015:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0016:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0017:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0018:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0019:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001E:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001F:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+rank 0 coarse = 16
+rank 0 fine = 32
+B:|    0    0    0    0    0    0    0    0    1    1    1    0    0    0    0    0
+opt_dle value:9
+DRAMC_R0DELDLY[018]=00001C1D
+==================================================================
+                RX      DQS perbit delay software calibration 
+==================================================================
+1.0-15 bit dq delay value
+==================================================================
+bit|     0  1  2  3  4  5  6  7  8  9
+--------------------------------------
+0 |    13 9 13 10 13 8 12 7 7 10 
+10 |    9 13 7 12 7 10 
+--------------------------------------
+
+==================================================================
+2.dqs window
+x=pass dqs delay value (min~max)center 
+y=0-7bit DQ of every group
+input delay:DQS0 =29 DQS1 = 28
+==================================================================
+bit     DQS0     bit      DQS1
+0  (2~55)28  8  (1~53)27
+1  (1~52)26  9  (1~52)26
+2  (1~52)26  10  (1~52)26
+3  (1~52)26  11  (2~55)28
+4  (2~57)29  12  (2~55)28
+5  (1~53)27  13  (1~56)28
+6  (1~54)27  14  (1~54)27
+7  (1~55)28  15  (1~56)28
+==================================================================
+3.dq delay value last
+==================================================================
+bit|    0  1  2  3  4  5  6  7  8   9
+--------------------------------------
+0 |    14 12 15 13 13 10 14 8 8 12 
+10 |    11 13 7 12 8 10 
+==================================================================
+==================================================================
+     TX  perbyte calibration 
+==================================================================
+DQS loop = 15, cmp_err_1 = ffff2240 
+DQS loop = 14, cmp_err_1 = ffff0000 
+dqs_perbyte_dly.last_dqsdly_pass[0]=14,  finish count=1 
+dqs_perbyte_dly.last_dqsdly_pass[1]=14,  finish count=2 
+DQ loop=15, cmp_err_1 = ffff00a0
+dqs_perbyte_dly.last_dqdly_pass[1]=15,  finish count=1 
+DQ loop=14, cmp_err_1 = ffff0080
+DQ loop=13, cmp_err_1 = ffff0000
+dqs_perbyte_dly.last_dqdly_pass[0]=13,  finish count=2 
+byte:0, (DQS,DQ)=(8,8)
+byte:1, (DQS,DQ)=(8,8)
+20,data:88
+[EMI] DRAMC calibration passed
+
+===================================================================
+                MT7621   stage1 code done 
+                CPU=50000000 HZ BUS=16666666 HZ
+===================================================================
+
+
+U-Boot 1.1.3 (Jan 27 2015 - 17:52:09)
+                                     
+Board: Ralink APSoC DRAM:  256 MB
+relocate_code Pointer at: 8ffb0000
+                                  
+Config XHCI 40M PLL 
+******************************
+Software System Reset Occurred
+******************************
+Allocate 16 byte aligned buffer: 8ffe13a0
+Enable NFI Clock                         
+# MTK NAND # : Use HW ECC
+NAND ID [01 DA 90 95 46] 
+Device found in MTK table, ID: 1da, EXT_ID: 909546
+Support this Device in MTK table! 1da             
+select_chip
+[NAND]select ecc bit:12, sparesize :112 spare_per_sector=28
+Signature matched and data read!                           
+load_fact_bbt success 2047      
+load fact bbt success     
+[mtk_nand] probe successfully!
+mtd->writesize=2048 mtd->oobsize=112,   mtd->erasesize=131072  devinfo.iowidth=8
+..                                                                              
+UBNT e50 13-02079-18 44D9E79393C7
+UBNT BD type=e50, mac=44D9E79393C7, s/n=44D9E79393C7, mrev=18, k_idx=1
+============================================                          
+Ralink UBoot Version: 4.3.S.0                
+-------------------------------------------- 
+ASIC MT7621A DualCore (MAC to MT7530 Mode)   
+DRAM_CONF_FROM: Auto-Detection            
+DRAM_TYPE: DDR3                
+DRAM bus: 16 bit
+Xtal Mode=3 OCP Ratio=1/3
+Flash component: NAND Flash
+Date:Jan 27 2015  Time:17:52:09
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:256, ways:4, linesz:32 ,total:32768 
+                                                 
+ ##### The CPU freq = 880 MHZ #### 
+ estimate memory size =256 Mbytes  
+#Reset_MT7530                    
+             
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).          
+   4: Entr boot command line interface.    
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP.   
+default: 3                                                                                   0 
+                                                                                              
+3: System Boot system code via Flash.
+## Booting image at c0040000 ...     
+   Image Name:   MIPS OpenWrt Linux-4.4.6
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1513707 Bytes =  1.4 MB                  
+   Load Address: 80001000               
+   Entry Point:  80001000
+........................   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK                
+No initrd                           
+## Transferring control to Linux (at address 80001000) ...
+## Giving linux memsize in MB, 256                        
+                                  
+Starting kernel ...
+                   
+[    0.000000] Linux version 4.4.6 (derecho@prorsus) (gcc version 5.3.0 (OpenWrt GCC 5.3.0 r49166) ) #2 SMP Thu Apr 14 18:13:22 UTC 2016
+[    0.000000] SoC Type: MediaTek MT7621 ver:1 eco:3
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] MIPS: machine is UBNT-ERX
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 10000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000]   HighMem  empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] VPE topology {2,2} total 4
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] PERCPU: Embedded 10 pages/cpu @8120b000 s8416 r8192 d24352 u40960
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 65024
+[    0.000000] Kernel command line: console=ttyS0,57600 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Writing ErrCtl register=0003aa00
+[    0.000000] Readback ErrCtl register=0003aa00
+[    0.000000] Memory: 254720K/262144K available (3479K kernel code, 161K rwdata, 812K rodata, 208K init, 248K bss, 7424K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:256
+[    0.000000] clocksource: GIC: mask: 0xffffffffffffffff max_cycles: 0xcaf478abb4, max_idle_ns: 440795247997 ns
+[    0.000000] sched_clock: 32 bits at 100 Hz, resolution 10000000ns, wraps every 21474836475000000ns
+[    0.010000] Calibrating delay loop... 586.13 BogoMIPS (lpj=2930688)
+[    0.070000] pid_max: default: 32768 minimum: 301
+[    0.080000] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.090000] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.100000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.100000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.100000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.100000] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.190000] Synchronize counters for CPU 1: done.
+[    0.200000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.200000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.200000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.200000] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.290000] Synchronize counters for CPU 2: done.
+[    0.300000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.300000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.300000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.300000] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.390000] Synchronize counters for CPU 3: done.
+[    0.400000] Brought up 4 CPUs
+[    0.400000] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.410000] pinctrl core: initialized pinctrl subsystem
+[    0.420000] NET: Registered protocol family 16
+[    0.490000] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.500000] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.510000] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.520000] clocksource: Switched to clocksource GIC
+[    0.540000] NET: Registered protocol family 2
+[    0.550000] TCP established hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.560000] TCP bind hash table entries: 2048 (order: 2, 16384 bytes)
+[    0.570000] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.580000] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    0.600000] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    0.610000] NET: Registered protocol family 1
+[    0.620000] futex hash table entries: 1024 (order: 3, 32768 bytes)
+[    0.640000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.650000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.670000] io scheduler noop registered
+[    0.680000] io scheduler deadline registered (default)
+[    0.690000] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    0.700000] console [ttyS0] disabled
+[    0.710000] 1e000c00.uartlite: ttyS0 at MMIO 0x1e000c00 (irq = 33, base_baud = 3125000) is a 16550A
+[    0.730000] console [ttyS0] enabled
+[    0.730000] console [ttyS0] enabled
+[    0.740000] bootconsole [early0] disabled
+[    0.740000] bootconsole [early0] disabled
+[    0.760000] MediaTek Nand driver init, version v2.1 Fix AHB virt2phys error
+[    0.770000] Allocate 16 byte aligned buffer: 804c3210
+[    0.780000] Enable NFI Clock
+[    0.790000] # MTK NAND # : Use HW ECC
+[    0.800000] Device found in MTK table, ID: 1da, EXT_ID: 909546
+[    0.810000] Support this Device in MTK table! 1da 
+[    0.820000] nand: device found, Manufacturer ID: 0x01, Chip ID: 0xda
+[    0.830000] nand: AMD/Spansion NAND 256MiB 3,3V 8-bit
+[    0.840000] nand: 256 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 128
+[    0.860000] [NAND]select ecc bit:12, sparesize :112 spare_per_sector=28
+[    0.870000] Scanning device for bad blocks
+[    1.570000] 6 ofpart partitions found on MTD device MT7621-NAND
+[    1.580000] Creating 6 MTD partitions on "MT7621-NAND":
+[    1.590000] 0x000000000000-0x000000080000 : "u-boot"
+[    1.600000] 0x000000080000-0x0000000e0000 : "u-boot-env"
+[    1.610000] 0x0000000e0000-0x000000140000 : "factory"
+[    1.620000] 0x000000140000-0x000000440000 : "kernel1"
+[    1.630000] 0x000000440000-0x000000740000 : "kernel2"
+[    1.640000] 0x000000740000-0x00000ff00000 : "ubi"
+[    1.660000] [mtk_nand] probe successfully!
+[    1.660000] Signature matched and data read!
+[    1.670000] load_fact_bbt success 2047
+[    1.680000] netif_napi_add() called with weight 128 on device eth%d
+[    1.710000] libphy: mdio: probed
+[    1.730000] mtk_soc_eth 1e100000.ethernet: loaded mt7530 driver
+[    1.740000] mtk_soc_eth 1e100000.ethernet eth0: mediatek frame engine at 0xbe100000, irq 10
+[    1.760000] mt7621_wdt 1e000100.wdt: Initialized
+[    1.770000] NET: Registered protocol family 10
+[    1.780000] NET: Registered protocol family 17
+[    1.790000] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    1.810000] 8021q: 802.1Q VLAN Support v1.8
+[    1.820000] UBI: auto-attach mtd5
+[    1.830000] ubi0: attaching mtd5
+[    4.270000] ubi0: scanning is finished
+[    4.300000] ubi0: attached mtd5 (name "ubi", size 247 MiB)
+[    4.310000] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    4.320000] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    4.330000] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    4.350000] ubi0: good PEBs: 1982, bad PEBs: 0, corrupted PEBs: 0
+[    4.360000] ubi0: user volume: 2, internal volumes: 1, max. volumes count: 128
+[    4.370000] ubi0: max/mean erase counter: 1/0, WL threshold: 4096, image sequence number: 1689714530
+[    4.390000] ubi0: available PEBs: 0, total reserved PEBs: 1982, PEBs reserved for bad PEB handling: 40
+[    4.410000] ubi0: background thread "ubi_bgt0d" started, PID 289
+[    4.420000] block ubiblock0_0: created from ubi0:0(rootfs)
+[    4.430000] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[    4.450000] hctosys: unable to open rtc device (rtc0)
+[    4.460000] UBIFS error (ubi0:0 pid 1): init_constants_early: too few LEBs (11), min. is 17
+[    4.480000] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    4.490000] Freeing unused kernel memory: 208K (8045c000 - 80490000)
+[    5.180000] init: Console is alive
+[    5.180000] init: - watchdog -
+[    5.370000] init: - preinit -
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    8.790000] random: procd urandom read with 28 bits of entropy available
+[    8.810000] UBIFS (ubi0:1): default file-system created
+[    8.820000] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 351
+[    8.940000] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[    8.960000] UBIFS (ubi0:1): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[    8.980000] UBIFS (ubi0:1): FS size: 243032064 bytes (231 MiB, 1914 LEBs), journal size 12189696 bytes (11 MiB, 96 LEBs)
+[    9.000000] UBIFS (ubi0:1): reserved for root: 4952683 bytes (4836 KiB)
+[    9.010000] UBIFS (ubi0:1): media format: w4/r0 (latest is w4/r0), UUID AAD1669E-8BEF-4D72-B307-63F0E2358AA3, small LPT model
+[    9.040000] mount_root: overlay filesystem has not been fully initialized yet
+[    9.050000] mount_root: switching to jffs2 overlay
+[    9.080000] procd: - early -
+[    9.090000] procd: - watchdog -
+[    9.830000] procd: - ubus -
+[    9.890000] procd: - init -
+Please press Enter to activate this console.
+[   10.280000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   10.300000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   10.310000] nf_conntrack version 0.5.0 (3983 buckets, 15932 max)
+[   10.460000] xt_time: kernel timezone is -0000
+[   10.470000] PPP generic driver version 2.4.2
+[   10.480000] NET: Registered protocol family 24
+[   13.750000] device eth0.1 entered promiscuous mode
+[   13.760000] device eth0 entered promiscuous mode
+[   13.770000] br-lan: port 1(eth0.1) entered forwarding state
+[   13.780000] br-lan: port 1(eth0.1) entered forwarding state
+[   15.780000] br-lan: port 1(eth0.1) entered forwarding state
+[   20.240000] random: nonblocking pool is initialized
+
+
+
+BusyBox v1.24.1 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ DESIGNATED DRIVER (Bleeding Edge, r49166)
+ -----------------------------------------------------
+  * 2 oz. Orange Juice         Combine all juices in a
+  * 2 oz. Pineapple Juice      tall glass filled with
+  * 2 oz. Grapefruit Juice     ice, stir well.
+  * 2 oz. Cranberry Juice
+ -----------------------------------------------------
+root@OpenWrt:/# </nowiki>
+</WRAP>\\
+
+===== U-boot Env =====
+<code>
+root@OpenWrt:/# fw_printenv
+bootcmd=tftp
+bootdelay=1
+baudrate=57600
+stdin=serial
+stdout=serial
+stderr=serial
+ethaddr=ac:8b:a9:aa:bb:cc
+bootargs=console=ttyS1,57600n8 ubi.mtd=7 root=ubi0_0 rootfstype=ubifs rootsqimg=squashfs.img rootsqwdir=w rw model=e50
+BootType=3
+filesize=44ee27
+fileaddr=80A00000
+ipaddr=172.16.3.211
+serverip=172.16.3.210
+autostart=no
+bootfile=vme50
+</code>
+
+===== Notes =====
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ramips mt7621 2core 256ram 256NAND 5port GigabitEthernet 0USB PoE SFP}}

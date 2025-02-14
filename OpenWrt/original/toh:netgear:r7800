@@ -1,0 +1,4189 @@
+====== NETGEAR R7800 (Nighthawk X4S AC2600) ======
+
+Netgear R7800 is a dual-core 1.7 GHz AC2600 router based on IPQ8065 SoC and QCA9984 wifi.
+ 
+Router has 512 MB RAM and 128 MB flash (about 80 MB free flash space after installation in 18.06 and later).
+
+{{media:netgear:netgear-r7800.jpg?200|R7800}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^R7800$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["version", "cpu", "cpucores", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet1gports", "usbports"],
+  "filterColumns": {"model": "^R7800$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^R7800$"}
+} -->
+
+Use [[https://firmware-selector.openwrt.org/?target=ipq806x%2Fgeneric&id=netgear_r7800|https://firmware-selector.openwrt.org]] to download OpenWrt firmware images and optionally generate a customized OpenWrt image with different installed packages. For an explanation of different image types, see [[docs:guide-user:installation:before.installation|FAQ before installation]].
+
+If your router is running stock Netgear firmware, then you can use the Netgear stock firmware's built-in firmware updater to install OpenWrt, without needing to use TFTP. Installing using TFTP is a fallback option, which you can use if you are unable to install using a web browser. 
+
+//The instructions below were tested on stock Netgear firmware V1.0.2.92 and successfully installed OpenWrt 23.05 // 
+
+  - Connect your computer to the Wi-Fi router's LAN port using a wired ethernet cable.
+  - Open a web browser and login to Netgear router's admin page (default is http://192.168.1.1). Under **Advanced** page, select **Administration** -> **Firmware Update**.
+  - On the **Firmware Update** page, select and upload the OpenWrt ''-factory.img'' file. Select **Yes** button to continue install. Wait a few minutes for the router to reboot.
+  - After the power LED stops blinking and stays solidly lit white, open a web browser and navigate to http://192.168.1.1 address
+  - Ignore **Your connection is not private** warning message in the web browser, and continue by selecting **Advanced** button, then select the **Proceed to 192.168.1.1 (unsafe)** link.
+  - Login to OpenWrt with the default OpenWrt username ''root'' and no password. 
+(Note: there is no need to flash "sysupgrade" file, as there are no functional differences between factory and sysupgrade images.)
+
+The information below is kept for archival purposes for upgrading from OpenWrt versions prior to 18.06.0-rc1.
+
+  * Master, 19.07 and 18.06 have since Q2/2018 a larger kernel partition, so that kernel 4.14+ and flow offloading is possible. Additionally master, 19.07 and 18.06 currently use 70 MB larger area on flash, so installing more packages is possible. That change was made for master and 18.06 branches in June 2018. 
+  * Due to that, you will need TFTP flash once to upgrade/downgrade from the older builds (17.01.x or 18.06.0-rc1 or earlier). Sysupgrade works normally after you have upgraded to 18.06.0 or newer. 
+  * See TFTP flashing instructions below, originally from forum: [[https://forum.openwrt.org/t/netgear-r7800-exploration-ipq8065-qca9984/285/5?u=tmomas|R7800 TFTP installation instructions in Openwrt forum ]]
+
+===== Broken NAND Chips/Blocks =====
+
+There are some models, which have broken NANDs. when flashing the Kernel, some (mostly one) blocks are skipped. As a result, the start of the root-partition (called "ubi" in this model) comes later.
+
+**Result: Bootloop of the device**
+
+What you can do is here, edit the file ''target/linux/ipq806x/files-x.x/arch/arm/boot/dts/qcom-ipq8065-r7800.dts'' and put the startAddress for "ubi" up. 
+''(&nand_controller --> nand@0 --> partitions --> ubi@1880000)'', currently(04.2020) at line 360  )
+
+Edit the two numbers showing **1880000 to 18A0000**. (skip 2 blocks)
+
+Then compile the image using make.
+===== Debugging - kernel crash logs =====
+
+Since late February 2022, the R7800 .DTS in OpenWrt master (but not in 21.02 or earlier) has the needed definitions for the RAMoops pstore kernel crash logs, the functionality for which has been packaged as kmod-ramoops in February 2022.
+
+The kernel crashes are logged to 'ramoops' pstore files into RAM in /sys/fs/pstore . These files in RAM will survive a warm reboot (like in connection with a crash), but will not survive a cold reboot (power-off).
+
+The feature can be enabled by selecting the kmod-ramoops to the build, or installing kmod-ramoops via opkg. 
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name ^ Description        ^ Default configuration ^
+| br-lan (eth1.1) | LAN & WiFi         | 192.168.1.1/24        |
+| wan (eth0.2)    | WAN                | DHCP client           |
+| vlan1 (eth1.1)  | LAN ports (1 to 4) | None                  |
+| vlan2 (eth0.2)  | WAN port           | None                  |
+| radio0          | WiFi 5G            | Disabled              |
+| radio1          | WiFi 2.4G          | Disabled              |
+==== Switch Ports (for VLANs)  ====
+
+OpenWrt Switch port numbers 1-4 are the LAN Ethernet ports labeled 1-4 on the device, number 5 is the physical network port labeled Internet (WAN) on the device, and number 0 and 6 are internal connections between the switch chip and the CPU (labeled "CPU" in LuCI). Use these //switch// port numbers when specifying a VLAN's ports via the UCI (i.e., in the ''ports'' option of a VLAN's ''config switch_vlan'' section, in ''/etc/config/network'').
+
+By default, "eth0" is used for traffic to/from the ISP and "eth1" is for traffic to/from the local network.
+
+^ Port             ^ Switch port   ^
+| CPU (eth0)       | 0             |
+| LAN 1            | 1             |
+| LAN 2            | 2             |
+| LAN 3            | 3             |
+| LAN 4            | 4             |
+| WAN              | 5             |
+| CPU (eth1)       | 6             |
+
+==== Performance tuning ====
+
+In **Network > Firewall > General Settings**, in section **Routing/NAT Offloading** enable **Software flow offloading**.
+
+**IMPORTANT:** The information below no longer applies to OpenWrt 23.05 (kernel 5.15.134).
+
+<hidden>
+Recent OpenWrt releases use the ''performance'' governor by default, obviating the need for further configuration and keeping the CPUs always at max frequency:
+
+<code>
+root@OpenWrt:~# cat /sys/devices/system/cpu/cpufreq/policy*/scaling_governor
+performance
+performance
+</code>
+
+(Also, the referenced sysfs files (''/sys/devices/system/cpu/cpufreq/ondemand/*'') no longer exist.)
+
+**OUTDATED INFORMATION FOLLOWS:** 
+The default OpenWRT 18 cpufreq tunables are not suitable for the R7800 (see https://forum.openwrt.org/t/r7800-performance/15780/29 ). OpenWRT 19 shouldn't need these tweaks.
+
+To reach peak performance, paste the following lines into **System > Startup > Local Startup**:
+
+<code>
+echo 35 > /sys/devices/system/cpu/cpufreq/ondemand/up_threshold
+echo 10 > /sys/devices/system/cpu/cpufreq/ondemand/sampling_down_factor    
+</code>
+</hidden>
+
+===== Debricking =====
+
+
+R7800 has an easy-to-use TFTP flashing recovery mode in the bootloader, similar as some other Netgear routers e.g. WNDR3700.
+
+==== Prerequisites for TFTP flashing ====
+
+  * A TFTP client for your computer. There are both command-line tools and GUI versions available.
+  * Netgear covers flashing firmeware in their KB 000059633 https://kb.netgear.com/000059633/How-do-I-upload-firmware-to-my-NETGEAR-router-using-a-TFTP-client-on-Microsoft-Windows and recommends as TFTP Client Tftpd64 (Windows) with some helpfull and detailed instructions.
+  * Plug the ethernet cable to your computer and **LAN port 4** of the router (actually any LAN port should be ok, some users also reportet to be only successfull with the WAN (Internet) Port), **set your computer to static address** for LAN with the following information:
+     * IP address: 192.168.1.10   (actually anything in 192.168.1.2 - 192.168.1.253 is ok)
+     * Subnet mask: 255.255.255.0
+     * Default Gateway: 192.168.1.1
+  * You might need to manually config the address, as some operating systems change the IP rather quickly to a link-local 196.254.x.x address if there is no DHCP server. Verify that your PC still has 192.168.1.x before trying to TFTP.
+  *  A new firmware to flash in. Either an original Netgear firmware or an Openwrt "factory.img" firmware. "Sysupgrade" version will not work.
+  *  Access to router's reset button (on the back panel)
+
+==== TFTP flashing process ====
+
+  -     Turn off the power, push and hold the reset button (in a hole on backside) with a pin
+  -     While still holding the reset button, turn on the power, and the power led starts flashing white (after it first flashes orange for a while)
+  -     **Release** the reset button after the power led flashes white (for at least 10 times), immediately execute the tftp command on your computer. (Note: There is no requirement to wait for 10 flashes although Netgear apparently says that in official advice. You can release the button once it starts to flash white (after the orange flashing if over).)
+  - The power led will stop flashing if you succeeded in transferring the image, and the router reboots rather quickly with the new firmware.
+
+Note that this TFTP flash / recovery mode is in the u-boot bootloader, so it works before the actual firmware gets started.
+
+**Uploading the firmware image with a TFTP client** using this one-line command (Mac should work, Commands do not work with Windows 10 / 11 CMD)
+<code>
+$ tftp -i [router IP] put [firmware filename].[file format]
+</code>
+
+For example: 
+
+<code>
+$ tftp -i 192.168.1.1 put R9000-V1.0.4.2.img
+</code>
+
+==== Easy TFTP flashing on Linux or macOS ====
+
+  - Download the latest firmware you want to flash and rename it to ''factory.img''.
+  - Turn off the router. Connect the computer with an ethernet cable to port 4 on the router.
+  - Set a static IP address on the interface you connect to the router with and set the static IP address ''192.168.1.10'' with subnet mask ''255.255.255.0'' and router ''192.168.1.1''.
+  - Put a paperclip (or any other small object) in the reset hole and turn on the router. Keep pressing the reset button until the power led (most left light) turns from orange to blinking white. The router is now in tftp mode.
+  - Open a terminal and ''cd'' to the directory where the ''factory.img'' is located. Connect to the router with tftp using ''tftp 192.168.1.1''. Enable binary mode by typing ''binary'' (and press enter). Upload the file by issuing the tftp command ''put factory.img''. The firmware will now upload and be processed by the router. The power LED should turn red again.
+  - Wait until the power LED turns white again and the router should run the firmware you have uploaded.
+
+Example output:
+<code>
+User@MacBook Downloads % curl -o factory.img http://downloads.openwrt.org/releases/21.02.1/targets/ipq806x/generic/openwrt-21.02.1-ipq806x-generic-netgear_r7800-squashfs-factory.img
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   185  100   185    0     0   2681      0 --:--:-- --:--:-- --:--:--  2681
+User@MacBook Downloads % tftp 192.168.1.1 
+tftp> binary
+tftp> put factory.img
+Sent 31033473 bytes in 11.4 seconds
+tftp> quit
+</code>
+
+----
+
+==== If you are unsucesfull with any TFTP method described, consider doing the following: ====
+
+  * Put a simple switch device between your computer and the router. This might adresses the "cable unplugged " problem on some network interfaces.
+  * Try flashing with an other computer / laptop   
+  * Sometimes the OS internal firewall (espially Windows) causes Problemes. Turn it off while you flash / use any TFTP Method
+  * Use a differnt port. Lan 4 is first choice, WAN might work if Lan 4 does not work
+
+
+==== Booting from USB stick ====
+
+R7800 can also be booted from u-boot from USB stick attached to a powered USB hub. That might be useful in scenarios with damaged LAN ports. Advice was found in forum discussion, starting at: https://forum.openwrt.org/t/r7800-with-corrupted-firmware-image-and-faulty-lan-gosh/120642/42
+
+  * Download an 19.07 initramfs image. Apparently the later OpenWrt versions are too big? E.g. https://downloads.openwrt.org/releases/19.07.9/targets/ipq806x/generic/openwrt-19.07.9-ipq806x-generic-netgear_r7800-initramfs-uImage
+  * Prepare your USB drive at your Linux host. As it does not have any regular load commands, you can't use a regular file system. Instead we just dd our raw stuff to the drive:
+    <code>[user@host ~]$ sudo dd if=openwrt-initramfs-image-name of=/dev/sda bs=2M
+    [sudo] password for user: 
+    ...
+    5871028 bytes (5.9 MB, 5.6 MiB) copied, 7.31178 s, 803 kB/s
+    [user@host ~]$ sync
+     </code>
+  * Plug the USB stick into a powered USB hub attached to the R7800. (U-boot apparently leaves the USB port unpowered, so an external powered hub is needed.)
+  * Power on the device, enter the u-boot menu
+  * At the u-boot menu, start USB and usbboot the image. Use 0x44000000 as the load address.
+  <code>   
+(IPQ) # usb start
+(Re)start USB...
+USB0:   Register 2000240 NbrPorts 2
+Starting the controller
+USB XHCI 1.00   
+scanning bus 0 for devices... 3 USB Device(s) found
+USB1:   Register 2000240 NbrPorts 2
+Starting the controller
+USB XHCI 1.00   
+scanning bus 1 for devices... 1 USB Device(s) found
+       scanning usb for storage devices... 1 Storage Device(s) found
+(IPQ) # usbboot 0x44000000 0:0
+error reading partinfo...try to boot raw
+
+Loading from USB device 0, partition 0: Name: Raw  Type: U-Boot
+   Image Name:   ARM OpenWrt Linux-4.14.267
+   </code>
+   
+
+/*** if info available: uncomment and fill in
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Specific configuration =====
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+</WRAP>
+***/
+
+
+/*** if info available: uncomment and fill in
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+The @@Brand@@ @@Model@@ has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+</WRAP>
+***/
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | ARMv7 Processor rev 0 (v7l), arm_cortex-a15_neon-vfpv4 |
+^ Vendor           | Netgear |
+^ Bootloader       | U-Boot |
+^ System-On-Chip   | Qualcomm Atheros IPQ8065, 1.7GHz, 2 cores |
+^ Flash-Chip       | NAND, Micron MT29F1G08ABBEAH4 |
+^ Flash size       | 128 MiB |
+^ RAM              | 512 MiB |
+^ Wireless         | Qualcomm Atheros QCA9984, 2.4GHz 802.11bgn, 5GHz a/n/ac |
+^ Ethernet         | 10/100/1000 Mbit/s w/ vlan support    |
+^ USB              | 2x USB 3.0, 1x eSATA |
+^ Serial           | [[#Serial|Yes]] |
+^ JTAG             | ? |
+
+
+==== Flash Layout ====
+<WRAP BOX>
+Flash layout in 18.06.0-rc2 and later. Since 18.06 Openwrt reserves 4 MB for kernel. ubi contains rootfs (/rom) and rootfs_data (/overlay)
+<code>
+/proc/mtd
+
+dev:    size   erasesize  name
+mtd0: 00c80000 00020000 "qcadata"
+mtd1: 00500000 00020000 "APPSBL"
+mtd2: 00080000 00020000 "APPSBLENV"
+mtd3: 00140000 00020000 "art"
+mtd4: 00140000 00020000 "artbak"
+mtd5: 00400000 00020000 "kernel"
+mtd6: 06080000 00020000 "ubi"
+mtd7: 00700000 00020000 "reserve"
+</code>
+
+
+<code>
+df
+
+Filesystem           1K-blocks      Used Available Use% Mounted on
+/dev/root                 6400      6400         0 100% /rom
+tmpfs                   239196      1124    238072   0% /tmp
+/dev/ubi0_1              77872        92     73768   0% /overlay
+overlayfs:/overlay       77872        92     73768   0% /
+tmpfs                      512         0       512   0% /dev
+</code>
+
+
+
+
+
+
+Flash layout in Netgear Original FW:
+<code>
+root@R7800:~# cat /proc/mtd 
+dev:    size   erasesize  name
+mtd0: 00c80000 00020000 "qcadata"
+mtd1: 00500000 00020000 "APPSBL"
+mtd2: 00080000 00020000 "APPSBLENV"
+mtd3: 00140000 00020000 "ART"
+mtd4: 00140000 00020000 "ART.bak"
+mtd5: 00220000 00020000 "kernel"
+mtd6: 01de0000 00020000 "rootfs"
+mtd7: 04480000 00020000 "netgear"
+mtd8: 02000000 00020000 "firmware"
+mtd9: 00080000 00020000 "crashdump"
+mtd10: 00380000 00020000 "language"
+mtd11: 00120000 00020000 "config"
+mtd12: 00120000 00020000 "pot"
+mtd13: 00010000 00001000 "m25p80"
+mtd14: 0001f000 0001f000 "cert"
+mtd15: 0005d000 0001f000 "pot.bak"
+mtd16: 001b2000 0001f000 "traffic_meter"
+mtd17: 001b2000 0001f000 "traffic_meter.bak"
+mtd18: 001b2000 0001f000 "dongle"
+mtd19: 037b4000 0001f000 "overlay_volume"
+
+root@R7800:~# df
+Filesystem           1k-blocks      Used Available Use% Mounted on
+tmpfs                      512         0       512   0% /dev
+ubi0:overlay_volume      51032      6356     42032  13% /overlay
+overlayfs:/overlay       51032      6356     42032  13% /
+
+root@R7800:~# cat /proc/cpuinfo 
+Processor       : ARMv7 Processor rev 0 (v7l)
+processor       : 0
+BogoMIPS        : 12.55
+
+processor       : 1
+BogoMIPS        : 12.55
+
+Features        : swp half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 
+CPU implementer : 0x51
+CPU architecture: 7
+CPU variant     : 0x2
+CPU part        : 0x04d
+CPU revision    : 0
+
+Hardware        : Qualcomm Atheros AP161 reference board
+Revision        : 0000
+Serial          : 0000000000000000
+root@R7800:~# mount
+rootfs on / type rootfs (rw)
+/dev/root on /rom type squashfs (ro,relatime)
+proc on /proc type proc (rw,relatime)
+sysfs on /sys type sysfs (rw,relatime)
+tmpfs on /tmp type tmpfs (rw,nosuid,nodev,relatime,size=0k)
+tmpfs on /dev type tmpfs (rw,relatime,size=512k,mode=755)
+devpts on /dev/pts type devpts (rw,relatime,mode=600)
+none on /proc/bus/usb type usbfs (rw,relatime)
+ubi0:overlay_volume on /overlay type ubifs (rw,relatime)
+overlayfs:/overlay on / type overlayfs (rw,relatime,lowerdir=/,upperdir=/overlay)
+debugfs on /sys/kernel/debug type debugfs (rw,relatime)
+
+root@R7800:~# uname -a
+Linux R7800 3.4.103 #1 SMP Thu Oct 17 15:17:32 CST 2019 armv7l unknown
+
+
+root@R7800:~# free
+              total         used         free       shared      buffers
+  Mem:       483520       190152       293368            0        10620
+ Swap:            0            0            0
+Total:       483520       190152       293368
+                     512         0       512   0% /dev
+                     
+/bin/config show
+   
+root@R7800:~# ls -lg /etc/ath/
+-rw-r--r--    1 root     root         1270 Oct 17 06:59 icm.conf
+-rw-r--r--    1 root     root          144 Oct 17 15:20 non_limit_country.conf
+-rw-r--r--    1 root     root          775 Oct 17 07:10 wifi.conf
+-rw-r--r--    1 root     root          619 Oct 17 07:00 wrap-vma.conf
+
+</code>
+
+</WRAP>
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+{{ media:netgear:netgear-r7800.jpg?800 | R7800 }}
+
+**Insert photo of back of the casing**
+
+**Insert photo of backside label**
+
+{{ media:netgear:netgear-r7800-front-pcb.jpg?800 | R7800 }}
+
+==== Opening the case ====
+
+Detailed advice with pictures on opening the case:
+https://forum.openwrt.org/t/netgear-r7800-exploration-ipq8065-qca9984/285/2?u=hnyman
+
+Summary:
+
+The case bottom and cover are attached to each other pretty tightly, but the case can be opened once you figure out all necessary steps:
+
+  * The circuitboard is attached to a heatsink that is attached to the top cover. So the bottom panel (with sides) is the one to separate from the others. The heatsink is likely attached with a thermal paste or such (I never removed it).
+  * There are five screws (Torx T-10) on the bottom that need to be opened. One screw is visible and four are hidden inside the rubber feet (which are attached with adhesive tape)
+  * There are small clips on sides keeping the top cover tight even when the screws have been opened. These clips need to be carefully pronged open with a flat screwdriver or something.
+  * Additionally, there are fangs in the vertical backpanel protecting the connectors' holes (by preventing vertical lifting). In practice the front side can be lifted up first and the backside last by pulling forward so that the connectors slide free from the backpanel holes.
+
+{{:media:netgear:netgear-r7800-backpanel.jpg | R7800 bottom panel }}
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["serial", "serialconnectionparameters"],
+  "filterColumns": {"model": "^R7800$"}
+} -->
+
+{{:media:netgear:netgear-r7800-serial-connector.jpg?600|}}
+
+The serial header is right at the edge of the circuitboard, so it can be accessed even while the cover is attached to the circuitboard. I bended sideways the three needed pins (ground, rx, tx) that are luckily nearest to the circuitboard’s edge, so that I could easily attach the serial cable. Using the markings in my USB-ttl converter, the pin order starting from the circuitboard’s edge is: ground, rx, tx, +3.3V
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+===== Bootlogs =====
+==== Uboot environment ====
+<WRAP bootlog>
+<nowiki>
+U-Boot 2012.07 [local,local] (Sep 03 2015 - 17:33:28)
+
+U-boot 2012.07 dni1 V0.4 for DNI HW ID: 29764958 NOR flash 0MB; NAND flash 128MB; RAM 512MB; 1st Radio 4x4; 2nd Radio 4x4; Cascade
+smem ram ptable found: ver: 0 len: 5
+DRAM:  491 MiB
+NAND:  SF: Unsupported manufacturer 00
+ipq_spi: SPI Flash not found (bus/cs/speed/mode) = (0/0/48000000/0)
+128 MiB
+MMC:
+*** Warning - bad CRC, using default environment
+
+PCI0 Link Intialized
+PCI1 Link Intialized
+In:    serial
+Out:   serial
+Err:   serial
+ 131072 bytes read: OK
+MMC Device 0 not found
+cdp: get part failed for 0:HLOS
+Net:   MAC1 addr:38:94:ed:b8:d6:dc
+athrs17_reg_init: complete
+athrs17_vlan_config ...done
+S17c init  done
+MAC2 addr:38:94:ed:b8:d6:db
+eth0, eth1
+Hit any key to stop autoboot:  0
+(IPQ) # printenv
+baudrate=115200
+bootargs=console=ttyHSL1,115200n8
+bootcmd=sleep 2;   nmrp;  if loadn_dniimg 0 0x1480000 0x44000000 && chk_dniimg 0x44000000; then bootipq2; else fw_recovery; fi
+bootdelay=2
+eth1addr=xx:xx:xx:xx:xx:xx
+ethact=eth0
+ethaddr=xx:xx:xx:xx:xx:xx
+ipaddr=192.168.1.1
+loadaddr=0x42000000
+machid=136c
+modelid=R7800
+serverip=192.168.1.10
+stderr=serial
+stdin=serial
+stdout=serial
+updateloader=ipq_nand linux && nand erase 0x01180000 0x00080000 && imgaddr=0x42000000 && source $imgaddr:script
+
+Environment size: 527/262140 bytes
+
+</nowiki>
+</WRAP>\\
+
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 2012.07 [local,local] (Sep 03 2015 - 17:33:28)
+
+U-boot 2012.07 dni1 V0.4 for DNI HW ID: 29764958 NOR flash 0MB; NAND flash 128MB; RAM 512MB; 1st Radio 4x4; 2nd Radio 4x4; Cascade
+smem ram ptable found: ver: 0 len: 5
+DRAM:  491 MiB
+NAND:  SF: Unsupported manufacturer 00
+ipq_spi: SPI Flash not found (bus/cs/speed/mode) = (0/0/48000000/0)
+128 MiB
+MMC:
+*** Warning - bad CRC, using default environment
+
+PCI0 Link Intialized
+PCI1 Link Intialized
+In:    serial
+Out:   serial
+Err:   serial
+ 131072 bytes read: OK
+MMC Device 0 not found
+cdp: get part failed for 0:HLOS
+Net:   MAC1 addr:38:94:ed:b8:d6:dc
+athrs17_reg_init: complete
+athrs17_vlan_config ...done
+S17c init  done
+MAC2 addr:38:94:ed:b8:d6:db
+eth0, eth1
+Hit any key to stop autoboot:  0
+Mac2 unit failed
+Mac1 unit failed
+
+ nmrp server is stopped or failed !
+
+Loading from device 0: nand0 (offset 0x1480000)
+
+** check kernel image **
+   Verifying Checksum ... OK
+
+** check rootfs image **
+   Verifying Checksum ... OK
+MMC Device 0 not found
+
+Loading from nand0, offset 0x1480000
+   Image Name:   Linux-3.4.103
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    2159960 Bytes = 2.1 MiB
+   Load Address: 41508000
+   Entry Point:  41508000
+Automatic boot of image at addr 0x44000000 ...
+   Image Name:   Linux-3.4.103
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    2159960 Bytes = 2.1 MiB
+   Load Address: 41508000
+   Entry Point:  41508000
+   Verifying Checksum ... OK
+   Loading Kernel Image ... OK
+OK
+mtdparts variable not set, see 'help mtdparts'
+no partitions defined
+
+defaults:
+mtdids  : nand0=msm_nand
+mtdparts: none
+info: "mtdparts" not set
+Using machid 0x136c from environment
+
+Starting kernel ...
+
+Booting Linux on physical CPU 0
+Linux version 3.4.103 (li.zhang@team-3) (gcc version 4.6.3 20120201 (prerelease) (Linaro GCC 4.6-2012.02) ) #1 SMP Mon Dec 10 11:05:40 UTC 2018
+CPU: ARMv7 Processor [512f04d0] revision 0 (ARMv7), cr=10c5387d
+CPU: PIPT / VIPT nonaliasing data cache, PIPT instruction cache
+Machine: Qualcomm Atheros AP161 reference board
+QCA command line: console=ttyHSL1,115200n8
+DNI command line: console=ttyHSL1,115200n8 ubi.mtd=netgear root=/dev/mtdblock6
+msm_reserve_memory: 0x44600000, 0x200000
+memory pool 3 (start 5fc00000 size 400000) initialized
+Memory policy: ECC disabled, Data cache writealloc
+smem_find(137, 80): wrong size 72
+socinfo_init: v6, id=280, ver=3.0, raw_id=17, raw_ver=17, hw_plat=0,  hw_plat_ver=65536
+ accessory_chip=0 hw_plat_subtype=0
+PERCPU: Embedded 8 pages/cpu @c0d56000 s10624 r8192 d13952 u32768
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 123178
+Kernel command line: console=ttyHSL1,115200n8 ubi.mtd=netgear root=/dev/mtdblock6
+PID hash table entries: 2048 (order: 1, 8192 bytes)
+Dentry cache hash table entries: 65536 (order: 6, 262144 bytes)
+Inode-cache hash table entries: 32768 (order: 5, 131072 bytes)
+Memory: 49MB 436MB = 485MB total
+Memory: 482488k/488632k available, 14152k reserved, 0K highmem
+Virtual kernel memory layout:
+    vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+    fixmap  : 0xfff00000 - 0xfffe0000   ( 896 kB)
+    vmalloc : 0xdf000000 - 0xff000000   ( 512 MB)
+    lowmem  : 0xc0000000 - 0xdeb00000   ( 491 MB)
+    pkmap   : 0xbfe00000 - 0xc0000000   (   2 MB)
+    modules : 0xbf000000 - 0xbfe00000   (  14 MB)
+      .text : 0xc0008000 - 0xc0630000   (6304 kB)
+      .init : 0xc0700000 - 0xc0802980   (1035 kB)
+      .data : 0xc0804000 - 0xc08a78e0   ( 655 kB)
+       .bss : 0xc08a7904 - 0xc0952598   ( 684 kB)
+SLUB: Genslabs=11, HWalign=64, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+Hierarchical RCU implementation.
+NR_IRQS:1689
+sched_clock: 32 bits at 32kHz, resolution 31240ns, wraps every 134175798ms
+Console: colour dummy device 80x30
+Calibrating delay using timer specific routine.. 12.55 BogoMIPS (lpj=62790)
+pid_max: default: 32768 minimum: 301
+Mount-cache hash table entries: 512
+CPU: Testing write buffer coherency: ok
+CPU0: thread -1, cpu 0, socket 0, mpidr 80000000
+Setting up static identity map for 0x41952a18 - 0x41952aa0
+CPU1: Booted secondary processor
+CPU1: thread -1, cpu 1, socket 0, mpidr 80000001
+Brought up 2 CPUs
+SMP: Total of 2 processors activated (25.11 BogoMIPS).
+dummy:
+NET: Registered protocol family 16
+AXI: msm_bus_fabric_init_driver(): msm_bus_fabric_init_driver
+meminfo_init: smem ram ptable found: ver: 0 len: 5
+Found 1 memory banks grouped into 8 memory regions
+gpiochip_add: registered GPIOs 0 to 151 on device: msmgpio
+smem_find(137, 80): wrong size 72
+socinfo_init: v6, id=280, ver=3.0, raw_id=17, raw_ver=17, hw_plat=0,  hw_plat_ver=65536
+ accessory_chip=0 hw_plat_subtype=0
+msm_rpm_init: RPM firmware 3.0.16777364
+clk_tbl_nss_fast - loaded
+msm_dmov_memcpy_init: Success
+sps:BAM 0x12244000 enabled: ver:0x5, number of pipes:20
+sps:BAM 0x12244000 is registered.
+sps:sps is ready.
+msm_pcie_setup: link initialized
+PCI host bridge to bus 0000:00
+pci_bus 0000:00: root bus resource [mem 0x08000000-0x0fefffff]
+PCI: bus0: Fast back to back transfers disabled
+pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+PCI: bus1: Fast back to back transfers disabled
+msm_pcie_setup: link initialized
+PCI host bridge to bus 0000:02
+pci_bus 0000:02: root bus resource [mem 0x2e000000-0x31efffff]
+PCI: bus2: Fast back to back transfers disabled
+pci 0000:02:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+PCI: bus3: Fast back to back transfers disabled
+msm_pcie_setup: link initialization failed
+pci 0000:02:00.0: BAR 8: assigned [mem 0x2e000000-0x2e1fffff]
+pci 0000:03:00.0: BAR 0: assigned [mem 0x2e000000-0x2e1fffff 64bit]
+pci 0000:02:00.0: PCI bridge to [bus 03-03]
+pci 0000:02:00.0:   bridge window [mem 0x2e000000-0x2e1fffff]
+PCI: enabling device 0000:02:00.0 (0140 -> 0143)
+pci 0000:00:00.0: BAR 8: assigned [mem 0x08000000-0x081fffff]
+pci 0000:01:00.0: BAR 0: assigned [mem 0x08000000-0x081fffff 64bit]
+pci 0000:00:00.0: PCI bridge to [bus 01-01]
+pci 0000:00:00.0:   bridge window [mem 0x08000000-0x081fffff]
+PCI: enabling device 0000:00:00.0 (0140 -> 0143)
+bio: create slab <bio-0> at 0
+SCSI subsystem initialized
+spi_qsd spi_qsd.5: master is unqueued, this is deprecated
+spi_qsd spi_qsd.6: master is unqueued, this is deprecated
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+Switching to clocksource gp_timer
+NET: Registered protocol family 2
+create ipmac proc
+IP route cache hash table entries: 4096 (order: 2, 16384 bytes)
+TCP established hash table entries: 16384 (order: 5, 131072 bytes)
+TCP bind hash table entries: 16384 (order: 5, 131072 bytes)
+TCP: Hash tables configured (established 16384 bind 16384)
+TCP: reno registered
+UDP hash table entries: 256 (order: 1, 8192 bytes)
+UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+NET: Registered protocol family 1
+smd: register irq failed on wcnss_a11
+smd: deregistering IRQs
+SMD: smd_core_platform_init() failed
+Partition (from dni partition table) qcadata -- Offset:0 Size:64
+Partition (from dni partition table) APPSBL -- Offset:64 Size:28
+Partition (from dni partition table) APPSBLENV -- Offset:8c Size:4
+Partition (from dni partition table) ART -- Offset:90 Size:a
+Partition (from dni partition table) ART.bak -- Offset:9a Size:a
+Partition (from dni partition table) kernel -- Offset:a4 Size:11
+Partition (from dni partition table) rootfs -- Offset:b5 Size:ef
+Partition (from dni partition table) netgear -- Offset:1a4 Size:224
+Partition (from dni partition table) firmware -- Offset:a4 Size:100
+Partition (from dni partition table) crashdump -- Offset:3c8 Size:4
+Partition (from dni partition table) language -- Offset:3cc Size:1c
+Partition (from dni partition table) config -- Offset:3e8 Size:9
+Partition (from dni partition table) pot -- Offset:3f1 Size:9
+smem_find(427, 88): wrong size 96
+get_bootconfig_partition 0 0 : v2 magic not found
+acpuclk-ipq806x acpuclk-ipq806x: SPEED BIN: 0
+acpuclk-ipq806x acpuclk-ipq806x: ACPU PVS: 4
+acpuclk-ipq806x acpuclk-ipq806x: CPU0: 6 frequencies supported
+acpuclk-ipq806x acpuclk-ipq806x: CPU1: 6 frequencies supported
+msm_rpm_log_probe: OK
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+msgmni has been set to 942
+Asymmetric key parser 'x509' registered
+io scheduler noop registered
+io scheduler deadline registered (default)
+Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+msm_serial_hs: probe of msm_serial_hs.0 failed with error -2
+msm_serial_hs module loaded
+msm_serial_hsl: detected port #1
+msm_serial_hsl.1: ttyHSL1 at MMIO 0x16340000 (irq = 184) is a MSM
+msm_serial_hsl: console setup on port #1
+console [ttyHSL1] enabled
+msm_serial_hsl: driver initialized
+ahci ahci.0: forcing PORTS_IMPL to 0x1
+ahci ahci.0: AHCI 0001.0300 32 slots 1 ports 6 Gbps 0x1 impl platform mode
+ahci ahci.0: flags: ncq sntf pm led clo only pmp pio slum part ccc apst
+scsi0 : ahci_platform
+ata1: SATA max UDMA/133 mmio [mem 0x29000000-0x2900017f] port 0x100 irq 241
+msm_nand_probe: phys addr 0x1ac00000
+msm_nand_probe: dmac 0x3
+msm_nand_probe: allocated dma buffer at ffdfc000, dma_addr 5f658000
+status: 20
+nandid: 1580a1c2 maker c2 device a1
+ONFI probe : Found an ONFI compliant device MX30UF1G18AC        ▒
+Found a supported NAND device
+NAND Controller ID : 0x4030
+NAND Device ID  : 0x1580a1c2
+Buswidth : 8 Bits
+Density  : 128 MByte
+Pagesize : 2048 Bytes
+Erasesize: 131072 Bytes
+Oobsize  : 64 Bytes
+CFG0 Init  : 0xa8d408c0
+CFG1 Init  : 0x0004745c
+ECCBUFCFG  : 0x00000203
+Creating 13 MTD partitions on "msm_nand":
+0x000000000000-0x000000c80000 : "qcadata"
+0x000000c80000-0x000001180000 : "APPSBL"
+0x000001180000-0x000001200000 : "APPSBLENV"
+0x000001200000-0x000001340000 : "ART"
+0x000001340000-0x000001480000 : "ART.bak"
+0x000001480000-0x0000016a0000 : "kernel"
+0x0000016a0000-0x000003480000 : "rootfs"
+mtd: find squashfs magic at 0x16a0000 of "msm_nand"
+the correct location of partition "rootfs": 0x0000016a0000-0x000003480000
+0x000003480000-0x000007900000 : "netgear"
+0x000001480000-0x000003480000 : "firmware"
+0x000007900000-0x000007980000 : "crashdump"
+ata1: SATA link down (SStatus 0 SControl 300)
+0x000007980000-0x000007d00000 : "language"
+0x000007d00000-0x000007e20000 : "config"
+0x000007e20000-0x000007f40000 : "pot"
+m25p80 spi5.0: found pm25lv512, expected s25fl512s
+m25p80 spi5.0: pm25lv512 (64 Kbytes)
+UBI: attaching mtd7 to ubi0
+UBI: physical eraseblock size:   131072 bytes (128 KiB)
+UBI: logical eraseblock size:    126976 bytes
+UBI: smallest flash I/O unit:    2048
+UBI: VID header offset:          2048 (aligned 2048)
+UBI: data offset:                4096
+UBI: max. sequence number:       119
+UBI: attached mtd7 to ubi0
+UBI: MTD device name:            "netgear"
+UBI: MTD device size:            68 MiB
+UBI: number of good PEBs:        548
+UBI: number of bad PEBs:         0
+UBI: number of corrupted PEBs:   0
+UBI: max. allowed volumes:       128
+UBI: wear-leveling threshold:    4096
+UBI: number of internal volumes: 1
+UBI: number of user volumes:     6
+UBI: available PEBs:             33
+UBI: total number of reserved PEBs: 515
+UBI: number of PEBs reserved for bad PEB handling: 5
+UBI: max/mean erase counter: 3/1
+UBI: image sequence number:  0
+UBI: background thread "ubi_bgt0d" started, PID 662
+GPIO Bitbanged MDIO: probed
+tun: Universal TUN/TAP device driver, 1.6
+tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+usbcore: registered new interface driver cdc_ether
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+usbcore: registered new interface driver libusual
+i2c /dev entries driver
+cpuidle: using governor ladder
+cpuidle: using governor menu
+Netfilter messages via NETLINK v0.30.
+NAT Session Management application ports priority table is loaded!
+nf_conntrack version 0.5.0 (7538 buckets, 30152 max)
+ip_tables: (C) 2000-2006 Netfilter Core Team
+TCP: cubic registered
+NET: Registered protocol family 10
+ip6_tables: (C) 2000-2006 Netfilter Core Team
+IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+Bridge firewalling registered
+Ebtables v2.0 registered
+8021q: 802.1Q VLAN Support v1.8
+VFP support v0.3: implementor 51 architecture 64 part 4d variant 2 rev 0
+Registering SWP/SWPB emulation handler
+clock_late_init: Removing enables held for handed-off clocks
+ipq_nss_get_mac_addr: MAC[0]: 38:94:ed:b8:d6:da
+ipq_nss_get_mac_addr: MAC[1]: 38:94:ed:b8:d6:db
+no pmic restart interrupt specified
+VFS: Mounted root (squashfs filesystem) readonly on device 31:6.
+Freeing init memory: 1032K
+UBIFS: recovery needed
+UBIFS: recovery completed
+UBIFS: mounted UBI device 0, volume 5, name "overlay_volume"
+UBIFS: file system size:   57266176 bytes (55924 KiB, 54 MiB, 451 LEBs)
+UBIFS: journal size:       2920448 bytes (2852 KiB, 2 MiB, 23 LEBs)
+UBIFS: media format:       w4/r0 (latest is w4/r0)
+UBIFS: default compressor: lzo
+UBIFS: reserved for root:  2704822 bytes (2641 KiB)
+board parameter in mtd3 and mtd4 partition are same and valid
+- init -
+init started:  BusyBox v1.4.2 (2018-12-10 10:26:59 UTC) multi-call binary
+Boot up procedure is Finished!!!
+
+Please press Enter to activate this console. Loading data from /dev/mtd11 ...
+
+Done!
+
+The data center is Running ...
+
+sysinit: Generating Rules...
+
+sysinit: Done!
+
+ssdk_plat_init start
+Register QCA PHY driver
+PHY ID is 0x4dd036
+qca probe f1 phy driver succeeded!
+qca-ssdk module init succeeded!
+clbr: module license 'Proprietary' taints kernel.
+Disabling lock debugging due to kernel taint
+client bridge loaded
+device-mapper: ioctl: 4.22.0-ioctl (2011-10-19) initialised: dm-devel@redhat.com
+NTFS driver 2.1.30 [Flags: R/O MODULE].
+SGI XFS with ACLs, security attributes, realtime, large block/inode numbers, no debug enabled
+PPP generic driver version 2.4.2
+NET: Registered protocol family 24
+**********************************************************
+* Driver    :NSS GMAC Driver for RTL v(3.72a)
+* Version   :1.0
+* Copyright :Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+**********************************************************
+Loading DNI-ENET driver
+L2TP core driver, V2.0
+L2TP netlink interface
+nss_driver - fw of size 434240  bytes copied to load addr: 40000000, nss_id : 0
+nss_driver - Turbo Support 1
+Supported Frequencies - 110Mhz 600Mhz 800Mhz
+nss_driver - fw of size 189248  bytes copied to load addr: 40800000, nss_id : 1
+Error - Duplicate Interface CB Registered for interface 107
+Error - Duplicate Interface CB Registered for interface 110
+<NSS-CRYPTO>:Register with NSS driver-
+Crypto bench loaded build (Dec 10 2018, 10:50:08)
+dni-qos module init.
+bonding: Ethernet Channel Bonding Driver: v3.7.1 (April 27, 2011)
+ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+msm_hsusb_host msm_hsusb_host: unable to find transceiver
+QCA multicast snooping installed successfully
+xt_time: kernel timezone is -0000
+nf_conntrack_rtsp v0.6.21 loading
+nf_nat_rtsp v0.6.21 loading
+NET: Registered protocol family 27
+PPPoL2TP kernel driver, V0.16.1
+PPTP-GRE-v1.13 2007 (C) Delta Networks Inc.
+ip_set: protocol 6
+ctnetlink v0.93: registering with nfnetlink.
+ipq-dwc3 ipq-dwc3.0: unable to read platform data num of dbm eps
+xhci-hcd xhci-hcd.0: xHCI Host Controller
+xhci-hcd xhci-hcd.0: new USB bus registered, assigned bus number 1
+xhci-hcd xhci-hcd.0: irq 142, io mem 0x11000000
+usb usb1: New USB device found, idVendor=1d6b, idProduct=0002
+usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+usb usb1: Product: xHCI Host Controller
+usb usb1: Manufacturer: Linux 3.4.103 xhci-hcd
+usb usb1: SerialNumber: xhci-hcd.0
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+xhci-hcd xhci-hcd.0: xHCI Host Controller
+xhci-hcd xhci-hcd.0: new USB bus registered, assigned bus number 2
+usb usb2: New USB device found, idVendor=1d6b, idProduct=0003
+usb usb2: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+usb usb2: Product: xHCI Host Controller
+usb usb2: Manufacturer: Linux 3.4.103 xhci-hcd
+usb usb2: SerialNumber: xhci-hcd.0
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 1 port detected
+ipq-dwc3 ipq-dwc3.1: unable to read platform data num of dbm eps
+xhci-hcd xhci-hcd.1: xHCI Host Controller
+xhci-hcd xhci-hcd.1: new USB bus registered, assigned bus number 3
+xhci-hcd xhci-hcd.1: irq 237, io mem 0x10000000
+usb usb3: New USB device found, idVendor=1d6b, idProduct=0002
+usb usb3: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+usb usb3: Product: xHCI Host Controller
+usb usb3: Manufacturer: Linux 3.4.103 xhci-hcd
+usb usb3: SerialNumber: xhci-hcd.1
+hub 3-0:1.0: USB hub found
+hub 3-0:1.0: 1 port detected
+xhci-hcd xhci-hcd.1: xHCI Host Controller
+xhci-hcd xhci-hcd.1: new USB bus registered, assigned bus number 4
+usb usb4: New USB device found, idVendor=1d6b, idProduct=0003
+usb usb4: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+usb usb4: Product: xHCI Host Controller
+usb usb4: Manufacturer: Linux 3.4.103 xhci-hcd
+usb usb4: SerialNumber: xhci-hcd.1
+hub 4-0:1.0: USB hub found
+hub 4-0:1.0: 1 port detected
+fuse init (API version 7.18)
+jnl: driver (UFSD_HEAD lke_9.4.4_b3, LBD=ON) loaded at bf580000
+ufsd: driver (UFSD_HEAD lke_9.4.4_b3, acl, ioctl, sd2(5), tr, car) loaded at bf58b000
+NTFSJ support included
+Build_for__Netgear_R7500v2_k3.4.103_2015-04-10_lke_9.4.4_b3
+ufsd Kernel .config hash: original 0xb55885e, current matched.
+<NSS-CRYPTO>:NSS Firmware initialized
+<NSS-CRYPTO>:probing engine - 0
+<NSS-CRYPTO>:init completed for Pipe Pair[0]
+<NSS-CRYPTO>:init completed for Pipe Pair[1]
+<NSS-CRYPTO>:init completed for Pipe Pair[2]
+<NSS-CRYPTO>:init completed for Pipe Pair[3]
+<NSS-CRYPTO>:probing engine - 1
+<NSS-CRYPTO>:init completed for Pipe Pair[0]
+<NSS-CRYPTO>:init completed for Pipe Pair[1]
+<NSS-CRYPTO>:init completed for Pipe Pair[2]
+<NSS-CRYPTO>:init completed for Pipe Pair[3]
+<NSS-CRYPTO>:probing engine - 2
+<NSS-CRYPTO>:init completed for Pipe Pair[0]
+<NSS-CRYPTO>:init completed for Pipe Pair[1]
+<NSS-CRYPTO>:init completed for Pipe Pair[2]
+<NSS-CRYPTO>:init completed for Pipe Pair[3]
+<NSS-CRYPTO>:probing engine - 3
+<NSS-CRYPTO>:init completed for Pipe Pair[0]
+<NSS-CRYPTO>:init completed for Pipe Pair[1]
+<NSS-CRYPTO>:init completed for Pipe Pair[2]
+<NSS-CRYPTO>:init completed for Pipe Pair[3]
+sysinit: mkdir: cannot create directory '/tmp/mnt': File exists
+
+sysinit: ECC failed: 0
+
+sysinit: ECC corrected: 0
+
+sysinit: Number of bad blocks: 0
+
+sysinit: Number of bbt blocks: 0
+
+sysinit: Block size 131072, page size 2048, OOB size 64
+
+sysinit: Dumping data starting at 0x00000000 and ending at 0x00380000...
+
+sysinit: wpspin:50100811
+
+sysinit: sn:5K449856A0821
+
+sysinit: SN: 5K449856A0821
+
+sysinit: lan mac: 38:94:ed:b8:d6:da
+
+sysinit: wan mac: 38:94:ed:b8:d6:db
+
+sysinit: wlan5g mac: 38:94:ed:b8:d6:dc
+
+handing previous event, sleep 2
+handing previous event, sleep 2
+handing previous event, sleep 2
+handing previous event, sleep 2
+sysinit: switch init
+
+ECM init
+ECM init complete
+sysinit: net.bridge.bridge-nf-call-ip6tables = 1
+
+sysinit: net.bridge.bridge-nf-call-iptables = 1
+
+sysinit: net.netfilter.nf_conntrack_tcp_no_window_check = 1
+
+sysinit: ifconfig: SIOCSIFADDR: No such device
+
+sysinit: ifconfig: SIOCSIFADDR: No such device
+
+opmode = normal
+bonding: bond0: Removing slave eth0.
+bonding: bond0: Error: cannot release eth0.
+bonding: bond0: Removing slave eth1.
+bonding: bond0: Error: cannot release eth1.
+device ethlan entered promiscuous mode
+device ethwan entered promiscuous mode
+sysinit:  SSDK Init OK!
+
+sysinit: operate done.
+
+sysinit:  SSDK Init OK!
+
+sysinit: operate done.
+
+sysinit:  SSDK Init OK!
+
+sysinit: operate done.
+
+handing previous event, sleep 2
+handing previous event, sleep 2
+handing previous event, sleep 2
+handing previous event, sleep 2
+sysinit:  SSDK Init OK!
+
+sysinit: operate done.
+
+sysinit:  SSDK Init OK!
+
+sysinit: operate done.
+
+sysinit:  SSDK Init OK!
+
+sysinit: operate done.
+
+sysinit:  SSDK Init OK!
+
+sysinit: operate done.
+
+sysinit:  SSDK Init OK!
+
+sysinit: operate done.
+
+sysinit: killall: acld: no process killed
+
+ethlan: 1000 Mbps Full Duplex
+sysinit: ioctl error (SIOCDEVPRIVATE)!br0: port 1(ethlan) entered forwarding state
+br0: port 1(ethlan) entered forwarding state
+
+
+br0: port 1(ethlan) entered disabled state
+br0: port 1(ethlan) entered forwarding state
+br0: port 1(ethlan) entered forwarding state
+sysinit: Deleting static route ... Done!
+
+sysinit: Adding static route ... Done!
+
+check minidlna ...
+clear list
+sysinit: grep: /tmp/etc/minidlna.conf: No such file or directory
+
+[kwilt] no run, has not been updated !
+sysinit: killall: funjsq_redis: no process killed
+
+sysinit: killall: funjsq_inetd: no process killed
+
+sysinit: killall: funjsq_httpd: no process killed
+
+Jan  1 00:00:17 skipd[1984]: opening db:0 path:/data/funjsq/config/redis
+
+Jan  1 00:00:17 skipd[1984]: Load count=0 maxPos=33
+
+sysinit: connect: : No such file or directory
+
+sysinit: killall: funjsq_detect: no process killed
+
+sysinit: killall: funjsq_daemon: no process killed
+
+sysinit: killall: funjsq_httpd: no process killed
+
+handing previous event, sleep 2
+handing previous event, sleep 2
+handing previous event, sleep 2
+Saving Data...
+sysinit: killall: funjsq_dns: no process killed
+
+handing previous event, sleep 2
+sysinit: [httpd] start_ssl running!!
+
+Done!
+
+ADDRCONF(NETDEV_UP): brwan: link is not ready
+device br0 entered promiscuous mode
+device br0 left promiscuous mode
+sysinit: killall: funjsq_dns: no process killed
+
+device br0 entered promiscuous mode
+sysinit: /bin/sh: Syntax error: word unexpected (expecting ")")
+
+sysinit: /bin/sh: Syntax error: word unexpected (expecting ")")
+
+sysinit: -------[funjsq_init]--------start-----
+
+sysinit: -------[funjsq_init]--------end-----
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_dns':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_dns':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables: No chain/target/match by that name.
+
+sysinit: iptables: No chain/target/match by that name.
+
+sysinit: killall: funjsq_dns: no process killed
+
+handing previous event, sleep 2
+handing previous event, sleep 2
+handing previous event, sleep 2
+handing previous event, sleep 2
+sysinit: awk: /tmp/wifi_update/wireless.old: No such file or directory
+
+qcawifi disable radio wifi1
+sysinit: phy for wifi device wifi1 not found
+
+sysinit: wifi1(qcawifi): disable failed
+
+qcawifi disable radio wifi0
+sysinit: phy for wifi device wifi0 not found
+
+sysinit: wifi0(qcawifi): disable failed
+
+qcawifi: enable radio wifi1
+handing previous event, sleep 2
+handing previous event, sleep 2
+handing previous event, sleep 2
+handing previous event, sleep 2
+ath_hal: 0.9.17.1 (AR5416, AR9380, WRITE_EEPROM, 11D)
+ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communications, Inc, All Rights Reserved
+ath_dfs: Version 2.0.0
+Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights Reserved
+ath_spectral: Version 2.0.0
+Copyright (c) 2005-2009 Atheros Communications, Inc. All Rights Reserved
+SPECTRAL module built on Dec 10 2018 10:46:21
+ath_tx99: Version 2.0
+Copyright (c) 2010 Atheros Communications, Inc, All Rights Reserved
+ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, All Rights Reserved
+ath_pci:  (Atheros/multi-bss)
+ol_ath_pci_probe: PCI device id 0046 :0046
+PCI: enabling device 0000:01:00.0 (0140 -> 0142)
+ *********** Cascade *************
+ath_pci 0000:01:00.0: ath DEBUG: sc=0xdcb9ec00
+
+ ol_ath_pci_configure : num_desired MSI set to 0
+
+ Using PCI Legacy Interrupt
+chip_id 0xa chip_revision 0x0
+nss register id -1 offload mode enabled = 0 nss config 0 Target Type a
+
+ CLOCK PLL skipped
+__ol_ath_attach: dev name wifi0
+ol_ath_attach() BMI inited.
+ol_ath_attach() BMI Get Target Info.
+Chip id: 0xa, chip version: 0x1000000
+
+ CE WAR Disabled
+NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+ol_ath_attach() configure Target .
+
+ Target Version is 1000000
+
+ Flash Download Address  c0000
+ol_transfer_bin_file: flash data file defined
+Cal location [0]: 00000000
+
+ Wifi0 NAND FLASH Select OFFSET 0x1000
+qc98xx_verify_checksum: flash checksum passed: 0x3fc5
+ol_transfer_bin_file 4005: Download Flash data len 12064
+Board extended Data download address: 0x0
+
+ Board data initialized
+ol_ath_download_firmware: Download OTP, flash download ADDRESS 0xc0000
+
+ Selecting  OTP binary for CHIP Version 0
+ol_transfer_bin_file 3847: downloading file 0, Download data len 8920
+
+ First OTP send param 8000
+sysinit: mkdir: cannot create directory '/dev/pts': File exists
+
+sysinit: mknod: /dev/ptmx: File exists
+
+sysinit: mknod: /dev/pts/0: Operation not permitted
+
+sysinit: mknod: /dev/pts/1: Operation not permitted
+
+ethwan: 1000 Mbps Full Duplex
+ol_ath_download_firmware :First OTP download and Execute is good address:0x400 return param 4660
+ol_ath_download_firmware:##Board Id 1 , CHIP Id 0
+ol_ath_download_firmware: BOARDDATA DOWNLOAD TO address 0xc0000
+ol_transfer_bin_file: Board Data File download to address=0xc0000 file name=QCA9984/hw.1/boardData_QCA9984_CUS239_5G_v1_001.bin
+ol_transfer_bin_file 3847: downloading file 3, Download data len 12064
+Board extended Data download address: 0x0
+ol_ath_download_firmware: Using 0x1234 for the remainder of init
+
+ Selecting  OTP binary for CHIP Version 0
+ol_transfer_bin_file 3847: downloading file 0, Download data len 8920
+
+ [Flash] : Ignore Module param
+
+ Second otp download Param 10000
+brwan: port 1(ethwan) entered forwarding state
+brwan: port 1(ethwan) entered forwarding state
+ADDRCONF(NETDEV_CHANGE): brwan: link becomes ready
+brwan: port 1(ethwan) entered disabled state
+dni-qos attached on ethwan.
+ethwan: 1000 Mbps Full Duplex
+brwan: port 1(ethwan) entered forwarding state
+brwan: port 1(ethwan) entered forwarding state
+brwan: port 1(ethwan) entered disabled state
+DNI-QOS: Qos is disable
+ethwan: 1000 Mbps Full Duplex
+brwan: port 1(ethwan) entered forwarding state
+brwan: port 1(ethwan) entered forwarding state
+brwan: port 1(ethwan) entered disabled state
+DNI-QOS: Qos is disable
+ethwan: 1000 Mbps Full Duplex
+brwan: port 1(ethwan) entered forwarding state
+brwan: port 1(ethwan) entered forwarding state
+sysinit: net.bridge.bridge-nf-call-ip6tables = 1
+
+sysinit: net.bridge.bridge-nf-call-iptables = 1
+
+sysinit: net.netfilter.nf_conntrack_tcp_no_window_check = 1
+
+ol_ath_download_firmware : Second OTP download and Execute is good, param=0x0
+
+ Mission mode: Firmware CHIP Version 0
+ol_swap_seg_alloc: Successfully allocated memory for SWAP size=262144
+Swap: bytes_left to copy: fw:16; dma_page:70336
+Swap: wrong length read:0
+ol_swap_wlan_memory_expansion: Swap total_bytes copied: 191808 Target address 41b608
+scn=d8bc04c0  target_write_addr=41b608 seg_info=dd8d7c10
+ol_transfer_swap_struct:Code swap structure successfully downloaded for bin type =2
+bin_filename=QCA9984/hw.1/athwlan.bin swap_filename=/lib/firmware/QCA9984/hw.1/athwlan.codeswap.bin
+ol_transfer_bin_file: Downloading firmware file: QCA9984/hw.1/athwlan.bin
+ol_transfer_bin_file 3847: downloading file 1, Download data len 361652
+ol_ath_attach() Download FW done.
+ol_ath_attach() HT Create .
+ol_ath_attach() HIF Claim.
+ol_ath_attach() BMI Done.
+ol_ath_attach 6822 host_enable 0 nss_nwifi_offload 0
+ol_ath_set_default_tgt_config : AC Minfree buffer allocation through module param (umac.ko)
+ OL_ACBKMinfree : 0
+ OL_ACBEMinfree : 0
+ OL_ACVIMinfree : 0
+ OL_ACVOMinfree : 0
+ol_ath_attach() WMI attached. wmi_handle d8cf0000
+CE_recv_buf_enqueue 853 Populate last entry 512 for CE 5
+CE_recv_buf_enqueue 862 CE 5 wi 511 dest_ptr 0x59463040 nbytes 0 recv_ctxt 0xd8b82780
+Startup Mode-0 set
+pdev attach   (null) -1
+
+<=== cfg max peer id 1056 ====>
+HTC Service:0x0300 ep:1 TX flow control disabled
+htt_peer_map_timer_init Enter pdev d7fe8000 hrtimer d7fec8b8
+
+ htt_alloc_peer_map_mem : Alloc Success : host q vaddr d7c18000 paddr 59118000
+
+ htt_alloc_peer_map_mem : Flush Interval Configured to 256 pkts
+CE_pkt_dl_len_set CE 4 Pkt download length 64
+ol_txrx_pdev_attach: 2500 tx desc's allocated ; range starts from d7c20000
+HTC Service:0x0100 ep:2 TX flow control disabled
+wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event
+Firmware_Build_Number:68
+num_rf_chain:0x00000004  ht_cap_info:0x0000085b  vht_cap_info:0x339b79f2  vht_supp_mcs:0x0000ffea
+
+ RES CFG Support wmi_service_bitmap 9778
+
+ Sending HOST PLATFORM as 0 to TGT
+ol_ath_service_ready_event: tt_support: 1
+Peer Caching Enabled ; num_peers = 530, num_active_peers = 52 num_tids = 104, num_vdevs = 17
+idx 1 req 2  num_units 1 num_unit_info 12 unit size 256 actual units 53
+ol_ath_alloc_host_mem_chunk req_id 2 idx 0 num_units 53 unit_len 256,
+idx 2 req 3  num_units 1 num_unit_info 12 unit size 1024 actual units 53
+ol_ath_alloc_host_mem_chunk req_id 3 idx 1 num_units 53 unit_len 1024,
+idx 3 req 4  num_units 1 num_unit_info 12 unit size 4096 actual units 53
+ol_ath_alloc_host_mem_chunk req_id 4 idx 2 num_units 53 unit_len 4096,
+idx 0 req 1  num_units 0 num_unit_info 2 unit size 1440 actual units 531
+ol_ath_alloc_host_mem_chunk req_id 1 idx 3 num_units 177 unit_len 1440,
+ol_ath_alloc_host_mem_chunk req_id 1 idx 4 num_units 177 unit_len 1440,
+ol_ath_alloc_host_mem_chunk req_id 1 idx 5 num_units 177 unit_len 1440,
+idx 4 req 6  num_units 35 num_unit_info 0 unit size 3072 actual units 35
+ol_ath_alloc_host_mem_chunk req_id 6 idx 6 num_units 35 unit_len 3072,
+idx 5 req 7  num_units 1 num_unit_info 0 unit size 12288 actual units 1
+ol_ath_alloc_host_mem_chunk req_id 7 idx 7 num_units 1 unit_len 12288,
+idx 6 req 5  num_units 0 num_unit_info 2 unit size 1876 actual units 531
+ol_ath_alloc_host_mem_chunk req_id 5 idx 8 num_units 132 unit_len 1876,
+ol_ath_alloc_host_mem_chunk req_id 5 idx 9 num_units 133 unit_len 1876,
+ol_ath_alloc_host_mem_chunk req_id 5 idx 10 num_units 133 unit_len 1876,
+ol_ath_alloc_host_mem_chunk req_id 5 idx 11 num_units 133 unit_len 1876,
+chunk 0 len 13568 requested ,ptr  0x59ca4000
+chunk 1 len 54272 requested ,ptr  0x59180000
+chunk 2 len 217088 requested ,ptr  0x591c0000
+chunk 3 len 254880 requested ,ptr  0x59200000
+chunk 4 len 254880 requested ,ptr  0x59240000
+chunk 5 len 254880 requested ,ptr  0x59280000
+chunk 6 len 107520 requested ,ptr  0x591a0000
+chunk 7 len 12288 requested ,ptr  0x59190000
+chunk 8 len 247632 requested ,ptr  0x592c0000
+chunk 9 len 249508 requested ,ptr  0x59300000
+chunk 10 len 249508 requested ,ptr  0x59340000
+chunk 11 len 249508 requested ,ptr  0x59380000
+wmi_ready_event_rx:  WMI UNIFIED READY event
+ol_ath_connect_htc() WMI is ready
+target uses HTT version 2.2; host uses 2.2
+ol_ath_attach() connect HTC.
+bypasswmi : 0
+ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2) flags 0x2150
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4) flags 0xa0
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x8) flags 0xc0
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x20) flags 0xd0
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x40) flags 0x150
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x800) flags 0x10080
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2000) flags 0x20080
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4000) flags 0x40080
+Add VHT80 channel: 5210
+Add VHT80 channel: 5290
+Add VHT80 channel: 5530
+Add VHT80 channel: 5610
+Add VHT80 channel: 5690
+Add VHT80 channel: 5775
+Skipping VHT80 channel 5825
+Add VHT80_80 channels: 5210 : 5290
+Add VHT80_80 channels: 5290 : 5210
+Add VHT80_80 channels: 5530 : 5610
+Add VHT80_80 channels: 5610 : 5530
+Add VHT80_80 channels: 5210 : 5530
+Add VHT80_80 channels: 5530 : 5210
+Add VHT80_80 channels: 5210 : 5610
+Add VHT80_80 channels: 5610 : 5210
+Add VHT80_80 channels: 5210 : 5690
+Add VHT80_80 channels: 5690 : 5210
+Add VHT80_80 channels: 5210 : 5775
+Add VHT80_80 channels: 5775 : 5210
+Add VHT80_80 channels: 5290 : 5530
+Add VHT80_80 channels: 5530 : 5290
+Add VHT80_80 channels: 5290 : 5610
+Add VHT80_80 channels: 5610 : 5290
+Add VHT80_80 channels: 5290 : 5690
+Add VHT80_80 channels: 5690 : 5290
+Add VHT80_80 channels: 5290 : 5775
+Add VHT80_80 channels: 5775 : 5290
+Add VHT80_80 channels: 5530 : 5690
+Add VHT80_80 channels: 5690 : 5530
+Add VHT80_80 channels: 5530 : 5775
+Add VHT80_80 channels: 5775 : 5530
+Add VHT80_80 channels: 5610 : 5775
+Add VHT80_80 channels: 5775 : 5610
+Add VHT80_80 channels: 5690 : 5775
+Add VHT80_80 channels: 5775 : 5690
+OL Resmgr Init-ed
+ieee80211_bsteering_attach: Band steering initialized
+
+acfg_attach:socket creation has failed
+SPECTRAL : get_capability not registered
+HAL_CAP_PHYDIAG : Capable
+SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 237)
+SPECTRAL : get_capability not registered
+HAL_CAP_RADAR   : Capable
+SPECTRAL : Need to fix the capablity check for SPECTRAL
+ (spectral_attach : 242)
+SPECTRAL : get_capability not registered
+HAL_CAP_SPECTRAL_SCAN : Capable
+SPECTRAL : get_tsf64 not registered
+spectral_init_netlink 78 NULL SKB
+Green-AP : Green-AP : Attached
+
+Green-AP : Attached
+rate power table override is only supported for AR98XX
+ol_ath_smart_ant_attach: Firmware doest not support Smart Antenna.
+ol_ath_smart_ant_attach: Hardware doest not support Smart Antenna.
+
+ the 1st socket creation has failed
+ieee80211com_init_netlink: 3343: Wifipos Netlink socket failed
+ol_if_dfs_attach: called; ptr=d7769984, radar_info=da0efb80
+dfs_attach: event log enabled by default
+ol_ath_attach() UMAC attach .
+ol_if_dfs_configure: FCC domain
+###### FCC BIN5 ##### fcc_b5_threshold = 4, fcc_b5_mindur = 20, fcc_b5_maxdur = 105, fcc_b5_timewindow = 12, fcc_b5_rssithresh = 20, fcc_b5_rssimargin = 10
+ol_ath_attach: Calling ol_if_dfs_configure
+
+ BURSTING enabled by default
+ol_ath_attach: Set global_ic[1] ..ptr:bfa9a824
+osif_wrap_attach:432 osif wrap attached
+osif_wrap_devt_init:393 osif wrap dev table init done
+ Wrap Attached: Wrap_com =da18fc00 ic->ic_wrap_com=da18fc00 &wrap_com->wc_devt=da18fc00
+__ol_ath_attach: needed_headroom reservation 60
+ol_ath_thermal_mitigation_attach: --
+ol_ath_pci_probe: PCI device id 0046 :0046
+PCI: enabling device 0000:03:00.0 (0140 -> 0142)
+ *********** Cascade *************
+ath_pci 0000:03:00.0: ath DEBUG: sc=0xd7800c00
+
+ ol_ath_pci_configure : num_desired MSI set to 0
+
+ Using PCI Legacy Interrupt
+chip_id 0xa chip_revision 0x0
+nss register id -1 offload mode enabled = 0 nss config 0 Target Type a
+
+ CLOCK PLL skipped
+__ol_ath_attach: dev name wifi1
+ol_ath_attach() BMI inited.
+ol_ath_attach() BMI Get Target Info.
+Chip id: 0xa, chip version: 0x1000000
+
+ CE WAR Disabled
+NUM_DEV=1 FWMODE=0x2 FWSUBMODE=0x0 FWBR_BUF 0
+ol_ath_attach() configure Target .
+
+ Target Version is 1000000
+
+ Flash Download Address  c0000
+ol_transfer_bin_file: flash data file defined
+Cal location [1]: 00004000
+
+ wifi1 NAND FLASH Select OFFSET 0x5000
+qc98xx_verify_checksum: flash checksum passed: 0x3d47
+ol_transfer_bin_file 4005: Download Flash data len 12064
+Board extended Data download address: 0x0
+
+ Board data initialized
+ol_ath_download_firmware: Download OTP, flash download ADDRESS 0xc0000
+
+ Selecting  OTP binary for CHIP Version 0
+ol_transfer_bin_file 3847: downloading file 0, Download data len 8920
+
+ First OTP send param 8000
+[wifi0] FWLOG: [33793] WAL_DBGID_TX_AC_BUFFER_SET ( 0x3, 0x1e, 0x94c, 0x94c, 0x0 )
+[wifi0] FWLOG: [33793] WAL_DBGID_TX_AC_BUFFER_SET ( 0x12, 0x1e, 0x94c, 0x94c, 0x0 )
+[wifi0] FWLOG: [33793] WAL_DBGID_TX_AC_BUFFER_SET ( 0x45, 0x1e, 0x94c, 0x94c, 0x0 )
+[wifi0] FWLOG: [33793] WAL_DBGID_TX_AC_BUFFER_SET ( 0x67, 0x1e, 0x94c, 0x94c, 0x0 )
+sysinit: grep: /tmp/openvpn/client/data/openvpn_client.stat: No such file or directory
+
+sysinit: killall: miniupnpd: no process killed
+
+sysinit: no 6RD parameters available, so unset 6rd related config
+
+sysinit: /etc/rc.common: /etc/rc.common: 90: detplc: not found
+
+sysinit: mount: mounting none on /proc/bus/usb failed
+
+sysinit: syslogd can't open the temp log file: /tmp/log/log-message or /var/log/messages
+
+sysinit: 248+0 records in
+
+sysinit: 248+0 records out
+
+sysinit: ca.crt
+
+sysinit: tar: ca.crt: time stamp 2019-08-17 16:37:23 is 1566059807.153423897 s in the future
+
+sysinit: cert.info
+
+sysinit: tar: cert.info: time stamp 2019-08-17 16:37:35 is 1566059819.152892813 s in the future
+
+sysinit: client.crt
+
+sysinit: tar: client.crt: time stamp 2019-08-17 16:37:35 is 1566059819.15248669 s in the future
+
+sysinit: client.key
+
+sysinit: tar: client.key: time stamp 2019-08-17 16:37:33 is 1566059817.152049327 s in the future
+
+sysinit: dh1024.pem
+
+sysinit: tar: dh1024.pem: time stamp 2019-08-17 16:37:32 is 1566059816.151643204 s in the future
+
+sysinit: server.crt
+
+sysinit: tar: server.crt: time stamp 2019-08-17 16:37:26 is 1566059810.15120584 s in the future
+
+sysinit: server.key
+
+sysinit: tar: server.key: time stamp 2019-08-17 16:37:24 is 1566059808.150799717 s in the future
+
+ol_ath_download_firmware :First OTP download and Execute is good address:0x800 return param 4660
+ol_ath_download_firmware:##Board Id 2 , CHIP Id 0
+ol_ath_download_firmware: BOARDDATA DOWNLOAD TO address 0xc0000
+ol_transfer_bin_file: Board Data File download to address=0xc0000 file name=QCA9984/hw.1/boardData_QCA9984_CUS260_2G_v1_002.bin
+ol_transfer_bin_file 3847: downloading file 3, Download data len 12064
+Board extended Data download address: 0x0
+ol_ath_download_firmware: Using 0x1234 for the remainder of init
+
+ Selecting  OTP binary for CHIP Version 0
+ol_transfer_bin_file 3847: downloading file 0, Download data len 8920
+
+ [Flash] : Ignore Module param
+
+ Second otp download Param 10000
+sysinit: cp: cannot stat '/usr/config/shadow': No such file or directory
+
+Switching to Tx Mode-1 Threshold 1000
+kcg 333 :GPL NetUSB up!
+kc   90 : run_telnetDBGDServer start
+kc  227 : init_DebugD end
+INFO1821: NetUSB 1.02.76, 00030467 : Nov  3 2015 14:05:54
+INFO1823: 7423: R7800 :R7800
+sysinit: Changing password for admin
+
+sysinit: New password:INFO1824:  AUTH ISOC
+INFO1825:  MOVE_HEAD emb_lp filterAudio
+INFO0715:  0 : tunnelID emusblp 0
+INFO0715:  1 : tunnelID emusblp 1
+INFO0715:  2 : tunnelID emusblp 2
+INFO0715:  3 : tunnelID emusblp 3
+INFO0715:  4 : tunnelID emusblp 4
+INFO0715:  5 : tunnelID emusblp 5
+INFO0715:  6 : tunnelID emusblp 6
+
+
+sysinit: Retype password:
+
+INFO0715:  7 : tunnelID emusblp 7
+
+
+sysinit: passwd: password for admin is unchanged
+
+INFO0715:  8 : tunnelID emusblp 8
+INFO0715:  9 : tunnelID emusblp 9
+INFO0AF8:  --- checkSBusTimeoutThread start ---
+usbcore: registered new interface driver KC NetUSB General Driver
+INFO015C:  init proc : PAGE_SIZE 4096
+INFO1715:  infomap bfb063a0
+INFO1718:  sleep to wait br0 to wake up
+INFO15D0: tcpConnector() started... : br0
+sysinit: /etc/rc.common: /etc/rc.d/S62funjsq: 13: Syntax error: "}" unexpected
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_pre_nat':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_mark':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_nat':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_forward':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_input':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_output':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: Starting Firewall...
+
+sysinit: Done!
+
+sysinit: POT is Running...
+
+sysinit: potval: The POT-(Get/Set) Demo is Running ...
+
+Enabling NSS RPS
+ol_ath_download_firmware : Second OTP download and Execute is good, param=0x0
+
+ Mission mode: Firmware CHIP Version 0
+ol_swap_seg_alloc: Successfully allocated memory for SWAP size=262144
+Swap: bytes_left to copy: fw:16; dma_page:70336
+Swap: wrong length read:0
+ol_swap_wlan_memory_expansion: Swap total_bytes copied: 191808 Target address 41b608
+scn=d78404c0  target_write_addr=41b608 seg_info=de0b0510
+ol_transfer_swap_struct:Code swap structure successfully downloaded for bin type =2
+bin_filename=QCA9984/hw.1/athwlan.bin swap_filename=/lib/firmware/QCA9984/hw.1/athwlan.codeswap.bin
+ol_transfer_bin_file: Downloading firmware file: QCA9984/hw.1/athwlan.bin
+sysinit: traffic_meter start : killall: ez-ipupdate: no process killed
+
+sysinit: killall: updatednsip: no process killed
+
+sysinit: killall: updatednsip: no process killed
+
+sysinit: killall: phddns: no process killed
+
+sysinit: killall: noip2: no process killed
+
+ol_transfer_bin_file 3847: downloading file 1, Download data len 361652
+sysinit: sh: NETGEAR: bad number
+
+sysinit: iptables: No chain/target/match by that name.
+
+sysinit: .
+
+sysinit: $Shutting down igmpproxy:
+
+sysinit: Killed
+
+sysinit: Unknown parameter encountered: "display charset"
+
+sysinit: Ignoring unknown parameter "display charset"
+
+sysinit: ERROR: invalid DOS charset: 'dos charset' must not be UTF8, using (default value) ASCII instead.
+
+sysinit: Cannot get device feature names: No such device
+
+Saving Data...
+Done!
+
+sysinit: /bin/sh: cannot create /sys/class/net/wifi1/led: Directory nonexistent
+
+sysinit: wifi1     no private ioctls.
+
+sysinit: restart the daemon telnetenable for Thin client !!!
+
+clear list
+sysinit: ifconfig: ppp0: error fetching interface information: Device not found
+
+ol_ath_attach() Download FW done.
+ol_ath_attach() HT Create .
+ol_ath_attach() HIF Claim.
+ol_ath_attach() BMI Done.
+ol_ath_attach 6822 host_enable 0 nss_nwifi_offload 0
+ol_ath_set_default_tgt_config : AC Minfree buffer allocation through module param (umac.ko)
+ OL_ACBKMinfree : 0
+ OL_ACBEMinfree : 0
+ OL_ACVIMinfree : 0
+ OL_ACVOMinfree : 0
+ol_ath_attach() WMI attached. wmi_handle d6750000
+CE_recv_buf_enqueue 853 Populate last entry 512 for CE 5
+CE_recv_buf_enqueue 862 CE 5 wi 511 dest_ptr 0x57848040 nbytes 0 recv_ctxt 0xd7ad7600
+Startup Mode-0 set
+pdev attach   (null) -1
+
+<=== cfg max peer id 1056 ====>
+HTC Service:0x0300 ep:1 TX flow control disabled
+htt_peer_map_timer_init Enter pdev d6448000 hrtimer d644c8b8
+
+ htt_alloc_peer_map_mem : Alloc Success : host q vaddr d676e000 paddr 57c6e000
+
+ htt_alloc_peer_map_mem : Flush Interval Configured to 256 pkts
+CE_pkt_dl_len_set CE 4 Pkt download length 64
+ol_txrx_pdev_attach: 2500 tx desc's allocated ; range starts from d6080000
+[R7800]***boot done***
+HTC Service:0x0100 ep:2 TX flow control disabled
+wmi_service_ready_event_rx:  WMI UNIFIED SERVICE READY event
+Firmware_Build_Number:68
+num_rf_chain:0x00000004  ht_cap_info:0x0000085b  vht_cap_info:0x339b79f2  vht_supp_mcs:0x0000ffea
+
+ RES CFG Support wmi_service_bitmap 9778
+
+ Sending HOST PLATFORM as 0 to TGT
+ol_ath_service_ready_event: tt_support: 1
+Peer Caching Enabled ; num_peers = 530, num_active_peers = 52 num_tids = 104, num_vdevs = 17
+idx 1 req 2  num_units 1 num_unit_info 12 unit size 256 actual units 53
+ol_ath_alloc_host_mem_chunk req_id 2 idx 0 num_units 53 unit_len 256,
+idx 2 req 3  num_units 1 num_unit_info 12 unit size 1024 actual units 53
+ol_ath_alloc_host_mem_chunk req_id 3 idx 1 num_units 53 unit_len 1024,
+idx 3 req 4  num_units 1 num_unit_info 12 unit size 4096 actual units 53
+ol_ath_alloc_host_mem_chunk req_id 4 idx 2 num_units 53 unit_len 4096,
+idx 0 req 1  num_units 0 num_unit_info 2 unit size 1440 actual units 531
+ol_ath_alloc_host_mem_chunk req_id 1 idx 3 num_units 177 unit_len 1440,
+ol_ath_alloc_host_mem_chunk req_id 1 idx 4 num_units 177 unit_len 1440,
+ol_ath_alloc_host_mem_chunk req_id 1 idx 5 num_units 177 unit_len 1440,
+idx 4 req 6  num_units 35 num_unit_info 0 unit size 3072 actual units 35
+ol_ath_alloc_host_mem_chunk req_id 6 idx 6 num_units 35 unit_len 3072,
+idx 5 req 7  num_units 1 num_unit_info 0 unit size 12288 actual units 1
+ol_ath_alloc_host_mem_chunk req_id 7 idx 7 num_units 1 unit_len 12288,
+idx 6 req 5  num_units 0 num_unit_info 2 unit size 1876 actual units 531
+ol_ath_alloc_host_mem_chunk req_id 5 idx 8 num_units 132 unit_len 1876,
+ol_ath_alloc_host_mem_chunk req_id 5 idx 9 num_units 133 unit_len 1876,
+ol_ath_alloc_host_mem_chunk req_id 5 idx 10 num_units 133 unit_len 1876,
+ol_ath_alloc_host_mem_chunk req_id 5 idx 11 num_units 133 unit_len 1876,
+chunk 0 len 13568 requested ,ptr  0x58ff8000
+chunk 1 len 54272 requested ,ptr  0x575e0000
+chunk 2 len 217088 requested ,ptr  0x57600000
+chunk 3 len 254880 requested ,ptr  0x57640000
+chunk 4 len 254880 requested ,ptr  0x57680000
+chunk 5 len 254880 requested ,ptr  0x576c0000
+chunk 6 len 107520 requested ,ptr  0x57700000
+chunk 7 len 12288 requested ,ptr  0x5a208000
+chunk 8 len 247632 requested ,ptr  0x57740000
+chunk 9 len 249508 requested ,ptr  0x57780000
+chunk 10 len 249508 requested ,ptr  0x577c0000
+chunk 11 len 249508 requested ,ptr  0x57000000
+wmi_ready_event_rx:  WMI UNIFIED READY event
+ol_ath_connect_htc() WMI is ready
+target uses HTT version 2.2; host uses 2.2
+ol_ath_attach() connect HTC.
+bypasswmi : 0
+ol_regdmn_start: reg-domain param: regdmn=0, countryName=, wModeSelect=FFFFFFFF, netBand=FFFFFFFF, extendedChanMode=0.
+ol_regdmn_init_channels: !avail mode 0x680c (0x2) flags 0x2150
+ol_regdmn_init_channels: !avail mode 0x680c (0x1) flags 0x140
+ol_regdmn_init_channels: !avail mode 0x680c (0x20) flags 0xd0
+ol_regdmn_init_channels: !avail mode 0x680c (0x40) flags 0x150
+ol_regdmn_init_channels: !avail mode 0x680c (0x1000) flags 0x10100
+ol_regdmn_init_channels: !avail mode 0x680c (0x8000) flags 0x20100
+ol_regdmn_init_channels: !avail mode 0x680c (0x10000) flags 0x40100
+ol_regdmn_init_channels: !avail mode 0x680c (0x20000) flags 0x100100
+ol_regdmn_init_channels: !avail mode 0x680c (0x40000) flags 0x200100
+ol_regdmn_init_channels: !avail mode 0x680c (0x80000) flags 0x400100
+ol_regdmn_init_channels: !avail mode 0x680c (0x100000) flags 0x800100
+ol_regdmn_init_channels: !avail mode 0x680c (0x200000) flags 0x4000100
+ol_regdmn_init_channels: !avail mode 0x680c (0x400000) flags 0x8000100
+OL Resmgr Init-ed
+ieee80211_bsteering_attach: Band steering initialized
+
+acfg_attach:socket creation has failed
+SPECTRAL : get_capability not registered
+HAL_CAP_PHYDIAG : Capable
+SPECTRAL : Need to fix the capablity check for RADAR (spectral_attach : 237)
+SPECTRAL : get_capability not registered
+HAL_CAP_RADAR   : Capable
+SPECTRAL : Need to fix the capablity check for SPECTRAL
+ (spectral_attach : 242)
+SPECTRAL : get_capability not registered
+HAL_CAP_SPECTRAL_SCAN : Capable
+SPECTRAL : get_tsf64 not registered
+spectral_init_netlink 78 NULL SKB
+Green-AP : Green-AP : Attached
+
+Green-AP : Attached
+rate power table override is only supported for AR98XX
+ol_ath_smart_ant_attach: Firmware doest not support Smart Antenna.
+ol_ath_smart_ant_attach: Hardware doest not support Smart Antenna.
+
+ the 1st socket creation has failed
+ieee80211com_init_netlink: 3343: Wifipos Netlink socket failed
+ol_if_dfs_attach: called; ptr=d6079984, radar_info=da0efb80
+dfs_attach: event log enabled by default
+ol_ath_attach() UMAC attach .
+ol_if_dfs_configure: FCC domain
+###### FCC BIN5 ##### fcc_b5_threshold = 4, fcc_b5_mindur = 20, fcc_b5_maxdur = 105, fcc_b5_timewindow = 12, fcc_b5_rssithresh = 20, fcc_b5_rssimargin = 10
+ol_ath_attach: Calling ol_if_dfs_configure
+
+ BURSTING enabled by default
+ol_ath_attach: Set global_ic[2] ..ptr:bfa9a824
+osif_wrap_attach:432 osif wrap attached
+osif_wrap_devt_init:393 osif wrap dev table init done
+ Wrap Attached: Wrap_com =da17d600 ic->ic_wrap_com=da17d600 &wrap_com->wc_devt=da17d600
+__ol_ath_attach: needed_headroom reservation 60
+ol_ath_thermal_mitigation_attach: --
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+ pktlog_init: Initializing Pktlog for AR900B, pktlog_hdr_size = 16
+ pktlog_init: Initializing Pktlog for AR900B, pktlog_hdr_size = 16
+__sa_init_module
+isCountryCodeValid: EEPROM regdomain 0x0
+ol_regdmn_init_channels: !avail mode 0x680c (0x2) flags 0x2150
+ol_regdmn_init_channels: !avail mode 0x680c (0x1) flags 0x140
+ol_regdmn_init_channels: !avail mode 0x680c (0x20) flags 0xd0
+ol_regdmn_init_channels: !avail mode 0x680c (0x40) flags 0x150
+ol_regdmn_init_channels: !avail mode 0x680c (0x1000) flags 0x10100
+ol_regdmn_init_channels: !avail mode 0x680c (0x8000) flags 0x20100
+ol_regdmn_init_channels: !avail mode 0x680c (0x10000) flags 0x40100
+ol_regdmn_init_channels: !avail mode 0x680c (0x20000) flags 0x100100
+ol_regdmn_init_channels: !avail mode 0x680c (0x40000) flags 0x200100
+ol_regdmn_init_channels: !avail mode 0x680c (0x80000) flags 0x400100
+ol_regdmn_init_channels: !avail mode 0x680c (0x100000) flags 0x800100
+ol_regdmn_init_channels: !avail mode 0x680c (0x200000) flags 0x4000100
+ol_regdmn_init_channels: !avail mode 0x680c (0x400000) flags 0x8000100
+[wifi1] FWLOG: [41222] WAL_DBGID_TX_AC_BUFFER_SET ( 0x3, 0x1e, 0x94c, 0x94c, 0x0 )
+[wifi1] FWLOG: [41222] WAL_DBGID_TX_AC_BUFFER_SET ( set TXBF_SND_PERIOD: value 100 wmi_status 0
+0x12, 0x1e, 0x94c, 0x94c, 0x0 )
+[wifi1] FWLOG: [41222] WAL_DBGID_TX_AC_BUFFER_SET ( 0x45, 0x1e, 0x94c, 0x94c, 0x0 )
+[wifi1] FWLOG: [41222] WAL_DBGID_TX_AC_BUFFER_SET ( 0x67, 0x1e, 0x94c, 0x94c, 0x0 )
+ath_ioctl: SIOC80211IFCREATE CALLED
+wmi_unified_vdev_create_send: ID = 0 Type = 1, Subtype = 0 VAP Addr = 38:94:ed:b8:d6:da:
+Setting dscp for pdev
+__ieee80211_smart_ant_init: Smart Antenna is not supported
+Enabling TX checksum bit for the vap ath1 features 4000
+Enabling SG bit for the vap ath1 features 4000
+Enabling SG bit for the vap ath1 features 4000
+Enabling TSO bit for the vap ath1 features 4000
+Enabling LRO bit for the vap ath1 features 4000
+VAP device ath1 created osifp: (d79e34c0) os_if: (d876c000)
+siwfreq
+Set freq vap 0 stop send + d876c000
+Set freq vap 0 stop send -d876c000
+Set wait done --d876c000
+sysinit: Invalid command : dni_vlan_pri
+
+WARNING: Fragmentation with HT mode NOT ALLOWED!!
+sysinit: Error for wireless request "Set Fragmentation Threshold" (8B24) :
+
+sysinit:     SET failed on device ath1 ; Invalid argument.
+
+sysinit: Interface doesn't accept private ioctl...
+
+sysinit: stafwd (8BE0): Invalid argument
+
+
+ DES SSID SET=on
+
+ DES SSID SET=NETGEAR35
+sysinit: Added user admin.
+
+ieee80211_ioctl_setparam-5962, IEEE80211_PARAM_NR_SHARE_RADIO_FLAG, MAX_RADIO_CNT = 2sysinit: watchdog: /dev/watchdog: Device or resource busy
+
+su bfee 1 mu bfee 0 su bfer 0 mu bfer 1 impl bf 0 sounding dim 3
+su bfee 1 mu bfee 0 su bfer 0 mu bfer 0 impl bf 0 sounding dim 3
+su bfee 0 mu bfee 0 su bfer 0 mu bfer 0 impl bf 0 sounding dim 3
+su bfee 0 mu bfee 0 su bfer 0 mu bfer 0 impl bf 0 sounding dim 3
+sysinit: Interface doesn't accept private ioctl...
+
+sysinit: vhtmubfee (8BE0): Invalid argument
+
+sysinit: /etc/rc.common: /etc/rc.common: 90: cannot create /sys/fast_classifier/skip_to_bridge_ingress: Directory nonexistent
+
+device ath1 entered promiscuous mode
+sysinit: Unknown parameter encountered: "display charset"
+
+sysinit: Ignoring unknown parameter "display charset"
+
+sysinit: ERROR: invalid DOS charset: 'dos charset' must not be UTF8, using (default value) ASCII instead.
+
+sysinit: Added user guest.
+
+Saving Data...
+Done!
+
+Saving Data...
+Done!
+
+sysinit: Configuration file: /var/run/hostapd-ath1.conf
+
+ ieee80211_ioctl_siwmode: imr.ifm_active=131712, new mode=3, valid=1
+ DEVICE IS DOWN ifname=ath1
+ DEVICE IS DOWN ifname=ath1
+sysinit: ath1: Could not connect to kernel driver
+
+sysinit: Using interface ath1 with hwaddr 38:94:ed:b8:d6:da and ssid "NETGEAR35"
+
+sysinit: random: Only 18/20 bytes of strong random data available from /dev/random
+
+sysinit: random: Not enough entropy pool available for secure operations
+
+sysinit: WPA: Not enough entropy in random pool for secure operations - update keys later when the first station connects
+
+br0: port 2(ath1) entered forwarding state
+br0: port 2(ath1) entered forwarding state
+8021q: adding VLAN 0 to HW filter on device ath1
+sysinit: ath1: interface state UNINITIALIZED->ENABLED
+
+sysinit: ath1: AP-ENABLED
+
+sysinit: /sbin/wlan: eval: 15: scan_interfaces: not found
+
+sysinit: /sbin/wlan: eval: 15: setup_interface: not found
+
+sysinit: /etc/rc.common: eval: 1: cannot create /sys/devices/sys Scan in progress.. Cancelling it
+tem/cpu/cpufreq/ondemand/up_threshold_any_cpu_load: Directory nowmi_unified_vdev_down_send for vap 0 (d6750000)
+nexistent
+
+sysinit: /etc/rc.common: eval: 1: cannot create /sys/devices/system/cpu/cpufreq/ondemand/up_threshold_multi_core: Directory nonexistent
+
+sysinit: /etc/rc.common: eval: 1: cannot create /sys/devices/system/cpu/cpufreq/ondemand/optimal_freq: Directory nonexistent
+
+sysinit: /etc/rc.common: eval: 1: cannot Scan in progress.. Cancelling it
+ create /sys/devices/system/cpu/cpufreq/ondemand/sync_freq: Direwmi_unified_vdev_down_send for vap 0 (d6750000)
+ctory nonexistent
+
+sysinit: DNI streamboost auto_update
+
+sysinit: streamboost: StreamBoost: Executing boot all
+
+sysinit: streamboost: Skipping
+
+qcawifi: enable radio wifi0
+isCountryCodeValid: EEPROM regdomain 0x0
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2) flags 0x2150
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4) flags 0xa0
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x8) flags 0xc0
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x20) flags 0xd0
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x40) flags 0x150
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x800) flags 0x10080
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x2000) flags 0x20080
+ol_regdmn_init_channels: !avail mode 0x7f9001 (0x4000) flags 0x40080
+Add VHT80 channel: 5210
+Add VHT80 channel: 5290
+Add VHT80 channel: 5530
+Add VHT80 channel: 5610
+Add VHT80 channel: 5690
+Add VHT80 channel: 5775
+Skipping VHT80 channel 5825
+Add VHT80_80 channels: 5210 : 5290
+Add VHT80_80 channels: 5290 : 5210
+Add VHT80_80 channels: 5530 : 5610
+Add VHT80_80 channels: 5610 : 5530
+Add VHT80_80 channels: 5210 : 5530
+Add VHT80_80 channels: 5530 : 5210
+Add VHT80_80 channels: 5210 : 5610
+Add VHT80_80 channels: 5610 : 5210
+Add VHT80_80 channels: 5210 : 5690
+Add VHT80_80 channels: 5690 : 5210
+Add VHT80_80 channels: 5210 : 5775
+Add VHT80_80 channels: 5775 : 5210
+Add VHT80_80 channels: 5290 : 5530
+Add VHT80_80 channels: 5530 : 5290
+Add VHT80_80 channels: 5290 : 5610
+Add VHT80_80 channels: 5610 : 5290
+Add VHT80_80 channels: 5290 : 5690
+Add VHT80_80 channels: 5690 : 5290
+Add VHT80_80 channels: 5290 : 5775
+Add VHT80_80 channels: 5775 : 5290
+Add VHT80_80 channels: 5530 : 5690
+Add VHT80_80 channels: 5690 : 5530
+Add VHT80_80 channels: 5530 : 5775
+Add VHT80_80 channels: 5775 : 5530
+Add VHT80_80 channels: 5610 : 5775
+Add VHT80_80 channels: 5775 : 5610
+Add VHT80_80 channels: 5690 : 5775
+Add VHT80_80 channels: 5775 : 5690
+set TXBF_SND_PERIOD: value 100 wmi_status 0
+WARNING: setting the threshold value > 256                                 will impact multiclient performance
+ath_ioctl: SIOC80211IFCREATE CALLED
+wmi_unified_vdev_create_send: ID = 0 Type = 1, Subtype = 0 VAP Addr = 38:94:ed:b8:d6:dc:
+Setting dscp for pdev
+__ieee80211_smart_ant_init: Smart Antenna is not supported
+Enabling TX checksum bit for the vap ath0 features 4000
+Enabling SG bit for the vap ath0 features 4000
+Enabling SG bit for the vap ath0 features 4000
+Enabling TSO bit for the vap ath0 features 4000
+Enabling LRO bit for the vap ath0 features 4000
+sysinit: Mon Dec 10 11:05:00 UTC 2018
+VAP device ath0 created osifp: (d79e44c0) os_if: (d5cf0000)
+
+[wifi1] FWLOG: [43197] WAL_DBGID_SECURITY_ENCR_EN (  )
+[wifi1] FWLOG: [43197] WAL_DBGID_SECURITY_MCAST_KEY_SET ( 0x1 )
+[wifi1] FWLOG: [43228] WAL channel change freq=2412, mode=1 flags=0 rx_ok=1 tx_ok=1
+siwfreq
+Set freq vap 0 stop send + d5cf0000
+Set freq vap 0 stop send -d5cf0000
+[wifi1] FWLOG: [43554] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+[wifi1] FWLOG: [43554] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+[wifi1] FWLOG: [43595] RESMGR_OCS_GEN_PERIODIC_NOA ( Set wait done --d5cf0000
+0x0 )
+[wifi1] FWLOG: [43595] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+sysinit: Invalid command : dni_vlan_pri
+
+sysinit: 1+0 records in
+
+sysinit: 1+0 records out
+
+WARNING: Fragmentation with HT mode NOT ALLOWED!!
+sysinit: Error for wireless request "Set Fragmentation Threshold" (8B24) :
+
+sysinit:     SET failed on device ath0 ; Invalid argument.
+
+sysinit: Interface doesn't accept private ioctl...
+
+sysinit: stafwd (8BE0): Invalid argument
+
+
+ DES SSID SET=on
+
+ DES SSID SET=NETGEAR35-5G
+ieee80211_ioctl_setparam-5962, IEEE80211_PARAM_NR_SHARE_RADIO_FLAG, MAX_RADIO_CNT = 2Saving Data...
+su bfee 1 mu bfee 0 su bfer 1 mu bfer 1 impl bf 1 sounding dim 3
+su bfee 1 mu bfee 0 su bfer 1 mu bfer 1 impl bf 1 sounding dim 3
+su bfee 1 mu bfee 0 su bfer 1 mu bfer 1 impl bf 1 sounding dim 3
+su bfee 1 mu bfee 0 su bfer 1 mu bfer 1 impl bf 1 sounding dim 3
+su bfee 1 mu bfee 0 su bfer 1 mu bfer 1 impl bf 1 sounding dim 3
+sysinit: Interface doesn't accept private ioctl...
+
+sysinit: vhtmubfee (8BE0): Invalid argument
+
+device ath0 entered promiscuous mode
+Done!
+
+Switching to Tx Mode-1 Threshold 1000
+sysinit: cp: cannot stat '/usr/rae.tar.gz': No such file or directory
+
+sysinit: tar: /tmp/rae.tar.gz: Cannot open: No such file or directory
+
+sysinit: tar: Error is not recoverable: exiting now
+
+sysinit: tar: Child returned status 2
+
+sysinit: tar: Error is not recoverable: exiting now
+
+Saving Data...
+Done!
+
+sysinit: mkdir: cannot create directory '/tmp/router-analytics': File exists
+
+[wifi1] FWLOG: [44661] WAL channel change freq=2417, mode=1 flags=0 rx_ok=1 tx_ok=1
+sysinit: Cannot connect to server , will try 60s later!!Configuration file: /var/run/hostapd-ath0.conf
+
+ ieee80211_ioctl_siwmode: imr.ifm_active=66176, new mode=3, valid=1
+ DEVICE IS DOWN ifname=ath0
+ DEVICE IS DOWN ifname=ath0
+sysinit: ath0: Could not connect to kernel driver
+
+sysinit: Using interface ath0 with hwaddr 38:94:ed:b8:d6:dc and ssid "NETGEAR35-5G"
+
+sysinit: random: Only 14/20 bytes of strong random data available from /dev/random
+
+sysinit: random: Not enough entropy pool available for secure operations
+
+sysinit: WPA: Not enough entropy in random pool for secure operations - update keys later when the first station connects
+
+OL vap_start +
+wmi_unified_vdev_start_send for vap 0 (d8cf0000)
+OL vap_start -
+sysinit: killall: net6conf: no process killed
+
+ol_vdev_start_resp_ev for vap 0 (d8cf0000)
+ol_ath_vap_join: join operation is only for STA/IBSS mode
+ol_ath_wmm_update:
+su bfee 1 mu bfee 0 su bfer 1 mu bfer 1 impl bf 1 sounding dim 3
+wmi_unified_vdev_up_send for vap 0 (d8cf0000)
+__ieee80211_smart_ant_init: Smart Antenna is not supported
+ol_ath_vap_set_param: Now supported MGMT RATE is 6000(kbps) and rate code: 0x3
+[wifi0] FWLOG: [45429] WAL_DBGID_SECURITY_ENCR_EN (  )
+br0: port 3(ath0) entered forwarding state
+br0: port 3(ath0) entered forwarding state
+8021q: adding VLAN 0 to HW filter on device ath0
+[wifi0] FWLOG: [45429] WAL_DBGID_SECURITY_MCAST_KEY_SET ( 0x1 )
+[wifi0] FWLOG: [45466] vap-0 VDEV_MGR_VDEV_START ( 0x1685, sysinit: ath0: interface state UNINITIALIZED->ENABLED
+
+sysinit0x2: ath0: AP-ENABLED
+
+, 0x0, 0x0 )
+[wifi0] FWLOG: [45466] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+sysinit: /sbin/wlan: eval: 15: scan_interfaces: not found
+
+sysinit: /sbin/wlan: eval: 15: setup_interface: not found
+
+[wifi1] FWLOG: [45693] WAL channel change freq=2422, mode=1 flags=0 rx_ok=1 tx_ok=1
+sysinit: Sorry, rule does not exist.
+
+sysinit: Sorry, rule does not exist.
+
+sysinit: Sorry, rule does not exist.
+
+sysinit: Sorry, rule does not exist.
+
+sysinit: Sorry, rule does not exist.
+
+sysinit: Sorry, rule does not exist.
+
+sysinit: Sorry, rule does not exist.
+
+sysinit: Sorry, rule does not exist.
+
+sysinit: Sorry, rule does not exist.
+
+sysinit: Sorry, rule does not exist.
+
+sysinit: ----------------------------------------
+
+sysinit: Vendor IE info Ioctl CMD id     : 29
+
+sysinit: ID                              : dd
+
+sysinit: Len (OUI+ Pcapdata) in Bytes    :  b
+
+sysinit: OUI                             : 00146c
+
+sysinit: Private capibility_data         : 0801010110000000
+
+sysinit: Frame Include Mask              : 18
+
+sysinit: ----------------------------------------
+
+sysinit: ----------------------------------------
+
+sysinit: Vendor IE info Ioctl CMD id     : 29
+
+sysinit: ID                              : dd
+
+sysinit: Len (OUI+ Pcapdata) in Bytes    :  b
+
+sysinit: OUI                             : 00146c
+
+sysinit: Private capibility_data         : 0801010110000000
+
+sysinit: Frame Include Mask              : 18
+
+sysinit: ----------------------------------------
+
+ Scan in progress.. Cancelling it
+wmi_unified_vdev_down_send for vap 0 (d6750000)
+br0: port 2(ath1) entered disabled state
+[wifi0] FWLOG: [45842] VDEV_MGR_HP_START_TIME ( 0x0, 0x1685, 0xb3b000 )
+[wifi0] FWLOG: [45842] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x1 )
+[wifi0] FWLOG: [45842] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+[wifi0] FWLOG: [45842] VDEV_MGR_AP_TBTT_CONFIG ( 0x0, 0x1685, 0x0, 0x0 )
+[wifi1] FWLOG: [46723] WAL channel change freq=2427, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [46749] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+[wifi1] FWLOG: [46749] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+br0: port 2(ath1) entered forwarding state
+br0: port 2(ath1) entered forwarding state
+8021q: adding VLAN 0 to HW filter on device ath1
+[wifi1] FWLOG: [47816] WAL channel change freq=2412, mode=1 flags=0 rx_ok=1 tx_ok=1
+sysinit: killall: proftpd: no process killed
+
+sysinit: Changing password for admin
+
+sysinit: New password:
+
+sysinit: Retype password:
+
+sysinit: Passwords don't match
+
+sysinit: passwd: password for admin is unchanged
+
+sysinit: Unknown parameter encountered: "display charset"
+
+sysinit: Ignoring unknown parameter "display charset"
+
+sysinit: ERROR: invalid DOS charset: 'dos charset' must not be UTF8, using (default value) ASCII instead.
+
+sysinit: Added user admin.
+
+sysinit: Unknown parameter encountered: "display charset"
+
+sysinit: Ignoring unknown parameter "display charset"
+
+sysinit: ERROR: invalid DOS charset: 'dos charset' must not be UTF8, using (default value) ASCII instead.
+
+sysinit: Added user guest.
+
+[wifi1] FWLOG: [48846] WAL channel change freq=2417, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [49878] WAL channel change freq=2422, mode=1 flags=0 rx_ok=1 tx_ok=1
+sysinit: no process in pidfile '/var/run/forked-daapd.pid' found; none killed
+
+sysinit: AUTO FW CHECK: power cycle
+
+[wifi1] FWLOG: [50908] WAL channel change freq=2427, mode=1 flags=0 rx_ok=1 tx_ok=1
+FW checking ...
+sysinit: week_day == 1
+
+[wifi1] FWLOG: [51938] WAL channel change freq=2432, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [52969] WAL channel change freq=2437, mode=1 flags=0 rx_ok=1 tx_ok=1
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+[wifi1] FWLOG: [54000] WAL channel change freq=2442, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [55030] WAL channel change freq=2447, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [56061] WAL channel change freq=2452, mode=1 flags=0 rx_ok=1 tx_ok=1
+sysinit: ping: www.netgear.com: Unknown host
+
+[wifi1] FWLOG: [57092] WAL channel change freq=2457, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [58122] WAL channel change freq=2462, mode=1 flags=0 rx_ok=1 tx_ok=1
+wmi_unified_vdev_down_send for vap 0 (d6750000)
+mlme_create_infra_bss : Overriding HT40 channel with HT20 channel
+OL vap_start +
+wmi_unified_vdev_start_send for vap 0 (d6750000)
+OL vap_start -
+ol_ath_vap_set_param: Now supported MGMT RATE is 1000(kbps) and rate code: 0x43
+[wifi1] FWLOG: [59157] RESMGR_OCS_GEN_PERIODIC_NOA ( ol_vdev_start_resp_ev for vap 0 (d6750000)
+ol_ath_vap_join: join operation is only for STA/IBSS mode
+ol_ath_wmm_update:
+su bfee 0 mu bfee 0 su bfer 0 mu bfer 0 impl bf 0 sounding dim 3
+wmi_unified_vdev_up_send for vap 0 (d6750000)
+__ieee80211_smart_ant_init: Smart Antenna is not supported
+0x0 )
+[wifi1] FWLOG: [59157] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+[wifi1] FWLOG: [59168] vap-0 VDEV_MGR_VDEV_START ( 0x98a, 0x2, 0x0, 0x0 )
+[wifi1] FWLOG: [59169] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+[wifi1] FWLOG: [59625] VDEV_MGR_HP_START_TIME ( 0x0, 0x98a, 0x1130001 )
+[wifi1] FWLOG: [59625] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x1 )
+[wifi1] FWLOG: [59625] RESMGR_OCS_GEN_PERIODIC_NOA ( 0x0 )
+[wifi1] FWLOG: [59625] VDEV_MGR_AP_TBTT_CONFIG ( 0x0, 0x98a, 0x0, 0x0 )
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+The abbreviation of English is Eng!
+
+Passed the checksum verification!
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+current version: V1.0.0.352; new version: V1.0.0.352
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: Cannot connect to server , will try 60s later!!ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: pingping: sendto: Network is unreachable
+
+sysinit: : sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+current version: V1.0.0.352; new version: V1.0.0.352
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: Cannot connect to server , will try 60s later!!ping: www.netgear.com: Unknown host
+
+[wifi1] FWLOG: [169938] WAL channel change freq=2412, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [170251] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [170356] WAL channel change freq=2437, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [170669] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [170774] WAL channel change freq=2462, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [171088] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+[wifi1] FWLOG: [171611] WAL channel change freq=2417, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [171924] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [172029] WAL channel change freq=2422, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [172342] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [172447] WAL channel change freq=2427, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [172761] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [172866] WAL channel change freq=2432, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [173179] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [173284] WAL channel change freq=2447, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [173598] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [173702] WAL channel change freq=2452, mode=1 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [174016] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+[wifi1] FWLOG: [174121] WAL channel change freq=2457, mode=1 flags=0 rx_ok=1 tx_ok=1
+sysinit: ath1      Scan completed :
+
+sysinit:           Cell 01 - Address: 5C:6A:80:ED:4B:AD
+
+sysinit:                     ESSID:"MiCasa"
+
+sysinit:                     Mode:Master
+
+sysinit:                     Frequency:2.412 GHz (Channel 1)
+
+sysinit:                     Quality=86/94  Signal level=-64 dBm  Noise level=-95 dBm
+
+sysinit:                     Encryption key:on
+
+sysinit:                     Bit Rates:1 Mb/s; 2 Mb/s; 5.5 Mb/s; 11 Mb/s; 18 Mb/s
+
+sysinit:                               24 Mb/s; 36 Mb/s; 54 Mb/s; 6 Mb/s; 9 Mb/s
+
+sysinit:                               12 Mb/s; 48 Mb/s
+
+sysinit:                     Extra:bcn_int=100
+
+sysinit:                     IE: IEEE 802.11i/WPA2 Version 1
+
+sysinit:                         Group Cipher : CCMP
+
+sysinit:                         Pairwise Ciphers (1) : CCMP
+
+sysinit:                         Authentication Suites (1) : PSK
+
+sysinit:                     Extra:wme_ie=dd070050f202000104
+
+sysinit:                     Extra:phy_mode=IEEE80211_MODE_11NG_HT20
+
+sysinit:           Cell 02 - Address: 5E:AD:80:ED:4B:AF
+
+sysinit:                     ESSID:"MGMT"
+
+sysinit:                     Mode:Master
+
+sysinit:                     Frequency:2.412 GHz (Channel 1)
+
+sysinit:                     Quality=86/94  Signal level=-64 dBm  Noise level=-95 dBm
+
+sysinit:                     Encryption key:on
+
+sysinit:                     Bit Rates:1 Mb/s; 2 Mb/s; 5.5 Mb/s; 11 Mb/s; 18 Mb/s
+
+sysinit:                               24 Mb/s; 36 Mb/s; 54 Mb/s; 6 Mb/s; 9 Mb/s
+
+sysinit:                               12 Mb/s; 48 Mb/s
+
+sysinit:                     Extra:bcn_int=100
+
+sysinit:                     IE: IEEE 802.11i/WPA2 Version 1
+
+sysinit:                         Group Cipher : CCMP
+
+sysinit:                         Pairwise Ciphers (1) : CCMP
+
+sysinit:                         Authentication Suites (1) : PSK
+
+sysinit:                     Extra:wme_ie=dd070050f202000104
+
+sysinit:                     Extra:phy_mode=IEEE80211_MODE_11NG_HT20
+
+sysinit:           Cell 03 - Address: 70:5A:0F:E0:65:C3
+
+sysinit:                     ESSID:"DIRECT-C2-HP ENVY 7640 series"
+
+sysinit:                     Mode:Master
+
+sysinit:                     Frequency:2.437 GHz (Channel 6)
+
+sysinit:                     Quality=89/94  Signal level=-60 dBm  Noise level=-95 dBm
+
+sysinit:                     Encryption key:on
+
+sysinit:                     Bit Rates:6 Mb/s; 9 Mb/s; 12 Mb/s; 18 Mb/s; 24 Mb/s
+
+sysinit:                               36 Mb/s; 48 Mb/s; 54 Mb/s
+
+sysinit:                     Extra:bcn_int=100
+
+sysinit:                     IE: IEEE 802.11i/WPA2 Version 1
+
+sysinit:                         Group Cipher : CCMP
+
+sysinit:                         Pairwise Ciphers (1) : CCMP
+
+sysinit:                         Authentication Suites (1) : PSK
+
+sysinit:                     Extra:wme_ie=dd180050f2020101880003640[wifi0] 00027a4000041435e0061322f00
+
+sysinit:                     ExtrFWLOG: [174657] WAL channel change freq=5260, mode=0 flags=0 rx_ok=1 tx_ok=1
+a:phy_mode=IEEE80211_MODE_11NG_HT20
+
+sysinit:                     IE: WPA Version 18960
+
+sysinit:                         Group Cipher : Proprietary
+
+sysinit:                         Pairwise Ciphers (68) :          Cell 04 - Address: 5E:AD:80:ED:4B:AE
+
+sysinit:                     ESSID:"GuestWifi"
+
+sysinit:                     Mode:Master
+
+sysinit:                     Frequency:2.412 GHz (Channel 1)
+
+sysinit:                     Quality=87/94  Signal level=-63 dBm  Noise level=-95 dBm
+
+sysinit:                     Encryption key:off
+
+sysinit:                     Bit Rates:1 Mb/s; 2 Mb/s; 5.5 Mb/s; 11 Mb/s; 18 Mb/s
+
+sysinit:                               24 Mb/s; 36 Mb/s; 54 Mb/s; 6 Mb/s; 9 Mb/s
+
+sysinit:                               12 Mb/s; 48 Mb/s
+
+sysinit:                     Extra:bcn_int=100
+
+sysinit:                     Extra:wme_ie=dd070050f202000104
+
+sysinit:                     Extra:phy_mode=IEEE80211_MODE_11NG_HT20
+
+sysinit: ping: www.netgear.com: Unknown host
+
+[wifi1] FWLOG: [174434] WAL channel change freq=2442, mode=5 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [174970] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [175075] WAL channel change freq=5280, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [175389] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [175493] WAL channel change freq=5300, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [175807] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [175912] WAL channel change freq=5320, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [176225] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [176330] WAL channel change freq=5180, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [176643] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [176748] WAL channel change freq=5200, mode=0 flags=0 rx_ok=1 tx_ok=1
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+[wifi0] FWLOG: [177062] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [177166] WAL channel change freq=5220, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [177480] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [177585] WAL channel change freq=5240, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [177898] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [178003] WAL channel change freq=5745, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [178187] WAL_DBGID_DEV_RESET ( 0xc01d, 0x494 )
+[wifi0] FWLOG: [178231] WAL_DBGID_DEV_RX_TIMEOUT ( 0x1d1e, 0x2b80a, 0x2b1fa, 0x1 )
+[wifi0] FWLOG: [178321] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [178844] WAL channel change freq=5785, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [179157] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [179262] WAL channel change freq=5805, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [179576] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [179680] WAL channel change freq=5825, mode=0 flags=0 rx_ok=1 tx_ok=1
+sysinit: ping: www.netgear.com: Unknown host
+
+[wifi0] FWLOG: [179994] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [180099] WAL channel change freq=5500, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [180412] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [180517] WAL channel change freq=5520, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [180830] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [180935] WAL channel change freq=5540, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [181249] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [181354] WAL channel change freq=5560, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [181667] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [181772] WAL channel change freq=5580, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [182085] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [182190] WAL channel change freq=5600, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [182504] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [182518] WAL_DBGID_BB_WDOG_TRIGGERED ( 0x2c8f6, 0x13000309, 0x0, 0x1 )
+[wifi0] FWLOG: [182518] WAL_DBGID_BB_WDOG_TRIGGERED ( 0xc000, 0x0 )
+[wifi0] FWLOG: [182875] WAL channel change freq=5620, mode=0 flags=0 rx_ok=1 tx_ok=1
+sysinit: ping: sendto: Network is unreachable
+
+[wifi0] FWLOG: [183188] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [183293] sysinit: ping: sendto: Network is unreachable
+
+WAL channel change freq=5640, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [183606] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [183711] WAL channel change freq=5660, mode=0 flags=0 rx_ok=1 tx_ok=1
+[wifi0] FWLOG: [184030] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+sysinit: ath0      Scan completed :
+
+sysinit:           Cell 01 - Address: 5E:AE:80:ED:4B:A8
+
+sysinit:                     ESSID:"MGMT"
+
+sysinit:                     Mode:Master
+
+sysinit:                     Frequency:5.18 GHz (Channel 36)
+
+sysinit:                     Quality=92/94  Signal level=-56 dBm  Noise level=-95 dBm
+
+sysinit:                     Encryption key:on
+
+sysinit:                     Bit Rates:6 Mb/s; 9 Mb/s; 12 Mb/s; 18 Mb/s; 24 Mb/s
+
+sysinit:                               36 Mb/s; 48 Mb/s; 54 Mb/s
+
+sysinit:                     Extra:bcn_int=100
+
+sysinit:                     IE: IEEE 802.11i/WPA2 Version 1
+
+sysinit:                         Group Cipher : CCMP
+
+sysinit:                         Pairwise Ciphers (1) : CCMP
+
+sysinit:                         Authentication Suites (1) : PSK
+
+sysinit:                     Extra:wme_ie=dd070050f202000104
+
+sysinit:                     Extra:phy_mode=IEEE80211_MODE_11AC_VHT80
+
+sysinit:          [wifi0]  Cell 02 - Address: 5C:6A:80:ED:4B:AE
+
+sysinit:               FWLOG: [184135]       ESSID:"MiCasa"
+
+sysinit:                     Mode:MasterWAL channel change freq=5680, mode=0 flags=0 rx_ok=1 tx_ok=1
+
+
+sysinit:                     Frequency:5.18 GHz (Channel 36)[wifi0]
+
+sysinit:                     Quality=91/94  Signal level=-57FWLOG: [184448]  dBm  Noise level=-95 dBm
+
+sysinit:                     EncrypWAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+tion key:on
+
+sysinit:                     Bit Rates:6 Mb/s; 9 [wifi0] Mb/s; 12 Mb/s; 18 Mb/s; 24 Mb/s
+
+sysinit:                     FWLOG: [184553]           36 Mb/s; 48 Mb/s; 54 Mb/s
+
+sysinit:                 WAL channel change freq=5700, mode=0 flags=0 rx_ok=1 tx_ok=1
+    Extra:bcn_int=100
+
+sysinit:                     IE: IEEE 8[wifi0] FWLOG: [184866] WAL channel change freq=5765, mode=10 flags=0 rx_ok=1 tx_ok=1
+02.11i/WPA2 Version 1
+
+sysinit:                         Group Cipher : CCMP
+
+sysinit:                         Pairwise Ciphers (1) : CCMP
+
+sysinit:                         Authentication Suites (1) : PSK
+
+sysinit:                     Extra:wme_ie=dd070050f202000104
+
+sysinit:                     Extra:phy_mode=IEEE80211_MODE_11AC_VHT80
+
+sysinit:           Cell 03 - Address: 5E:AE:80:ED:4B:AF
+
+sysinit:                     ESSID:"GuestWifi"
+
+sysinit:                     Mode:Master
+
+sysinit:                     Frequency:5.18 GHz (Channel 36)
+
+sysinit:                     Quality=91/94  Signal level=-57 dBm  Noise level=-95 dBm
+
+sysinit:                     Encryption key:off
+
+sysinit:                     Bit Rates:6 Mb/s; 9 Mb/s; 12 Mb/s; 18 Mb/s; 24 Mb/s
+
+sysinit:                               36 Mb/s; 48 Mb/s; 54 Mb/s
+
+sysinit:                     Extra:bcn_int=100
+
+sysinit:                     Extra:wme_ie=dd070050f202000104
+
+sysinit:                     Extra:phy_mode=IEEE80211_MODE_11AC_VHT80
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+current version: V1.0.0.352; new version: V1.0.0.352
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: mv: cannot rename '/tmp/openvpn/client/configs/providerlist.json.new': No such file or directory
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: Current RAE Download File Path is /sw-apps/router-analytics/ and Router Model: r7800
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+[wifi1] FWLOG: [249107] WAL_DBGID_DEV_RESET ( 0xc01d, 0x3e8 )
+[wifi1] FWLOG: [249146] WAL_DBGID_DEV_RX_TIMEOUT ( 0x1d1e, 0x3cd12, 0x3a33c, 0x1 )
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+current version: V1.0.0.352; new version: V1.0.0.352
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: Download file https://http.fw.updates1.netgear.com/sw-apps/router-analytics/r7800/fileinfo.txt failed!
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: ping: sendtoNetwork is unreachable: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+current version: V1.0.0.352; new version: V1.0.0.352
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+current version: V1.0.0.352; new version: V1.0.0.352
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: Download file https://http.fw.updates1.netgear.com/sw-apps/router-analytics/r7800/fileinfo.txt failed!
+
+sysinit: Download file ftp://http.fw.updates1.netgear.com/sw-apps/router-analytics/r7800/fileinfo.txt failed!
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: mv: cannot rename '/tmp/openvpn/client/configs/providerlist.json.new': No such file or directory
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+current version: V1.0.0.352; new version: V1.0.0.352
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: Download file ftp://http.fw.updates1.netgear.com/sw-apps/router-analytics/r7800/fileinfo.txt failed!
+
+sysinit: pingping: : sendtosendto: : Network is unreachableNetwork is unreachable
+
+[wifi1] FWLOG: [483003] WAL_DBGID_DEV_RESET ( 0xc01d, 0x3eb )
+[wifi1] FWLOG: [483042] WAL_DBGID_DEV_RX_TIMEOUT ( 0x1d1e, 0x75ebb, 0x721b5, 0x2 )
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+current version: V1.0.0.352; new version: V1.0.0.352
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: Download file https://http.fw.updates1.netgear.com/sw-apps/router-analytics/r7800/RAE_Policy.json failed!
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+
+
+
+BusyBox v1.4.2 (2018-12-10 10:26:59 UTC) Built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+     MM           NM                    MMMMMMM          M       M
+   $MMMMM        MMMMM                MMMMMMMMMMM      MMM     MMM
+  MMMMMMMM     MM MMMMM.              MMMMM:MMMMMM:   MMMM   MMMMM
+MMMM= MMMMMM  MMM   MMMM       MMMMM   MMMM  MMMMMM   MMMM  MMMMM'
+MMMM=  MMMMM MMMM    MM       MMMMM    MMMM    MMMM   MMMMNMMMMM
+MMMM=   MMMM  MMMMM          MMMMM     MMMM    MMMM   MMMMMMMM
+MMMM=   MMMM   MMMMMM       MMMMM      MMMM    MMMM   MMMMMMMMM
+MMMM=   MMMM     MMMMM,    NMMMMMMMM   MMMM    MMMM   MMMMMMMMMMM
+MMMM=   MMMM      MMMMMM   MMMMMMMM    MMMM    MMMM   MMMM  MMMMMM
+MMMM=   MMMM   MM    MMMM    MMMM      MMMM    MMMM   MMMM    MMMM
+MMMM$ ,MMMMM  MMMMM  MMMM    MMM       MMMM   MMMMM   MMMM    MMMM
+  MMMMMMM:      MMMMMMM     M         MMMMMMMMMMMM  MMMMMMM MMMMMMM
+    MMMMMM       MMMMN     M           MMMMMMMMM      MMMM    MMMM
+     MMMM          M                    MMMMMMM        M       M
+       M
+ ---------------------------------------------------------------
+   For those about to rock... (%C, %R)
+ ---------------------------------------------------------------
+root@R7800:/# sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+
+root@R7800:/# pwsysinit: ping: www.netgear.com: Unknown host
+
+d
+/
+root@R7800:/# pwd
+/
+root@R7800:/# sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+[wifi1] FWLOG: [581518] WAL_DBGID_DEV_RESET ( 0xc01d, 0x41b )
+[wifi1] FWLOG: [581556] WAL_DBGID_DEV_RX_TIMEOUT ( 0x1d1e, 0x8df8d, 0x8cb18, 0x3 )
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: sendto: Network is unreachable
+
+sysinit: ping: www.netgear.com: Unknown host
+
+current version: V1.0.0.352; new version: V1.0.0.352
+sysinit: ioctl: Cannot assign requested address
+
+sysinit: LAN: 192.168.1.1/255.255.255.0
+
+sysinit: WAN: 192.168.10.52/255.255.255.0
+
+sysinit: WAN status: 1000M/Full
+
+sysinit: WAN status: 1000M/Full
+
+sysinit: WAN/LAN is NOT conflicting!
+
+sysinit: no 6RD parameters available, so unset 6rd related config
+
+sysinit: adding dns 192.168.10.1
+
+sysinit: adding dns 192.168.110.10
+
+sysinit: adding dns 8.8.8.8
+
+sysinit: LAN: 192.168.1.1/255.255.255.0
+
+sysinit: WAN: 192.168.10.52/255.255.255.0
+
+sysinit: WAN status: 1000M/Full
+
+sysinit: WAN status: 1000M/Full
+
+sysinit: WAN/LAN is NOT conflicting!
+
+sysinit: ipconflict run done
+
+sysinit: deleting routers
+
+sysinit: adding router 192.168.10.1
+
+sysinit: Flush conntrack table
+
+sysinit: WAN new IP: 192.168.10.52
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_pre_nat':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_mark':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_nat':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_forward':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_input':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: iptables v1.4.10: Couldn't load target `funjsq_output':File not found
+
+sysinit: Try `iptables -h' or 'iptables --help' for more information.
+
+sysinit: Starting Firewall...
+
+sysinit: Done!
+
+sysinit: Deleting static route ... Done!
+
+sysinit: killall: ripd: no process killed
+
+sysinit: Deleting static route ... Done!
+
+sysinit: Adding static route ... Done!
+
+sysinit: iptables: No chain/target/match by that name.
+
+sysinit: :) ntpst - (offset 0x00040000 bytes in POT partition) NTP Sync Timestamp record success: 17:13:51, Feb 17, 2020
+
+sysinit: $Shutting down igmpproxy:
+
+[kwilt] start to get info from update-sever : https://http.fw.updates1.netgear.com/sw-apps/kwilt/r7800/
+sysinit: start to get info from https://http.fw.updates1.netgear.com/sw-apps/ready-genie-cloud/r7800
+
+sysinit: time zone index is : 21
+
+sysinit: Run NTP Client with setting: pri:time-b.netgear.com sec:time-c.netgear.com
+
+Saving Data...
+Done!
+
+sysinit: start to download sw-apps/ready-genie-cloud/r7800/readygeniecloud-r7800new2-20191014.tar.gz
+
+sysinit: ping: www.netgear.com: Unknown host
+
+[kwilt] start to get info from update-sever : ftp://updates1.netgear.com/sw-apps/kwilt/r7800/
+sysinit: install ftp://updates1.netgear.com/sw-apps/ready-genie-cloud/r7800/readygeniecloud-r7800new2-20191014.tar.gz to R/W filesystem successfully
+
+Saving Data...
+Done!
+
+Saving Data...
+sysinit: Content-type:text/html
+
+sysinit:
+
+Done!
+
+[kwilt] start to download image : https://http.fw.updates1.netgear.com/sw-apps/kwilt/r7800/kwilt-v20160203-r7800-v1.0.0.4-003.tar.gz
+Saving Data...
+Done!
+
+Saving Data...
+Done!
+
+Saving Data...
+Done!
+
+sysinit: killall: nslookup: no process killed
+
+sysinit: :) netconn - (offset 0x00041800 bytes in POT partition) set netconn result success: Yes
+
+[kwilt] install image "kwilt-v20160203-r7800-v1.0.0.4-003.tar.gz" to R/W filesystem successfully.
+[kwilt] run local version, since the newly installed.
+[kwilt] no run, dlna has not been run !
+
+sysinit: ping: www.netgear.com: Unknown host
+
+sysinit: Download file https://http.fw.updates1.netgear.com/sw-apps/router-analytics/r7800/RAE_Policy.json successfully!
+
+device br0 left promiscuous mode
+sysinit: 0 packets captured
+
+sysinit: 0 packets received by filter
+
+sysinit: 0 packets dropped by kernel
+
+sysinit: killall: funjsq_dl: no process killeddevice br0 entered promiscuous mode
+
+
+sysinit: killall: funjsq_httpd: no process killed
+
+
+root@R7800:/# pwd
+/
+root@R7800:/# current version: V1.0.0.352; new version: V1.0.0.352
+ls
+bin                       hardware_version          proc
+cloud_version             hipplay                   rom
+data                      home                      root
+default_language_version  hw_id                     sbin
+dev                       lib                       sys
+etc                       mnt                       tmp
+firmware_region           module_name               usr
+firmware_time             opt                       var
+firmware_version          overlay                   www
+root@R7800:/# ls -la
+drwxr-xr-x    1 root     root          752 Feb 17 17:13 .
+drwxr-xr-x    1 root     root          752 Feb 17 17:13 ..
+-rw-r--r--    1 root     root           29 Jan  1  1970 .firmware_time
+drwxr-xr-x    2 root     root          927 Dec 10  2018 bin
+-rw-r--r--    1 root     root           16 Feb 17 17:13 cloud_version
+drwxr-xr-x    1 root     root          224 Feb 16 03:31 data
+-rw-r--r--    1 root     root           11 Dec 10  2018 default_language_version
+drwxr-xr-x    8 root     root         4620 Jan  1  1970 dev
+drwxr-xr-x    1 root     root          432 Feb 16 03:31 etc
+-rw-r--r--    1 root     root            1 Dec 10  2018 firmware_region
+-rw-r--r--    1 root     root           29 Dec 10  2018 firmware_time
+-rw-r--r--    1 root     root           10 Dec 10  2018 firmware_version
+-rw-r--r--    1 root     root            6 Dec 10  2018 hardware_version
+drwxr-xr-x   15 root     root         1312 Feb 17 17:13 hipplay
+lrwxrwxrwx    1 root     root            4 Dec 10  2018 home -> /tmp
+-rw-r--r--    1 root     root           35 Dec 10  2018 hw_id
+drwxr-xr-x    1 root     root          232 Dec 10  2018 lib
+lrwxrwxrwx    1 root     root            8 Dec 10  2018 mnt -> /tmp/mnt
+-rw-r--r--    1 root     root            6 Dec 10  2018 module_name
+drwxr-xr-x    6 root     root          552 Feb 17 17:13 opt
+drwxr-xr-x    9 root     root          752 Feb 17 17:13 overlay
+dr-xr-xr-x  160 root     root            0 Jan  1  1970 proc
+drwxr-xr-x   16 root     root          448 Dec 10  2018 rom
+drwxr-xr-x    2 root     root            3 Dec 10  2018 root
+drwxr-xr-x    3 root     root         2381 Dec 10  2018 sbin
+dr-xr-xr-x   15 root     root            0 Jan  1  1970 sys
+drwxrwxrwt   25 root     root         2100 Feb 17 17:14 tmp
+drwxr-xr-x    1 root     root          224 Oct 14 14:39 usr
+lrwxrwxrwx    1 root     root            4 Dec 10  2018 var -> /tmp
+drwxr-xr-x    1 root     root          224 Oct 14 14:35 www
+root@R7800:/# cat firmware_version
+V1.0.2.62
+root@R7800:/# cat hardware_version
+R7800
+root@R7800:/# cat firmware_time
+Mon Dec 10 11:05:46 UTC 2018
+root@R7800:/# cat firmware_region
+
+root@R7800:/# current version: V1.0.0.352; new version: V1.0.0.352
+[wifi1] FWLOG: [716284] WAL_DBGID_DEV_RESET ( 0xc01d, 0x3ea )
+[wifi1] FWLOG: [716323] WAL_DBGID_DEV_RX_TIMEOUT ( 0x1d1e, 0xaedfc, 0xae717, 0x4 )
+[wifi1] FWLOG: [751307] WAL_DBGID_DEV_RESET ( 0xc01d, 0x3eb )
+[wifi1] FWLOG: [751346] WAL_DBGID_DEV_RX_TIMEOUT ( 0x1d1e, 0xb76cb, 0xb3eac, 0x5 )
+current version: V1.0.0.352; new version: V1.0.0.352
+
+
+
+
+
+
+
+Original firmware looks like to have OpenWrt origin:
+@R7800:/# cat /etc/openwrt_version 
+%V
+@R7800:/# cat /etc/openwrt_release 
+DISTRIB_ID="%D"
+DISTRIB_RELEASE="%C"
+DISTRIB_REVISION="%R"
+DISTRIB_CODENAME="standard"
+DISTRIB_TARGET="%S"
+DISTRIB_DESCRIPTION="%D %N %V"
+
+@R7800:/# uname -a
+Linux R7800 3.4.103 #1 SMP Thu Oct 17 15:17:32 CST 2019 armv7l unknown
+
+@R7800:/# cat /proc/mtd 
+dev:    size   erasesize  name
+mtd0: 00c80000 00020000 "qcadata"
+mtd1: 00500000 00020000 "APPSBL"
+mtd2: 00080000 00020000 "APPSBLENV"
+mtd3: 00140000 00020000 "ART"
+mtd4: 00140000 00020000 "ART.bak"
+mtd5: 00220000 00020000 "kernel"
+mtd6: 01de0000 00020000 "rootfs"
+mtd7: 04480000 00020000 "netgear"
+mtd8: 02000000 00020000 "firmware"
+mtd9: 00080000 00020000 "crashdump"
+mtd10: 00380000 00020000 "language"
+mtd11: 00120000 00020000 "config"
+mtd12: 00120000 00020000 "pot"
+mtd13: 00010000 00001000 "m25p80"
+mtd14: 0001f000 0001f000 "cert"
+mtd15: 0005d000 0001f000 "pot.bak"
+mtd16: 001b2000 0001f000 "traffic_meter"
+mtd17: 001b2000 0001f000 "traffic_meter.bak"
+mtd18: 001b2000 0001f000 "dongle"
+mtd19: 037b4000 0001f000 "overlay_volume"
+
+
+@R7800:/# mount
+rootfs on / type rootfs (rw)
+/dev/root on /rom type squashfs (ro,relatime)
+proc on /proc type proc (rw,relatime)
+sysfs on /sys type sysfs (rw,relatime)
+tmpfs on /tmp type tmpfs (rw,nosuid,nodev,relatime,size=0k)
+tmpfs on /dev type tmpfs (rw,relatime,size=512k,mode=755)
+devpts on /dev/pts type devpts (rw,relatime,mode=600)
+none on /proc/bus/usb type usbfs (rw,relatime)
+ubi0:overlay_volume on /overlay type ubifs (rw,relatime)
+overlayfs:/overlay on / type overlayfs (rw,relatime,lowerdir=/,upperdir=/overlay)
+debugfs on /sys/kernel/debug type debugfs (rw,relatime)
+
+@R7800:/# iwconfig 
+ifb0      no wireless extensions.
+
+ethwan    no wireless extensions.
+
+qca-nss-dev0  no wireless extensions.
+
+wifi0     no wireless extensions.
+
+lo        no wireless extensions.
+
+br0       no wireless extensions.
+
+qca-nss-dev3  no wireless extensions.
+
+sit0      no wireless extensions.
+
+qca-nss-dev2  no wireless extensions.
+
+ath1      IEEE 802.11ng  ESSID:"NETGEAR39"  
+          Mode:Master  Frequency:2.427 GHz  Access Point: 8C:3B:AD:B3:B3:E3   
+          Bit Rate:800 Mb/s   Tx-Power:19 dBm   
+          RTS thr:off   Fragment thr:off
+          Encryption key:C0F8-4EEB-AFB4-74F6-ACE6-74A8-3E82-8764 [2]   Security mode:open
+          Power Management:off
+          Link Quality=0/94  Signal level=-95 dBm  Noise level=-95 dBm
+          Rx invalid nwid:0  Rx invalid crypt:0  Rx invalid frag:0
+          Tx excessive retries:0  Invalid misc:0   Missed beacon:0
+
+pas0      no wireless extensions.
+
+brwan     no wireless extensions.
+
+ifb1      no wireless extensions.
+
+qca-nss-dev1  no wireless extensions.
+
+ath0      IEEE 802.11ac  ESSID:"NETGEAR39-5G"  
+          Mode:Master  Frequency:5.22 GHz  Access Point: 8C:3B:AD:B3:B3:E5   
+          Bit Rate:1.7333 Gb/s   Tx-Power:21 dBm   
+          RTS thr:off   Fragment thr:off
+          Encryption key:37A9-1FEC-E8B2-0CA7-5F80-2F53-04C2-5F01 [2]   Security mode:open
+          Power Management:off
+          Link Quality=0/94  Signal level=-95 dBm  Noise level=-95 dBm
+          Rx invalid nwid:0  Rx invalid crypt:0  Rx invalid frag:0
+          Tx excessive retries:0  Invalid misc:0   Missed beacon:0
+
+wifi1     no wireless extensions.
+
+ethlan    no wireless extensions.
+
+bond0     no wireless extensions.
+
+
+
+@R7800:/# netstat -natu
+Active Internet connections (servers and established)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State
+tcp        0      0 192.168.1.1:49152       0.0.0.0:*               LISTEN      
+tcp        0      0 192.168.1.1:49153       0.0.0.0:*               LISTEN      
+tcp        0      0 0.0.0.0:3333            0.0.0.0:*               LISTEN      
+tcp        0      0 0.0.0.0:20005           0.0.0.0:*               LISTEN      
+tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN      
+tcp        0      0 0.0.0.0:5555            0.0.0.0:*               LISTEN      
+tcp        0      0 0.0.0.0:53              0.0.0.0:*               LISTEN      
+tcp        0      0 0.0.0.0:631             0.0.0.0:*               LISTEN      
+tcp        0      0 0.0.0.0:443             0.0.0.0:*               LISTEN      
+tcp        0      0 127.0.0.1:36594         127.0.0.1:80            TIME_WAIT   
+tcp        0      0 :::548                  :::*                    LISTEN      
+tcp        0      0 :::80                   :::*                    LISTEN      
+tcp        0      0 :::53                   :::*                    LISTEN      
+tcp        0      0 :::443                  :::*                    LISTEN      
+udp        0      0 127.0.0.1:2313          0.0.0.0:*                           
+udp        0      0 192.168.1.1:23          0.0.0.0:*                           
+udp        0      0 0.0.0.0:33319           0.0.0.0:*                           
+udp        0      0 127.0.0.1:60202         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 127.0.0.1:53548         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 0.0.0.0:53              0.0.0.0:*                           
+udp        0      0 127.0.0.1:44095         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 0.0.0.0:67              0.0.0.0:*                           
+udp        0      0 127.0.0.1:39494         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 127.0.0.1:55623         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 127.0.0.1:35912         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 0.0.0.0:56650           0.0.0.0:*                           
+udp        0      0 192.168.1.1:59737       0.0.0.0:*                           
+udp        0      0 0.0.0.0:1900            0.0.0.0:*                           
+udp        0      0 0.0.0.0:1900            0.0.0.0:*                           
+udp        0      0 0.0.0.0:1900            0.0.0.0:*                           
+udp        0      0 127.0.0.1:36734         127.0.0.1:53            ESTABLISHED 
+udp        0      0 127.0.0.1:46489         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 0.0.0.0:52637           0.0.0.0:*                           
+udp        0      0 127.0.0.1:43168         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 127.0.0.1:34464         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 127.0.0.1:59045         127.0.0.1:53            ESTABLISHED 
+udp        0      0 127.0.0.1:42194         127.0.0.1:53            ESTABLISHED 
+udp        0      0 127.0.0.1:43748         127.0.0.1:2313          ESTABLISHED 
+udp        0      0 0.0.0.0:5353            0.0.0.0:*                           
+udp        0      0 0.0.0.0:5353            0.0.0.0:*                           
+udp        0      0 :::53                   :::*                                
+udp        0      0 :::5353                 :::*                                
+
+
+ps
+  PID  Uid     VmSize Stat Command
+    1 root        400 S   init       
+    2 root            SW  [kthreadd]
+    3 root            SW  [ksoftirqd/0]
+    4 root            DW  [kworker/0:0]
+    5 root            DW  [kworker/u:0]
+    6 root            SW  [migration/0]
+    7 root            SW  [migration/1]
+    8 root            SW  [kworker/1:0]
+    9 root            SW  [ksoftirqd/1]
+   10 root            SW< [khelper]
+   11 root            SW  [kworker/u:1]
+   32 root            SW  [kworker/0:1]
+  111 root            SW  [irq/202-msmdata]
+  276 root            SW  [sync_supers]
+  278 root            SW  [bdi-default]
+  279 root            SW< [crypto]
+  280 root            SW< [kblockd]
+  285 root            SW< [ata_sff]
+  289 root            SW< [spi_qsd.5]
+  292 root            SW  [msm-spi-thread]
+  303 root            SW  [khubd]
+  395 root            SW< [modem_notifier]
+  397 root            SW< [smd_channel_clo]
+  398 root            SW< [smsm_cb_wq]
+  423 root            SW< [qmi]
+  452 root            SW< [nmea]
+  454 root            SW< [rpcrouter]
+  470 root            SW  [kswapd0]
+  515 root            SW  [fsnotify_mark]
+  544 root            SW< [smux_notify_wq]
+  545 root            SW< [smux_tx_wq]
+  546 root            SW< [smux_rx_wq]
+  547 root            SW< [smux_loopback_w]
+  563 root            SW  [scsi_eh_0]
+  566 root            SW  [kworker/u:2]
+  578 root            SW  [mtdblock0]
+  583 root            SW  [mtdblock1]
+  588 root            SW  [mtdblock2]
+  593 root            SW  [mtdblock3]
+  598 root            SW  [mtdblock4]
+  603 root            SW  [mtdblock5]
+  606 root            SW  [kworker/1:1]
+  609 root            SW  [mtdblock6]
+  614 root            SW  [mtdblock7]
+  619 root            SW  [mtdblock8]
+  624 root            SW  [mtdblock9]
+  629 root            SW  [mtdblock10]
+  634 root            SW  [mtdblock11]
+  639 root            SW  [mtdblock12]
+  649 root            SW  [mtdblock13]
+  662 root            SW  [ubi_bgt0d]
+  669 root            SW  [mtdblock14]
+  678 root            SW  [mtdblock15]
+  687 root            SW  [mtdblock16]
+  696 root            SW  [mtdblock17]
+  705 root            SW  [mtdblock18]
+  714 root            SW  [mtdblock19]
+  763 root            SW< [usbnet]
+  783 root            SW< [iewq]
+  784 root            DW  [kinteractiveup]
+  793 root            SW< [msm-cpufreq]
+  797 root            SW< [rq_stats]
+  804 root            SW< [deferwq]
+ 1284 root            SW  [ubifs_bgt0_5]
+ 1315 root        252 S   /bin/sh /etc/init.d/rcS S boot 
+ 1318 root        388 S   logger -s -p 6 -t sysinit 
+ 1323 root        544 S   /bin/ash --login 
+ 1339 root        304 S   klogd 
+ 1342 root        804 S   /bin/datalib 
+ 1360 root        232 S   /sbin/watchdog -t 5 /dev/watchdog 
+ 1379 root            SW< [xfsalloc]
+ 1380 root            SW< [xfs_mru_cache]
+ 1381 root            SW< [xfslogd]
+ 1397 root            SW< [gmac_workqueue]
+ 1403 root            SW< [nss_freq_queue]
+ 1404 root            SW< [coredump_wait]
+ 1434 root            SW< [bond0]
+ 1573 root        540 S   /sbin/hotplug2 --override --persistent --set-rules-fi
+ 1651 root        248 S   /sbin/ubusd 
+ 1680 root        660 S   /usr/bin/detcable 2 
+ 1782 root            DW  [kworker/u:3]
+ 1783 root            SW  [kworker/u:4]
+ 1925 root            SW  [kworker/1:2]
+ 1966 root        780 S   udhcpd /tmp/udhcpd.conf 
+ 2492 root            SW  [flush-ubifs_0_5]
+ 3507 root            SW  [kworker/0:2]
+ 3529 root        260 S   /usr/sbin/net-scan 
+ 3533 root        288 S   lld2d br0 
+ 3554 root            SW  [kworker/0:3]
+ 3769 root        160 S   udhcpc -b -i brwan -h /tmp/dhcp_name.conf -r 0.0.0.0 
+ 3781 root        296 S   /usr/sbin/uhttpd -h /www -r R7800 -x /cgi-bin -t 80 -
+ 3794 root        852 S   /usr/sbin/uhttpd -h /www -r R7800 -x /cgi-bin -t 80 -
+ 3796 root        380 S   inetd 
+ 3800 root        644 S   acld 
+ 3801 root        212 S   aclhijackdns 
+ 3810 root        624 S   /usr/sbin/ntpclient 
+ 3839 root        228 S   /usr/bin/hd-idle -i 1800 
+ 3874 root        448 S   /bin/sh /etc/openvpn/client/ovpn_sync_configs.sh 
+ 3943 root            SW  [checkSBusTimeou]
+ 3944 root            SW  [NU Work:6789]
+ 3946 root            SW  [NU TCP]
+ 3947 root        436 S   /sbin/KC_BONJOUR 
+ 3948 root        408 S   /sbin/KC_PRINT 
+ 3949 root            SW  [NU UDP]
+ 3969 root       1140 S   /usr/sbin/miniupnpd 
+ 4016 root        820 S   /usr/sbin/dnsmasq --except-interface=lo -u root -r /t
+ 4023 root        652 S   /usr/sbin/ntgrddns -c /tmp/ntgrdns.conf 
+ 4060 root        364 S   syslogd -m 0 -T GMT-0 -c 1151 
+ 4384 root            SW< [ecm_nss_ipv4_wo]
+ 4385 root            SW< [ecm_nss_ipv6_wo]
+ 4396 root        396 S   crond -c /tmp/etc/crontabs -T GMT-0 
+ 4407 root        204 S   potval 
+ 4408 root        448 S   /bin/sh /usr/sbin/netconn.sh 
+ 4459 root        704 S   /sbin/traffic_meter 
+ 4525 root        172 S   /usr/sbin/telnetenable 
+ 4532 root        436 S   /bin/sh /sbin/check_status.sh 
+ 4575 root        620 S   /usr/sbin/dbus-daemon --system 
+ 4601 root        240 S   atd 
+ 4604 root       1024 S   avahi-daemon: running [R7800.local]             
+ 4751 root        724 S   hostapd -P /var/run/wifi-ath1.pid -B /var/run/hostapd
+ 4754 root        304 S   hostapd_cli -i ath1 -P /var/run/hostapd_cli-ath1.pid 
+ 4975 root        816 S   /usr/sbin/ra_check 
+ 4986 root        672 S   hostapd -P /var/run/wifi-ath0.pid -B /var/run/hostapd
+ 4988 root        304 S   hostapd_cli -i ath0 -P /var/run/hostapd_cli-ath0.pid 
+ 5043 root       1376 S N /usr/sbin/afpd -F /etc/netatalk/afpd.conf -P /var/run
+ 5110 root        432 S   /bin/sh /usr/sbin/check_time_machine 
+ 6489 root        292 S   sleep 60 
+ 6536 root        388 S   /bin/sh -c curl -k -L -g -Y 1 -y 30 --connect-timeout
+ 6537 root       1232 S   curl -k -L -g -Y 1 -y 30 --connect-timeout 20 https:/
+ 6538 root       1228 S   curl -s -k --retry 5 https://http.fw.updates1.netgear
+ 6552 root        292 S   sleep 60 
+ 6900 root        292 S   sleep 3 
+ 6920 root        404 R   ps 
+
+@R7800:/# ls -ls /etc/ath/
+   4 -rw-r--r--    1 root     root         1270 Oct 17 06:59 icm.conf
+   4 -rw-r--r--    1 root     root          129 Oct 17  2019 non_limit_country.conf
+   4 -rw-r--r--    1 root     root          775 Oct 17 07:10 wifi.conf
+   1 -rw-r--r--    1 root     root          619 Oct 17 07:00 wrap-vma.conf
+@R7800:/# /bin/config show
+
+
+@R7800:/# lsmod
+Module                  Size  Used by    Tainted: P  
+smart_antenna          31095  0 
+ath_pktlog             14371  0 
+mtdoops                 1716  0 
+ecm                  1709955  0 
+NetUSB                158739  0 
+GPL_NetUSB              3788  1 NetUSB
+umac                 2030333  2 smart_antenna,ath_pktlog
+ath_dev               308797  2 ath_pktlog,umac
+hst_tx99                8098  2 umac,ath_dev
+ath_spectral           31598  2 umac,ath_dev
+ath_dfs                55087  1 umac
+ath_rate_atheros       35591  3 ath_pktlog,umac,ath_dev
+ath_hal               598106  5 ath_pktlog,umac,ath_dev,hst_tx99,ath_rate_atheros
+adf                    14205  4 umac,ath_dev,hst_tx99,ath_hal
+asf                     6062  6 ath_pktlog,umac,ath_dev,ath_spectral,ath_dfs,ath_hal
+wlan_ext                1745  2 umac,ath_dfs
+ufsd                  374066  0 
+jnl                    25428  1 ufsd
+nf_nat_dnisip           4976  0 
+nf_conntrack_dnisip    15353  1 nf_nat_dnisip
+fuse                   56795  0 
+snd_soc_core           78887  0 
+dwc3_ipq               12069  0 
+xt_mark2prio             663  0 
+nf_conntrack_netlink    14646  0 
+xt_set                  7052  0 
+ip_set_list_set         6970  0 
+ip_set_hash_netport    24507  0 
+ip_set_hash_netiface    24630  0 
+ip_set_hash_net        23039  0 
+ip_set_hash_ipportnet    25665  0 
+ip_set_hash_ipportip    20946  0 
+ip_set_hash_ipport     20088  0 
+ip_set_hash_mac         9722  0 
+ip_set_hash_ip         19072  0 
+ip_set_bitmap_port      5803  0 
+ip_set_bitmap_ipmac     6391  0 
+ip_set_bitmap_ip        6503  0 
+ip_set                 20608  13 xt_set,ip_set_list_set,ip_set_hash_netport,ip_set_hash_netiface,ip_set_hash_net,ip_set_hash_ipportnet,ip_set_hash_ipportip,ip_set_hash_ipport,ip_set_hash_map
+ip6t_rt                 1597  0 
+ip6t_hbh                1251  0 
+ip6t_mh                  745  0 
+ip6t_frag                909  0 
+ip6t_eui64               723  0 
+ip6t_ah                  841  0 
+ip6table_raw             661  0 
+ip6_queue               3973  0 
+nf_conntrack_ipv6       5108  0 
+nf_defrag_ipv6          5015  1 nf_conntrack_ipv6
+ebt_snat                 851  0 
+ebt_dnat                 751  0 
+ebt_arpreply            1043  0 
+ebt_arp                 1565  0 
+ebt_vlan                 967  0 
+ebt_stp                 1865  0 
+ebt_pkttype              625  0 
+ebt_limit               1081  0 
+ebt_among               2045  0 
+ebt_802_3                749  0 
+ebtable_nat             1061  0 
+nf_nat_ftp              1420  0 
+nf_conntrack_ftp        4614  1 nf_nat_ftp
+ipt_urlBlock            4432  0 
+ipt_TRIGGER             2335  1 
+ipt_spiDoS             25544  0 
+ipt_spiadvDoS          12042  0 
+nf_nat_pptp             1531  0 
+nf_conntrack_pptp       3176  1 nf_nat_pptp
+pptp                    5194  0 
+l2tp                    4069  0 
+ip6t_CONE               1529  0 
+xt_RAWNAT               2893  0 
+ipt_dnshijack            878  1 
+nf_nat_dnirtsp          3319  0 
+nf_conntrack_dnirtsp     4076  1 nf_nat_dnirtsp
+nf_nat_dnih323          4774  0 
+nf_conntrack_dnih323    33188  1 nf_nat_dnih323
+ipt_CONENAT             1212  2 
+ipt_NETGEAR_REJECT      5861  0 
+nf_nat_tftp              498  0 
+nf_conntrack_tftp       2378  1 nf_nat_tftp
+nf_nat_snmp_basic       6979  0 
+nf_conntrack_snmp        705  1 nf_nat_snmp_basic
+nf_nat_proto_gre         928  1 nf_nat_pptp
+nf_conntrack_proto_gre     2986  1 nf_conntrack_pptp
+nf_nat_amanda            662  0 
+nf_conntrack_amanda     1585  1 nf_nat_amanda
+nf_conntrack_broadcast      758  1 nf_conntrack_snmp
+nf_nat_irc               855  0 
+nf_conntrack_irc        2476  1 nf_nat_irc
+xt_HL                   1345  0 
+xt_hl                    879  0 
+xt_ecn                  1365  0 
+ipt_ECN                 1317  0 
+xt_CLASSIFY              601  0 
+xt_time                 1503  0 
+xt_tcpmss                963  0 
+xt_statistic             882  0 
+xt_layer7               9728  0 
+xt_quota                 818  0 
+xt_pkttype               628  0 
+xt_physdev              1361  0 
+xt_owner                 746  0 
+compat_xtables          1725  1 xt_RAWNAT
+nf_nat_STARCRAFT         962  0 
+ipt_NETMAP               739  0 
+xt_recent               5739  0 
+xt_helper                865  0 
+xt_connbytes            1334  0 
+qca_mcs                42514  1 ecm
+xt_CT                   2365  0 
+ehci_hcd               49800  0 
+dwc3                   34483  1 dwc3_ipq
+sd_mod                 25011  0 
+xt_LOG                  9624  0 
+xt_comment               512  0 
+bonding                79569  1 ecm
+dni_qos                 5382  0 
+ifb                     2959  0 
+qca_nss_qdisc          29613  0 
+qca_nss_crypto_tool     8256  0 
+qca_nss_crypto         15148  1 qca_nss_crypto_tool
+qca_nss_drv           127211  4 ecm,umac,qca_nss_qdisc,qca_nss_crypto
+pppoe                   9231  1 ecm
+l2tp_netlink            6273  0 
+l2tp_core              12639  1 l2tp_netlink
+dni_enet                1318  0 
+qca_nss_gmac           38238  3 qca_nss_drv,dni_enet
+pppox                   1212  1 pppoe
+snd_pcm_oss            31975  0 
+snd_mixer_oss          11939  1 snd_pcm_oss
+snd_pcm                59304  2 snd_soc_core,snd_pcm_oss
+snd_timer              15259  1 snd_pcm
+snd_rawmidi            15011  0 
+snd_seq_device          4063  1 snd_rawmidi
+snd_hwdep               4617  0 
+snd_page_alloc          4429  1 snd_pcm
+snd                    38575  8 snd_soc_core,snd_pcm_oss,snd_mixer_oss,snd_pcm,snd_timer,snd_rawmidi,snd_seq_device,snd_hwdep
+soundcore               4102  1 snd
+ppp_async               6230  0 
+ppp_generic            22235  7 ecm,pptp,l2tp,pppoe,pppox,ppp_async
+slhc                    4339  1 ppp_generic
+xfs                   472888  0 
+ntfs                   84242  0 
+dm_crypt               12824  0 
+dm_mirror              11459  0 
+dm_region_hash          6457  1 dm_mirror
+dm_log                  7817  2 dm_mirror,dm_region_hash
+dm_mod                 54770  3 dm_crypt,dm_mirror,dm_log
+nls_iso8859_1           2931  0 
+nls_cp437               4463  0 
+crc_ccitt                980  1 ppp_async
+exportfs                3032  1 xfs
+clbr                   19626  1 umac
+shortcut_fe_drv         7401  1 ecm
+regmap_spi               932  1 snd_soc_core
+regmap_i2c               968  1 snd_soc_core
+qca_ssdk              825384  0 
+shortcut_fe_ipv6       52242  1 shortcut_fe_drv
+shortcut_fe            50218  1 shortcut_fe_drv
+
+
+@R7800:/sys/kernel/debug# cat /proc/cpuinfo 
+Processor       : ARMv7 Processor rev 0 (v7l)
+processor       : 0
+BogoMIPS        : 12.55
+
+processor       : 1
+BogoMIPS        : 12.55
+
+Features        : swp half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 
+CPU implementer : 0x51
+CPU architecture: 7
+CPU variant     : 0x2
+CPU part        : 0x04d
+CPU revision    : 0
+
+Hardware        : Qualcomm Atheros AP161 reference board
+Revision        : 0000
+Serial          : 0000000000000000
+
+
+@R7800:/sys/kernel/debug# free
+              total         used         free       shared      buffers
+  Mem:       483520       155260       328260            0         8892
+ Swap:            0            0            0
+Total:       483520       155260       328260
+
+
+</nowiki>
+</WRAP>\\
+
+
+==== OpenWrt bootlog ====
+
+Bootlog after a reset, OpenWrt master r12237-d2b8ccb1c0:
+
+<WRAP bootlog>
+<nowiki>
+U-Boot 2012.07 [local,local] (Sep 03 2015 - 17:33:28)
+
+U-boot 2012.07 dni1 V0.4 for DNI HW ID: 29764958 NOR flash 0MB; NAND flash 128MB; RAM 512MB; 1st Radio 4x4; 2nd Radio 4x4; Cascade
+smem ram ptable found: ver: 0 len: 5
+DRAM:  491 MiB
+NAND:  SF: Unsupported manufacturer 00
+ipq_spi: SPI Flash not found (bus/cs/speed/mode) = (0/0/48000000/0)
+128 MiB
+MMC:
+*** Warning - bad CRC, using default environment
+
+PCI0 Link Intialized
+PCI1 Link Intialized
+In:    serial
+Out:   serial
+Err:   serial
+ 131072 bytes read: OK
+MMC Device 0 not found
+cdp: get part failed for 0:HLOS
+Net:   MAC1 addr:38:94:ed:b8:d6:dc
+athrs17_reg_init: complete
+athrs17_vlan_config ...done
+S17c init  done
+MAC2 addr:38:94:ed:b8:d6:db
+eth0, eth1
+Hit any key to stop autoboot:  0
+
+ Client starts...[Listening] for ADVERTISE...TTT
+Retry count exceeded; boot the image as usual
+
+ nmrp server is stopped or failed !
+
+Loading from device 0: nand0 (offset 0x1480000)
+
+** check kernel image **
+   Verifying Checksum ... OK
+
+** check rootfs image **
+   Verifying Checksum ... OK
+MMC Device 0 not found
+
+Loading from nand0, offset 0x1480000
+   Image Name:   ARM OpenWrt Linux-4.19.101
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    2471625 Bytes = 2.4 MiB
+   Load Address: 42208000
+   Entry Point:  42208000
+Automatic boot of image at addr 0x44000000 ...
+   Image Name:   ARM OpenWrt Linux-4.19.101
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    2471625 Bytes = 2.4 MiB
+   Load Address: 42208000
+   Entry Point:  42208000
+   Verifying Checksum ... OK
+   Loading Kernel Image ... OK
+OK
+mtdparts variable not set, see 'help mtdparts'
+no partitions defined
+
+defaults:
+mtdids  : nand0=msm_nand
+mtdparts: none
+info: "mtdparts" not set
+Using machid 0x136c from environment
+
+Starting kernel ...
+
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 4.19.101 (zenotec@hornet) (gcc version 8.3.0 (OpenWrt GCC 8.3.0 r12237-d2b8ccb1c0)) #0 SMP Sun Feb 16 14:36:29 2020
+[    0.000000] CPU: ARMv7 Processor [512f04d0] revision 0 (ARMv7), cr=10c5787d
+[    0.000000] CPU: div instructions available: patching division code
+[    0.000000] CPU: PIPT / VIPT nonaliasing data cache, PIPT instruction cache
+[    0.000000] OF: fdt: Machine model: Netgear Nighthawk X4S R7800
+[    0.000000] Memory policy: Data cache writealloc
+[    0.000000] random: get_random_bytes called from start_kernel+0x80/0x47c with crng_init=0
+[    0.000000] percpu: Embedded 15 pages/cpu s29964 r8192 d23284 u61440
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 121800
+[    0.000000] Kernel command line:
+[    0.000000] Bootloader command line (ignored): console=ttyHSL1,115200n8
+[    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes)
+[    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Memory: 475876K/491520K available (5252K kernel code, 180K rwdata, 1356K rodata, 1024K init, 228K bss, 15644K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] Virtual kernel memory layout:
+[    0.000000]     vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+[    0.000000]     fixmap  : 0xffc00000 - 0xfff00000   (3072 kB)
+[    0.000000]     vmalloc : 0xde800000 - 0xff800000   ( 528 MB)
+[    0.000000]     lowmem  : 0xc0000000 - 0xde000000   ( 480 MB)
+[    0.000000]     pkmap   : 0xbfe00000 - 0xc0000000   (   2 MB)
+[    0.000000]     modules : 0xbf000000 - 0xbfe00000   (  14 MB)
+[    0.000000]       .text : 0x(ptrval) - 0x(ptrval)   (6245 kB)
+[    0.000000]       .init : 0x(ptrval) - 0x(ptrval)   (1024 kB)
+[    0.000000]       .data : 0x(ptrval) - 0x(ptrval)   ( 181 kB)
+[    0.000000]        .bss : 0x(ptrval) - 0x(ptrval)   ( 229 kB)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] NR_IRQS: 16, nr_irqs: 16, preallocated irqs: 16
+[    0.000000] clocksource: dg_timer: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 305801671480 ns
+[    0.000006] sched_clock: 32 bits at 6MHz, resolution 160ns, wraps every 343597383600ns
+[    0.000020] Switching to timer-based delay loop, resolution 160ns
+[    0.000233] Calibrating delay loop (skipped), value calculated using timer frequency.. 12.50 BogoMIPS (lpj=62500)
+[    0.000256] pid_max: default: 32768 minimum: 301
+[    0.000431] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000451] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.001365] CPU: Testing write buffer coherency: ok
+[    0.002505] Setting up static identity map for 0x42300000 - 0x42300060
+[    0.002690] rcu: Hierarchical SRCU implementation.
+[    0.003528] smp: Bringing up secondary CPUs ...
+[    0.005450] smp: Brought up 1 node, 2 CPUs
+[    0.005466] SMP: Total of 2 processors activated (25.00 BogoMIPS).
+[    0.005477] CPU: All CPU(s) started in SVC mode.
+[    0.016406] VFP support v0.3: implementor 51 architecture 64 part 4d variant 2 rev 0
+[    0.016569] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.016600] futex hash table entries: 512 (order: 3, 32768 bytes)
+[    0.016761] pinctrl core: initialized pinctrl subsystem
+[    0.017900] NET: Registered protocol family 16
+[    0.018191] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.019545] cpuidle: using governor ladder
+[    0.019613] cpuidle: using governor menu
+[    0.043637] usbcore: registered new interface driver usbfs
+[    0.043723] usbcore: registered new interface driver hub
+[    0.043809] usbcore: registered new device driver usb
+[    0.043882] pps_core: LinuxPPS API ver. 1 registered
+[    0.043895] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.043936] PTP clock support registered
+[    0.045581] clocksource: Switched to clocksource dg_timer
+[    0.048876] NET: Registered protocol family 2
+[    0.049440] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes)
+[    0.049476] TCP established hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.049516] TCP bind hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.049569] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.049669] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    0.049702] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    0.049927] NET: Registered protocol family 1
+[    0.051213] No memory allocated for crashlog
+[    0.051481] workingset: timestamp_bits=14 max_order=17 bucket_order=3
+[    0.058044] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.058065] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.067403] io scheduler noop registered
+[    0.067422] io scheduler deadline registered (default)
+[    0.069389] qcom-pcie 1b500000.pci: 1b500000.pci supply vdda not found, using dummy regulator
+[    0.069519] qcom-pcie 1b500000.pci: Linked as a consumer to regulator.0
+[    0.069548] qcom-pcie 1b500000.pci: 1b500000.pci supply vdda_phy not found, using dummy regulator
+[    0.069667] qcom-pcie 1b500000.pci: 1b500000.pci supply vdda_refclk not found, using dummy regulator
+[    0.069945] qcom-pcie 1b500000.pci: host bridge /soc/pci@1b500000 ranges:
+[    0.070004] qcom-pcie 1b500000.pci:    IO 0x0fe00000..0x0fefffff -> 0x0fe00000
+[    0.070037] qcom-pcie 1b500000.pci:   MEM 0x08000000..0x0fdfffff -> 0x08000000
+[    0.290827] qcom-pcie 1b500000.pci: Link up
+[    0.290987] qcom-pcie 1b500000.pci: PCI host bridge to bus 0000:00
+[    0.291012] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    0.291033] pci_bus 0000:00: root bus resource [io  0x0000-0xfffff] (bus address [0xfe00000-0xfefffff])
+[    0.291048] pci_bus 0000:00: root bus resource [mem 0x08000000-0x0fdfffff]
+[    0.295363] PCI: bus0: Fast back to back transfers disabled
+[    0.301565] PCI: bus1: Fast back to back transfers disabled
+[    0.301668] pci 0000:00:00.0: BAR 8: assigned [mem 0x08000000-0x081fffff]
+[    0.301694] pci 0000:01:00.0: BAR 0: assigned [mem 0x08000000-0x081fffff 64bit]
+[    0.301822] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[    0.301848] pci 0000:00:00.0:   bridge window [mem 0x08000000-0x081fffff]
+[    0.302452] pcieport 0000:00:00.0: AER enabled with IRQ 36
+[    0.302964] qcom-pcie 1b700000.pci: 1b700000.pci supply vdda not found, using dummy regulator
+[    0.303074] qcom-pcie 1b700000.pci: Linked as a consumer to regulator.0
+[    0.303100] qcom-pcie 1b700000.pci: 1b700000.pci supply vdda_phy not found, using dummy regulator
+[    0.303217] qcom-pcie 1b700000.pci: 1b700000.pci supply vdda_refclk not found, using dummy regulator
+[    0.303498] qcom-pcie 1b700000.pci: host bridge /soc/pci@1b700000 ranges:
+[    0.303553] qcom-pcie 1b700000.pci:    IO 0x31e00000..0x31efffff -> 0x31e00000
+[    0.303581] qcom-pcie 1b700000.pci:   MEM 0x2e000000..0x31dfffff -> 0x2e000000
+[    0.533122] qcom-pcie 1b700000.pci: Link up
+[    0.533272] qcom-pcie 1b700000.pci: PCI host bridge to bus 0001:00
+[    0.533292] pci_bus 0001:00: root bus resource [bus 00-ff]
+[    0.533308] pci_bus 0001:00: root bus resource [mem 0x2e000000-0x31dfffff]
+[    0.537604] PCI: bus0: Fast back to back transfers disabled
+[    0.539788] pci 0001:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s x1 link at 0001:00:00.0 (capable of 4.000 Gb/s with 5 GT/s x1 link)
+[    0.543853] PCI: bus1: Fast back to back transfers disabled
+[    0.543943] pci 0001:00:00.0: BAR 8: assigned [mem 0x2e000000-0x2e1fffff]
+[    0.543967] pci 0001:01:00.0: BAR 0: assigned [mem 0x2e000000-0x2e1fffff 64bit]
+[    0.544099] pci 0001:00:00.0: PCI bridge to [bus 01-ff]
+[    0.544120] pci 0001:00:00.0:   bridge window [mem 0x2e000000-0x2e1fffff]
+[    0.544652] pcieport 0001:00:00.0: AER enabled with IRQ 38
+[    0.547220] L2 @ QSB rate. Forcing new rate.
+[    0.547437] L2 @ 384000 KHz
+[    0.547623] CPU0 @ 800000 KHz
+[    0.547636] CPU1 @ QSB rate. Forcing new rate.
+[    0.547767] CPU1 @ 384000 KHz
+[    0.551513] gsbi 16300000.gsbi: GSBI port protocol: 6 crci: 0
+[    0.553650] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    0.554470] msm_serial 16340000.serial: msm_serial: detected port #0
+[    0.554525] msm_serial 16340000.serial: uartclk = 7372800
+[    0.554599] 16340000.serial: ttyMSM0 at MMIO 0x16340000 (irq = 39, base_baud = 460800) is a MSM
+[    0.554645] msm_serial: console setup on port #0
+[    1.308766] console [ttyMSM0] enabled
+[    1.313742] msm_serial: driver initialized
+[    1.322256] loop: module loaded
+[    1.324174] nand: device found, Manufacturer ID: 0xc2, Chip ID: 0xa1
+[    1.324210] nand: Macronix MX30UF1G18AC
+[    1.330894] nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+[    1.334463] 8 fixed-partitions partitions found on MTD device qcom_nand.0
+[    1.342077] Creating 8 MTD partitions on "qcom_nand.0":
+[    1.348964] 0x000000000000-0x000000c80000 : "qcadata"
+[    1.359209] random: fast init done
+[    1.375314] 0x000000c80000-0x000001180000 : "APPSBL"
+[    1.384355] 0x000001180000-0x000001200000 : "APPSBLENV"
+[    1.386041] 0x000001200000-0x000001340000 : "art"
+[    1.391243] 0x000001340000-0x000001480000 : "artbak"
+[    1.396150] 0x000001480000-0x000001880000 : "kernel"
+[    1.405588] 0x000001880000-0x000007900000 : "ubi"
+[    1.564429] 0x000007900000-0x000008000000 : "reserve"
+[    1.578043] libphy: GPIO Bitbanged MDIO: probed
+[    1.599562] switch0: Atheros AR8337 rev. 2 switch registered on gpio-0
+[    2.469701] ar8327: qca,phy-rgmii-en is not specified
+[    2.470094] libphy: Fixed MDIO Bus: probed
+[    2.475980] ipq806x-gmac-dwmac 37200000.ethernet: PTP uses main clock
+[    2.478501] ipq806x-gmac-dwmac 37200000.ethernet: User ID: 0x10, Synopsys ID: 0x37
+[    2.484250] ipq806x-gmac-dwmac 37200000.ethernet:    DWMAC1000
+[    2.491801] ipq806x-gmac-dwmac 37200000.ethernet: DMA HW capability register supported
+[    2.497621] ipq806x-gmac-dwmac 37200000.ethernet: RX Checksum Offload Engine supported
+[    2.505251] ipq806x-gmac-dwmac 37200000.ethernet: COE Type 2
+[    2.513237] ipq806x-gmac-dwmac 37200000.ethernet: TX Checksum insertion supported
+[    2.519048] ipq806x-gmac-dwmac 37200000.ethernet: Wake-Up On Lan supported
+[    2.526422] ipq806x-gmac-dwmac 37200000.ethernet: Enhanced/Alternate descriptors
+[    2.533113] ipq806x-gmac-dwmac 37200000.ethernet: Enabled extended descriptors
+[    2.540728] ipq806x-gmac-dwmac 37200000.ethernet: Ring mode enabled
+[    2.547758] ipq806x-gmac-dwmac 37200000.ethernet: Enable RX Mitigation via HW Watchdog Timer
+[    2.555564] ipq806x-gmac-dwmac 37400000.ethernet: PTP uses main clock
+[    2.562984] ipq806x-gmac-dwmac 37400000.ethernet: User ID: 0x10, Synopsys ID: 0x37
+[    2.569002] ipq806x-gmac-dwmac 37400000.ethernet:    DWMAC1000
+[    2.576404] ipq806x-gmac-dwmac 37400000.ethernet: DMA HW capability register supported
+[    2.582161] ipq806x-gmac-dwmac 37400000.ethernet: RX Checksum Offload Engine supported
+[    2.589962] ipq806x-gmac-dwmac 37400000.ethernet: COE Type 2
+[    2.597865] ipq806x-gmac-dwmac 37400000.ethernet: TX Checksum insertion supported
+[    2.603600] ipq806x-gmac-dwmac 37400000.ethernet: Wake-Up On Lan supported
+[    2.611048] ipq806x-gmac-dwmac 37400000.ethernet: Enhanced/Alternate descriptors
+[    2.617837] ipq806x-gmac-dwmac 37400000.ethernet: Enabled extended descriptors
+[    2.625300] ipq806x-gmac-dwmac 37400000.ethernet: Ring mode enabled
+[    2.632417] ipq806x-gmac-dwmac 37400000.ethernet: Enable RX Mitigation via HW Watchdog Timer
+[    2.639306] i2c /dev entries driver
+[    2.650495] cpuidle: enable-method property 'qcom,kpss-acc-v1' found operations
+[    2.650711] cpuidle: enable-method property 'qcom,kpss-acc-v1' found operations
+[    2.658720] sdhci: Secure Digital Host Controller Interface driver
+[    2.664973] sdhci: Copyright(c) Pierre Ossman
+[    2.671315] sdhci-pltfm: SDHCI platform and OF driver helper
+[    2.679161] NET: Registered protocol family 10
+[    2.683691] Segment Routing with IPv6
+[    2.685780] NET: Registered protocol family 17
+[    2.689836] 8021q: 802.1Q VLAN Support v1.8
+[    2.693752] Registering SWP/SWPB emulation handler
+[    2.725827] qcom_rpm 108000.rpm: RPM firmware 3.0.16777364
+[    2.741775] s1a: supplied by regulator-dummy
+[    2.741926] s1a: Bringing 0uV into 1050000-1050000uV
+[    2.745569] s1b: supplied by regulator-dummy
+[    2.750320] s1b: Bringing 0uV into 1050000-1050000uV
+[    2.754737] s2a: supplied by regulator-dummy
+[    2.759484] s2a: Bringing 0uV into 775000-775000uV
+[    2.763933] s2b: supplied by regulator-dummy
+[    2.768343] s2b: Bringing 0uV into 775000-775000uV
+[    2.774871] Speed bin: 0
+[    2.777249] PVS bin: 4
+[    2.780374] cpu cpu0: Linked as a consumer to regulator.4
+[    2.782136] cpu cpu0: Dropping the link to regulator.4
+[    2.787926] cpu cpu0: Linked as a consumer to regulator.4
+[    2.794713] cpu cpu0: Linked as a consumer to regulator.2
+[    2.798694] cpu cpu1: Linked as a consumer to regulator.5
+[    2.805498] cpu cpu1: Linked as a consumer to regulator.2
+[    2.816036] UBI: auto-attach mtd6
+[    2.816053] ubi0: attaching mtd6
+[    2.925252] UBI: EOF marker found, PEBs from 25 will be erased
+[    2.962523] random: crng init done
+[    3.024379] ubi0: scanning is finished
+[    3.052413] ubi0: volume 1 ("rootfs_data") re-sized from 9 to 725 LEBs
+[    3.052838] ubi0: attached mtd6 (name "ubi", size 96 MiB)
+[    3.057900] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    3.063292] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    3.070119] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    3.076984] ubi0: good PEBs: 772, bad PEBs: 0, corrupted PEBs: 0
+[    3.083692] ubi0: user volume: 2, internal volumes: 1, max. volumes count: 128
+[    3.090012] ubi0: max/mean erase counter: 1/0, WL threshold: 4096, image sequence number: 1581863789
+[    3.097039] ubi0: available PEBs: 0, total reserved PEBs: 772, PEBs reserved for bad PEB handling: 20
+[    3.106425] ubi0: background thread "ubi_bgt0d" started, PID 63
+[    3.107037] block ubiblock0_0: created from ubi0:0(rootfs)
+[    3.121201] ubiblock: device ubiblock0_0 (rootfs) set to be root file[    3.818957] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    3.820655] Freeing unused kernel memory: 1024K
+[    3.826642] Run /sbin/init as init process
+[    4.518726] init: Console is alive
+[    4.518861] init: - watchdog -
+[    5.089248] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    5.129732] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    5.132296] SCSI subsystem initialized
+[    5.140569] ahci 29000000.sata: forcing port_map 0x0 -> 0x1
+[    5.140616] ahci 29000000.sata: AHCI 0001.0300 32 slots 1 ports 6 Gbps 0x1 impl platform mode
+[    5.144946] ahci 29000000.sata: flags: ncq sntf pm led clo only pmp pio slum part ccc apst
+[    5.154149] scsi host0: ahci
+[    5.162036] ata1: SATA max UDMA/133 mmio [mem 0x29000000-0x2900017f] port 0x100 irq 26
+[    5.497002] ata1: SATA link down (SStatus 0 SControl 300)
+[    5.502597] ehci-platform: EHCI generic platform driver
+[    5.511098] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    5.511689] ohci-platform: OHCI generic platform driver
+[    5.522104] dwc3 11000000.dwc3: Failed to get clk 'ref': -2
+[    5.577380] dwc3 10000000.dwc3: Failed to get clk 'ref': -2
+[    5.638338] xhci-hcd xhci-hcd.0.auto: xHCI Host Controller
+[    5.638391] xhci-hcd xhci-hcd.0.auto: new USB bus registered, assigned bus number 1
+[    5.642896] xhci-hcd xhci-hcd.0.auto: hcc params 0x0228f065 hci version 0x100 quirks 0x0000000002010010
+[    5.650402] xhci-hcd xhci-hcd.0.auto: irq 43, io mem 0x11000000
+[    5.660563] hub 1-0:1.0: USB hub found
+[    5.665579] hub 1-0:1.0: 1 port detected
+[    5.669653] xhci-hcd xhci-hcd.0.auto: xHCI Host Controller
+[    5.673457] xhci-hcd xhci-hcd.0.auto: new USB bus registered, assigned bus number 2
+[    5.678819] xhci-hcd xhci-hcd.0.auto: Host supports USB 3.0 SuperSpeed
+[    5.686436] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    5.693222] hub 2-0:1.0: USB hub found
+[    5.701219] hub 2-0:1.0: 1 port detected
+[    5.704957] xhci-hcd xhci-hcd.1.auto: xHCI Host Controller
+[    5.708846] xhci-hcd xhci-hcd.1.auto: new USB bus registered, assigned bus number 3
+[    5.714200] xhci-hcd xhci-hcd.1.auto: hcc params 0x0228f065 hci version 0x100 quirks 0x0000000002010010
+[    5.721729] xhci-hcd xhci-hcd.1.auto: irq 44, io mem 0x10000000
+[    5.731568] hub 3-0:1.0: USB hub found
+[    5.736980] hub 3-0:1.0: 1 port detected
+[    5.740902] xhci-hcd xhci-hcd.1.auto: xHCI Host Controller
+[    5.744800] xhci-hcd xhci-hcd.1.auto: new USB bus registered, assigned bus number 4
+[    5.750168] xhci-hcd xhci-hcd.1.auto: Host supports USB 3.0 SuperSpeed
+[    5.757768] usb usb4: We don't know the algorithms for LPM for this host, disabling LPM.
+[    5.764560] hub 4-0:1.0: USB hub found
+[    5.772598] hub 4-0:1.0: 1 port detected
+[    5.777662] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    5.788165] init: - preinit -
+[    7.356507] Generic PHY fixed-0:01: attached PHY driver [Generic PHY] (mii_bus:phy_addr=fixed-0:01, irq=POLL)
+[    7.357273] dwmac1000: Master AXI performs any burst length
+[    7.365398] ipq806x-gmac-dwmac 37400000.ethernet eth1: No Safety Features support found
+[    7.370868] ipq806x-gmac-dwmac 37400000.ethernet eth1: IEEE 1588-2008 Advanced Timestamp supported
+[    7.378924] ipq806x-gmac-dwmac 37400000.ethernet eth1: registered PTP clock
+[    7.388161] IPv6: ADDRCONF(NETDEV_UP): eth1: link is not ready
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    8.398102] ipq806x-gmac-dwmac 37400000.ethernet eth1: Link is Up - 1Gbps/Full - flow control off
+[    8.399863] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+[   11.563314] UBIFS (ubi0:1): default file-system created
+[   11.564339] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 149
+[   11.641756] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[   11.641781] UBIFS (ubi0:1): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   11.648623] UBIFS (ubi0:1): FS size: 90660864 bytes (86 MiB, 714 LEBs), journal size 4571136 bytes (4 MiB, 36 LEBs)
+[   11.658532] UBIFS (ubi0:1): reserved for root: 4282136 bytes (4181 KiB)
+[   11.668767] UBIFS (ubi0:1): media format: w4/r0 (latest is w5/r0), UUID EED824E3-31C4-4ED8-AD98-66D7AC3E2706, small LPT model
+[   11.677159] mount_root: overlay filesystem has not been fully initialized yet
+[   11.687075] mount_root: switching to ubifs overlay
+[   11.713958] overlayfs: upper fs does not support xattr, falling back to index=off and metacopy=off.
+[   11.717807] urandom-seed: Seed file not found (/etc/urandom.seed)
+[   11.811936] procd: - early -
+[   11.812039] procd: - watchdog -
+[   12.451261] procd: - watchdog -
+[   12.451901] procd: - ubus -
+[   12.621932] procd: - init -
+Please press Enter to activate this console.
+[   12.854502] urngd: v1.0.2 started.
+[   12.858158] kmodloader: loading kernel modules from /etc/modules.d/*
+[   12.865066] Loading modules backported from Linux version v5.4-rc8-0-gaf42d3466bdc
+[   12.865091] Backport generated by backports.git v5.4-rc8-1-0-g368e8c51
+[   12.879843] xt_time: kernel timezone is -0000
+[   12.904909] PPP generic driver version 2.4.2
+[   12.905748] NET: Registered protocol family 24
+[   12.921239] ath10k 4.19 driver, optimized for CT firmware, probing pci device: 0x46.
+[   12.921661] ath10k_pci 0000:01:00.0: enabling device (0140 -> 0142)
+[   12.928689] ath10k_pci 0000:01:00.0: pci irq msi oper_irq_mode 2 irq_mode 0 reset_mode 0
+[   13.207819] firmware ath10k!fwcfg-pci-0000:01:00.0.txt: firmware_loading_store: map pages failed
+[   13.331008] firmware ath10k!QCA9984!hw1.0!ct-firmware-5.bin: firmware_loading_store: map pages failed
+[   13.374721] firmware ath10k!QCA9984!hw1.0!ct-firmware-2.bin: firmware_loading_store: map pages failed
+[   13.423584] firmware ath10k!QCA9984!hw1.0!firmware-6.bin: firmware_loading_store: map pages failed
+[   13.684727] ath10k_pci 0000:01:00.0: qca9984/qca9994 hw1.0 target 0x01000000 chip_id 0x00000000 sub 168c:cafe
+[   13.684796] ath10k_pci 0000:01:00.0: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   13.702522] ath10k_pci 0000:01:00.0: firmware ver 10.4b-ct-9984-fW-013-e0e3a0aae api 5 features mfp,peer-flow-ctrl,txstatus-noack,wmi-10.x-CT,ratemask-CT,regdump-CT,txrate-CT,flush-all-CT,pingpong-CT,ch-regs-CT,nop-CT,set-special-CT,tx-rc-CT,cust-stats-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT,wmi-bcn-rc-CT crc32 3febdfdc
+[   16.031816] ath10k_pci 0000:01:00.0: board_file api 2 bmi_id 0:1 crc32 85498734
+[   21.897876] ath10k_pci 0000:01:00.0: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   21.897911] ath10k_pci 0000:01:00.0: msdu-desc: 2500  skid: 32
+[   21.980277] ath10k_pci 0000:01:00.0: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   21.981130] ath10k_pci 0000:01:00.0: wmi print 'free: 81784 iram: 13028 sram: 14440'
+[   22.176800] ath10k_pci 0000:01:00.0: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-file max-sta 32 raw 0 hwcrypto 1
+[   22.333355] ath10k 4.19 driver, optimized for CT firmware, probing pci device: 0x46.
+[   22.334530] ath10k_pci 0001:01:00.0: enabling device (0140 -> 0142)
+[   22.341258] ath10k_pci 0001:01:00.0: pci irq msi oper_irq_mode 2 irq_mode 0 reset_mode 0
+[   22.837521] firmware ath10k!fwcfg-pci-0001:01:00.0.txt: firmware_loading_store: map pages failed
+[   22.954356] firmware ath10k!QCA9984!hw1.0!ct-firmware-5.bin: firmware_loading_store: map pages failed
+[   22.997882] firmware ath10k!QCA9984!hw1.0!ct-firmware-2.bin: firmware_loading_store: map pages failed
+[   23.041736] firmware ath10k!QCA9984!hw1.0!firmware-6.bin: firmware_loading_store: map pages failed
+[   23.041922] ath10k_pci 0001:01:00.0: qca9984/qca9994 hw1.0 target 0x01000000 chip_id 0x00000000 sub 168c:cafe
+[   23.049688] ath10k_pci 0001:01:00.0: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   23.062131] ath10k_pci 0001:01:00.0: firmware ver 10.4b-ct-9984-fW-013-e0e3a0aae api 5 features mfp,peer-flow-ctrl,txstatus-noack,wmi-10.x-CT,ratemask-CT,regdump-CT,txrate-CT,flush-all-CT,pingpong-CT,ch-regs-CT,nop-CT,set-special-CT,tx-rc-CT,cust-stats-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT,wmi-bcn-rc-CT crc32 3febdfdc
+[   25.411644] ath10k_pci 0001:01:00.0: board_file api 2 bmi_id 0:2 crc32 85498734
+[   31.311976] ath10k_pci 0001:01:00.0: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   31.312005] ath10k_pci 0001:01:00.0: msdu-desc: 2500  skid: 32
+[   31.396561] ath10k_pci 0001:01:00.0: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   31.397449] ath10k_pci 0001:01:00.0: wmi print 'free: 81784 iram: 13028 sram: 14440'
+[   31.632308] ath10k_pci 0001:01:00.0: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-file max-sta 32 raw 0 hwcrypto 1
+[   31.782506] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   40.244708] Generic PHY fixed-0:01: attached PHY driver [Generic PHY] (mii_bus:phy_addr=fixed-0:01, irq=POLL)
+[   40.245470] dwmac1000: Master AXI performs any burst length
+[   40.253716] ipq806x-gmac-dwmac 37400000.ethernet eth1: No Safety Features support found
+[   40.259056] ipq806x-gmac-dwmac 37400000.ethernet eth1: IEEE 1588-2008 Advanced Timestamp supported
+[   40.267152] ipq806x-gmac-dwmac 37400000.ethernet eth1: registered PTP clock
+[   40.276134] IPv6: ADDRCONF(NETDEV_UP): eth1: link is not ready
+[   40.284752] br-lan: port 1(eth1.1) entered blocking state
+[   40.288835] br-lan: port 1(eth1.1) entered disabled state
+[   40.295463] device eth1.1 entered promiscuous mode
+[   40.299688] device eth1 entered promiscuous mode
+[   40.305599] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   40.314086] Generic PHY fixed-0:00: attached PHY driver [Generic PHY] (mii_bus:phy_addr=fixed-0:00, irq=POLL)
+[   40.315945] dwmac1000: Master AXI performs any burst length
+[   40.324871] ipq806x-gmac-dwmac 37200000.ethernet eth0: No Safety Features support found
+[   40.330379] ipq806x-gmac-dwmac 37200000.ethernet eth0: IEEE 1588-2008 Advanced Timestamp supported
+[   40.338411] ipq806x-gmac-dwmac 37200000.ethernet eth0: registered PTP clock
+[   40.347630] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   40.358284] IPv6: ADDRCONF(NETDEV_UP): eth0.2: link is not ready
+[   41.355991] ipq806x-gmac-dwmac 37400000.ethernet eth1: Link is Up - 1Gbps/Full - flow control off
+[   41.355999] ipq806x-gmac-dwmac 37200000.ethernet eth0: Link is Up - 1Gbps/Full - flow control off
+[   41.364014] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   41.372957] IPv6: ADDRCONF(NETDEV_CHANGE): eth0.2: link becomes ready
+[   41.379018] IPv6: ADDRCONF(NETDEV_CHANGE): eth1: link becomes ready
+[   41.385600] br-lan: port 1(eth1.1) entered blocking state
+[   41.391538] br-lan: port 1(eth1.1) entered forwarding state
+[   41.405204] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+
+
+
+BusyBox v1.31.1 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r12237-d2b8ccb1c0
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@OpenWrt:/#
+
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+Speculative user observation, possibly related only to some client devices: Starting with OpenWrt version 21.02.1, newer versions of the board firmware (ath10k-firmware-qca9984-ct) may have bugs from Candela Technologies (who have been trying to remedy them), which causes 5 GHz wifi to die at random with "disassociated due to low inactivity" in logread, even if there's an active 5 GHz connection (say, a laptop watching youtube).  The solution to this is to use ath10k-firmware-qca9984 instead.
+===== Tags =====
+
+[[meta:tags|How to add tags]]
+{{tag>ipq806x ipq8065 128NAND 512ram 5port gigabitethernet 802.11ac 802.11bgn QCA9984 MU-MIMO TxBF VHT160 4x4}}

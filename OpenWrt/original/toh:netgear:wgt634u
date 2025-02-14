@@ -1,0 +1,259 @@
+====== NETGEAR WGT634U ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+A router that was end-of-lifed by Netgear on October 1, 2005, it remains a useful and versatile device. It includes the typical 4+1 ethernet ports, plus a USB host port and a mini-PCI slot holding an Atheros b/g radio. It was designed with the idea that you could host data on an attached USB drive and access it from your wireless devices. However, apparently consumers didn't want to do that in sufficient numbers to support a price premium.
+
+Note: A lot of good information is on the OldWiki page: [[http://wiki.openwrt.org/oldwiki/OpenWrtDocs/Hardware/Netgear/WGT634U]]
+
+Trunk introduced a legacy target ( https://dev.openwrt.org/changeset/41041 ) for old brcm47xx units like this one. As of 15.05.1 this works with the brcm47xx legacy build with kmod-ath5k added and with the fix described below in section "Recovering from Board Information Overwrites". The firmware has been broken since the transition from the 4.14 kernel (see [[flyspray>3135]])
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^WGT634U$"}
+} -->
+
+There are two versions of the WGT634U, but they are not labelled in a distinguishing manner. The first version is very rare and appears to represent the first production run, almost all extant versions are the latter. The difference between the two is principally in that the first lacks a heatsink on the CPU and populates both serial ports and the JTAG interface with headers. The early version also populates some resistors for the JTAG. Later models, presumably, can enable JTAG by installing the 0603 SMD resistors, though this has not been known to be tested yet.
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^WGT634U$"}
+} -->
+
+Also notable are the mini-PCI slot and Atheros b/g radio.
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^WGT634U$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+There are numerous ways to install OpenWrt on the WGT634U. Unlike many other devices, the WGT634U does not automatically try to fetch an image via TFTP or automatically accept one that is sent. TFTP can only be initiated from a serial console. Images can also be flashed from a running system, either the stock firmware or using the mtd utility from a previous version of OpenWrt.
+
+
+==== OEM easy installation ====
+
+FIXME!
+
+==== TFTP from CFE and serial console ====
+
+Unless you manage to overwrite the CFE bootloader, you can flash any image using this method from any state, even semi-bricked, non-booting ones:
+
+For more details on this process, see [[docs:guide-user:installation:generic.flashing.ftp|Installing OpenWrt over FTP (generic)]]
+
+  * Setup a TFTP server on the local network, placing the appropriate .bin image in the TFTP server space (e.g. ''[[https://downloads.openwrt.org/chaos_calmer/15.05/brcm47xx/legacy/openwrt-15.05-brcm47xx-legacy-wgt634u-squashfs.bin|openwrt-15.05.1-brcm47xx-legacy-wgt634u-squashfs.bin]]'')
+
+  * Important: The WGT634U bootloader will not reliably flash an image larger than about 2 megabytes. (This appears to be a limitation of CFE.) If your image is larger than this, as is the case for **all recent OpenWrt versions**, you will need to flash it in two steps. You will need to cut the image into parts using /bin/dd or a similar tool. 
+
+  * Attach a [[docs:techref:hardware:port.serial|serial console]] (set to 115200 baud, N-8-1, no flow control)
+
+  * Attach a network cable between the WAN port of the WGT634U and your computer. Configure your computer's Ethernet adapter for the static address 192.168.1.1, with a netmask of 255.255.255.0.
+
+  * While holding down Ctrl-C in the serial console, apply power to the WGT634U and the boot should abort at the ''CFE>'' prompt
+
+  * Configure the network interface for a static address in the same subnet as your computer\\ <code>
+CFE> ifconfig eth0 -addr=192.168.1.250 -mask=255.255.255.0
+Device eth0:  hwaddr 00-0F-B5-3F-23-6E, ipaddr 192.168.0.250, mask 255.255.255.0
+        gateway not set, nameserver not set
+*** command status = 0
+</code>
+
+  * Flash the binary file (in two parts, if necessary):\\ <code>
+CFE> flash -noheader <ipaddr-of-TFTP-server>:<path-to-your-image>.bin flash0.os
+CFE> flash -noheader -noerase -offset=<size-of-part1-in-bytes> <ipaddr-of-TFTP-server>:<path-to-part2>.bin flash0.os
+</code>
+
+  * Here is a more explicit example of a two-part flash including the expected responses from the router: it will take only 15 seconds or so to **read** each 2 MiB binary file, but typically **3 minutes** on my device to actually complete the ''Programming...'' part:\\ <code>
+CFE> flash -noheader 192.168.1.1:openwrt-15.05.1-brcm47xx-legacy-wgt634u-squashfs.bin.0 flash0.os
+Reading 192.168.0.1:openwrt-15.05.1-brcm47xx-legacy-wgt634u-squashfs.bin.0: Done. 2000000 bytes read
+Programming...done. 2000000 bytes written
+CFE> flash -noheader -noerase -offset=2000000 192.168.1.1:openwrt-15.05.1-brcm47xx-legacy-wgt634u-squashfs.bin.1 flash0.os
+Reading 192.168.0.1:openwrt-15.05.1-brcm47xx-legacy-wgt634u-squashfs.bin.1: Done. 1936256 bytes read
+Programming...done. 1936256 bytes written
+*** command status = 0
+</code>
+
+  * Reboot:\\ <code>CFE> reboot</code>
+==== Upgrading OpenWrt ====
+
+
+=== LuCI Web Upgrade Process ===
+
+Download openwrt-brcm47xx-squashfs.trx from openwrt release to your local, from luci interface "System"-"Backup / Flash Firmware" submit downloaded file and wait. Reopen your router's url address from browser if needed.
+
+=== Terminal Upgrade Process ===
+
+  * Login as root via SSH
+  * Use the following commands to upgrade:
+
+<code>
+cd /tmp/
+wget http://<hostname>/openwrt-brcm47xx-squashfs.trx
+mtd -r write /tmp/openwrt-brcm47xx-squashfs.trx linux
+</code>
+
+===== Hardware =====
+
+==== Info ====
+^ Architecture     | MIPS                                                                               |
+^ Vendor           | Broadcom                                                                           |
+^ Bootloader       | CFE                                                                                |
+^ System-On-Chip   | Broadcom BCM3302 V0.7 (from /proc/cpuinfo)                                         |
+^ CPU Speed        | 200 MHz                                                                            |
+^ Flash-Chip       | [[http://download.intel.com/design/flcomp/datashts/29066721.pdf|Intel te28f640]]   |
+^ Flash size       | 8 MiB                                                                              |
+^ RAM              | 32 MiB                                                                             |
+^ Wireless         | Atheros b/g with soldered antenna pigtail                                          |
+^ Ethernet         | Switch in CPU                                                                      |
+^ USB              | Yes                                                                                |
+^ Serial           | [[#Serial|Yes]]                                                                    |
+^ JTAG             | [[#JTAG|Yes]]                                                                      |
+
+==== Photos ====
+Model Number
+
+//Front://
+
+**Photo of front**
+
+//Back://
+
+**Photo of back**
+
+==== Opening the case ====
+
+There are four screws on the bottom. They are either phillips head or T-8 Torx. Refurbs tend to have phillips, the originals from Netgear tend to have torx. In the absence of a T-8, a small flathead screwdriver can be used in a pinch. I recommend a Torx if you are going to be opening it more than once.
+
+//Main PCB//
+
+**Photo of PCB**
+
+==== Serial ====
+
+The serial console is available on J7. Numbered from the ethernet port side of the board, they are:
+
+   - VCC (3.3V)
+   - TX
+   - RX
+   - GROUND
+
+The serial port is the typical 3.3V TTL serial commonly found on router and router-like devices, NOT a PC-style RS-232 serial, with it's different signaling voltages. It's 115200 8-N-1 without hardware or software control.
+
+==== JTAG ====
+
+The JTAG is not confirmed to work, but differences between the early versions and later ones show missing resistors on what looks almost certainly to be a JTAG interface.
+
+There is a JTAG looking port (2 x 7 holes) on the board. Except for the very early versions of the board, however, needed surface mount resistors are missing. On the bottom of the board, early versions are populated with 0603 SMD resistors:
+  * R66 = 10k ohms
+  * R65 = 33 ohms
+  * R67 = 10k ohms
+  * R68 = 10k ohms
+  * R73 = 0 ohms (shunt)
+
+The pinout is *probably* standard 14-pin, but check and report back. For more information on reflashing the device, see these JTAG tools
+
+See [[docs:techref:hardware:port.jtag]] for more JTAG details.
+
+===== Specific Configuration =====
+
+==== Interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| vlan0 (eth0.0)   | LAN ports (1 to 4)   | None                    |
+| vlan1 (eth0.1)   | WAN port             | DHCP                    |
+| ath0             | WiFi                 | Disabled                |
+
+==== Switch Ports (for VLANs) ====
+
+FIXME!
+
+NOTE: By default, the physical WAN port lands on the LAN and the last physical LAN port (identified as #4 on the device) is the WAN port.
+
+==== Failsafe mode ====
+
+Failsafe mode does not work on the WGT634U. If you discover different, report back here.
+
+===== Basic configuration =====
+
+Link to [[docs:guide-quick-start:checks_and_troubleshooting|Generic basic config secion]]
+
+===== Hardware mods =====
+
+==== Replacing the radio ====
+
+Because the radio comes in a mini-PCI slot, it is possible to replace it with a different radio. The principal obstacle to this is that the stock antenna is soldered on, and the coax pigtail must be cut or desoldered to remove it. With minor case modifications, it is possible to replace the radio with a Wistron CM-9 or similar and a u.fl to RP-SMA pigtail using the original antenna hole. The stock radio has a cut-out to accomodate a plastic internal screw peg, so a little delicate dremel work is needed to make room for the CM-9.
+
+The mini-PCI slot is reported to have limited power, making the use of higher powered radios like the Ubiquiti SR2 problematic.
+
+===== Other notes =====
+
+==== Enable USB Storage ====
+
+First Get USB Basic Support(OHCI controllers is what you needed) https://wiki.openwrt.org/doc/howto/usb.essentials  
+Or simply run below (before Chaos Calmer): 
+<code>
+opkg install kmod-usb2 kmod-usb-ohci kmod-usb-storage-extras
+</code>
+For Chaos Calmer run this instead, or your USB port will not be powered until kmod-usb-ohci-pci or kmod-usb2-pci installed as workaround  
+<code>
+opkg install kmod-usb2 kmod-usb-ohci-pci kmod-usb-storage-extras 
+</code>
+
+
+Then install USB Storage(install kmod-fs-vfat if you just want fat/fat32) [[docs:guide-user:storage:usb-drives|Using storage devices]]  
+Or simply run below:
+<code>
+opkg install kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1 block-mount
+</code>
+
+==== Host USB port uses ====
+
+The USB host port was unique at the time the WGT634U was introduced. Diverse device driver availability allow the USB port to connect any number of various hardware. For example, by connecting a 4-port hub, a WGT634U with a connected USB GPS, USB Storage and USB sound was used as a kismet wireless stumbling device, playing MP3 audio clips for feedback.
+
+Note however, that although the USB port is advertised as USB2 and indeed it is detected as such, it is limited to 12Mbps data rates.
+
+Another use employed a zd1211 usb radio as a way of implementing a two-radio repeater. Separating the two radios with a USB extension (up to 5 meters) is probably wise.
+
+==== Avoid 8.09.1! ====
+
+See the following section for an explanation what happens if you flash 8.09.1 on these devices and how to recover if you do.
+
+==== Recovering from Board Information Overwrites ====
+
+Despite the amazing functionality of these devices, they do not get as much love and attention from OpenWrt developers as they once did. At various stages of history, the board detection logic has become messed up, and distributed versions of the OpenWrt image (see in particular 8.09.1, and Kamikaze Trunk mid-July 2010 to the end of 2010) have overwritten crucial parts of the board configuration information on flash, which renders the device unbootable thereafter. Recovery is not terribly difficult however, with a serial console. Attach the console, boot up to a CFE prompt, and type the following commands:
+
+<code>
+CFE> setenv -p STARTUP "ifconfig eth0 -addr=192.168.1.1 -mask=255.255.255.0; boot -elf flash0.os:"
+CFE> setenv -p kernel_args "console=ttyS1,115200 root=/dev/ram0 init=/linuxrc rw syst_size=8M"
+CFE> setenv -p et0phyaddr 254
+CFE> setenv -p et0mdcport 0
+CFE> setenv -p configvlan 0x1
+CFE> setenv -p et0macaddr 00-0f-b5-3d-58-b6
+CFE> setenv -p et1macaddr 00-0f-b5-3d-58-b7
+CFE> reboot
+</code>
+
+(substituting your own macaddrs, which are printed on the case.)
+
+===== Tags =====
+{{tag>bcm47xx BCM5365 8flash 32ram 5port fastethernet 802.11bg USB MIPS32}}

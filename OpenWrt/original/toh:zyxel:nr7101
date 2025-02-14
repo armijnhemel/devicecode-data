@@ -1,0 +1,3193 @@
+====== ZyXEL NR7101 ======
+
+/* This template is intended to be used via https://openwrt.org/meta/create_new_device_page . */
+
+The ZyXEL NR7101 is an 802.3at PoE powered 5G/NR, IP68 certified, outdoor ethernet router/bridge with integrated directional 5G/NR MIMO antennas. It has a WiFi radio, and a GPS in the modem, but these should be considered secondary functions.  The WiFi antennas are integrated in the main PCB.
+
+/*****/
+/* How to add images ========> https://openwrt.org/meta/adding_images_to_openwrt_wiki */
+/*****/
+
+{{media:zyxel:nr7101:img_nr7101_art_1000.png?400|ZyXEL NR7101}}
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"model": "^NR7101$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^NR7101$"}
+} -->
+
+
+===== Installation =====
+<WRAP important 100%>**Warning!!** 
+
+**<color red>Current prebuilt 23.05.0 images contain a bug, and will soft-brick your device. Use SNAPSHOTs, self-compile, or older 23.05-RCs.</color>**
+
+**<color red>If you're running a pre 23.05.0 release, you can upgrade to 23.05.0, but it'll soft brick if reset, or reset during upgrade.</color>**
+
+A soft bricked device can usually be recovered using https://github.com/bmork/firmware-utils/commit/dd4ce54ee35cb36197ee61f1e979be4264513e55.
+</WRAP>
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^NR7101$"}
+} -->
+
+
+==== Obtaining the supervisor password ====
+
+Many ZyXEL devices have a //supervisor// shell and web account with more power than the normal //admin// user documented in manual.  The default password for this account us calculated from the serialnumber using one of a small set of algorithms.  The same password is used by default for the //root// shell user.
+
+The ZyXEL algorithms are generally not known, but the code implementing them is availabke in binary form as libraries in all the devices depending on one of them.  Anyone can just call that code...
+
+A tool doing just that can be downloaded from [[https://get.dyn.mork.no/zyxel_pwgen.tar.gz]]
+
+Unpack it and run
+
+    $ zyxel_pwgen/getsupervisor.sh S200Z34000000
+    3265f4ce
+
+The output is the //"Old algorithm supervisor password"// applicable for the NR7101.
+
+The tool runs ARM code from a Broadcom based VMG8825, so it needs qemu-arm-static or qemu-arm.  Install the qemu-user-static or qemu-user packages from your distro.  See the README.md in the archive for further information.
+
+
+==== From OEM web GUI ====
+  * Log in as "supervisor" on https://172.17.1.1/
+  * Upload OpenWrt initramfs-recovery.bin image on the //Maintenance -> Firmware page//
+  * Wait for OpenWrt to boot and ssh to root@192.168.1.1
+  * //(optional)// Copy OpenWrt to the recovery partition. See below
+  * Sysupgrade to the OpenWrt sysupgrade image and reboot
+    
+==== From OEM ssh ====
+  * Log in as "root" on 172.17.1.1 port 22022
+  * scp OpenWrt initramfs-recovery.bin image to 172.17.1.1:/tmp
+  *  Prepare bootloader config by running:\\ <code>
+nvram setro uboot DebugFlag 0x1
+nvram setro uboot CheckBypass 0
+nvram commit
+</code>
+  * Run ''mtd_write -w write initramfs-recovery.bin Kernel'' and reboot
+  * Wait for OpenWrt to boot and ssh to root@192.168.1.1
+  * //(optional)// Copy OpenWrt to the recovery partition. See below
+  * Sysupgrade to the OpenWrt sysupgrade image and reboot
+    
+==== Copying OpenWrt to the recovery partition ====
+  * Verify that you are running a working OpenWrt recovery image  from flash
+  * ssh to root@192.168.1.1 and run:\\ <code>
+fw_setenv CheckBypass 0
+mtd -r erase Kernel2
+</code>
+  * Wait while the bootloader mirrors Image1 to Image2
+
+<WRAP BOX>
+    NOTE: This should only be done after successfully booting the OpenWrt recovery image from the primary partition during installation. Do not do this after having sysupgraded OpenWrt! Reinstalling the recovery image on normal upgrades is not required or recommended.
+</WRAP>
+
+==== Installation from Z-Loader (vendor U-Boot application) ====
+  * Halt boot by pressing Escape on console
+  * Set up a tftp server to serve the OpenWrt initramfs-recovery.bin image at 10.10.10.3
+  * Type ''ATNR 1,initramfs-recovery.bin'' at the ''ZLB>'' prompt
+  * Wait for OpenWrt to boot and ssh to root@192.168.1.1
+  * Sysupgrade to the OpenWrt sysupgrade image
+    
+<WRAP BOX>
+    NOTE: ATNR will write the recovery image to both primary and recovery partitions in one go.
+</WRAP>
+  
+==== Booting from RAM ====
+  * Halt boot by pressing Escape on console
+  * Type ''ATGU'' at the ''ZLB>'' prompt to enter the U-Boot menu
+  * Press ''4'' to select ''4: Entr boot command line interface.''
+  * Set up a tftp server to serve the OpenWrt initramfs-recovery.bin image at 10.10.10.3
+  * Load it using ''tftpboot 0x88000000 initramfs-recovery.bin''
+  * Boot with "bootm  0x8800017C" to skip the 380 (0x17C) bytes ZyXEL header
+    
+    
+This method can also be used to RAM boot OEM firmware. The warning
+regarding OEM applies!  Never boot an unknown OEM firmware, or any OEM
+firmware with a SIM in any slot.
+    
+<WRAP BOX>
+    NOTE: U-Boot configuration is incomplete (on some devices?). You may have to configure a working mac address before running tftp using ''setenv eth0addr <mac>''
+</WRAP>
+
+
+/*** if info available: uncomment and fill in
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+===== Specific configuration =====
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description      ^ Default configuration   ^
+| br-lan           | LAN & WiFi       | 192.168.1.1/24          |
+| lan              | LAN port         | bridge member           |
+| wwan0            | 5GNR/LTE modem   | QMI                     |
+| wlan0            | WiFi             | Disabled                |
+
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+{{:media:zyxel:nr7101:red_img_2160.jpg?400|NR7101 buttons, LED and SIM slots}}
+
+The ZyXEL NR7101 has the following buttons:
+
+^ BUTTON   ^  Event  ^  Picture ref   ^
+| Reset    |  reset  | red, left      |
+| WLAN     |         | black, right   |
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                                    |
+^ Vendor           | Ralink                                  |
+^ Bootloader       | U-Boot                                  |
+^ System-On-Chip   | Mediatek MT7621AT - MIPS 1004Kc V2.15   |
+^ CPU/Speed        |                                         |
+^ Flash-Chip       | Macronix MX30LF1G18AC                   |
+^ Flash size       | 128 MiB                                 |
+^ RAM              | 256 MiB                                 |
+^ Wireless         | MT7603E 2.4GHz 802.11bgn                |
+^ Ethernet         | 10/100/1000 Mbit/s w/ vlan support      |
+^ Switch           | MT7530                                  |
+^ USB              | none                                    |
+^ Serial           | [[#Serial|Yes]]                         |
+^ JTAG             | [[#JTAG|Unknown]]                       |
+
+
+/*** if info available: uncomment and fill in
+==== Flash Layout ====
+<WRAP BOX>
+FIXME //[[:docs:techref:flash.layout#discovery_how_to_find_out|Find out flash layout]], then add the flash layout table here (copy, paste, modify the [[docs:techref:flash.layout#partitioning_of_squashfs-images|example]]).//
+
+Please check out the article [[docs:techref:flash.layout|Flash layout]]. It contains examples and explanations that describe how to document the flash layout.
+</WRAP>
+***/
+
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+{{:media:zyxel:nr7101:img_nr7101_f_1000.png?400|NR7101 front}}
+{{:media:zyxel:nr7101:img_nr7101_r_1000.png?400|NR7101 bottom}}
+{{:media:zyxel:nr7101:red_dsc_3823.jpg?400|NR7101 main PCB}}
+{{:media:zyxel:nr7101:red_img_2153.jpg?400|NR7101 sandwich}}
+{{:media:zyxel:nr7101:red_dsc_3822.jpg?400|NR7101 antenna and main PCBs}}
+
+{{:media:zyxel:nr7101:red_img_2163.jpg?400|NR7101 underside}}
+{{:media:zyxel:nr7101:red_img_2162.jpg?400|NR7101 RF-shield removed}}
+{{:media:zyxel:nr7101:red_img_2166.jpg?400|NR7101 flash chip}}
+{{:media:zyxel:nr7101:red_img_2168.jpg?400|NR7101 RF-shield removed}}
+{{:media:zyxel:nr7101:red_img_2169.jpg?400|NR7101 RF-shield removed}}
+
+==== Opening the case ====
+
+{{:media:zyxel:nr7101:red_img_2152.jpg?400|NR7101 plastic cover off}}
+{{:media:zyxel:nr7101:red_dsc_3822.jpg?400|NR7101 antenna and main PCBs}}
+{{:media:zyxel:nr7101:red_img_2164.jpg?400|NR7101 heat transfer}}
+
+There is no glue or plastic tabs holding the router together.  Only screws. The case is one of the easiest ones to open, despite the IP68 certification.  There is no need to disconnect any antenna cables either. But if you do, then I recommend taking lots of pictures first, since there is an awfull lot of them...
+
+  * Remove the 2 screws securing the SIM/button/LED cover and pull off the WLAN button with a knife or similar shar object.
+  * Remove the 12 screws on the backside, along the edge of the case.
+  * Split the plastic antenna cover from the metal backplate with the PCBs.  The GPS antenna is fixed to the cover, so be careful with the cable
+  * Remove the 4 screws securing the antenna PCB to the main PCB
+
+The main PCB can be removed from the backplate by removing 4 screws. This is normally not necessary and might reduce the efficiency of the thermal pads connecting to the backplate unless you replace them.  But the pads are not glued and will not be damaged by removal, so reuse is most likely possible.
+
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+
+A 3.3V TTL UART is located on the populated 5 pin header J5 in the upper left corner of the main PCB (down is the side with ethernet port, buttons and SIM slots).
+
+{{:media:zyxel:nr7101:red_dsc_3826.jpg?800|NR7101 serial}}
+
+Pinout:
+     [o] GND (black)
+     [ ] key - no pin
+     [o] RX (orange)
+     [o] TX (red)
+     [o] 3.3V Vcc (brown)
+
+3.3V should **not** be connected to USB TTL UART adapters, as per [[docs:techref:hardware:port.serial]], but is available if you want to connect to a Bluetooth TTL UART adapter as shown in the picture.  Bluetooth allows console connections with all gaskets in place, maintaining IP68, but has some obvious security implications. 
+
+It is also possible to route a serial or USB cable through the cable gland used by the ethernet cable, either using 2 thinner cables or a cable with more than 4 pairs. A single multipair round cable is recommended if the router is mounted outdoors.
+
+^ Serial connection parameters\\ for ZyXEL NR7101 | 57600, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+===== Bootlogs =====
+==== OEM bootlog ====
+NOTE: serialnumber, IMEI, IMSI and ICCID are slightly modified in this log
+<WRAP bootlog>
+<nowiki>===================================================================
+     		MT7621   stage1 code 10:33:11 (ASIC)
+     		CPU=50000000 HZ BUS=16666666 HZ
+==================================================================
+Change MPLL source from XTAL to CR...
+do MEMPLL setting..
+MEMPLL Config : 0x11100000
+3PLL mode + External loopback
+=== XTAL-40Mhz === DDR-1200Mhz ===
+PLL2 FB_DL: 0x10, 1/0 = 610/414 41000000
+PLL4 FB_DL: 0x15, 1/0 = 590/434 55000000
+PLL3 FB_DL: 0x18, 1/0 = 719/305 61000000
+do DDR setting..[00320381]
+Apply DDR3 Setting...(use customer AC)
+          0    8   16   24   32   40   48   56   64   72   80   88   96  104  112  120
+      --------------------------------------------------------------------------------
+0000:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0001:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0002:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0003:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0004:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0005:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0006:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0007:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0008:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0009:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    1    1
+000E:|    0    0    0    0    0    0    0    0    1    1    1    1    1    1    1    1
+000F:|    0    0    0    1    1    1    1    1    1    1    1    1    1    0    0    0
+0010:|    1    1    1    1    1    1    1    1    0    0    0    0    0    0    0    0
+0011:|    1    1    1    0    0    0    0    0    0    0    0    0    0    0    0    0
+0012:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0013:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0014:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0015:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0016:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0017:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0018:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0019:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001E:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001F:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+rank 0 coarse = 15
+rank 0 fine = 64
+B:|    0    0    0    0    0    0    0    0    0    1    1    1    0    0    0    0
+opt_dle value:10
+DRAMC_R0DELDLY[018]=00001E1F
+==================================================================
+		RX	DQS perbit delay software calibration 
+==================================================================
+1.0-15 bit dq delay value
+==================================================================
+bit|     0  1  2  3  4  5  6  7  8  9
+--------------------------------------
+0 |    12 10 11 14 11 12 13 9 7 7 
+10 |    10 10 10 9 8 9 
+--------------------------------------
+
+==================================================================
+2.dqs window
+x=pass dqs delay value (min~max)center 
+y=0-7bit DQ of every group
+input delay:DQS0 =31 DQS1 = 30
+==================================================================
+bit	DQS0	 bit      DQS1
+0  (1~58)29  8  (0~58)29
+1  (1~60)30  9  (1~58)29
+2  (1~58)29  10  (1~59)30
+3  (2~61)31  11  (1~57)29
+4  (1~61)31  12  (0~59)29
+5  (2~60)31  13  (1~58)29
+6  (2~59)30  14  (1~59)30
+7  (1~59)30  15  (1~58)29
+==================================================================
+3.dq delay value last
+==================================================================
+bit|    0  1  2  3  4  5  6  7  8   9
+--------------------------------------
+0 |    14 11 13 14 11 12 14 10 8 8 
+10 |    10 11 11 10 8 10 
+==================================================================
+==================================================================
+     TX  perbyte calibration 
+==================================================================
+DQS loop = 15, cmp_err_1 = ffff0000 
+dqs_perbyte_dly.last_dqsdly_pass[0]=15,  finish count=1 
+dqs_perbyte_dly.last_dqsdly_pass[1]=15,  finish count=2 
+DQ loop=15, cmp_err_1 = ffff0180
+DQ loop=14, cmp_err_1 = ffff0000
+dqs_perbyte_dly.last_dqdly_pass[0]=14,  finish count=1 
+dqs_perbyte_dly.last_dqdly_pass[1]=14,  finish count=2 
+byte:0, (DQS,DQ)=(8,8)
+byte:1, (DQS,DQ)=(8,8)
+20,data:88
+[EMI] DRAMC calibration passed
+
+===================================================================
+     		MT7621   stage1 code done 
+     		CPU=50000000 HZ BUS=16666666 HZ
+===================================================================
+
+
+U-Boot 1.1.3 (Jun  3 2020 - 08:39:27)
+
+Board: Ralink APSoC DRAM:  256 MB
+relocate_code Pointer at: 8ff94000
+
+Config XHCI 40M PLL 
+******************************
+Software System Reset Occurred
+******************************
+Allocate 16 byte aligned buffer: 8ffcb190
+Enable NFI Clock
+# MTK NAND # : Use HW ECC
+NAND ID [C2 F1 80 95 02]
+Device found in MTK table, ID: c2f1, EXT_ID: 809502
+Support this Device in MTK table! c2f1 
+select_chip
+[NAND]select ecc bit:4, sparesize :64 spare_per_sector=16
+Signature matched and data read!
+load_fact_bbt success 1023
+load fact bbt success
+[mtk_nand] probe successfully!
+mtd->writesize=2048 mtd->oobsize=64,	mtd->erasesize=131072  devinfo.iowidth=8
+..============================================ 
+Ralink UBoot Version: 5.0.0.0
+-------------------------------------------- 
+ASIC MT7621A DualCore (MAC to MT7530 Mode)
+DRAM_CONF_FROM: Auto-Detection 
+DRAM_TYPE: DDR3 
+DRAM bus: 16 bit
+Xtal Mode=5 OCP Ratio=1/3
+Flash component: 128 MBytes NOR Flash with NAND boot partition size
+Date:Jun  3 2020  Time:08:39:27
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:256, ways:4, linesz:32 ,total:32768 
+
+ ##### The CPU freq = 880 MHZ #### 
+ estimate memory size =256 Mbytes
+#Reset_MT7530
+.## Starting application at 0x8402A800 ...
+
+
+Z-LOADER V1.30 | 06/03/2020 08:39:30
+
+
+Hit ESC key to stop autoboot:   1
+ZLB> atgo
+## Booting image at bc14017c ...
+   Image Name:   OpenWrt Linux-3.10.14
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    14176596 Bytes = 13.5 MB
+   Load Address: 80001000
+   Entry Point:  80001000
+................................................ranand_read: skip reading a fact bad block 440000 -> 460000
+.........................................................................................................................................................................   Verifying RAS Image Checksum ... OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 80001000) ...
+## Giving linux memsize in MB, 256
+
+Starting kernel ...
+
+
+LINUX started...
+
+ THIS IS ASIC
+
+SDK 5.0.S.0
+[    0.000000] Linux version 3.10.14 (aaron@aaron-OPALServer) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 unknown) ) #1 SMP Tue Aug 18 15:16:35 CST 2020
+[    0.000000] 
+[    0.000000]  The CPU feqenuce set to 880 MHz
+[    0.000000] GCMP present
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] Software DMA cache coherency
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 10000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x00000000-0x0bffffff]
+[    0.000000]   Normal   [mem 0x0c000000-0x0fffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x0fffffff]
+[    0.000000] Detected 3 available secondary CPU(s)
+[    0.000000] Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] PERCPU: Embedded 7 pages/cpu @8c204000 s6400 r8192 d14080 u32768
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 65024
+[    0.000000] Kernel command line: console=ttyS1,57600n8 root=/dev/ram0 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Writing ErrCtl register=0007c0a0
+[    0.000000] Readback ErrCtl register=0007c0a0
+[    0.000000] Memory: 242288k/262144k available (3961k kernel code, 19856k reserved, 971k data, 12340k init, 0k highmem)
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:128
+[    0.000000] console [ttyS1] enabled
+[    0.120000] Calibrating delay loop... 562.17 BogoMIPS (lpj=1124352)
+[    0.152000] pid_max: default: 32768 minimum: 301
+[    0.156000] Mount-cache hash table entries: 512
+[    0.160000] launch: starting cpu1
+[    0.164000] launch: cpu1 gone!
+[    0.164000] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.164000] Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+[    0.164000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.164000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.196000] Synchronize counters for CPU 1: done.
+[    0.204000] launch: starting cpu2
+[    0.208000] launch: cpu2 gone!
+[    0.208000] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.208000] Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+[    0.208000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.208000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.236000] Synchronize counters for CPU 2: done.
+[    0.244000] launch: starting cpu3
+[    0.248000] launch: cpu3 gone!
+[    0.248000] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.248000] Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+[    0.248000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.248000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.276000] Synchronize counters for CPU 3: done.
+[    0.284000] Brought up 4 CPUs
+[    0.288000] NET: Registered protocol family 16
+[    0.580000] release PCIe RST: RALINK_RSTCTRL = 7000000
+[    0.584000] PCIE PHY initialize
+[    0.588000] ***** Xtal 40MHz *****
+[    0.592000] start MT7621 PCIe register access
+[    1.168000] RALINK_RSTCTRL = 7000000
+[    1.172000] RALINK_CLKCFG1 = 77ffeff8
+[    1.176000] 
+[    1.176000] *************** MT7621 PCIe RC mode *************
+[    1.656000] PCIE1 no card, disable it(RST&CLK)
+[    1.660000] PCIE2 no card, disable it(RST&CLK)
+[    1.664000] pcie_link status = 0x1
+[    1.668000] RALINK_RSTCTRL= 1000000
+[    1.672000] *** Configure Device number setting of Virtual PCI-PCI bridge ***
+[    1.676000] RALINK_PCI_PCICFG_ADDR = 21007f2 -> 21007f2
+[    1.680000] PCIE0 enabled
+[    1.684000] interrupt enable status: 100000
+[    1.688000] Port 0 N_FTS = 1b105000
+[    1.692000] config reg done
+[    1.696000] init_rt2880pci done
+[    1.720000] bio: create slab <bio-0> at 0
+[    1.724000] SCSI subsystem initialized
+[    1.728000] usbcore: registered new interface driver usbfs
+[    1.732000] usbcore: registered new interface driver hub
+[    1.736000] usbcore: registered new device driver usb
+[    1.740000] PCI host bridge to bus 0000:00
+[    1.744000] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff]
+[    1.748000] pci_bus 0000:00: root bus resource [io  0x1e160000-0x1e16ffff]
+[    1.752000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    1.756000] pci 0000:00:00.0: BAR 0: can't assign mem (size 0x80000000)
+[    1.760000] pci 0000:00:00.0: BAR 8: assigned [mem 0x60000000-0x600fffff]
+[    1.764000] pci 0000:00:00.0: BAR 1: assigned [mem 0x60100000-0x6010ffff]
+[    1.768000] pci 0000:01:00.0: BAR 0: assigned [mem 0x60000000-0x600fffff]
+[    1.772000] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    1.776000] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    1.780000] BAR0 at slot 0 = 0
+[    1.784000] bus=0x0, slot = 0x0
+[    1.788000] res[0]->start = 0
+[    1.792000] res[0]->end = 0
+[    1.796000] res[1]->start = 60100000
+[    1.800000] res[1]->end = 6010ffff
+[    1.804000] res[2]->start = 0
+[    1.808000] res[2]->end = 0
+[    1.812000] res[3]->start = 0
+[    1.816000] res[3]->end = 0
+[    1.820000] res[4]->start = 0
+[    1.824000] res[4]->end = 0
+[    1.828000] res[5]->start = 0
+[    1.832000] res[5]->end = 0
+[    1.836000] bus=0x1, slot = 0x0, irq=0x4
+[    1.840000] res[0]->start = 60000000
+[    1.844000] res[0]->end = 600fffff
+[    1.848000] res[1]->start = 0
+[    1.852000] res[1]->end = 0
+[    1.856000] res[2]->start = 0
+[    1.860000] res[2]->end = 0
+[    1.864000] res[3]->start = 0
+[    1.868000] res[3]->end = 0
+[    1.872000] res[4]->start = 0
+[    1.876000] res[4]->end = 0
+[    1.880000] res[5]->start = 0
+[    1.884000] res[5]->end = 0
+[    1.888000] Switching to clocksource MIPS
+[    1.892000] NET: Registered protocol family 2
+[    1.900000] TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+[    1.916000] TCP bind hash table entries: 2048 (order: 2, 16384 bytes)
+[    1.928000] TCP: Hash tables configured (established 2048 bind 2048)
+[    1.940000] TCP: reno registered
+[    1.948000] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    1.960000] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    1.972000] NET: Registered protocol family 1
+[    3.256000] 4 CPUs re-calibrate udelay(lpj = 1167360)
+[    3.268000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    3.276000] jffs2: version 2.2. (NAND) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    3.296000] msgmni has been set to 473
+[    3.304000] io scheduler noop registered (default)
+[    3.312000] reg_int_mask=0, INT_MASK= 0 
+[    3.320000] HSDMA_init
+[    3.324000] 
+[    3.324000]  hsdma_phy_tx_ring0 = 0x1bc00000, hsdma_tx_ring0 = 0xbbc00000
+[    3.344000] 
+[    3.344000]  hsdma_phy_rx_ring0 = 0x1bc04000, hsdma_rx_ring0 = 0xbbc04000
+[    3.360000] TX_CTX_IDX0 = 0
+[    3.364000] TX_DTX_IDX0 = 0
+[    3.372000] RX_CRX_IDX0 = 3ff
+[    3.376000] RX_DRX_IDX0 = 0
+[    3.380000] set_fe_HSDMA_glo_cfg
+[    3.388000] HSDMA_GLO_CFG = 465
+[    3.400000] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    3.412000] serial8250: ttyS0 at MMIO 0x1e000d00 (irq = 27) is a 16550A
+[    3.428000] serial8250: ttyS1 at MMIO 0x1e000c00 (irq = 26) is a 16550A
+[    3.440000] Ralink gpio driver initialized
+[    3.456000] brd: module loaded
+[    3.464000] MediaTek Nand driver init, version v2.1 Fix AHB virt2phys error
+[    3.476000] Allocate 16 byte aligned buffer: 810f2550
+[    3.488000] Enable NFI Clock
+[    3.492000] # MTK NAND # : Use HW ECC
+[    3.500000] NAND ID [C2 F1 80 95 02, 00809502]
+[    3.508000] Device found in MTK table, ID: c2f1, EXT_ID: 809502
+[    3.520000] Support this Device in MTK table! c2f1 
+[    3.532000] NAND device: Manufacturer ID: 0xc2, Chip ID: 0xf1 (Macronix NAND 128MiB 3,3V 8-bit), 128MiB, page size: 2048, OOB size: 64
+[    3.556000] [NAND]select ecc bit:4, sparesize :64 spare_per_sector=16
+[    3.568000] Scanning device for bad blocks
+[    3.584000] Bad eraseblock 34 at 0x000000440000
+[    3.824000] Signature matched and data read!
+[    3.832000] load_fact_bbt success 1023
+[    3.840000] 00 00 00 00 00 00 00 00 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.860000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.880000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.900000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.920000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.940000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.960000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    3.980000] 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+[    4.000000] Creating 10 MTD partitions on "MT7621-NAND":
+[    4.008000] 0x000000000000-0x000007f80000 : "ALL"
+[    4.020000] 0x000000000000-0x000000080000 : "Bootloader"
+[    4.032000] 0x000000080000-0x000000100000 : "Config"
+[    4.040000] 0x000000100000-0x000000140000 : "Factory"
+[    4.052000] 0x000000140000-0x000002000000 : "Kernel"
+[    4.064000] 0x000002140000-0x000004000000 : "Kernel2"
+[    4.076000] 0x000004000000-0x000004100000 : "wwan"
+[    4.084000] 0x000004100000-0x000005100000 : "data"
+[    4.096000] 0x000005100000-0x000005200000 : "rom-d"
+[    4.108000] 0x000005200000-0x000005280000 : "reserve"
+[    4.116000] [mtk_nand] probe successfully!
+[    4.128000] rdm_major = 253
+[    4.136000] GMAC1_MAC_ADRH -- : 0x00000826
+[    4.144000] GMAC1_MAC_ADRL -- : 0x9784efbc
+[    4.152000] Ralink APSoC Ethernet Driver Initilization. v3.1  1024 rx/tx descriptors allocated, mtu = 1500!
+[    4.168000] GMAC1_MAC_ADRH -- : 0x00000826
+[    4.176000] GMAC1_MAC_ADRL -- : 0x9784efbc
+[    4.188000] set proc_user_pid is ok 
+[    4.196000] PROC INIT OK!
+[    4.200000] GobiNet: Quectel_Linux&Android_GobiNet_Driver_V1.6.1
+[    4.212000] usbcore: registered new interface driver GobiNet
+[    4.224000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    4.236000] ehci-pci: EHCI PCI platform driver
+[    4.244000] *****run project phy.
+[    4.260000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.276000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.292000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.308000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.324000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.340000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.356000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.372000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.388000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.404000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.436000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.452000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.468000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.484000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.500000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.516000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.532000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.548000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.564000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.580000] FM_OUT value: u4FmOut = 0(0x00000000)
+[    4.708000] xhci-hcd xhci-hcd: xHCI Host Controller
+[    4.716000] xhci-hcd xhci-hcd: new USB bus registered, assigned bus number 1
+[    4.732000] xhci-hcd xhci-hcd: irq 22, io mem 0x1e1c0000
+[    4.744000] hub 1-0:1.0: USB hub found
+[    4.752000] hub 1-0:1.0: 2 ports detected
+[    4.760000] xhci-hcd xhci-hcd: xHCI Host Controller
+[    4.768000] xhci-hcd xhci-hcd: new USB bus registered, assigned bus number 2
+[    4.784000] hub 2-0:1.0: USB hub found
+[    4.792000] hub 2-0:1.0: 1 port detected
+[    4.800000] usbcore: registered new interface driver usb-storage
+[    4.812000] usbcore: registered new interface driver usbserial
+[    4.824000] usbcore: registered new interface driver option
+[    4.836000] usbserial: USB Serial support registered for GSM modem (1-port)
+[    4.848000] TCP: cubic registered
+[    4.856000] Initializing XFRM netlink socket
+[    4.864000] NET: Registered protocol family 10
+[    4.876000] NET: Registered protocol family 17
+[    4.884000] NET: Registered protocol family 15
+[    4.892000] 8021q: 802.1Q VLAN Support v1.8
+[    4.928000] Freeing unused kernel memory: 12340K (804d3000 - 810e0000)
+init started: BusyBox v1.20.1 (2020-08-18 14:58:25 CST)
+[    5.112000] usb 2-1: new SuperSpeed USB device number 2 using xhci-hcd
+[    5.140000] usb 2-1: Parent hub missing LPM exit latency info.  Power management will be impacted.
+[    5.160000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 2, maxp 1024, interval 1, burst 0, mult 0, ep 0x8d237a80, ep_ctx 0xbbc0d080, sch_ep 0x8d237300
+[    5.188000] add_ep parameters, dev_speed 5, is_in 0, isTT 0, ep_type 2, maxp 1024, interval 1, burst 0, mult 0, ep 0x8d237aac, ep_ctx 0xbbc0d060, sch_ep 0x8d249f80
+[    5.216000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 3, maxp 10, interval 256, burst 0, mult 0, ep 0x8d181b80, ep_ctx 0xbbc0d100, sch_ep 0x8d249d00
+[    5.248000] count_ss_bw, frame_idx 0, repeat 0, td_size 10, result bw 10
+[    5.260000] final best idx 0, best repeat 0
+[    5.268000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 2, maxp 1024, interval 1, burst 0, mult 0, ep 0x8d181bac, ep_ctx 0xbbc0d0c0, sch_ep 0x8d249b00
+[    5.296000] add_ep parameters, dev_speed 5, is_in 0, isTT 0, ep_type 2, maxp 1024, interval 1, burst 0, mult 0, ep 0x8d181bd8, ep_ctx 0xbbc0d0a0, sch_ep 0x8d249880
+[    5.328000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 3, maxp 10, interval 256, burst 0, mult 0, ep 0x8d181c80, ep_ctx 0xbbc0d180, sch_ep 0x8d249600
+[    5.356000] count_ss_bw, frame_idx 0, repeat 0, td_size 10, result bw 20
+[    5.368000] final best idx 0, best repeat 0
+[    5.376000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 2, maxp 1024, interval 1, burst 0, mult 0, ep 0x8d181cac, ep_ctx 0xbbc0d140, sch_ep 0x8d249400
+[    5.408000] add_ep parameters, dev_speed 5, is_in 0, isTT 0, ep_type 2, maxp 1024, interval 1, burst 0, mult 0, ep 0x8d181cd8, ep_ctx 0xbbc0d0e0, sch_ep 0x8d249180
+[    5.436000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 3, maxp 10, interval 256, burst 0, mult 0, ep 0x8d1fee80, ep_ctx 0xbbc0d200, sch_ep 0x8d1b9e00
+[    5.464000] count_ss_bw, frame_idx 0, repeat 0, td_size 10, result bw 30
+[    5.480000] final best idx 0, best repeat 0
+[    5.488000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 2, maxp 1024, interval 1, burst 0, mult 0, ep 0x8d1feeac, ep_ctx 0xbbc0d1c0, sch_ep 0x8d1b9c00
+[    5.516000] add_ep parameters, dev_speed 5, is_in 0, isTT 0, ep_type 2, maxp 1024, interval 1, burst 0, mult 0, ep 0x8d1feed8, ep_ctx 0xbbc0d120, sch_ep 0x8d1b9980
+[    5.544000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 3, maxp 8, interval 256, burst 0, mult 0, ep 0x8d1fed80, ep_ctx 0xbbc0d240, sch_ep 0x8d1b9700
+[    5.576000] count_ss_bw, frame_idx 0, repeat 0, td_size 8, result bw 38
+[    5.588000] final best idx 0, best repeat 0
+[    5.596000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 2, maxp 1024, interval 1, burst 6, mult 0, ep 0x8d1fedac, ep_ctx 0xbbc0d3c0, sch_ep 0x8d1b9500
+[    5.624000] add_ep parameters, dev_speed 5, is_in 0, isTT 0, ep_type 2, maxp 1024, interval 1, burst 2, mult 0, ep 0x8d1fedd8, ep_ctx 0xbbc0d3e0, sch_ep 0x8d1b9280
+[    5.656000] option 2-1:1.0: GSM modem (1-port) converter detected
+[    5.668000] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB0
+[    5.684000] option 2-1:1.1: GSM modem (1-port) converter detected
+[    5.696000] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB1
+[    5.712000] option 2-1:1.2: GSM modem (1-port) converter detected
+[    5.724000] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB2
+[    5.736000] option 2-1:1.3: GSM modem (1-port) converter detected
+[    5.752000] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB3
+[    5.764000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 3, maxp 8, interval 256, burst 0, mult 0, ep 0x8d1fed80, ep_ctx 0xbbc0d240, sch_ep 0x8d29ad00
+[    5.796000] count_ss_bw, frame_idx 0, repeat 0, td_size 8, result bw 38
+[    5.808000] final best idx 0, best repeat 0
+[    5.816000] add_ep parameters, dev_speed 5, is_in 1, isTT 0, ep_type 2, maxp 1024, interval 1, burst 6, mult 0, ep 0x8d1fedac, ep_ctx 0xbbc0d3c0, sch_ep 0x8d29ab80
+[    5.844000] add_ep parameters, dev_speed 5, is_in 0, isTT 0, ep_type 2, maxp 1024, interval 1, burst 2, mult 0, ep 0x8d1fedd8, ep_ctx 0xbbc0d3e0, sch_ep 0x8d29a900
+[    5.876000] GobiNet 2-1:1.4 usb0: register 'GobiNet' at usb-xhci-hcd-1, GobiNet Ethernet Device, e6:06:3f:d4:e0:31
+[    5.896000] creating qcqmi0
+[    5.904000] GobiNet::qmap_register_device wwan0
+[    5.916000] GobiNet::qmap_register_device wwan1
+[    5.928000] GobiNet::qmap_register_device wwan2
+[    5.936000] GobiNet::qmap_register_device wwan3
+[    5.948000] GobiNet::qmap_register_device wwan4
+[    5.960000] GobiNet::qmap_register_device wwan5
+[    5.968000] GobiNet::qmap_register_device wwan6
+[    5.980000] GobiNet::qmap_register_device wwan7
+Fri May  1 00:00:00 UTC 2020
+[    6.344000] UBI: attaching mtd7 to ubi0
+[    6.500000] UBI: scanning is finished
+[    6.520000] UBI: attached mtd7 (name "data", size 16 MiB) to ubi0
+[    6.532000] UBI: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    6.544000] UBI: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    6.560000] UBI: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    6.572000] UBI: good PEBs: 128, bad PEBs: 0, corrupted PEBs: 0
+[    6.584000] UBI: user volume: 1, internal volumes: 1, max. volumes count: 128
+[    6.600000] UBI: max/mean erase counter: 94/67, WL threshold: 4096, image sequence number: 355977653
+[    6.616000] UBI: available PEBs: 0, total reserved PEBs: 128, PEBs reserved for bad PEB handling: 20
+[    6.636000] UBI: background thread "ubi_bgt0d" started, PID 502
+UBI device number 0, total 128 LEBs (16252928 bytes, 15.5 MiB), available 0 LEBs (0 bytes), LEB size 126976 bytes (124.0 KiB)
+[    6.740000] UBIFS: background thread "ubifs_bgt0_0" started, PID 533
+[    6.912000] UBIFS: mounted UBI device 0, volume 0, name "data"
+[    6.920000] UBIFS: LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[    6.940000] UBIFS: FS size: 11935744 bytes (11 MiB, 94 LEBs), journal size 1015809 bytes (0 MiB, 6 LEBs)
+[    6.960000] UBIFS: reserved for root: 563754 bytes (550 KiB)
+[    6.972000] UBIFS: media format: w4/r0 (latest is w4/r0), UUID 376C71C2-4065-4805-A89A-563421012E9B, small LPT model
+Mount successfully!! UBI Partition already with [    7.024000] Ralink APSoC Hardware Watchdog Timer
+check flag\n
+watchdog fork, parent exit!
+OPTIMIZED_FOR -> wifi
+NUM_OF_CPU -> 4
+wifiDomain1 -> 
+wifiDomain2 -> 
+CONFIG_RALINK_MT7621 -> y
+CONFIG_ARCH_MT7623 -> 
+2 > /proc/irq/3/smp_affinity, = 2
+4 > /proc/irq/4/smp_affinity, = 4
+8 > /proc/irq/24/smp_affinity, = 8
+8 > /proc/irq/25/smp_affinity, = 8
+8 > /proc/irq/19/smp_affinity, = 8
+8 > /proc/irq/20/smp_affinity, = 8
+8 > /proc/irq/22/smp_affinity, = 8
+eth0 RPS: CPU0/2/3
+[    7.224000] PPP generic driver version 2.4.2
+[    7.260000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    7.272000] Type=Restricted Cone
+[    7.348000] nf_conntrack version 0.5.0 (3978 buckets, 15912 max)
+[    7.472000] Ebtables v2.0 registered
+[    7.544000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    7.684000] u32 classifier
+[    7.688000]     input device check on
+[    7.696000]     Actions configured
+[    7.716000] Mirror/redirect action on
+[    7.804000] register mt_drv
+[    7.812000] 
+[    7.812000] 
+[    7.812000] === pAd = c0781000, size = 1163608 ===
+[    7.812000] 
+[    7.832000] <-- RTMPAllocTxRxRingMemory, Status=0, ErrorValue=0x
+[    7.844000] <-- RTMPAllocAdapterBlock, Status=0
+[    7.852000] pAd->CSRBaseAddress =0xc0680000, csr_addr=0xc0680000!
+[    7.864000] device_id =0x7603
+[    7.872000] RtmpChipOpsHook(507): Not support for HIF_MT yet!
+[    7.884000] mt7603_init()-->
+[    7.888000] mt_bcn_buf_init(224): Not support for HIF_MT yet!
+[    7.900000] <--mt7603_init()
+CA directory is exist
+2 CA file is exist
+CERT is match the Key!
+May  1 00:00:01 crond[735]: crond: crond (busybox 1.20.1) started, log level 8
+START disable Lan...
+Set: phy[0].reg[0] = 1940
+Set: phy[1].reg[0] = 1940
+Set: phy[2].reg[0] = 1940
+Set: phy[3].reg[0] = 1940
+[    8.144000] GobiNet::QMIWDASetDataFormat qmap settings qmap_enabled=5, rx_size=31744, tx_size=4096
+2020-05-01 00:00:02 dnsmasq<758>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 23 bind server socket 3 on /var/lib/.sock/zcfg_sockaddr23 successfully
+
+dnsmasq: unknown user or group: root
+Check Boot from default config
+true
+true
+[NOTICE] Boot from default config
+[NOTICE] Delete zcfg_config.json
+[NOTICE] Delete zcfg_config.json.bak
+rm: can't remove '/data/zcfg_config.json.bak': No such file or directory
+[NOTICE] Delete zcfg_tr181_map.json
+rm: can't remove '/data/zcfg_tr181_map.json': No such file or directory
+[NOTICE] Delete zcfg_tr98_map.json
+rm: can't remove '/data/zcfg_tr98_map.json': No such file or directory
+2020-05-01 00:00:02 zcmd<770>, zcmd.c:6258, main(), INFO: Start ZCMD daemon
+2020-05-01 00:00:02 zcmd<772>, uitimer.c:95, UITimerProc(), INFO: thread starts
+zcfg_schema.bin
+killall: zywifid_run.sh: no process killed
+init process!
+info.pid = 780 and info.irq = 6
+info.pid = 780 and info.irq = 8
+killall: zywifid: no process killed
+2020-05-01 00:00:02 zywifid<785>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 41 bind server socket 3 on /var/lib/.sock/zcfg_sockaddr41 successfully
+zywifid> [ALERT] wifi_module_init:1082: load libzywl_001_ecn.so ..........
+zywifid> [ALERT] main:1211: Check and fix Wifi MAC address......
+failed to load /tmp/.factory-startup, try init and reload again
+Find MTD Device /dev/mtd8 with name rom-d.
+mtd.oobsize 64 mtd.writesize 2048
+romd size 4294967295
+romd crc 65535
+mtd.oobsize 64 mtd.writesize 2048
+crc 0
+warning! crc error in section Factory: expect 0x6e909c7c, got 0xffffffff!
+zyUtilIGetBaseMAC: Function executed
+zyUtilIGetNthMAC: Function executed
+zyUtilIGetNumberOfMAC: Function executed
+rm: can't remove '/tmp/wifiScanTime*': No such file or directory
+
+Please press Enter to activate this console. ****  json_util.c line 174, json_object_to_file_ext() : write /data/zcfg_config.json to flash successfully
+MAX Number of Interface Stack is 254
+Enter zcmdTr98MapTableInit
+json_object_from_file: error opening file /data/zcfg_tr98_map.json: No such file or directory
+zcmdTr98MtRestore: Fail to Load /data/zcfg_tr98_map.json
+2020-05-01 00:00:02 zcmd<770>, zcmd.c:6364, main(), WARNING: tr98 map table is empty, rebuild it
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=21936
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=21936
+zcmdBuildTr98ObjParamMapping: obj 28488
+zcmdBuildTr98ObjParamMapping: obj 27924
+zcmdBuildTr98ObjParamMapping: obj 26280
+zcmdBuildTr98ObjParamMapping: obj 26772
+zcmdBuildTr98ObjParamMapping: obj 27348
+zcmdBuildTr98ObjParamMapping: obj 32976
+zcmdTr98MtDslDiagTestAdd: dslIfaceName DSL.Channel.1
+zcmdTr98MappingAdd: add obj 32976 0,0,0,0,0,0 181/98 object mapping fail, ret= -6
+=====zcmdTr98MtObjAdd=====seqnum=148 oid=38112
+=====zcmdTr181MtObjAdd=====seqnum=148 oid=38112
+=====zcmdTr181MtObjAdd=====seqnum=149 oid=38556
+zcmdTr98MappingAdd():11269
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfEthIntf():12218
+zcmdTr98MtEthLinkAdd: LAN Ethernet.Link.1
+=====zcmdTr98MtObjAdd=====seqnum=135 oid=38952
+=====zcmdTr181MtObjAdd=====seqnum=135 oid=38952
+zcmdTr98MappingAdd():11269
+zcmdTr98ParmRtLanEthLink
+ret = 0     zcmdBuildMapTableOfEthLink():12117
+zcmdTr98MtEthLinkAdd(): Unknown case, ref181ObjName=Cellular.Interface.1
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfEthLink():12117
+zcmdTr98MtEthLinkAdd(): Unknown case, ref181ObjName=Cellular.Interface.2
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfEthLink():12117
+zcmdTr98MtCellIntfAdd:[10774] e_TR98_WAN_CONN_DEV:173, ret = 0
+=====zcmdTr181MtObjAdd=====seqnum=173 oid=42876
+zcmdTr98MtCellIntfAdd:[10777] e_TR98_WAN_CONN_DEV:173, ret = 0
+zcmdTr98MtCellIntfAdd:[10788] e_TR98_WAN_COMM_INTF_CONF:163, ret = 0
+zcmdTr98MtCellIntfAdd:[10792] e_TR98_WAN_CELL_INTF_CONF:211, ret = 0
+zcmdTr98MtCellIntfAdd:[10796] e_TR98_WAN_CELL_INTF_CONF_STAT:212, ret = 0
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfCellIntf():12448
+zcmdTr98MtCellIntfAdd:[10774] e_TR98_WAN_CONN_DEV:173, ret = 0
+=====zcmdTr181MtObjAdd=====seqnum=173 oid=42876
+zcmdTr98MtCellIntfAdd:[10777] e_TR98_WAN_CONN_DEV:173, ret = 0
+zcmdTr98MtCellIntfAdd:[10788] e_TR98_WAN_COMM_INTF_CONF:163, ret = 0
+zcmdTr98MtCellIntfAdd:[10792] e_TR98_WAN_CELL_INTF_CONF:211, ret = 0
+zcmdTr98MtCellIntfAdd:[10796] e_TR98_WAN_CELL_INTF_CONF_STAT:212, ret = 0
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfCellIntf():12448
+zcmdTr98MtCellAccessPointAdd:[10837] e_TR98_WAN_CELL_ACCESS_POINT:213, ret = 0
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfCellAccessPoint():12463
+zcmdTr98MtCellAccessPointAdd:[10837] e_TR98_WAN_CELL_ACCESS_POINT:213, ret = 0
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfCellAccessPoint():12463
+ret = 0     zcmdTr98MtWwanIntfAdd():10608
+=====zcmdTr181MtObjAdd=====seqnum=204 oid=127272
+ret = 0     zcmdTr98MtWwanIntfAdd():10610
+ret = 0     zcmdTr98MtWwanIntfAdd():10614
+=====zcmdTr181MtObjAdd=====seqnum=205 oid=128556
+ret = 0     zcmdTr98MtWwanIntfAdd():10616
+ret = 0     zcmdTr98MtWwanIntfAdd():10627
+=====zcmdTr181MtObjAdd=====seqnum=206 oid=116616
+ret = 0     zcmdTr98MtWwanIntfAdd():10629
+ret = 0     zcmdTr98MtWwanIntfAdd():10627
+=====zcmdTr181MtObjAdd=====seqnum=206 oid=116616
+ret = 0     zcmdTr98MtWwanIntfAdd():10629
+ret = 0     zcmdTr98MtWwanIntfAdd():10645
+=====zcmdTr181MtObjAdd=====seqnum=194 oid=67464
+ret = 0     zcmdTr98MtWwanIntfAdd():10647
+zcmdTr98MappingAdd():11269
+zcmdTr98MtIpIfaceAdd
+iid.level:1 idx:1
+zcmdTr98MtCommonObjAdd: seqnum 137, oid 69468
+=====zcmdTr98MtObjAdd=====seqnum=137 oid=69468
+=====zcmdTr181MtObjAdd=====seqnum=137 oid=69468
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=70968
+zcmdTr98MappingAdd():11269
+zcmdTr181MtParmAttrSet: obj 70968, 1,1,0,0,0,0 IPAddress attr 0x0
+ret = 0     zcmdBuildMapTableOfIpIface():12080
+zcmdTr98MtIpIfaceAdd
+iid.level:1 idx:2
+=====zcmdTr98MtObjAdd=====seqnum=180 oid=69468
+=====zcmdTr181MtObjAdd=====seqnum=180 oid=69468
+=====zcmdTr181MtObjAdd=====seqnum=188 oid=72036
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=70968
+zcmdTr98MappingAdd():11269
+zcmdTr98MtParmAttrSet: obj 180, 1,1,1,0,0,0 X_ZYXEL_IGMPProxyEnable attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,1,0,0,0 DefaultGateway attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,1,0,0,0 DNSEnabled attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,1,0,0,0 DNSServers attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,1,0,0,0 X_ZYXEL_IPv6DNSEnabled attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,1,0,0,0 X_ZYXEL_IPv6DNSServers attr 0x40040000
+zcmdTr98MtParmNMBuildMapping: set IPAddress default attr, 0x92
+zcmdTr181MtParmAttrSet: obj 70968, 2,1,0,0,0,0 IPAddress attr 0x2
+setParmAttrNodeLst Add, n=1
+zcmdTr181MtParmAttrSet: obj 69468, 2,0,0,0,0,0 IPAddress attr 0x2
+ret = 0     zcmdBuildMapTableOfIpIface():12080
+zcmdTr98MtIpIfaceAdd
+iid.level:1 idx:3
+=====zcmdTr98MtObjAdd=====seqnum=180 oid=69468
+=====zcmdTr181MtObjAdd=====seqnum=180 oid=69468
+=====zcmdTr181MtObjAdd=====seqnum=188 oid=72036
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=70968
+zcmdTr98MappingAdd():11269
+zcmdTr98MtParmAttrSet: obj 180, 1,1,2,0,0,0 X_ZYXEL_IGMPProxyEnable attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,2,0,0,0 DefaultGateway attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,2,0,0,0 DNSEnabled attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,2,0,0,0 DNSServers attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,2,0,0,0 X_ZYXEL_IPv6DNSEnabled attr 0x40040000
+zcmdTr98MtParmAttrSet: obj 180, 1,1,2,0,0,0 X_ZYXEL_IPv6DNSServers attr 0x40040000
+zcmdTr98MtParmNMBuildMapping: set IPAddress default attr, 0x92
+zcmdTr181MtParmAttrSet: obj 70968, 3,1,0,0,0,0 IPAddress attr 0x2
+setParmAttrNodeLst Add, n=2
+zcmdTr181MtParmAttrSet: obj 69468, 3,0,0,0,0,0 IPAddress attr 0x2
+ret = 0     zcmdBuildMapTableOfIpIface():12080
+zcmdTr98MappingAdd: add obj 70968 1,1,0,0,0,0 181/98 object mapping fail, ret= -5
+ret = -5     zcmdBuildMapTableOfIpIfaceAlias():12098
+zcmdBuildTr98ObjParamMapping: obj 91968
+zcmdBuildTr98ObjParamMapping: obj 93276
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=93276
+zcmdTr98MappingAdd():11269
+zcmdTr98MtRDPartialMappingSrhWithIpIface: obj 93276 has rd IP.Interface mapping
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=93276
+zcmdTr98MappingAdd():11269
+zcmdTr98MtRDPartialMappingSrhWithIpIface: obj 93276 has rd IP.Interface mapping
+zcmdBuildTr98ObjParamMapping: obj 81576
+zcmdTr98MtL3FWDMapAdd oid 81576 98iid:0[0,0,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=111 oid=81576
+zcmdTr98MappingAdd():11269
+zcmdBuildTr98ObjParamMapping: obj 81804
+zcmdTr98MtL3FWDMapAdd oid 81804 98iid:1[1,0,0] 181iid:2[1,1,0]
+=====zcmdTr181MtObjAdd=====seqnum=112 oid=81804
+zcmdTr98MappingAdd():11269
+zcmdTr98MtParmAttrSet: obj 112, 1,0,0,0,0,0 GatewayIPAddress attr 0x40040000
+zcmdTr181MtParmAttrSet: obj 81804, 1,1,0,0,0,0 GatewayIPAddress attr 0x40040000
+zcmdTr98MtL3FWDMapAdd oid 81804 98iid:1[2,0,0] 181iid:2[1,2,0]
+=====zcmdTr181MtObjAdd=====seqnum=112 oid=81804
+zcmdTr98MappingAdd():11269
+zcmdTr98MtParmAttrSet: obj 112, 2,0,0,0,0,0 GatewayIPAddress attr 0x40040000
+zcmdTr181MtParmAttrSet: obj 81804, 1,2,0,0,0,0 GatewayIPAddress attr 0x40040000
+zcmdBuildTr98ObjParamMapping: obj 82320
+zcmdBuildTr98ObjParamMapping: obj 39672
+zcmdBuildMapTableOfDhcpServer():11948
+zcmdTr98MtDHCPv4PoolAdd():8428
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=95700
+zcmdTr98MappingAdd():11269
+zcmdBuildMapTableOfDhcpServer():11950
+ret = 0     zcmdBuildMapTableOfDhcpServer():11952
+=====zcmdTr181MtObjAdd=====seqnum=182 oid=94836
+zcmdTr98MappingAddOidObjAry: obj 95304 , 1,0,0,0,0,0
+=====zcmdTr98MtObjAdd=====seqnum=183 oid=95304
+=====zcmdTr181MtObjAdd=====seqnum=183 oid=95304
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=183 oid=95304
+=====zcmdTr181MtObjAdd=====seqnum=183 oid=95304
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=183 oid=95304
+=====zcmdTr181MtObjAdd=====seqnum=183 oid=95304
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+zcmdTr98MappingAddOidObjAry: obj 95436 , 1,0,0,0,0,0
+=====zcmdTr98MtObjAdd=====seqnum=184 oid=95436
+=====zcmdTr181MtObjAdd=====seqnum=184 oid=95436
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=184 oid=95436
+=====zcmdTr181MtObjAdd=====seqnum=184 oid=95436
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=184 oid=95436
+=====zcmdTr181MtObjAdd=====seqnum=184 oid=95436
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=184 oid=95436
+=====zcmdTr181MtObjAdd=====seqnum=184 oid=95436
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfV6AddrAndDhcpClient():12008
+=====zcmdTr181MtObjAdd=====seqnum=182 oid=94836
+zcmdTr98MappingAddOidObjAry: obj 95304 , 2,0,0,0,0,0
+=====zcmdTr98MtObjAdd=====seqnum=183 oid=95304
+=====zcmdTr181MtObjAdd=====seqnum=183 oid=95304
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=183 oid=95304
+=====zcmdTr181MtObjAdd=====seqnum=183 oid=95304
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=183 oid=95304
+=====zcmdTr181MtObjAdd=====seqnum=183 oid=95304
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+zcmdTr98MappingAddOidObjAry: obj 95436 , 2,0,0,0,0,0
+=====zcmdTr98MtObjAdd=====seqnum=184 oid=95436
+=====zcmdTr181MtObjAdd=====seqnum=184 oid=95436
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=184 oid=95436
+=====zcmdTr181MtObjAdd=====seqnum=184 oid=95436
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=184 oid=95436
+=====zcmdTr181MtObjAdd=====seqnum=184 oid=95436
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+=====zcmdTr98MtObjAdd=====seqnum=184 oid=95436
+=====zcmdTr181MtObjAdd=====seqnum=184 oid=95436
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdTr98MappingAddOidObjAry():6301
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfV6AddrAndDhcpClient():12008
+zcmdBuildTr98ObjParamMapping: obj 97932
+zcmdBuildTr98ObjParamMapping: obj 98808
+=====zcmdTr181MtObjAdd=====seqnum=142 oid=98808
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=90300
+zcmdBuildTr98ObjParamMapping: obj 119748
+zcmdBuildTr98ObjParamMapping: obj 123552
+zcmdTr98MtCommonObjAdd: seqnum 236, oid 123552
+=====zcmdTr98MtObjAdd=====seqnum=236 oid=123552
+=====zcmdTr181MtObjAdd=====seqnum=236 oid=123552
+zcmdTr98MappingAdd():11269
+zcmdTr98MtCommonObjAdd: seqnum 236, oid 123552
+=====zcmdTr98MtObjAdd=====seqnum=236 oid=123552
+=====zcmdTr181MtObjAdd=====seqnum=236 oid=123552
+zcmdTr98MappingAdd():11269
+zcmdTr98MtCommonObjAdd: seqnum 236, oid 123552
+=====zcmdTr98MtObjAdd=====seqnum=236 oid=123552
+=====zcmdTr181MtObjAdd=====seqnum=236 oid=123552
+zcmdTr98MappingAdd():11269
+zcmdTr98MtCommonObjAdd: seqnum 236, oid 123552
+=====zcmdTr98MtObjAdd=====seqnum=236 oid=123552
+=====zcmdTr181MtObjAdd=====seqnum=236 oid=123552
+zcmdTr98MappingAdd():11269
+zcmdTr98MtCommonObjAdd: seqnum 236, oid 123552
+=====zcmdTr98MtObjAdd=====seqnum=236 oid=123552
+=====zcmdTr181MtObjAdd=====seqnum=236 oid=123552
+zcmdTr98MappingAdd():11269
+zcmdTr98MtCommonObjAdd: seqnum 236, oid 123552
+=====zcmdTr98MtObjAdd=====seqnum=236 oid=123552
+=====zcmdTr181MtObjAdd=====seqnum=236 oid=123552
+zcmdTr98MappingAdd():11269
+zcmdTr98MtCommonObjAdd: seqnum 236, oid 123552
+=====zcmdTr98MtObjAdd=====seqnum=236 oid=123552
+=====zcmdTr181MtObjAdd=====seqnum=236 oid=123552
+zcmdTr98MappingAdd():11269
+zcmdTr98MtCommonObjAdd: seqnum 236, oid 123552
+=====zcmdTr98MtObjAdd=====seqnum=236 oid=123552
+=====zcmdTr181MtObjAdd=====seqnum=236 oid=123552
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=120612
+zcmdTr98MappingAdd: add obj 120612 0,0,0,0,0,0 181/98 object mapping fail, ret= -5
+zcmdTr98MtCommonObjAdd: seqnum 115, oid 65100
+=====zcmdTr98MtObjAdd=====seqnum=115 oid=65100
+=====zcmdTr181MtObjAdd=====seqnum=115 oid=65100
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfBridge():11747
+=====zcmdTr181MtObjAdd=====seqnum=116 oid=65400
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfBridge():11757
+=====zcmdTr181MtObjAdd=====seqnum=116 oid=65400
+=====zcmdTr98MtObjAdd=====seqnum=148 oid=38112
+!!!!!!
+!!!!!! zcmdTr98MtObjAdd(): 181 to 98 mapping exist!, add by tr69?
+!!!!!!
+=====zcmdTr181MtObjAdd=====seqnum=148 oid=38112
+=====zcmdTr181MtObjAdd=====seqnum=149 oid=38556
+zcmdTr98MappingAdd():11269
+zcmdTr98MappingAdd():11269
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfBridge():11757
+=====zcmdTr181MtObjAdd=====seqnum=116 oid=65400
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfBridge():11757
+zcmdTr98MtCommonObjAdd: seqnum 118, oid 66552
+=====zcmdTr98MtObjAdd=====seqnum=118 oid=66552
+=====zcmdTr181MtObjAdd=====seqnum=118 oid=66552
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfBridge():11765
+zcmdTr98MtCommonObjAdd: seqnum 118, oid 66552
+=====zcmdTr98MtObjAdd=====seqnum=118 oid=66552
+=====zcmdTr181MtObjAdd=====seqnum=118 oid=66552
+zcmdTr98MappingAdd():11269
+ret = 0     zcmdBuildMapTableOfBridge():11765
+zcmdTr98MtFirewallMapAdd oid 104532 98iid:1[1,0,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=215 oid=104532
+zcmdTr98MappingAdd():11269
+zcmdTr98MtFirewallMapAdd oid 104784 98iid:1[1,0,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=216 oid=104784
+zcmdTr98MappingAdd():11269
+zcmdTr98MtWiFiMapAdd oid 60408 98iid:3[1,1,1] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=156 oid=60408
+zcmdTr98MappingAdd():11269
+zcmdTr98MtWiFiMapAdd oid 61656 98iid:2[1,1,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=152 oid=61656
+zcmdTr98MappingAdd():11269
+zcmdTr98MtWiFiMapAdd oid 58980 98iid:2[1,1,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=150 oid=58980
+zcmdTr98MappingAdd():11269
+zcmdTr98MappingAdd():11269
+zcmdTr98MtWiFiMapAdd oid 59640 98iid:2[1,1,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=151 oid=59640
+zcmdTr98MappingAdd():11269
+zcmdTr98MtWiFiMapAdd oid 60036 98iid:2[1,1,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=150 oid=60036
+zcmdTr98MappingAdd():11269
+zcmdTr98MtWiFiMapAdd oid 63504 98iid:0[0,0,0] 181iid:0[0,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=159 oid=63504
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=119856
+=====zcmdTr181MtObjAdd=====seqnum=242 oid=119856
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=125628
+=====zcmdTr181MtObjAdd=====seqnum=230 oid=125628
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=126060
+zcmdTr98MtLogSettingAdd oid 126060 98iid:0[0,0,0] 181iid:0[0,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=243 oid=126060
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126264 98iid:1[1,0,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=244 oid=126264
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126264 98iid:1[2,0,0] 181iid:1[2,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=244 oid=126264
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[1,1,0] 181iid:2[1,1,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[1,2,0] 181iid:2[1,2,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[1,3,0] 181iid:2[1,3,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[1,4,0] 181iid:2[1,4,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[1,5,0] 181iid:2[1,5,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[1,6,0] 181iid:2[1,6,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[1,7,0] 181iid:2[1,7,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[1,8,0] 181iid:2[1,8,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[1,9,0] 181iid:2[1,9,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[2,1,0] 181iid:2[2,1,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[2,2,0] 181iid:2[2,2,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[2,3,0] 181iid:2[2,3,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+zcmdTr98MtLogSettingAdd oid 126372 98iid:2[2,4,0] 181iid:2[2,4,0]
+=====zcmdTr181MtObjAdd=====seqnum=245 oid=126372
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=127212
+zcmdTr98MappingAdd: add obj 127212 0,0,0,0,0,0 181/98 object mapping fail, ret= -6
+zcmdTr98MtEmailNotifyAdd oid 116616 98iid:1[1,0,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=229 oid=116616
+zcmdTr98MappingAdd():11269
+zcmdTr98MtEmailNotifyAdd oid 116616 98iid:1[2,0,0] 181iid:1[2,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=229 oid=116616
+zcmdTr98MappingAdd():11269
+zcmdTr98MtEmailNotifyAdd oid 116616 98iid:1[3,0,0] 181iid:1[3,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=229 oid=116616
+zcmdTr98MappingAdd():11269
+zcmdTr98MtEmailNotifyAdd oid 116616 98iid:1[4,0,0] 181iid:1[4,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=229 oid=116616
+zcmdTr98MappingAdd():11269
+zcmdTr98MtEmailNotifyAdd oid 116616 98iid:1[5,0,0] 181iid:1[5,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=229 oid=116616
+zcmdTr98MappingAdd():11269
+zcmdTr98MtEmailNotifyAdd oid 116616 98iid:1[6,0,0] 181iid:1[6,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=229 oid=116616
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=231 oid=120348
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=117132
+=====zcmdTr181MtObjAdd=====seqnum=239 oid=117132
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=128784
+=====zcmdTr181MtObjAdd=====seqnum=240 oid=128784
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=122052
+zcmdTr98MtMacFilterAdd oid 122052 98iid:0[0,0,0] 181iid:0[0,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=246 oid=122052
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=116796
+zcmdTr98MtParenCtlAdd oid 116796 98iid:0[0,0,0] 181iid:0[0,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=248 oid=116796
+zcmdTr98MappingAdd():11269
+=====zcmdTr181MtObjAdd=====seqnum=0 oid=109728
+zcmdTr98MtSecurityAdd oid 109728 98iid:0[0,0,0] 181iid:0[0,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=250 oid=109728
+zcmdTr98MappingAdd():11269
+zcmdTr98MtSecurityAdd oid 109788 98iid:1[1,0,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=251 oid=109788
+zcmdTr98MappingAdd():11269
+zcmdTr98MtSecurityAdd oid 109788 98iid:1[2,0,0] 181iid:1[2,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=251 oid=109788
+zcmdTr98MappingAdd():11269
+zcmdTr98MtRemoSrvAdd oid 123144 98iid:1[1,0,0] 181iid:1[1,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=235 oid=123144
+zcmdTr98MappingAdd():11269
+zcmdTr98MtRemoSrvAdd oid 123144 98iid:1[2,0,0] 181iid:1[2,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=235 oid=123144
+zcmdTr98MappingAdd():11269
+zcmdTr98MtRemoSrvAdd oid 123144 98iid:1[3,0,0] 181iid:1[3,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=235 oid=123144
+zcmdTr98MappingAdd():11269
+zcmdTr98MtRemoSrvAdd oid 123144 98iid:1[4,0,0] 181iid:1[4,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=235 oid=123144
+zcmdTr98MappingAdd():11269
+zcmdTr98MtRemoSrvAdd oid 123144 98iid:1[5,0,0] 181iid:1[5,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=235 oid=123144
+zcmdTr98MappingAdd():11269
+zcmdTr98MtRemoSrvAdd oid 123144 98iid:1[6,0,0] 181iid:1[6,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=235 oid=123144
+zcmdTr98MappingAdd():11269
+Enter zcmdBuildStaticMapTable()
+c=0
+seqnum=103  tr181Oid=14496
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=103 oid=14496
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 14496, tr98 103
+zcmdTr98MtParmNMBuildMapping: set SoftwareVersion default attr, 0xa
+zcmdTr181MtParmAttrSet: obj 14496, 0,0,0,0,0,0 SoftwareVersion attr 0x2002
+setParmAttrNodeLst Add, n=3
+zcmdTr98MtParmNMBuildMapping: set ProvisioningCode default attr, 0x82
+zcmdTr181MtParmAttrSet: obj 14496, 0,0,0,0,0,0 ProvisioningCode attr 0x2002
+c=1
+seqnum=108  tr181Oid=16980
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=108 oid=16980
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 16980, tr98 108
+zcmdTr98MtParmNMBuildMapping: set ConnectionRequestURL default attr, 0xa
+zcmdTr181MtParmAttrSet: obj 16980, 0,0,0,0,0,0 ConnectionRequestURL attr 0x2002
+setParmAttrNodeLst Add, n=4
+c=2
+seqnum=110  tr181Oid=20040
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=110 oid=20040
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 20040, tr98 110
+c=3
+seqnum=114  tr181Oid=64824
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=114 oid=64824
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 64824, tr98 114
+c=4
+seqnum=127  tr181Oid=72624
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=127 oid=72624
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 72624, tr98 127
+c=5
+seqnum=128  tr181Oid=73068
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=128 oid=73068
+ret = 0	 zcmdBuildStaticMapTable([   12.504000] set user_pid flag to 819
+):12561
+zcmdBuildStaticMapTable(): tr181 73068, tr98 128
+c=6
+seqnum=225  tr181Oid=118320
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=225 oid=118320
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 118320, tr98 225
+c=7
+seqnum=214  tr181Oid=104208
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181[   12.576000] ipt_TRIGGER: module license 'unspecified' taints kernel.
+MtObjAdd=====seq[   12.592000] Disabling lock debugging due to kernel taint
+num=214 oid=104208
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 104208, tr98 214
+c=8
+seqnum=121  tr181Oid=85320
+ret = 0	 zcmdB[   12.628000] xt_time: kernel timezone is -0000
+uildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=121 oid=85320
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 85320, tr98 121
+c=9
+seqnum=126  tr181Oid=90240
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr1[   12.684000] Netfilter messages via NETLINK v0.30.
+81MtObjAdd=====seqnum=126 oid=90240
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 90240, tr98 126
+c=10
+seqnum=102  tr181Oid=73524
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=102 oid=73524
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 73524, tr98 102
+c=11
+seqnum=130  tr181Oid=73524
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=130 oid=73524
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 73524, tr98 130
+c=12
+seqnum=131  tr181Oid=73992
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=131 oid=73992
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 73992, tr98 131
+c=13
+seqnum=132  tr181Oid=74412
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=132 oid=74412
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 74412, tr98 132
+c=14
+seqnum=220  tr181Oid=117876
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=220 oid=117876
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 117876, tr98 220
+c=15
+seqnum=221  tr181Oid=129696
+ret = 0	 zcmdBuildStaticMapTable():12559
+=====zcmdTr181MtObjAdd=====seqnum=221 oid=129696
+ret = 0	 zcmdBuildStaticMapTable():12561
+zcmdBuildStaticMapTable(): tr181 129696, tr98 221
+End of build tr98 tr181 tables
+2020-05-01 00:00:06 zcmd<770>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 1 bind server socket 3 on /var/lib/.sock/zcfg_sockaddr1 successfully
+2020-05-01 00:00:06 zcmd<808>, zcmd_config_apply.c:1645, zcmdConfigApplyTask(), INFO: thread starts
+2020-05-01 00:00:06 zcmd<809>, zcmd_config_apply.c:1563, zcmdModuleConfigHandleTask(), INFO: thread starts
+2020-05-01 00:00:06 zcmd<808>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 68 bind server socket 4 on /var/lib/.sock/zcfg_sockaddr68 successfully
+2020-05-01 00:00:06 zcmd<809>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 70 bind server socket 5 on /var/lib/.sock/zcfg_sockaddr70 successfully
+/bin/sh: dsldiagd: not found
+2020-05-01 00:00:06 esmd<819>, esmd.c:2050, main(), INFO: ESMD Start
+ESMD msg server init...
+2020-05-01 00:00:06 esmd<819>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 2 bind server socket 0 on /var/lib/.sock/zcfg_sockaddr2 successfully
+[ESMD] Initial kernel monitor ...
+kernelFd=6
+zyUtilUpdateWWANPackage, not support in current platform!
+2020-05-01 00:00:06 esmd<819>, esmd.c:2072, main(), WARNING: fail to update WWAN package
+2020-05-01 00:00:06 esmd<823>, esmd.c:1527, _esmd_thread(), INFO: ESMD usr config thread starts
+2020-05-01 00:00:06 esmd<824>, esmd.c:1535, _esmd_thread(), INFO: ESMD ground thread starts
+2020-05-01 00:00:06 esmd<825>, esmd.c:1916, timer_thread(), INFO: thread starts
+zyUtilTcpSvrInit
+2020-05-01 00:00:06 esmd<824>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 67 bind server socket 8 on /var/lib/.sock/zcfg_sockaddr67 successfully
+[1;34mFW_WATCHER Start[0m
+2020-05-01 00:00:06 zcmd<829>, zcmd.c:5693, zcmdActiveZtr69(), INFO: thread starts
+zcmdBeInit(): DL opening...
+Initial begui_customization....
+Initial bedevice....
+insmod: can't insert '/lib/modules/3.10.14/ip_tables.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ipt_REJECT.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/xt_multiport.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/xt_state.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/xt_limit.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/xt_mac.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/xt_LOG.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/xt_TCPMSS.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/xt_iprange.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/xt_SKIPLOG.ko': No such file or directory
+insmod: can't insert '/lib/modules/3.10.14/xt_AUTOMAP.ko': No such file or directory
+insmod: can't insert '/lib/modules/3.10.14/xt_policer.ko': No such file or directory
+insmod: can't insert '/lib/modules/3.10.14/ip6_tables.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6table_filter.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/nf_defrag_ipv6.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/nf_conntrack_ipv6.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6table_mangle.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6table_raw.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6_queue.ko': No such file or directory
+insmod: can't insert '/lib/modules/3.10.14/ip6t_eui64.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6t_mh.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6t_frag.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6t_rt.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6t_REJECT.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6t_hbh.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6t_ah.ko': File exists
+insmod: can't insert '/lib/modules/3.10.14/ip6t_ipv6header.ko': File exists
+Chain MACFILTER already exists.
+devObj->DeviceSummary = Device:2.0[]),
+Initial belog....
+/etc/init.d/dnsmasq.sh: unrecognized option enable-dhcp-log
+killall: tty_log_echo: no process killed
+killall: mailsend: no process killed
+Set interval time = 60 second
+killall: syslog-ng: no process killed
+Error resolving user; user='root'
+Initial besysinfo....
+Initial beaccount....
+zyUtilIGetSerialNumber: Function executed
+zyUtilIGetSerialNumber: Function executed
+ root set radom DefaultPassword!
+ root set radom Password!
+zyUtilIGetSerialNumber: Function executed
+zyUtilIGetSerialNumber: Function executed
+ supervisor set radom DefaultPassword!
+ supervisor set radom Password!
+/bin/sh: smbpasswd: not found
+set admin random password.
+set admin default random password.
+/bin/sh: smbpasswd: not found
+Initial bedevinfo....
+zcmdTr181MtParmAttrSet: obj 14496, 0,0,0,0,0,0 UpTime attr 0xc
+zyUtilIGetFirmwareVersion: Function executed
+zyUtilIGetSerialNumber: Function executed
+zyUtilIGetBaseMAC: Function executed
+zcmdTr181MtParmAttrSet: obj 14496, 0,0,0,0,0,0 ManufacturerOUI attr 0x8
+zcmdTr181MtParmAttrSet: obj 14496, 0,0,0,0,0,0 SerialNumber attr 0x8
+2020-05-01 00:00:07 zcmd<828>, zcfg_msg.c:419, _msg_send(), ERROR: fail to sendto /var/lib/.sock/zcfg_sockaddr9, errno = 2(No such file or directory), srcEid = 1, dstEid = 9, type = 273 without reply, oid = 0
+2020-05-01 00:00:[   14.024000]  8:26:FFFFFF97:FFFFFF84:FFFFFFEF:FFFFFFBC
+07 zcmd<828>, zc[   14.036000] Raeth v3.1 (fg_msg.c:822, zcTaskletfg_msg_sendAndGe)
+tReply(), ERROR: fail to send me[   14.056000] phy_free_head is 0x1bc32000!!!
+ssage. ret = -5[   14.064000] phy_free_tail_phy is 0x1bc33ff0!!!
+
+Invalid usage! [   14.076000] txd_pool=bbc38000 phy_txd_pool=1BC38000
+#nvram set DEV_S[   14.088000] ei_local->skb_free start address is 0x8fda26dc.
+ERIALNUM=S200Z34[   14.104000] free_txd: 1bc38010, ei_local->cpu_ptr: 1BC38000
+000000 
+Invalid[   14.116000]  POOL  HEAD_PTR | DMA_PTR | CPU_PTR 
+ usage! #nvram s[   14.128000] ----------------+---------+--------
+et DEV_MANUFACTU[   14.140000]      0xbbc38000 0x1BC38000 0x1BC38000
+REROUI=082697 
+[   14.152000] 
+[   14.152000] phy_qrx_ring = 0x1bc2c000, qrx_ring = 0xbbc2c000
+Invalid usage! #[   14.172000] 
+[   14.172000] phy_rx_ring0 = 0x1bc34000, rx_ring0 = 0xbbc34000
+nvram set DEV_MANUFACTURER=ZYXEL 
+no section named "DEV_MODELDESCRIBE=Outdoor"
+Invalid usage! #nvram set DEV_MODELNAME=NR7101 [   14.208000] MT7530 Reset Completed!!
+
+Invalid usage![   14.216000] change HW-TRAP to 0x17c8f
+ #nvram set DEV_[   14.228000] set LAN/WAN LLLLW
+PRODUCTNAME=NR7101 
+Invalid usa[   14.240000] GMAC1_MAC_ADRH -- : 0x00000826
+ge! #nvram set D[   14.248000] GMAC1_MAC_ADRL -- : 0x9784efbc
+EV_SOFTWARE_VER=[   14.260000] GDMA2_MAC_ADRH -- : 0x0000000c
+1.00(ABUV.0)D0 [   14.268000] GDMA2_MAC_ADRL -- : 0x43288069
+
+Invalid usage! [   14.280000] eth3: ===> VirtualIF_open
+#nvram set DEV_H[   14.288000] MT7621 GE2 link rate to 1G
+ARDWARE_VER=NR71[   14.296000] CDMA_CSG_CFG = 81000000
+[   14.296000] GDMA1_FWD_CFG = 20710000
+[   14.296000] GDMA2_FWD_CFG = 20710000
+01 
+Initial beethlink....
+Initial beethintf....
+zcmdTr181MtParmAttrSet: obj 38112, 1,0,0,0,0,0 MACAddress attr 0x8
+zcmdTr181MtParmAttrSet: obj 38112, 1,0,0,0,0,0 Status attr 0x8
+beEthSetMediaType: triggered but not support..
+beCreateInterfaceDownScript: triggered but not support..
+Initial bewifi_radio....
+zyUtilIGetSerialNumber: Function executed
+zyUtilIGetFirmwareVersion: Function executed
+zyUtilIGetSerialNumber: Function executed
+zyUtilIGetFirmwareVersion: Function executed
+zyUtilIGetBaseMAC: Function executed
+zcmdTr181MtParmAttrSet: obj 60408, 1,0,0,0,0,0 PreSharedKey attr 0x1080
+zcmdTr181MtParmAttrSet: obj 60408, 1,0,0,0,0,0 KeyPassphrase attr 0x1090
+zyUtilIGetSerialNumber: Function executed
+zyUtilIGetBaseMAC: Function executed
+zcmdTr181MtParmAttrSet: obj 60036, 1,0,0,0,0,0 WMMCapability attr 0x8
+zcmdTr181MtParmAttrSet: obj 60036, 1,0,0,0,0,0 UAPSDCapability attr 0x8
+zcmdTr181MtParmAttrSet: obj 58980, 1,0,0,0,0,0 Status attr 0x8
+zcmdTr181MtParmAttrSet: obj 58980, 1,0,0,0,0,0 Name attr 0x8
+zcmdTr181MtParmAttrSet: obj 58980, 1,0,0,0,0,0 BSSID attr 0x8
+zcmdTr181MtParmAttrSet: obj 58980, 1,0,0,0,0,0 SSID attr 0x90
+Initial bewifi_ssid....
+Initial bewifi_ap....
+2020-05-01 00:00:08 zcmd<828>, zcmd_config_apply.c:846, zcmdPreSetApply(), ERROR: Get current object fail, oid[61656] eid[1]
+Initial bebridging....
+Initial bebridgingbr....
+Initial bebridgePort....
+zcmdTr181MtParmAttrSet: obj 65400, 1,1,0,0,0,0 X_ZYXEL_IfName attr 0x190
+ifconfig: SIOCGIFFLAGS: No such device
+brctl: bridge br0: No such device or address
+zyUtilIGetBaseMAC: Function executed
+brctl: invalid argument 'quickleave' to 'brctl'
+[   14.764000] device eth2 entered promiscuous mode
+[   14.864000] TX_BCN DESC bbc20000 size = 320
+[   14.872000] RX[0] DESC bbc2a000 size = 2048
+[   14.880000] RX[1] DESC bbc2b000 size = 2048
+[   14.896000] cfg_mode=9
+[   14.900000] cfg_mode=9
+[   14.904000] wmode_band_equal(): Band Equal!
+[   14.912000] APSDCapable[0]=1
+[   14.920000] APSDCapable[1]=1
+[   14.924000] APSDCapable[2]=1
+[   14.932000] APSDCapable[3]=1
+[   14.936000] APSDCapable[4]=1
+[   14.944000] APSDCapable[5]=1
+[   14.948000] APSDCapable[6]=1
+[   14.956000] APSDCapable[7]=1
+[   14.960000] APSDCapable[8]=1
+[   14.964000] APSDCapable[9]=1
+[   14.972000] APSDCapable[10]=1
+[   14.976000] APSDCapable[11]=1
+[   14.984000] APSDCapable[12]=1
+[   14.988000] APSDCapable[13]=1
+[   14.996000] APSDCapable[14]=1
+[   15.000000] APSDCapable[15]=1
+[   15.008000] default ApCliAPSDCapable[0]=1
+[   15.016000] Key1Str is Invalid key length(0) or Type(1)
+[   15.028000] Key2Str is Invalid key length(0) or Type(1)
+[   15.036000] Key3Str is Invalid key length(0) or Type(1)
+[   15.048000] Key4Str is Invalid key length(0) or Type(1)
+[   15.076000] [PMF]Set_PMFMFPC_Proc:: apidx=0, Desired MFPC=0
+[   15.088000] [PMF]Set_PMFMFPR_Proc:: apidx=0, Desired MFPR=0
+[   15.096000] [PMF]Set_PMFSHA256_Proc:: apidx=0, Desired PMFSHA256=0
+[   15.112000] FW Version:_mt7603mp\0
+[   15.116000] FW Build Date:20150624233050\0
+[   15.124000] CmdAddressLenReq:(ret = 0)
+[   15.132000] CmdFwStartReq: override = 1, address = 1048576
+[   15.144000] CmdStartDLRsp: WiFI FW Download Success
+[   15.164000] AsicDMASchedulerInit(): DMA Scheduler Mode=0(LMAC)
+[   15.176000] efuse_probe: efuse = 10000012
+[   15.184000] RtmpChipOpsEepromHook::e2p_type=0, inf_Type=5
+[   15.196000] RtmpEepromGetDefault::e2p_dafault=1
+[   15.204000] RtmpEepromTypeAdjust:: eeFlashId = 0x7603.
+[   15.212000] RtmpChipOpsEepromHook: E2P type(1), E2pAccessMode = 0, E2P default = 1
+[   15.228000] NVM is EFUSE mode
+[   15.236000] 1. Phy Mode = 14
+[   15.240000] NVM is Efuse and its size =1d[1e0-1fc] 
+[   15.252000] Load EEPROM buffer from efuse, and change to BIN buffer mode
+[   15.268000] efuse_probe: efuse = 10000012
+[   15.276000] RtmpChipOpsEepromHook::forceMode: 4 , infType: 5
+[   15.288000] NVM is BIN mode
+[   15.452000] Country Region from e2p = ffff
+[   15.460000] tssi_1_target_pwr_g_band = 32
+[   15.468000] 2. Phy Mode = 14
+[   15.476000] 3. Phy Mode = 14
+[   15.480000] NICInitPwrPinCfg(14): Not support for HIF_MT yet!
+[   15.492000] NICInitializeAsic(584): Not support rtmp_mac_sys_reset () for HIF_MT yet!
+[   15.508000] mt_mac_init()-->
+[   15.512000] mt7603_init_mac_cr()-->
+[   15.520000] AsicSetMacMaxLen(1862): Set the Max RxPktLen=1024!
+[   15.532000] <--mt_mac_init()
+[   15.536000] 	WTBL Segment 1 info:
+[   15.544000] 		MemBaseAddr/FID:0x28000/0
+[   15.552000] 		EntrySize/Cnt:32/128
+[   15.560000] 	WTBL Segment 2 info:
+[   15.564000] 		MemBaseAddr/FID:0x40000/0
+[   15.572000] 		EntrySize/Cnt:64/128
+[   15.580000] 	WTBL Segment 3 info:
+[   15.588000] 		MemBaseAddr/FID:0x42000/64
+[   15.596000] 		EntrySize/Cnt:64/128
+[   15.600000] 	WTBL Segment 4 info:
+[   15.608000] 		MemBaseAddr/FID:0x44000/128
+[   15.616000] 		EntrySize/Cnt:32/128
+[   15.624000] MtAsicACQueue: Write CR:21510, Value=10421
+[   15.632000] MtAsicACQueue: Write CR:21500, Value=10421
+[   15.644000] AntCfgInit(2555): Not support for HIF_MT yet!
+[   15.652000] MCS Set = ff ff 00 00 01
+[   15.668000] mt7603_switch_channel(): Switch to Ch#4(2T2R), BBP_BW=0
+[   15.680000] SYNC - BBP R4 to 20MHz.l
+[   15.992000] mt7603_switch_channel(): Switch to Ch#5(2T2R), BBP_BW=0
+[   16.004000] SYNC - BBP R4 to 20MHz.l
+[   16.316000] mt7603_switch_channel(): Switch to Ch#6(2T2R), BBP_BW=0
+[   16.328000] SYNC - BBP R4 to 20MHz.l
+[   16.640000] mt7603_switch_channel(): Switch to Ch#7(2T2R), BBP_BW=0
+[   16.652000] SYNC - BBP R4 to 20MHz.l
+[   16.960000] mt7603_switch_channel(): Switch to Ch#8(2T2R), BBP_BW=0
+[   16.972000] SYNC - BBP R4 to 20MHz.l
+[   17.052000] Started WatchDog Timer.
+[   17.280000] mt7603_switch_channel(): Switch to Ch#9(2T2R), BBP_BW=0
+[   17.288000] ESW: Link Status Changed - Port2 Link UP
+[   17.288000] Port2 speed: 1000 Mbps.
+[   17.312000] SYNC - BBP R4 to 20MHz.l
+updateLinkStatus 327: receiving Kernel event !!
+zcmdTr181MtParmAttrSet: obj 38112, 1,0,0,0,0,0 MaxBitRate attr 0x90
+zcmdTr181MtParmAttrSet: obj 38112, 1,0,0,0,0,0 DuplexMode attr 0x90
+[   17.832000] mt7603_switch_channel(): Switch to Ch#10(2T2R), BBP_BW=0
+[   17.844000] SYNC - BBP R4 to 20MHz.l
+[   18.152000] mt7603_switch_channel(): Switch to Ch#11(2T2R), BBP_BW=0
+[   18.168000] SYNC - BBP R4 to 20MHz.l
+[   18.472000] [PMF]ap_pmf_init:: apidx=0, MFPC=0, MFPR=0, SHA256=0
+[   18.484000] AsicSetRalinkBurstMode(4188): Not support for HIF_MT yet!
+[   18.496000] RTMPSetPiggyBack(924): Not support for HIF_MT yet!
+[   18.528000] mt7603_switch_channel(): Switch to Ch#11(2T2R), BBP_BW=0
+[   18.540000] AsicSetTxPreamble(4175): Not support for HIF_MT yet!
+[   18.552000] AsicSetPreTbtt(): bss_idx=0, PreTBTT timeout = 0xa0
+[   18.564000] Main bssid = 00:0c:43:26:60:a8
+[   18.572000] <==== rt28xx_init, Status=0
+[   18.580000] @@@ ed_monitor_exit : ===>
+[   18.588000] @@@ ed_monitor_exit : <===
+[   18.596000] mt7603_set_ed_cca: TURN OFF EDCCA  mac 0x10618 = 0xd7083f0f
+[   18.608000] WiFi Startup Cost (ra0): 3.744s
+[   18.652000] device ra0 entered promiscuous mode
+Initial bebridgeFilter....
+Initial bewifi....
+Initial beipiface....
+zyUtilIGetNthMAC: Function executed
+zyUtilIGetNumberOfMAC: Function executed
+zyUtilIGetNthMAC: Function executed
+zyUtilIGetNumberOfMAC: Function executed
+zyUtilIGetN[   18.896000] br0: port 2(ra0) entered forwarding state
+thMAC: Function [   18.908000] br0: port 2(ra0) entered forwarding state
+executed
+zyUtil[   18.920000] br0: port 1(eth2) entered forwarding state
+IGetNumberOfMAC:[   18.932000] br0: port 1(eth2) entered forwarding state
+ Function executed
+zyUtilIGetNthMAC: Function executed
+zyUtilIGetNumberOfMAC: Function executed
+zyUtilIGetNthMAC: Function executed
+zyUtilIGetNumberOfMAC: Function executed
+zyUtilIGetNthMAC: Function executed
+zyUtilIGetNumberOfMAC: Function executed
+zyUtilIGetNthMAC: Function executed
+zyUtilIGetNumberOfMAC: Function executed
+zyUtilIGetNthMAC: Function executed
+zyUtilIGetNumberOfMAC: Function executed
+zywifid:Config> [ERROR] zyWifiUpdateLanInfo:458: No wifi interface on module(ECN).
+zywifid:Config> [ERROR][ECN] zyecn_set_single_sku:2574: Error input argument.
+zcfgBeWanInitIntfMark : Enter
+zcfgBeWanInitIntfMark: Init IfMark Done !!
+Initial benatIntf....
+Initial bev4addr....
+Initial bev6addr....
+Initial bev6prefix....
+Initial beusbhost....
+Initial beusbintf....
+Initial beusbport....
+Initial berouter....
+Initial berainfo....
+Initial bedhcp4_server....
+Initial bedhcp4_serverpool....
+Initial bedhcp4_serverpool_staticaddr....
+Initial bedhcp4_serverpool_option....
+Initial bedhcp4_serversubnet....
+restart DNSMASQ...
+killall: dnsmasq: no process killed
+2020-05-01 00:00:13 dnsmasq<1167>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 23 bind server socket 6 on /var/lib/.sock/zcfg_sockaddr23 successfully
+Initial bedhcp4_relay....
+Initial bedhcp6_server....
+Initial bedhcp6_serverpool....
+killall: dhcp6s: no process killed
+restart dhcp6s...
+GetIpv6PassThru : Can't get RDM_OID_ROUTING_ROUTER_V6_FWD 
+zcfgBeLanRunDhcp6Server : GetIpv6PassThru object Fail
+Initial bedhcp6_relay....
+Initial bevlanTerm....
+Initial bepppiface....
+Initial bepppifaceipcp....
+Initial bedhcp4_client....
+Initial bedhcp6_client....
+2020-05-01 00:00:13 zcmd<828>, be_dhcp6_client_config_init.c:29, beConfigBoot(), INFO: boot Dhcp6 Client
+Initial beradvd....
+radvdStart : Enter
+radvdConfCreate : Enter
+GetIpv6PassThru : Can't get RDM_OID_ROUTING_ROUTER_V6_FWD 
+radvdAppInfoGet : GetIpv6PassThru object Fail
+[May 01 00:00:13] radvd: can't open /var/radvd_br0.conf: No such file or directory
+[May 01 00:00:13] radvd: Exiting, permissions on conf_file invalid.
+
+Initial bedns....
+Initial bedns_route....
+Initial bedns_server....
+Initial benat_port_map....
+Initial benat_port_trigger....
+Initial benat_addr_mapping....
+Initial begre_tunnel....
+modprobe ip_gre
+modprobe: module ip_gre not found in modules.dep
+Initial besessCtl....
+/bin/sh: can't create /proc/sys/net/netfilter/nf_session_ctl_max: nonexistent directory
+/bin/sh: can't create /proc/zy_nf_ct_udp_STB_port: Permission denied
+/bin/sh: can't create /proc/zy_nf_ct_udp_STB_timeout: Permission denied
+Initial befirewall....
+zcmdTr181MtParmAttrSet: obj 104208, 0,0,0,0,0,0 Type attr 0x8
+zcmdTr181MtParmAttrSet: obj 104208, 0,0,0,0,0,0 LevelNumberOfEntries attr 0x8
+zcmdTr181MtParmAttrSet: obj 104208, 0,0,0,0,0,0 ChainNumberOfEntries attr 0x8
+zcmdTr181MtParmAttrSet: obj 94836, 1,0,0,0,0,0 SentOptionNumberOfEntries attr 0x8
+zcmdTr181MtParmAttrSet: obj 94836, 1,0,0,0,0,0 ReqOptionNumberOfEntries attr 0x8
+zcmdTr181MtParmAttrSet: obj 94836, 2,0,0,0,0,0 SentOptionNumberOfEntries attr 0x8
+zcmdTr181MtParmAttrSet: obj 94836, 2,0,0,0,0,0 ReqOptionNumberOfEntries attr 0x8
+Initial betr69....
+Initial beddns....
+Initial betime....
+Initial bediagnostic....
+zcmdTr181MtParmAttrSet: obj 73068, 0,0,0,0,0,0 Timeout attr 0x80
+zcmdTr181MtParmAttrSet: obj 73068, 0,0,0,0,0,0 DataBlockSize attr 0x80
+zcmdTr181MtParmAttrSet: obj 73068, 0,0,0,0,0,0 MaxHopCount attr 0x80
+Initial beschedule....
+Initial beparenCtl....
+[   20.120000] MTPciPollTxRxEmpty
+[   20.740000] AsicSetPreTbtt(): bss_idx=0, PreTBTT timeout = 0x0
+[   20.752000] RTMPSetPiggyBack(924): Not support for HIF_MT yet!
+[   20.768000] RT28xxPciAsicRadioOff(): Not support for HIF_MT yet!
+[   20.780000] RTMPDrvClose call RT28xxPciAsicRadioOff fail !!
+[   20.792000] tx_kickout_fail_count = 0
+[   20.800000] tx_timeout_fail_count = 0
+[   20.808000] rx_receive_fail_count = 0
+[   20.816000] alloc_cmd_msg = 74
+[   20.820000] free_cmd_msg = 74
+[   20.832000] br0: port 2(ra0) entered disabled state
+Initial beqos....
+Initial beqosQueue....
+zcmdTr181MtParmAttrSet: obj 38952, 1,0,0,0,0,0 MACAddress attr 0x8
+/bin/sh: /userfs/bin/ppe: not found
+Initial beqosClass....
+Initial beqosShaper....
+Initial beqosPolicer....
+Initial be6rd....
+Initial beigmp....
+/bin/sh: /userfs/bin/ppe: not found
+/bin/sh: /userfs/bin/hw_nat: not found
+cp: can't stat '/etc/mcpd_igmp.conf': No such file or directory
+beigmp!
+Interface doesn't accept private ioctl...
+set (8BE2): Network is down
+/bin/sh: can't create /proc/zy_igmp_noipsrcaddr_enable: Permission denied
+/bin/sh: /usr/bin/sys: not found
+/bin/sh: /usr/bin/sys: not found
+brctl: bridge br0: Device or resource busy
+brctl: invalid argument 'snoop' to 'brctl'
+/bin/sh: /usr/bin/sys: not found
+/bin/sh: wscd: not found
+/bin/sh: /usr/bin/sys: not found
+/bin/sh: /usr/bin/sys: not found
+/bin/sh: /usr/bin/sys: not found
+Initial besnmp....
+Boot SNMP
+Initial bemld....
+cp: can't stat '/etc/mcpd_mld.conf': No such file or directory
+cat: can't open '/var/run/ecmh.pid': No such file or directory
+sh: you need to specify whom to kill
+brctl: invalid argument 'snoop' to 'brctl'
+Initial bevcAutoHunt....
+Initial bevlanAutoHunt....
+Initial beupnp....
+Initial bemacfilter....
+Initial bemacfilter_whitelist....
+Initial beuserinterface....
+Initial beremoMgmt....
+mount: mounting devpts on /dev/pts failed: Device or resource busy
+Initial bechangehosticon....
+Initial behosts....
+Initial behostshost....
+Initial becert....
+beConfigBootGenCertificate() sysCmd=openssl x509 -subject -in /tmp/genLocalCert.crt -noout > /tmp/subject.tmp 2>/dev/null
+beConfigBootGenCertificate() tmpStr=S200Z34000000, strlen(tmpStr)=13
+beConfigBootGenCertificate() gLocalCertFileName=S200Z34000000.crt
+beConfigBootGenCertificate(): Certificate Import: Unique Local Certificate.
+beCertConfigLoad: Add
+zcmdTr98MtSecurityAdd oid 109788 98iid:1[3,0,0] 181iid:1[3,0,0]
+=====zcmdTr181MtObjAdd=====seqnum=251 oid=109788
+zcmdTr98MappingAdd():11269
+Initial http with port(443), SSL enable.
+Initial http with port(80), SSL disable.
+2020-05-01 00:00:15 zhttpd<1382>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 15 bind server socket 47 on /var/lib/.sock/zcfg_sockaddr15 successfully
+beCertConfigLoad: Set
+restart DNSMASQ...
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 X_ZYXEL_Name attr 0x190
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 X_ZYXEL_Type attr 0x190
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 X_ZYXEL_Certificate attr 0x190
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 X_ZYXEL_PrivateKey attr 0x1190
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 Enable attr 0x90
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 LastModif attr 0x8
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 Issuer attr 0x218
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 NotBefore attr 0x218
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 NotAfter attr 0x218
+zcmdTr181MtParmAttrSet: obj 109788, 3,0,0,0,0,0 Subject attr 0x218
+beTr69ConfigLoad ActiveBoundInterface:
+beTr69ConfigLoad ConnectionRequestURL:
+2020-05-01 00:00:15 dnsmasq<1427>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 23 bind server socket 6 on /var/lib/.sock/zcfg_sockaddr23 successfully
+beDynamicDnsObjSet : Enter
+killall: updatedd: no process killed
+beCertForMqtt() MqttClientObj->X_ZYXEL_Certificate=S200Z34000000.crt, MqttClientObj->X_ZYXEL_CA_Certificate=mqtt-and-acs-ca.pem
+Initial beportmirror....
+Initial bedslite....
+Initial beSTBVendorID....
+Initial berip....
+killall: ripd: no process killed
+Initial betr64....
+Initial besamba....
+Initial bednsentry....
+sh: invalid number '1170
+1429
+1430'
+Initial bemqttentry....
+Initial bezx....
+Initial beTFTPServerName....
+Initial bespeedtest....
+Initial becellintf....
+F:beModuleInit([   22.072000] eth2 ifindex = 0
+256) reg beCellI[   22.080000] eth2 ifindex = 0
+ntfZySccConfigOb[   22.088000] eth3 ifindex = 1
+jectSetting begi[   22.096000] eth3 ifindex = 1
+nF:beModuleInit([   22.104000] wwan0 ifindex = 2
+258) reg beCellI[   22.112000] wwan0 ifindex = 2
+ntfZySccConfigOb[   22.120000] wwan1 ifindex = 3
+jectSetting endb[   22.128000] wwan1 ifindex = 3
+eCellIntfConfigS[   22.140000] wwan2 ifindex = 4
+tatsUpdate()
+[1[   22.148000] wwan2 ifindex = 4
+23] F:beCellIntf[   22.156000] wwan3 ifindex = 5
+ConfigStatsUpdat[   22.164000] wwan3 ifindex = 5
+e, zcfgCommonSendAndGetReplay...
+2020-05-01 00:00:15 zcmd<828>, zcfg_msg.c:419, _msg_send(), ERROR: fail to sendto /var/lib/.sock/zcfg_sockaddr39, errno = 2(No such file or directory), srcEid = 1, dstEid = 39, type = 7001 with reply, oid = 0
+2020-05-01 00:00:15 zcmd<828>, zcfg_msg.c:822, zcfg_msg_sendAndGetReply(), ERROR: fail to send message. ret = -5
+[168] F:beConfigBoot, Insert HWNAT module...
+[173] F:beConfigBoot, Cellular interface enable...
+[182] F:beConfigBoot, NetworkRequested:
+[197] F:beConfigBoot, Boot RDM_OID_CELL after init()
+Initial beremoMgmtPassthru....
+RILCMD: Start /dev/ttyUSB2...
+init_zcfg
+2020-05-01 00:00:16 rilcmd<1479>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 39 bind server socket 6 on /var/lib/.sock/zcfg_sockaddr39 successfully
+++++++++++++++++++++++++++++++++++++++++
+TTY not exist, wait more time for ready.
+++++++++++++++++++++++++++++++++++++++++
+
+onUnsolicited(): ====RDY====
+onUnsolicited(): ====RDY====
+onUnsolicited(): ====RDY====
+onUnsolicited(): ====RDY====
+
+warning! crc error in section Factory: expect 0x6e909c7c, got 0xffffffff!
+Image1 Already Stable
+=== Self-check Start ===
+LAN(br0)           : OK
+Wifi_24G(ra0)         : OK
+LTE(wwan0)            : OK
+LTE_AT(/sys/class/tty/ttyUSB2)  : OK
+<<< ======================= >>>
+<<< Device is ready for use >>>
+<<< ======================= >>>
+InsertWIFIblockrule : to insert rule to block Wifi traffic to wwan interface internet
+[1;34mBack-end module init finished[0m
+zyUtilIGetModelID: Function executed
+/bin/sh: /sbin/zhotplugd: not found
+[1;34mInitial USB driver...[0m
+mount usbfs...
+mount: mounting usbfs on /proc/bus/usb/ failed: No such file or directory
+/bin/sh: /etc/init.d/mcpd.sh: not found
+turn on ztr69
+START enable Lan and Wan...
+zcfgFeTr181SpvHandleRoutInit
+zcfgFeTr181QueryHandleRoutInit
+cwmp_get_acsInfo: reset redirect server
+Set: phy[0].reg[0] = 1040
+2020-05-01 00:00:16 ztr69<1547>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 9 bind server socket 50 on /var/lib/.sock/zcfg_sockaddr9 successfully
+Set: phy[1].reg[0] = 1040
+Set: phy[2].reg[0] = 1040
+Set: phy[3].reg[0] = 1040
+beCellIntfConfigStatsUpdate()
+[123] F:beCellIntfConfigStatsUpdate, zcfgCommonSendAndGetReplay...
+[131] F:beCellIntfConfigStatsUpdate,length = 837
+beCellIntfConfigStatsUpdate()
+[123] F:beCellIntfConfigStatsUpdate, zcfgCommonSendAndGetReplay...
+[131] F:beCellIntfConfigStatsUpdate,length = 837
+beCellIntfConfigStatsUpdate()
+[123] F:beCellIntfConfigStatsUpdate, zcfgCommonSendAndGetReplay...
+[131] F:beCellIntfConfigStatsUpdate,length = 837
+beCellIntfConfigStatsUpdate()
+[123] F:beCellIntfConfigStatsUpdate, zcfgCommonSendAndGetReplay...
+[131] F:beCellIntfConfigStatsUpdate,length = 837
+/bin/sh: zyims.sh: not found
+zcmd.c line 5638, zcmdReqProcess() : get ZCFG_MSG_INIT_DATAMODEL_FIN
+MTKSOC/zcmd_wrapper.c line 2129, zcmdEnableConfigSave() : enable tr98mapTableSaveFlag and configSaveFlag
+zcfg_set_nr_disable: Set CELL_INTF_ZY_NR OK, ret = 0
+quectel_rg500q_init() cell_lock_enable = 0
+quectel_rg500q_init() cell_lock_numbers = 0
+quectel_rg500q_init() Set cell lock info to module
+AT+QNWLOCK="common/4g",0
+[105] DeviceManufacturer: Quectel
+[123] DeviceModelName: RG502Q-EA
+[141] DeviceFirmwareVersion: RG502QEAAAR01A04M4G
+[186] DeviceIMEI: 354351110000000
+[204] SIMCardIMSI: 242013085000000
+[229] SIMCardICCID: 89470000200707000000
+[265] SIMCardMSISDN: 
+[278] Device_Support_Acts: 5G_NSA,LTE,UMTS
+[279] Device_Support_Bands: LTE_BC1,LTE_BC3,LTE_BC5,LTE_BC7,LTE_BC8,LTE_BC18,LTE_BC19,LTE_BC20,LTE_BC26,LTE_BC28,LTE_BC38,LTE_BC39,LTE_BC40,LTE_BC41,LTE_BC42
+check_plmn_length() imsi:242013085000000
+MCC:242	MNC:01	MNC(int):1	plmn:242,1
+reset_profile () clean all the content of profile.
+(quectel_rg500q_init)APN:telenor,7
+(quectel_rg500q_init)USER:,0
+(quectel_rg500q_init)PASSWORD:,0
+(quectel_rg500q_init)CARRIER:TalkMore WAP
+(quectel_rg500q_init)AUTHTYPE:PAP
+(quectel_rg500q_init)PROTOCOL:,0
+(quectel_rg500q_init)ROAMING_PROTOCOL:
+(quectel_rg500q_init)TYPE:"default,supl"
+
+zcfg_set_pin_protect_flag: Set CELL_INTF_USIM  OK, ret = 0
+zcfg_get_profile: Get accessPointIid = 1
+zcfg_get_profile: Get accessPointIid = 2
+beCellIntfConfigStatsUpdate()
+[123] F:beCellIntfConfigStatsUpdate, zcfgCommonSendAndGetReplay...
+[131] F:beCellIntfConfigStatsUpdate,length = 1024
+[1084] sync_band_act_with_RDM for RG500Q
+[1085] _Currentband:Auto
+[1086] _CurrentTech:Auto
+[Query ACT] RG502Q-EA_SelecAccessTechnology: Auto
+input:1:3:5:7:8:18:19:20:26:28:38:39:40:41:42, len:39
+Band:LTE_BC1,LTE_BC3,LTE_BC5,LTE_BC7,LTE_BC8,LTE_BC18,LTE_BC19,LTE_BC20,LTE_BC26,LTE_BC28,LTE_BC38,LTE_BC39,LTE_BC40,LTE_BC41,LTE_BC42
+CurrSelecBands:LTE_BC1,LTE_BC3,LTE_BC5,LTE_BC7,LTE_BC8,LTE_BC18,LTE_BC19,LTE_BC20,LTE_BC26,LTE_BC28,LTE_BC38,LTE_BC39,LTE_BC40,LTE_BC41,LTE_BC42
+[Query BAND] RG502Q-EA_SelecBands: LTE_BC1,LTE_BC3,LTE_BC5,LTE_BC7,LTE_BC8,LTE_BC18,LTE_BC19,LTE_BC20,LTE_BC26,LTE_BC28,LTE_BC38,LTE_BC39,LTE_BC40,LTE_BC41,LTE_BC42
+quectel_rg500q_update() 1087 item_ptr->IPv4_con_state[0]:255
+quectel_rg500q_update() 1088 item_ptr->IPv6_con_state[0]:255
+[05-01_00:01:06:412] ************************* use_quectel_CM_connect *************************
+[05-01_00:01:06:412] *****working_cid:1******
+zcfg_get_profile: Get accessPointIid = 1
+[05-01_00:01:06:413] apn:telenor.fwa
+[05-01_00:01:06:413] pdp_type:IP
+[05-01_00:01:06:413] username:
+[05-01_00:01:06:414] password:
+[05-01_00:01:06:414] auth_type:None
+[05-01_00:01:06:414] pdp_type selected to IPv4 only.
+[05-01_00:01:06:414] auth_type selected to None,0.
+[05-01_00:01:06:414] Quectel_QConnectManager_Linux_V1.5.2
+[05-01_00:01:06:414] profile[1] = telenor.fwa///0, pincode = (null)
+[05-01_00:01:06:415] Find /sys/bus/usb/devices/2-1 idVendor=0x2c7c idProduct=0x800
+[05-01_00:01:06:415] /dev/qcqmi0 access failed, errno: 2 (No such file or directory)
+[05-01_00:01:06:415] Auto find qmichannel = /dev/qcqmi0
+[05-01_00:01:06:415] Auto find usbnet_adapter = usb0
+[05-01_00:01:06:416] Entering ZYXEL_CELLWAN_SUPPORT_MULTI_APN
+[05-01_00:01:06:416] qmap_mode = 8, muxid = 0x81, qmap_netcard = wwan0
+[05-01_00:01:06:416] GobiNetThread_First() begin
+[05-01_00:01:06:416] GobiNetThread_First Create GobiNetThread[0], tid:1982657840
+[05-01_00:01:06:437] Get clientWDS = 53
+[05-01_00:01:06:470] Get clientDMS = 54
+[05-01_00:01:06:502] Get clientNAS = 55
+[05-01_00:01:06:533] Get clientUIM = 56
+[05-01_00:01:06:661] requestGetSIMStatus SIMStatus: SIM_READY
+[05-01_00:01:06:661] requestSetProfile[1] telenor.fwa///0
+[05-01_00:01:06:726] requestGetProfile[1] telenor.fwa///0
+[05-01_00:01:06:726] /////////////////////////////////////////////////////////////////////////
+[05-01_00:01:06:726] profile[1] = telenor.fwa///0, pincode = (null)
+[05-01_00:01:06:726] mode[8] version[0] qmichannel=/dev/qcqmi0, usbnetADP=usb0, qmapnetADP=wwan0
+[05-01_00:01:06:726] /////////////////////////////////////////////////////////////////////////
+[05-01_00:01:06:790] ifconfig wwan0 down
+[05-01_00:01:06:853] IPv4ConnectionStatus:1
+[05-01_00:01:06:853] IPv6ConnectionStatus:1
+[05-01_00:01:06:854] main_first_send_event_to_qmidevice 209 qmidevice_control_fd_first[0]:51
+[05-01_00:01:06:854] main_first_send_event_to_qmidevice 210 qmidevice_control_fd_first[1]:52
+[05-01_00:01:06:854] GobiNetThread_First Close GobiNetThread[0], 1982657840
+[05-01_00:01:06:854] GobiNetDeInit() Close qmiclientId[0][1] 53
+[05-01_00:01:06:886] GobiNetDeInit() Close qmiclientId[0][2] 54
+[05-01_00:01:06:918] GobiNetDeInit() Close qmiclientId[0][3] 55
+[05-01_00:01:06:950] GobiNetDeInit() Close qmiclientId[0][11] 56
+[05-01_00:01:06:982] GobiNetDeInit() Close all the qmiclientIds of idx=0.
+[05-01_00:01:06:982] GobiNetThread_First exit
+[05-01_00:01:07:864] release_all_fd_qmidevice() idx=0 done.
+[05-01_00:01:07:864] Terminate QCM pthreads successfully.
+QCM disconnect to internet.
+quectel_rg500q_update(), quectel_CM() == Success.
+item_ptr->IPv4_con_state[0]:1
+item_ptr->IPv6_con_state[0]:1
+QCM fail to dial set detach...
+quectel_ec25_update_activate() begin
+quectel_ec25_update_activate() this_cid:1 cgact_status[0]:0
+quectel_ec25_update_activate() this_cid:2 cgact_status[1]:0
+quectel_ec25_update_activate() Dynamic_PDN_Size:2
+quectel_ec25_update_activate() cid[1]:0
+quectel_ec25_update_activate() cid[2]:0
+quectel_ec25_update_activate() end
+quectel_rg500q_update() 1087 item_ptr->IPv4_con_state[1]:255
+quectel_rg500q_update() 1088 item_ptr->IPv6_con_state[1]:255
+[05-01_00:01:12:928] ************************* use_quectel_CM_connect *************************
+[05-01_00:01:12:928] *****working_cid:2******
+[05-01_00:01:12:928] Connection 1 was not actived quit QCM.
+quectel_rg500q_update(), quectel_CM() == Success.
+item_ptr->IPv4_con_state[1]:255
+item_ptr->IPv6_con_state[1]:255
+QCM fail to dial set detach...
+quectel_ec25_update_activate() begin
+quectel_ec25_update_activate() this_cid:1 cgact_status[0]:0
+quectel_ec25_update_activate() this_cid:2 cgact_status[1]:0
+quectel_ec25_update_activate() Dynamic_PDN_Size:2
+quectel_ec25_update_activate() cid[1]:0
+quectel_ec25_update_activate() cid[2]:0
+quectel_ec25_update_activate() end
+quectel_rg500q_update() 1087 item_ptr->IPv4_con_state[0]:1
+quectel_rg500q_update() 1088 item_ptr->IPv6_con_state[0]:1
+[05-01_00:02:20:308] ************************* use_quectel_CM_connect *************************
+[05-01_00:02:20:308] *****working_cid:1******
+zcfg_get_profile: Get accessPointIid = 1
+[05-01_00:02:20:309] apn:telenor.fwa
+[05-01_00:02:20:309] pdp_type:IP
+[05-01_00:02:20:309] username:
+[05-01_00:02:20:309] password:
+[05-01_00:02:20:309] auth_type:None
+[05-01_00:02:20:310] pdp_type selected to IPv4 only.
+[05-01_00:02:20:310] auth_type selected to None,0.
+[05-01_00:02:20:310] Quectel_QConnectManager_Linux_V1.5.2
+[05-01_00:02:20:310] profile[1] = telenor.fwa///0, pincode = (null)
+[05-01_00:02:20:310] Find /sys/bus/usb/devices/2-1 idVendor=0x2c7c idProduct=0x800
+[05-01_00:02:20:311] Auto find qmichannel = /dev/qcqmi0
+[05-01_00:02:20:311] Auto find usbnet_adapter = usb0
+[05-01_00:02:20:311] Entering ZYXEL_CELLWAN_SUPPORT_MULTI_APN
+[05-01_00:02:20:311] qmap_mode = 8, muxid = 0x81, qmap_netcard = wwan0
+[05-01_00:02:20:311] GobiNetThread_First() begin
+[05-01_00:02:20:311] GobiNetThread_First Create GobiNetThread[0], tid:1982657840
+[05-01_00:02:20:326] Get clientWDS = 53
+[05-01_00:02:20:358] Get clientDMS = 54
+[05-01_00:02:20:390] Get clientNAS = 55
+[05-01_00:02:20:421] Get clientUIM = 56
+[05-01_00:02:20:550] requestGetSIMStatus SIMStatus: SIM_READY
+[05-01_00:02:20:550] requestSetProfile[1] telenor.fwa///0
+[05-01_00:02:20:613] requestGetProfile[1] telenor.fwa///0
+[05-01_00:02:20:613] /////////////////////////////////////////////////////////////////////////
+[05-01_00:02:20:613] profile[1] = telenor.fwa///0, pincode = (null)
+[05-01_00:02:20:613] mode[8] version[0] qmichannel=/dev/qcqmi0, usbnetADP=usb0, qmapnetADP=wwan0
+[05-01_00:02:20:613] /////////////////////////////////////////////////////////////////////////
+[05-01_00:02:20:742] IPv4ConnectionStatus:1
+[05-01_00:02:20:742] IPv6ConnectionStatus:1
+[05-01_00:02:20:742] main_first_send_event_to_qmidevice 209 qmidevice_control_fd_first[0]:51
+[05-01_00:02:20:742] main_first_send_event_to_qmidevice 210 qmidevice_control_fd_first[1]:52
+[05-01_00:02:20:742] GobiNetThread_First Close GobiNetThread[0], 1982657840
+[05-01_00:02:20:742] GobiNetDeInit() Close qmiclientId[0][1] 53
+[05-01_00:02:20:774] GobiNetDeInit() Close qmiclientId[0][2] 54
+[05-01_00:02:20:806] GobiNetDeInit() Close qmiclientId[0][3] 55
+[05-01_00:02:20:838] GobiNetDeInit() Close qmiclientId[0][11] 56
+[05-01_00:02:20:870] GobiNetDeInit() Close all the qmiclientIds of idx=0.
+[05-01_00:02:20:870] GobiNetThread_First exit
+[05-01_00:02:21:752] release_all_fd_qmidevice() idx=0 done.
+[05-01_00:02:21:752] Terminate QCM pthreads successfully.
+QCM disconnect to internet.
+quectel_rg500q_update(), quectel_CM() == Success.
+item_ptr->IPv4_con_state[0]:1
+item_ptr->IPv6_con_state[0]:1
+QCM fail to dial set detach...
+quectel_ec25_update_activate() begin
+quectel_ec25_update_activate() this_cid:1 cgact_status[0]:0
+quectel_ec25_update_activate() this_cid:2 cgact_status[1]:0
+quectel_ec25_update_activate() Dynamic_PDN_Size:2
+quectel_ec25_update_activate() cid[1]:0
+quectel_ec25_update_activate() cid[2]:0
+quectel_ec25_update_activate() end
+quectel_rg500q_update() 1087 item_ptr->IPv4_con_state[1]:255
+quectel_rg500q_update() 1088 item_ptr->IPv6_con_state[1]:255
+[05-01_00:02:26:816] ************************* use_quectel_CM_connect *************************
+[05-01_00:02:26:816] *****working_cid:2******
+[05-01_00:02:26:816] Connection 1 was not actived quit QCM.
+quectel_rg500q_update(), quectel_CM() == Success.
+item_ptr->IPv4_con_state[1]:255
+item_ptr->IPv6_con_state[1]:255
+QCM fail to dial set detach...
+quectel_ec25_update_activate() begin
+quectel_ec25_update_activate() this_cid:1 cgact_status[0]:0
+quectel_ec25_update_activate() this_cid:2 cgact_status[1]:0
+quectel_ec25_update_activate() Dynamic_PDN_Size:2
+quectel_ec25_update_activate() cid[1]:0
+quectel_ec25_update_activate() cid[2]:0
+quectel_ec25_update_activate() end
+Device status: CREG_NOT_REG_NOT_SEARCH
+zcfg_set_nr_disable: Set CELL_INTF_ZY_NR OK, ret = 0
+[05-01_00:04:01:736] main_first_send_event_to_qmidevice 209 qmidevice_control_fd_first[0]:51
+[05-01_00:04:01:736] main_first_send_event_to_qmidevice 210 qmidevice_control_fd_first[1]:52
+[05-01_00:04:02:744] release_all_fd_qmidevice() idx=0 done.
+[05-01_00:04:02:744] main_send_event_to_qmidevice 198 qmidevice_control_fd[0]:0
+[05-01_00:04:02:744] main_send_event_to_qmidevice 199 qmidevice_control_fd[1]:0
+[05-01_00:04:02:744] main_send_event_to_qmidevice 202 thread no need to QUIT
+[05-01_00:04:03:752] release_all_fd_qmidevice 249 fd no need to close.
+beCellIntfConfigStatsUpdate()
+[123] F:beCellIntfConfigStatsUpdate, zcfgCommonSendAndGetReplay...
+[131] F:beCellIntfConfigStatsUpdate,length = 1017
+beCellIntfConfigStatsUpdate()
+[123] F:beCellIntfConfigStatsUpdate, zcfgCommonSendAndGetReplay...
+[131] F:beCellIntfConfigStatsUpdate,length = 1017
+zcfg_set_nr_disable: Set CELL_INTF_ZY_NR OK, ret = 0
+quectel_rg500q_init() cell_lock_enable = 0
+quectel_rg500q_init() cell_lock_numbers = 0
+quectel_rg500q_init() Set cell lock info to module
+[105] DeviceManufacturer: Quectel
+[123] DeviceModelName: RG502Q-EA
+[141] DeviceFirmwareVersion: RG502QEAAAR01A04M4G
+[186] DeviceIMEI: 354351110000000
+[204] SIMCardIMSI: 242013085000000
+[229] SIMCardICCID: 89470000200707000000
+[265] SIMCardMSISDN: 
+[278] Device_Support_Acts: 5G_NSA,LTE,UMTS
+[279] Device_Support_Bands: LTE_BC1,LTE_BC3,LTE_BC5,LTE_BC7,LTE_BC8,LTE_BC18,LTE_BC19,LTE_BC20,LTE_BC26,LTE_BC28,LTE_BC38,LTE_BC39,LTE_BC40,LTE_BC41,LTE_BC42
+check_plmn_length() imsi:242013085000000
+MCC:242	MNC:01	MNC(int):1	plmn:242,1
+reset_profile () clean all the content of profile.
+(quectel_rg500q_init)APN:telenor,7
+(quectel_rg500q_init)USER:,0
+(quectel_rg500q_init)PASSWORD:,0
+(quectel_rg500q_init)CARRIER:TalkMore WAP
+(quectel_rg500q_init)AUTHTYPE:PAP
+(quectel_rg500q_init)PROTOCOL:,0
+(quectel_rg500q_init)ROAMING_PROTOCOL:
+(quectel_rg500q_init)TYPE:"default,supl"
+
+zcfg_set_pin_protect_flag: Set CELL_INTF_USIM  OK, ret = 0
+zcfg_get_profile: Get accessPointIid = 1
+zcfg_get_profile: Get accessPointIid = 2
+beCellIntfConfigStatsUpdate()
+[123] F:beCellIntfConfigStatsUpdate, zcfgCommonSendAndGetReplay...
+[131] F:beCellIntfConfigStatsUpdate,length = 1024
+[1084] sync_band_act_with_RDM for RG500Q
+[1085] _Currentband:Auto
+[1086] _CurrentTech:Auto
+[Query ACT] RG502Q-EA_SelecAccessTechnology: Auto
+input:1:3:5:7:8:18:19:20:26:28:38:39:40:41:42, len:39
+Band:LTE_BC1,LTE_BC3,LTE_BC5,LTE_BC7,LTE_BC8,LTE_BC18,LTE_BC19,LTE_BC20,LTE_BC26,LTE_BC28,LTE_BC38,LTE_BC39,LTE_BC40,LTE_BC41,LTE_BC42
+CurrSelecBands:LTE_BC1,LTE_BC3,LTE_BC5,LTE_BC7,LTE_BC8,LTE_BC18,LTE_BC19,LTE_BC20,LTE_BC26,LTE_BC28,LTE_BC38,LTE_BC39,LTE_BC40,LTE_BC41,LTE_BC42
+[Query BAND] RG502Q-EA_SelecBands: LTE_BC1,LTE_BC3,LTE_BC5,LTE_BC7,LTE_BC8,LTE_BC18,LTE_BC19,LTE_BC20,LTE_BC26,LTE_BC28,LTE_BC38,LTE_BC39,LTE_BC40,LTE_BC41,LTE_BC42
+quectel_rg500q_update() 1087 item_ptr->IPv4_con_state[0]:255
+quectel_rg500q_update() 1088 item_ptr->IPv6_con_state[0]:255
+[05-01_00:04:44:240] ************************* use_quectel_CM_connect *************************
+[05-01_00:04:44:240] *****working_cid:1******
+zcfg_get_profile: Get accessPointIid = 1
+[05-01_00:04:44:241] apn:telenor.fwa
+[05-01_00:04:44:241] pdp_type:IP
+[05-01_00:04:44:241] username:
+[05-01_00:04:44:241] password:
+[05-01_00:04:44:242] auth_type:None
+[05-01_00:04:44:242] pdp_type selected to IPv4 only.
+[05-01_00:04:44:242] auth_type selected to None,0.
+[05-01_00:04:44:242] Quectel_QConnectManager_Linux_V1.5.2
+[05-01_00:04:44:242] profile[1] = telenor.fwa///0, pincode = (null)
+[05-01_00:04:44:242] Find /sys/bus/usb/devices/2-1 idVendor=0x2c7c idProduct=0x800
+[05-01_00:04:44:243] Auto find qmichannel = /dev/qcqmi0
+[05-01_00:04:44:243] Auto find usbnet_adapter = usb0
+[05-01_00:04:44:243] Entering ZYXEL_CELLWAN_SUPPORT_MULTI_APN
+[05-01_00:04:44:243] qmap_mode = 8, muxid = 0x81, qmap_netcard = wwan0
+[05-01_00:04:44:243] GobiNetThread_First() begin
+[05-01_00:04:44:243] GobiNetThread_First Create GobiNetThread[0], tid:1982657840
+[05-01_00:04:44:262] Get clientWDS = 53
+[05-01_00:04:44:294] Get clientDMS = 54
+[05-01_00:04:44:326] Get clientNAS = 55
+[05-01_00:04:44:357] Get clientUIM = 56
+[05-01_00:04:44:486] requestGetSIMStatus SIMStatus: SIM_READY
+[05-01_00:04:44:486] requestSetProfile[1] telenor.fwa///0
+[05-01_00:04:44:550] requestGetProfile[1] telenor.fwa///0
+[05-01_00:04:44:550] /////////////////////////////////////////////////////////////////////////
+[05-01_00:04:44:550] profile[1] = telenor.fwa///0, pincode = (null)
+[05-01_00:04:44:550] mode[8] version[0] qmichannel=/dev/qcqmi0, usbnetADP=usb0, qmapnetADP=wwan0
+[05-01_00:04:44:550] /////////////////////////////////////////////////////////////////////////
+[05-01_00:04:44:677] IPv4ConnectionStatus:1
+[05-01_00:04:44:677] IPv6ConnectionStatus:1
+[05-01_00:04:44:677] main_first_send_event_to_qmidevice 209 qmidevice_control_fd_first[0]:51
+[05-01_00:04:44:677] main_first_send_event_to_qmidevice 210 qmidevice_control_fd_first[1]:52
+[05-01_00:04:44:678] GobiNetThread_First Close GobiNetThread[0], 1982657840
+[05-01_00:04:44:678] GobiNetDeInit() Close qmiclientId[0][1] 53
+[05-01_00:04:44:709] GobiNetDeInit() Close qmiclientId[0][2] 54
+[05-01_00:04:44:742] GobiNetDeInit() Close qmiclientId[0][3] 55
+[05-01_00:04:44:774] GobiNetDeInit() Close qmiclientId[0][11] 56
+[05-01_00:04:44:806] GobiNetDeInit() Close all the qmiclientIds of idx=0.
+[05-01_00:04:44:806] GobiNetThread_First exit
+[05-01_00:04:45:688] release_all_fd_qmidevice() idx=0 done.
+[05-01_00:04:45:688] Terminate QCM pthreads successfully.
+QCM disconnect to internet.
+quectel_rg500q_update(), quectel_CM() == Success.
+item_ptr->IPv4_con_state[0]:1
+item_ptr->IPv6_con_state[0]:1
+QCM fail to dial set detach...
+quectel_ec25_update_activate() begin
+quectel_ec25_update_activate() this_cid:1 cgact_status[0]:0
+quectel_ec25_update_activate() this_cid:2 cgact_status[1]:0
+quectel_ec25_update_activate() Dynamic_PDN_Size:2
+quectel_ec25_update_activate() cid[1]:0
+quectel_ec25_update_activate() cid[2]:0
+quectel_ec25_update_activate() end
+quectel_rg500q_update() 1087 item_ptr->IPv4_con_state[1]:255
+quectel_rg500q_update() 1088 item_ptr->IPv6_con_state[1]:255
+[05-01_00:04:50:745] ************************* use_quectel_CM_connect *************************
+[05-01_00:04:50:745] *****working_cid:2******
+[05-01_00:04:50:745] Connection 1 was not actived quit QCM.
+quectel_rg500q_update(), quectel_CM() == Success.
+item_ptr->IPv4_con_state[1]:255
+item_ptr->IPv6_con_state[1]:255
+QCM fail to dial set detach...
+quectel_ec25_update_activate() begin
+quectel_ec25_update_activate() this_cid:1 cgact_status[0]:0
+quectel_ec25_update_activate() this_cid:2 cgact_status[1]:0
+quectel_ec25_update_activate() Dynamic_PDN_Size:2
+quectel_ec25_update_activate() cid[1]:0
+quectel_ec25_update_activate() cid[2]:0
+quectel_ec25_update_activate() end
+Device status: CREG_REGISTERED_DENIED
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>===================================================================
+     		MT7621   stage1 code 10:33:11 (ASIC)
+     		CPU=50000000 HZ BUS=16666666 HZ
+==================================================================
+Change MPLL source from XTAL to CR...
+do MEMPLL setting..
+MEMPLL Config : 0x11100000
+3PLL mode + External loopback
+=== XTAL-40Mhz === DDR-1200Mhz ===
+PLL2 FB_DL: 0x10, 1/0 = 595/429 41000000
+PLL4 FB_DL: 0x15, 1/0 = 549/475 55000000
+PLL3 FB_DL: 0x18, 1/0 = 708/316 61000000
+do DDR setting..[00320381]
+Apply DDR3 Setting...(use customer AC)
+          0    8   16   24   32   40   48   56   64   72   80   88   96  104  112  120
+      --------------------------------------------------------------------------------
+0000:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0001:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0002:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0003:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0004:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0005:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0006:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0007:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0008:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0009:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    1    1
+000E:|    0    0    0    0    0    0    0    0    1    1    1    1    1    1    1    1
+000F:|    0    0    0    1    1    1    1    1    1    1    1    1    1    0    0    0
+0010:|    1    1    1    1    1    1    1    1    0    0    0    0    0    0    0    0
+0011:|    1    1    1    0    0    0    0    0    0    0    0    0    0    0    0    0
+0012:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0013:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0014:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0015:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0016:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0017:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0018:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0019:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001E:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001F:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+rank 0 coarse = 15
+rank 0 fine = 64
+B:|    0    0    0    0    0    0    0    0    1    1    1    0    0    0    0    0
+opt_dle value:9
+DRAMC_R0DELDLY[018]=00001E20
+==================================================================
+		RX	DQS perbit delay software calibration 
+==================================================================
+1.0-15 bit dq delay value
+==================================================================
+bit|     0  1  2  3  4  5  6  7  8  9
+--------------------------------------
+0 |    12 10 11 14 11 12 13 9 7 7 
+10 |    10 10 11 9 8 9 
+--------------------------------------
+
+==================================================================
+2.dqs window
+x=pass dqs delay value (min~max)center 
+y=0-7bit DQ of every group
+input delay:DQS0 =32 DQS1 = 30
+==================================================================
+bit	DQS0	 bit      DQS1
+0  (1~58)29  8  (1~56)28
+1  (1~60)30  9  (1~58)29
+2  (1~58)29  10  (1~59)30
+3  (2~60)31  11  (1~58)29
+4  (1~60)30  12  (1~60)30
+5  (2~62)32  13  (1~58)29
+6  (2~60)31  14  (1~60)30
+7  (1~58)29  15  (1~58)29
+==================================================================
+3.dq delay value last
+==================================================================
+bit|    0  1  2  3  4  5  6  7  8   9
+--------------------------------------
+0 |    15 12 14 15 13 12 14 12 9 8 
+10 |    10 11 11 10 8 10 
+==================================================================
+==================================================================
+     TX  perbyte calibration 
+==================================================================
+DQS loop = 15, cmp_err_1 = ffff0000 
+dqs_perbyte_dly.last_dqsdly_pass[0]=15,  finish count=1 
+dqs_perbyte_dly.last_dqsdly_pass[1]=15,  finish count=2 
+DQ loop=15, cmp_err_1 = ffff0180
+DQ loop=14, cmp_err_1 = ffff0000
+dqs_perbyte_dly.last_dqdly_pass[0]=14,  finish count=1 
+dqs_perbyte_dly.last_dqdly_pass[1]=14,  finish count=2 
+byte:0, (DQS,DQ)=(8,8)
+byte:1, (DQS,DQ)=(8,8)
+20,data:88
+[EMI] DRAMC calibration passed
+
+===================================================================
+     		MT7621   stage1 code done 
+     		CPU=50000000 HZ BUS=16666666 HZ
+===================================================================
+
+
+U-Boot 1.1.3 (Jun  3 2020 - 08:39:27)
+
+Board: Ralink APSoC DRAM:  256 MB
+relocate_code Pointer at: 8ff94000
+
+Config XHCI 40M PLL 
+******************************
+Software System Reset Occurred
+******************************
+Allocate 16 byte aligned buffer: 8ffcb190
+Enable NFI Clock
+# MTK NAND # : Use HW ECC
+NAND ID [C2 F1 80 95 02]
+Device found in MTK table, ID: c2f1, EXT_ID: 809502
+Support this Device in MTK table! c2f1 
+select_chip
+[NAND]select ecc bit:4, sparesize :64 spare_per_sector=16
+Signature matched and data read!
+load_fact_bbt success 1023
+load fact bbt success
+[mtk_nand] probe successfully!
+mtd->writesize=2048 mtd->oobsize=64,	mtd->erasesize=131072  devinfo.iowidth=8
+..============================================ 
+Ralink UBoot Version: 5.0.0.0
+-------------------------------------------- 
+ASIC MT7621A DualCore (MAC to MT7530 Mode)
+DRAM_CONF_FROM: Auto-Detection 
+DRAM_TYPE: DDR3 
+DRAM bus: 16 bit
+Xtal Mode=5 OCP Ratio=1/3
+Flash component: 128 MBytes NOR Flash with NAND boot partition size
+Date:Jun  3 2020  Time:08:39:27
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:256, ways:4, linesz:32 ,total:32768 
+
+ ##### The CPU freq = 880 MHZ #### 
+ estimate memory size =256 Mbytes
+#Reset_MT7530
+.## Starting application at 0x8402A800 ...
+
+
+Z-LOADER V1.30 | 06/03/2020 08:39:30
+
+
+Hit ESC key to stop autoboot:   1
+
+ NetLoop,call eth_halt ! 
+
+ NetLoop,call eth_init ! 
+Trying Eth0 (10/100-M)
+
+ Waitting for RX_DMA_BUSY status Start... done
+
+
+ ETH_STATE_ACTIVE!! 
+Multiboot Listening...
+ 6 5 4 3 2 1 0
+## Booting image at bc14017c ...
+   Image Name:   MIPS OpenWrt Linux-5.10.31
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    2620286 Bytes =  2.5 MB
+   Load Address: 80001000
+   Entry Point:  80001000
+........................................   Verifying RAS Image Checksum ... OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 80001000) ...
+## Giving linux memsize in MB, 256
+
+Starting kernel ...
+
+[    0.000000] Linux version 5.10.31 (bjorn@canardo) (mipsel-openwrt-linux-musl-gcc (OpenWrt GCC 10.3.0 r16534+7-41948c9c1b80) 10.3.0, GNU ld (GNU Binutils) 2.35.1) #0 SMP Mon Apr 19 11:07:34 2021
+[    0.000000] SoC Type: MediaTek MT7621 ver:1 eco:3
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] MIPS: machine is ZyXEL NR7101
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] VPE topology {2,2} total 4
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000]   HighMem  empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] percpu: Embedded 15 pages/cpu s30544 r8192 d22704 u61440
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 64960
+[    0.000000] Kernel command line: console=ttyS0,57600 rootfstype=squashfs,jffs2
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Writing ErrCtl register=0007c0a0
+[    0.000000] Readback ErrCtl register=0007c0a0
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 249496K/262144K available (6353K kernel code, 619K rwdata, 1324K rodata, 1292K init, 235K bss, 12648K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] 	Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[    0.000000] NR_IRQS: 256
+[    0.000000] random: get_random_bytes called from start_kernel+0x3d0/0x5e8 with crng_init=0
+[    0.000000] CPU Clock: 880MHz
+[    0.000000] clocksource: GIC: mask: 0xffffffffffffffff max_cycles: 0xcaf478abb4, max_idle_ns: 440795247997 ns
+[    0.000012] sched_clock: 64 bits at 880MHz, resolution 1ns, wraps every 4398046511103ns
+[    0.015849] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 4343773742 ns
+[    0.033716] Calibrating delay loop... 583.68 BogoMIPS (lpj=1167360)
+[    0.074066] pid_max: default: 32768 minimum: 301
+[    0.083407] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.097814] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.115825] rcu: Hierarchical SRCU implementation.
+[    0.125597] dyndbg: Ignore empty _ddebug table in a CONFIG_DYNAMIC_DEBUG_CORE build
+[    0.141079] smp: Bringing up secondary CPUs ...
+[    0.150706] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.150716] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.150729] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.150809] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.178255] Synchronize counters for CPU 1: done.
+[    0.240389] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.240397] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.240405] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.240455] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.273323] Synchronize counters for CPU 2: done.
+[    0.333560] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.333568] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.333576] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.333631] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.360910] Synchronize counters for CPU 3: done.
+[    0.420523] smp: Brought up 1 node, 4 CPUs
+[    0.432758] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.452077] futex hash table entries: 1024 (order: 3, 32768 bytes, linear)
+[    0.465911] pinctrl core: initialized pinctrl subsystem
+[    0.478018] NET: Registered protocol family 16
+[    0.488763] cpuidle: using governor teo
+[    0.516577] random: fast init done
+[    0.538729] clocksource: Switched to clocksource GIC
+[    0.550590] NET: Registered protocol family 2
+[    0.560000] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
+[    0.576596] TCP established hash table entries: 2048 (order: 1, 8192 bytes, linear)
+[    0.591749] TCP bind hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.605920] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.618641] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.631546] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.645616] NET: Registered protocol family 1
+[    0.654190] PCI: CLS 0 bytes, default 32
+[    0.664541] workingset: timestamp_bits=14 max_order=16 bucket_order=2
+[    0.681468] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.692956] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.714190] gpio-484 (lte-pwrkey): hogged as output/high
+[    0.724771] gpio-498 (lte-power): hogged as output/high
+[    0.735315] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.746649] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.757974] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.769980] Serial: 8250/16550 driver, 3 ports, IRQ sharing disabled
+[    0.784164] printk: console [ttyS0] disabled
+[    0.792647] 1e000c00.uartlite: ttyS0 at MMIO 0x1e000c00 (irq = 19, base_baud = 3125000) is a 16550A
+[    0.810564] printk: console [ttyS0] enabled
+[    0.810564] printk: console [ttyS0] enabled
+[    0.827126] printk: bootconsole [early0] disabled
+[    0.827126] printk: bootconsole [early0] disabled
+[    0.848173] mt7621-nand 1e003000.nand: Using programmed access timing: 31c07388
+[    0.863070] nand: device found, Manufacturer ID: 0xc2, Chip ID: 0xf1
+[    0.875730] nand: Macronix MX30LF1G18AC
+[    0.883371] nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+[    0.898456] mt7621-nand 1e003000.nand: ECC strength adjusted to 4 bits
+[    0.911526] mt7621-nand 1e003000.nand: Using programmed access timing: 21005134
+[    0.926088] mt7621-nand 1e003000.nand: Using programmed access timing: 21005134
+[    0.940660] Scanning device for bad blocks
+[    0.992417] Bad eraseblock 34 at 0x000000440000
+[    2.251755] 10 fixed-partitions partitions found on MTD device mt7621-nand
+[    2.265453] Creating 10 MTD partitions on "mt7621-nand":
+[    2.276049] 0x000000000000-0x000000080000 : "Bootloader"
+[    2.287488] 0x000000080000-0x000000100000 : "Config"
+[    2.298206] 0x000000100000-0x000000140000 : "Factory"
+[    2.308982] 0x000000140000-0x000002000000 : "Kernel"
+[    2.319798] 0x000000540000-0x000002000000 : "ubi"
+[    2.330266] 0x000002140000-0x000004000000 : "Kernel2"
+[    2.341260] 0x000004000000-0x000004100000 : "wwan"
+[    2.351524] 0x000004100000-0x000005100000 : "data"
+[    2.361914] 0x000005100000-0x000005200000 : "rom-d"
+[    2.372332] 0x000005200000-0x000005280000 : "reserve"
+[    2.391111] libphy: Fixed MDIO Bus: probed
+[    2.425619] libphy: mdio: probed
+[    2.432462] mt7530 mdio-bus:1f: MT7530 adapts as multi-chip module
+[    2.448580] mtk_soc_eth 1e100000.ethernet eth0: mediatek frame engine at 0xbe100000, irq 21
+[    2.468449] mt7621-pci 1e140000.pcie: host bridge /pcie@1e140000 ranges:
+[    2.481881] mt7621-pci 1e140000.pcie:      MEM 0x0060000000..0x006fffffff -> 0x0000000000
+[    2.498186] mt7621-pci 1e140000.pcie:       IO 0x001e160000..0x001e16ffff -> 0x0000000000
+[    2.514576] mt7621-pci 1e140000.pcie: Parsing DT failed
+[    2.527329] NET: Registered protocol family 10
+[    2.537623] Segment Routing with IPv6
+[    2.545068] NET: Registered protocol family 17
+[    2.554367] 8021q: 802.1Q VLAN Support v1.8
+[    2.564644] mt7530 mdio-bus:1f: MT7530 adapts as multi-chip module
+[    2.588303] libphy: dsa slave smi: probed
+[    2.597079] mt7530 mdio-bus:1f lan (uninitialized): PHY [dsa-0.0:02] driver [Generic PHY] (irq=POLL)
+[    2.617594] mt7530 mdio-bus:1f: configuring for fixed/rgmii link mode
+[    2.635402] DSA: tree 0 setup
+[    2.641658] rt2880-pinmux pinctrl: pcie is already enabled
+[    2.652614] mt7621-pci 1e140000.pcie: Error applying setting, reverse things back
+[    2.667605] mt7621-pci 1e140000.pcie: host bridge /pcie@1e140000 ranges:
+[    2.680993] mt7621-pci 1e140000.pcie:      MEM 0x0060000000..0x006fffffff -> 0x0000000000
+[    2.697298] mt7621-pci 1e140000.pcie:       IO 0x001e160000..0x001e16ffff -> 0x0000000000
+[    2.713694] mt7621-pci-phy 1e149000.pcie-phy: PHY for 0xbe149000 (dual port = 1)
+[    2.728800] mt7621-pci-phy 1e14a000.pcie-phy: PHY for 0xbe14a000 (dual port = 0)
+[    2.844307] mt7621-pci-phy 1e149000.pcie-phy: Xtal is 40MHz
+[    2.855439] mt7621-pci-phy 1e14a000.pcie-phy: Xtal is 40MHz
+[    2.966993] mt7621-pci 1e140000.pcie: pcie1 no card, disable it (RST & CLK)
+[    2.980859] mt7621-pci 1e140000.pcie: pcie2 no card, disable it (RST & CLK)
+[    2.994731] mt7621-pci 1e140000.pcie: PCIE0 enabled
+[    3.004448] mt7621-pci 1e140000.pcie: PCI coherence region base: 0x60000000, mask/settings: 0xf0000002
+[    3.023153] mt7621-pci 1e140000.pcie: PCI host bridge to bus 0000:00
+[    3.035835] pci_bus 0000:00: root bus resource [io  0x1e160000-0x1e16ffff]
+[    3.049535] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff]
+[    3.063244] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    3.074174] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff] (bus address [0x00000000-0x0fffffff])
+[    3.094505] pci 0000:00:00.0: [0e8d:0801] type 01 class 0x060400
+[    3.106494] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    3.118993] pci 0000:00:00.0: reg 0x14: [mem 0x60200000-0x6020ffff]
+[    3.131543] pci 0000:00:00.0: supports D1
+[    3.139531] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    3.152598] pci 0000:01:00.0: [14c3:7603] type 00 class 0x028000
+[    3.164626] pci 0000:01:00.0: reg 0x10: initial BAR value 0x00000000 invalid
+[    3.178689] pci 0000:01:00.0: reg 0x10: [mem size 0x00100000]
+[    3.190269] pci 0000:01:00.0: PME# supported from D0 D3hot D3cold
+[    3.203776] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[    3.214219] pci 0000:00:00.0:   bridge window [io  0x0000-0x0fff]
+[    3.226366] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    3.239895] pci 0000:00:00.0:   bridge window [mem 0x60100000-0x601fffff pref]
+[    3.254288] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    3.267510] pci 0000:00:00.0: BAR 0: no space for [mem size 0x80000000]
+[    3.280695] pci 0000:00:00.0: BAR 0: failed to assign [mem size 0x80000000]
+[    3.294568] pci 0000:00:00.0: BAR 8: assigned [mem 0x60000000-0x600fffff]
+[    3.308100] pci 0000:00:00.0: BAR 9: assigned [mem 0x60100000-0x601fffff pref]
+[    3.322491] pci 0000:00:00.0: BAR 1: assigned [mem 0x60200000-0x6020ffff]
+[    3.336026] pci 0000:00:00.0: BAR 7: assigned [io  0x1e160000-0x1e160fff]
+[    3.349564] pci 0000:01:00.0: BAR 0: assigned [mem 0x60000000-0x600fffff]
+[    3.363098] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    3.372985] pci 0000:00:00.0:   bridge window [io  0x1e160000-0x1e160fff]
+[    3.386507] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    3.400035] pci 0000:00:00.0:   bridge window [mem 0x60100000-0x601fffff pref]
+[    3.414440] pci 0000:00:00.0: Max Payload Size set to  128/ 128 (was  128), Max Read Rq  128
+[    3.431271] pci 0000:01:00.0: Max Payload Size set to  128/ 128 (was  128), Max Read Rq  128
+[    3.450413] UBI: auto-attach mtd4
+[    3.457096] ubi0: attaching mtd4
+[    3.463912] mt7530 mdio-bus:1f: Link is Up - 1Gbps/Full - flow control off
+[    3.735457] ubi0: scanning is finished
+[    3.759300] ubi0: attached mtd4 (name "ubi", size 26 MiB)
+[    3.770097] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    3.783799] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    3.797324] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    3.811198] ubi0: good PEBs: 214, bad PEBs: 0, corrupted PEBs: 0
+[    3.823173] ubi0: user volume: 2, internal volumes: 1, max. volumes count: 128
+[    3.837565] ubi0: max/mean erase counter: 1/0, WL threshold: 4096, image sequence number: 1772254549
+[    3.855761] ubi0: available PEBs: 0, total reserved PEBs: 214, PEBs reserved for bad PEB handling: 20
+[    3.874157] ubi0: background thread "ubi_bgt0d" started, PID 377
+[    3.876557] block ubiblock0_0: created from ubi0:0(rootfs)
+[    3.897163] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[    3.918371] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    3.936897] Freeing unused kernel memory: 1292K
+[    3.945950] This architecture does not have kernel memory protection.
+[    3.958798] Run /sbin/init as init process
+[    4.503873] init: Console is alive
+[    4.510933] init: - watchdog -
+[    5.365364] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    5.467428] usbcore: registered new interface driver usbfs
+[    5.478541] usbcore: registered new interface driver hub
+[    5.489324] usbcore: registered new device driver usb
+[    5.509967] xhci-mtk 1e1c0000.xhci: supply vbus not found, using dummy regulator
+[    5.525020] xhci-mtk 1e1c0000.xhci: supply vusb33 not found, using dummy regulator
+[    5.540401] xhci-mtk 1e1c0000.xhci: xHCI Host Controller
+[    5.551054] xhci-mtk 1e1c0000.xhci: new USB bus registered, assigned bus number 1
+[    5.574884] xhci-mtk 1e1c0000.xhci: hcc params 0x01401198 hci version 0x96 quirks 0x0000000000290010
+[    5.593196] xhci-mtk 1e1c0000.xhci: irq 20, io mem 0x1e1c0000
+[    5.605814] hub 1-0:1.0: USB hub found
+[    5.613485] hub 1-0:1.0: 2 ports detected
+[    5.622101] xhci-mtk 1e1c0000.xhci: xHCI Host Controller
+[    5.632791] xhci-mtk 1e1c0000.xhci: new USB bus registered, assigned bus number 2
+[    5.647759] xhci-mtk 1e1c0000.xhci: Host supports USB 3.0 SuperSpeed
+[    5.660594] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    5.677570] hub 2-0:1.0: USB hub found
+[    5.685173] hub 2-0:1.0: 1 port detected
+[    5.699196] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    5.727064] init: - preinit -
+[    6.463630] mtk_soc_eth 1e100000.ethernet eth0: configuring for fixed/rgmii link mode
+[    6.479715] mtk_soc_eth 1e100000.ethernet eth0: Link is Up - 1Gbps/Full - flow control rx/tx
+[    6.496693] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    6.649002] random: jshn: uninitialized urandom read (4 bytes read)
+[    6.719190] random: jshn: uninitialized urandom read (4 bytes read)
+[    6.759239] random: jshn: uninitialized urandom read (4 bytes read)
+[    6.987403] mt7530 mdio-bus:1f lan: configuring for phy/gmii link mode
+[    7.000837] 8021q: adding VLAN 0 to HW filter on device lan
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   11.115366] mt7530 mdio-bus:1f lan: Link is Up - 1Gbps/Full - flow control off
+[   11.129917] IPv6: ADDRCONF(NETDEV_CHANGE): lan: link becomes ready
+[   11.198925] usb 2-1: new SuperSpeed Gen 1 USB device number 2 using xhci-mtk
+[   11.220893] UBIFS (ubi0:1): Mounting in unauthenticated mode
+[   11.232578] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 513
+[   11.316355] UBIFS (ubi0:1): recovery needed
+[   11.509302] UBIFS (ubi0:1): recovery completed
+[   11.518356] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[   11.533961] UBIFS (ubi0:1): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   11.553714] UBIFS (ubi0:1): FS size: 18411520 bytes (17 MiB, 145 LEBs), journal size 1015809 bytes (0 MiB, 7 LEBs)
+[   11.574336] UBIFS (ubi0:1): reserved for root: 869621 bytes (849 KiB)
+[   11.587173] UBIFS (ubi0:1): media format: w5/r0 (latest is w5/r0), UUID 6F98992C-0136-4EDF-8313-42372876C8C5, small LPT model
+[   11.615665] mount_root: switching to ubifs overlay
+[   11.645459] urandom-seed: Seeding with /etc/urandom.seed
+[   11.854406] mt7530 mdio-bus:1f lan: Link is Down
+[   11.873210] procd: - early -
+[   11.879108] procd: - watchdog -
+[   12.506912] procd: - watchdog -
+[   12.516676] procd: - ubus -
+[   12.693079] procd: - init -
+Please press Enter to activate this console.
+[   13.354478] kmodloader: loading kernel modules from /etc/modules.d/*
+[   13.381631] usbcore: registered new interface driver cdc_wdm
+[   13.393987] Loading modules backported from Linux version v5.10.16-0-gde53befa79cf
+[   13.409111] Backport generated by backports.git v5.10.16-1-0-g21d2a1d2
+[   13.437495] usbcore: registered new interface driver usbserial_generic
+[   13.450856] usbserial: USB Serial support registered for generic
+[   13.469901] urngd: v1.0.2 started.
+[   13.471242] xt_time: kernel timezone is -0000
+[   13.533680] mt7621-pci 1e140000.pcie: bus=1 slot=0 irq=23
+[   13.544527] pci 0000:00:00.0: enabling device (0006 -> 0007)
+[   13.555821] mt7603e 0000:01:00.0: enabling device (0000 -> 0002)
+[   13.567957] mt7603e 0000:01:00.0: ASIC revision: 76030010
+[   13.627211] random: crng init done
+[   13.634033] random: 7 urandom warning(s) missed due to ratelimiting
+[   14.200017] mt7603e 0000:01:00.0: Firmware Version: ap_pcie
+[   14.211163] mt7603e 0000:01:00.0: Build Time: 20160107100755
+[   14.246727] mt7603e 0000:01:00.0: firmware init done
+[   14.450910] PPP generic driver version 2.4.2
+[   14.461385] NET: Registered protocol family 24
+[   14.474148] qmi_wwan 2-1:1.4: cdc-wdm0: USB WDM device
+[   14.486232] qmi_wwan 2-1:1.4 wwan0: register 'qmi_wwan' at usb-1e1c0000.xhci-1, WWAN/QMI device, c2:b2:90:05:3c:9e
+[   14.507300] usbcore: registered new interface driver qmi_wwan
+[   14.530268] usbcore: registered new interface driver option
+[   14.541693] usbserial: USB Serial support registered for GSM modem (1-port)
+[   14.556023] option 2-1:1.0: GSM modem (1-port) converter detected
+[   14.568683] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB0
+[   14.582912] option 2-1:1.1: GSM modem (1-port) converter detected
+[   14.595642] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB1
+[   14.609838] option 2-1:1.2: GSM modem (1-port) converter detected
+[   14.622591] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB2
+[   14.636763] option 2-1:1.3: GSM modem (1-port) converter detected
+[   14.649581] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB3
+[   14.667661] kmodloader: done loading kernel modules from /etc/modules.d/*
+
+
+
+BusyBox v1.33.0 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r16574+2-f7e00d81bca7
+ -----------------------------------------------------
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@OpenWrt:/# 
+</nowiki>
+</WRAP>\\
+
+==== U-Boot environment and tftp RAM boot log ====
+<WRAP bootlog>
+<nowiki>===================================================================
+     		MT7621   stage1 code done 
+     		CPU=50000000 HZ BUS=16666666 HZ
+===================================================================
+
+
+U-Boot 1.1.3 (Jun  3 2020 - 08:39:27)
+
+Board: Ralink APSoC DRAM:  256 MB
+relocate_code Pointer at: 8ff94000
+
+Config XHCI 40M PLL 
+******************************
+Software System Reset Occurred
+******************************
+Allocate 16 byte aligned buffer: 8ffcb190
+Enable NFI Clock
+# MTK NAND # : Use HW ECC
+NAND ID [C2 F1 80 95 02]
+Device found in MTK table, ID: c2f1, EXT_ID: 809502
+Support this Device in MTK table! c2f1 
+select_chip
+[NAND]select ecc bit:4, sparesize :64 spare_per_sector=16
+Signature matched and data read!
+load_fact_bbt success 1023
+load fact bbt success
+[mtk_nand] probe successfully!
+mtd->writesize=2048 mtd->oobsize=64,	mtd->erasesize=131072  devinfo.iowidth=8
+..============================================ 
+Ralink UBoot Version: 5.0.0.0
+-------------------------------------------- 
+ASIC MT7621A DualCore (MAC to MT7530 Mode)
+DRAM_CONF_FROM: Auto-Detection 
+DRAM_TYPE: DDR3 
+DRAM bus: 16 bit
+Xtal Mode=5 OCP Ratio=1/3
+Flash component: 128 MBytes NOR Flash with NAND boot partition size
+Date:Jun  3 2020  Time:08:39:27
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:256, ways:4, linesz:32 ,total:32768 
+
+ ##### The CPU freq = 880 MHZ #### 
+ estimate memory size =256 Mbytes
+#Reset_MT7530
+.## Starting application at 0x8402A800 ...
+
+
+Z-LOADER V1.30 | 06/03/2020 08:39:30
+
+
+Hit ESC key to stop autoboot:   1
+ZLB> atgu
+
+
+=>## Application terminated, rc = 0x0
+
+Skip image checking!
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. 
+default: 3
+
+You choosed 4
+
+ 0 
+
+   
+4: System Enter Boot Command Line Interface.
+
+U-Boot 1.1.3 (Jun  3 2020 - 08:39:27)
+MT7621 # printenv
+bootcmd=cp.b 0xBC02A800 0x8402A800 0x10000;go 0x8402A800
+bootdelay=5
+baudrate=57600
+ethaddr="00:AA:BB:CC:DD:10"
+ipaddr=10.10.10.123
+serverip=10.10.10.3
+VendorName=ZyXEL Communications Corp.
+ProductName=NR7101
+FeatureBits=0
+ModelID=7101
+DebugFlag=0x1
+Countrycode=FF
+HWVendor=MSTC
+HWVer=0
+MacNumber=2
+BootingFlag=0
+SerialNumber=S100Z45000001
+Hostname=NR7101
+UbootVer=U-Boot 1.1.3 (Jun  3 2020 - 08:39:27)
+ethact=Eth0 (10/100-M)
+EnvDefaultValid=1
+BootType=3
+Image1Stable=0
+CheckBypass=1
+Image1Try=2
+stdin=serial
+stdout=serial
+stderr=serial
+ver=U-Boot 1.1.3 (Jun  3 2020 - 08:39:27)
+
+Environment size: 579/4092 bytes
+MT7621 # setenv eth0addr 08:26:97:84:EF:BC
+eth_set_enetaddr(num=0, addr=08:26:97:84:EF:BC)
+Setting new HW address on Eth0 (10/100-M)
+New Address is             FD:9B:FF:FF:FF:FF
+MT7621 # tftpboot 0x88000000 openwrt-snapshot-ramips-mt7621-zyxel_nr7101-initramfs-kernel.bin
+load addr= 0x88000000
+boot file= openwrt-snapshot-ramips-mt7621-zyxel_nr7101-initramfs-kernel.bin
+
+ NetLoop,call eth_halt ! 
+
+ NetLoop,call eth_init ! 
+Trying Eth0 (10/100-M)
+
+ Waitting for RX_DMA_BUSY status Start... done
+
+
+ ETH_STATE_ACTIVE!! 
+Using Eth0 (10/100-M) device
+TFTP from server 10.10.10.3; our IP address is 10.10.10.123
+Filename 'openwrt-snapshot-ramips-mt7621-zyxel_nr7101-initramfs-kernel.bin'.
+
+ TIMEOUT_COUNT=10,Load address: 0x88000000
+Loading: *Got ARP REPLY, set server/gtwy eth addr (00:1b:21:a7:98:bc)
+Got it
+#################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #################################################################
+	 #######################
+done
+Bytes transferred = 6770702 (67500e hex)
+LoadAddr=88000000 NetBootFileXferSize= 0067500e
+MT7621 # bootm  0x8800017C
+## Booting image at 8800017c ...
+..Erasing NAND Flash...
+ranand_erase: start:80000, len:20000 
+.Writing to NAND Flash...
+done
+   Image Name:   MIPS OpenWrt Linux-5.10.28
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    6770258 Bytes =  6.5 MB
+   Load Address: 80001000
+   Entry Point:  80001000
+   Verifying RAS Image Checksum ... OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 80001000) ...
+## Giving linux memsize in MB, 256
+
+Starting kernel ...
+
+[    0.000000] Linux version 5.10.28 (bjorn@canardo) (mipsel-openwrt-linux-musl-gcc (OpenWrt GCC 10.3.0 r16534+7-41948c9c1b80) 10.3.0, GNU ld (GNU Binutils) 2.35.1) #0 SMP Fri Apr 16 10:56:24 2021</nowiki>
+</WRAP>
+
+===== Disable SIM based automatic APN configuration =====
+
+The modem comes with Quectel's automatic APN configuration enabled.  This is known to interfere with manual configuration, causing hard to debug issues. Disabling the feaure is highly recommended.  Take it from someone who spend days debugging all sorts of weird connection issues before taking this advice....
+
+   AT+QMBNCFG="AutoSel",0
+   AT+QMBNCFG="Deactivate"
+
+Check if VoLTE is enabled:
+    AT+QCFG="volte_disable"
+and disable it if necessary:
+    AT+QCFG="volte_disable",1
+
+
+===== Modem firmware upgrade =====
+
+<WRAP center round important 60%>
+WARNING: Never reboot the NR7101 or remove power while the modem is being upgraded.  If the process appears to fail then wait patiently. The modem will retry several times before giving up.  Any attempt to forcefully cancel the process might brick the modem. 
+</WRAP>
+
+The RG502Q-EA in my ZyXEL NR7101 came with firmware revision R01A04.  ZyXEL has published a FOTA diff upgrading the modem firmware to R11A03.  The upgrade can be done from within OpenWrt just as easy and safe as from the stock firmware. The same caution should be taken i both cases.
+
+  * Stop all processes conflicting with ttyUSBx device access, but leave the modem conneced.
+  * Connect to one of the AT command ports and verify that the current firmware version is correct and that the modem is connected to the Internet
+
+<code>
+root@finn:/# picocom /dev/ttyUBS2
+picocom v3.1
+
+port is        : /dev/ttyUSB2
+flowcontrol    : none
+baudrate is    : 9600
+parity is      : none
+databits are   : 8
+stopbits are   : 1
+escape is      : C-a
+local echo is  : no
+noinit is      : no
+noreset is     : no
+hangup is      : no
+nolock is      : no
+send_cmd is    : sz -vv
+receive_cmd is : rz -vv -E
+imap is        : 
+omap is        : 
+emap is        : crcrlf,delbs,
+logfile is     : none
+initstring     : none
+exit_after is  : not set
+exit is        : no
+
+Type [C-a] [C-h] to see available commands
+Terminal ready
+
+OK
+
+OK
+at
+OK
+ati
+Quectel
+RG502Q-EA
+Revision: RG502QEAAAR01A04M4G
+
+OK
+at+cgdcont?
++CGDCONT: 1,"IPV4V6","telenor.smart","0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0",0,0,0,0
+
+OK
+at+cgact?
++CGACT: 1,1
+
+OK
+at+cgatt?
++CGATT: 1
+
+OK
+</code>
+
+  * Start the upgrade process by providing the download URL for the firmware diff. You will see +QIND URCs inidicating successful download (status 0).  
+  * Wait for the modem to disconnect from the USB bus and then reconnect in upgrade mode
+
+<code>
+at+qfotadl="http://get.dyn.mork.no/nr7101/RG502QEAAAR01A04-R11A03.zip"
+OK
+
++QIND: "FOTA","HTTPSTART"
+
++QIND: "FOTA","HTTPEND",0
+
+[524357.258810] usb 2-1: USB disconnect, device number 2
+[524357.269316] option1 ttyUSB0: GSM modem (1-port) converter now disconnected from ttyUSB0
+[524357.285855] option 2-1:1.0: device disconnected
+[524357.296122] option1 ttyUSB1: GSM modem (1-port) converter now disconnected from ttyUSB1
+[524357.312701] option 2-1:1.1: device disconnected
+[524357.324558] option1 ttyUSB2: GSM modem (1-port) converter now disconnected from ttyUSB2
+[524357.342121] option 2-1:1.2: device disconnected
+[524357.354604] option1 ttyUSB3: GSM modem (1-port) converter now disconnected from ttyUSB3
+[524357.372917] option 2-1:1.3: device disconnected
+[524357.385229] qmi_wwan 2-1:1.4 wwan0: unregister 'qmi_wwan' usb-1e1c0000.xhci-1, WWAN/QMI device
+
+[524371.678776] usb 2-1: new SuperSpeed Gen 1 USB device number 3 using xhci-mtk
+[524371.725434] option 2-1:1.0: GSM modem (1-port) converter detected
+[524371.738448] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB0
+[524371.753370] option 2-1:1.1: GSM modem (1-port) converter detected
+[524371.766513] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB1
+[524371.781952] option 2-1:1.2: GSM modem (1-port) converter detected
+[524371.795183] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB2
+[524371.810295] option 2-1:1.3: GSM modem (1-port) converter detected
+[524371.823354] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB3
+</code>
+
+
+  * (Optional) connect to the AT command interface in upgrade mode to watch the progress, hopefully ending with status 0 again:
+
+<code>
+root@finn:/# picocom /dev/ttyUSB2
+picocom v3.1
+
+port is        : /dev/ttyUSB2
+flowcontrol    : none
+baudrate is    : 9600
+parity is      : none
+databits are   : 8
+stopbits are   : 1
+escape is      : C-a
+local echo is  : no
+noinit is      : no
+noreset is     : no
+hangup is      : no
+nolock is      : no
+send_cmd is    : sz -vv
+receive_cmd is : rz -vv -E
+imap is        : 
+omap is        : 
+emap is        : crcrlf,delbs,
+logfile is     : none
+initstring     : none
+exit_after is  : not set
+exit is        : no
+
+Type [C-a] [C-h] to see available commands
+Terminal ready
++QIND: "FO+QIND: "FOTA","UPDATING",0
++QIND: "FOTA","UPDATING",1
++QIND: "FOTA","UPDATING",2
++QIND: "FOTA","UPDATING",4
++QIND: "FOTA","UPDATING",5
++QIND: "FOTA","UPDATING",6
++QIND: "FOTA","UPDATING",7
++QIND: "FOTA","UPDATING",9
++QIND: "FOTA","UPDATING",10
++QIND: "FOTA","UPDATING",13
++QIND: "FOTA","UPDATING",19
++QIND: "FOTA","UPDATING",22
++QIND: "FOTA","UPDATING",38
++QIND: "FOTA","UPDATING",54
++QIND: "FOTA","UPDATING",61
++QIND: "FOTA","UPDATING",62
++QIND: "FOTA","UPDATING",63
++QIND: "FOTA","UPDATING",64
++QIND: "FOTA","UPDATING",65
++QIND: "FOTA","UPDATING",66
++QIND: "FOTA","UPDATING",67
++QIND: "FOTA","UPDATING",68
++QIND: "FOTA","UPDATING",69
++QIND: "FOTA","UPDATING",70
++QIND: "FOTA","UPDATING",71
++QIND: "FOTA","UPDATING",72
++QIND: "FOTA","UPDATING",73
++QIND: "FOTA","UPDATING",74
++QIND: "FOTA","UPDATING",77
++QIND: "FOTA","UPDATING",78
++QIND: "FOTA","UPDATING",79
++QIND: "FOTA","UPDATING",80
++QIND: "FOTA","UPDATING",81
++QIND: "FOTA","UPDATING",82
++QIND: "FOTA","UPDATING",83
++QIND: "FOTA","UPDATING",84
++QIND: "FOTA","UPDATING",85
++QIND: "FOTA","UPDATING",86
++QIND: "FOTA","UPDATING",87
++QIND: "FOTA","UPDATING",88
++QIND: "FOTA","UPDATING",91
++QIND: "FOTA","UPDATING",92
++QIND: "FOTA","UPDATING",93
++QIND: "FOTA","UPDATING",94
++QIND: "FOTA","UPDATING",95
++QIND: "FOTA","UPDATING",100
++QIND: "FOTA","END",0
+</code>
+
+
+  * Wait for the modem to disconnect from the USB bus again and boot up with the new firmware version.
+  * Connect to the AT command channel to verify that it is running the expected version.  We're done!
+
+<code>
+[524527.638794] usb 2-1: USB disconnect, device number 3
+[524527.649338] option1 ttyUSB0: GSM modem (1-port) converter now disconnected from ttyUSB0
+[524527.665853] option 2-1:1.0: device disconnected
+[524527.676473] option1 ttyUSB1: GSM modem (1-port) converter now disconnected from ttyUSB1
+[524527.693142] option 2-1:1.1: device disconnected
+[524527.704348] option1 ttyUSB2: GSM modem (1-port) converter now disconnected from ttyUSB2
+[524527.721943] option 2-1:1.2: device disconnected
+[524527.734288] option1 ttyUSB3: GSM modem (1-port) converter now disconnected from ttyUSB3
+[524527.752654] option 2-1:1.3: device disconnected
+
+
+[524545.878771] usb 2-1: new SuperSpeed Gen 1 USB device number 4 using xhci-mtk
+[524545.928045] option 2-1:1.0: GSM modem (1-port) converter detected
+[524545.941050] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB0
+[524545.955896] option 2-1:1.1: GSM modem (1-port) converter detected
+[524545.969337] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB1
+[524545.984273] option 2-1:1.2: GSM modem (1-port) converter detected
+[524545.997473] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB2
+[524546.012548] option 2-1:1.3: GSM modem (1-port) converter detected
+[524546.025616] usb 2-1: GSM modem (1-port) converter now attached to ttyUSB3
+[524546.044359] qmi_wwan 2-1:1.4: cdc-wdm0: USB WDM device
+[524546.057320] qmi_wwan 2-1:1.4 wwan0: register 'qmi_wwan' at usb-1e1c0000.xhci-1, WWAN/QMI device, 02:a3:e0:bc:6d:a7
+
+
+root@finn:/# picocom /dev/ttyUSB2
+picocom v3.1
+
+port is        : /dev/ttyUSB2
+flowcontrol    : none
+baudrate is    : 9600
+parity is      : none
+databits are   : 8
+stopbits are   : 1
+escape is      : C-a
+local echo is  : no
+noinit is      : no
+noreset is     : no
+hangup is      : no
+nolock is      : no
+send_cmd is    : sz -vv
+receive_cmd is : rz -vv -E
+imap is        : 
+omap is        : 
+emap is        : crcrlf,delbs,
+logfile is     : none
+initstring     : none
+exit_after is  : not set
+exit is        : no
+
+Type [C-a] [C-h] to see available commands
+Terminal ready
+
+RDY
+
++CPIN: READY
+
++QUSIM: 1
+
++CFUN: 1
+
++QIND: SMS DONE
+
++QIND: PB DONE
+ATI
+Quectel
+RG502Q-EA
+Revision: RG502QEAAAR11A03M4G
+
+OK
+AT+CGDCONT?
++CGDCONT: 1,"IPV4V6","telenor.smart","0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0",0,0,0,0,,,,,,,,,"",,,,0
+
+OK
+AT+CGATT?
++CGATT: 0
+
+OK
+AT+CGACT?
++CGACT: 1,0
+
+OK
+</code>
+
+It is also possible to do a total (vs differential) flash using qfirehose. Due to limited free space on the NR7101 you will have to use a client/server scheme (client is linux PC, server is NR7101). 
+Qfirehose for linux can be found at [[https://github.com/Biktorgj/qfirehose]]. Download zip and unpack to a convenient folder.
+You can get the firmware from ROOter [[https://www.ofmodemsandmen.com/mfirm.html]]. Download zip and unpack to a convenient folder.
+
+  * NR7101 as server:
+<code>
+root@RT2NR7101:~# qfirehose -p 9008
+</code>
+  * Linux PC as client (firmware was unpacked in subfolder RG502Q):
+<code>
+bruker@linux:~$ bin/QFirehose -f RG502Q/ -p <nr7101-ip>:9008
+...
+[072.230]: THE TOTAL DOWNLOAD TIME IS 68.029 s
+[072.230]: Upgrade module successfully.
+</code>
+
+
+===== Notes =====
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>MT7621AT 128NAND 256RAM 1port GigabitEthernet 802.11bgn 0USB}}

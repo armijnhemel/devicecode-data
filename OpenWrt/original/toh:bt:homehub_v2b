@@ -1,0 +1,415 @@
+i====== BT Home Hub 2.0 Type B ======
+
+Black boxes given away with a bt broadband subscription. It comes in two versions: Type A and Type B. The two versions look identical, and although they provide similar functionality, they are quite different on the inside.
+
+  * [[toh:bt:homehub_v2a|Type A]] is made by Thomson, and is Broadcom based, using Thomson linux based firmware.
+  * Type B is made by SHC (Siemens), and is Infineon/Lantiq Danube based, using OpenRG based linux firmware. Bootloader is u-boot.
+
+The HomeHub V2 includes ADSL2+, 802.11b/g/n wireless, host USB port, 4 wired ethernet ports, DECT, FXS & FXO ports and VOIP functionality.
+
+The firmware of both units can be successfully hacked for use on other ISPs (see [[https://openwrt.ebilan.co.uk/]]). The Type A firmware is a little more flexible than the Type B firmware in terms of what can be done after gaining access. However, the Type B can be made to work with OpenWrt.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^Home Hub 2$", "version": "^Type B$"}
+} -->
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["unsupported_functions"],
+  "filterColumns": {"model": "^Home Hub 2$", "version": "^Type B$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^Home Hub 2$", "version": "^Type B$"}
+} -->
+
+^ CPU                    ^ Ram    ^ Flash                ^ Ethernet   ^ USB   ^ Wireless   ^ Serial   ^ JTag   ^ VOIP   ^ FXS   ^
+| Lantiq Danube@333MHz   | 64MB   | 32MB NAND+512k NOR   | 4          | yes   | 11ng       | yes      | ???    | yes    | yes   |
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^Home Hub 2$", "version": "^Type B$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+{{page>meta:infobox:outdated&noheader&nofooter&noeditbtn}}
+
+<WRAP center box 70%>
+FIXME //The firmware images mentioned below are outdated and have changed names (see table above). Please update the instructions accordingly.//  --- //[[tmo26@gmx.de|tmomas]] 2019/10/02 13:33//
+</WRAP>
+
+====== Draft Update ======
+
+Installation is possible without opening the case or any hardware modifications.  The steps are:
+
+  * If necessary, downgrade the factory firmware to a version which allows flashing a custom u-boot via Telnet and tftp (by exploiting a security vulnerability in the factory firmware).
+  * Create a USB drive which allows a telnet daemon to be run (using a pre-prepared image file).
+  * Access the router via SMB (Windows file sharing procotol, but Linux and Macs can also be used to do this).
+  * Log into the router via telnet, and instruct it to flash a modified u-boot which is has loaded via tftp.
+  * Reset the router and access the modified u-boot to interrupt the boot process, and load OpenWRT into RAM via tftp.
+  * Boot into OpenWRT from RAM, and from there write OpenWRT to the onboard flash of the device.
+
+===== Original Installation Instructions =====
+
+These instructions assume you are installing Barrier Breaker 14.07 final release, or a recent trunk build (from r42316 onwards). Earlier versions require a different installation procedure. 
+
+They also assume you have already unblocked your Home Hub 2B, have updated `uboot` and have access to the `uboot` console. If you have not yet done this, see [[toh:bt:homehub_v2b#support_and_links|Support and Links section]].
+
+The main flash memory on the Home Hub 2B is NAND, not NOR. Because of this, UBI is used for bad block management on the root partition. A squashfs/ubifs overlay is used instead of the standard squashfs/jffs2 overlay image used on most other routers, i.e. a ubifs image is used beneath squashfs instead of a jffs2 image. 
+
+Also, whereas for most routers OpenWrt consists of a single image containing the the kernel and root filesystem concatenated, for the Home Hub there are two separate files to be flashed: one for the kernel, the other for the (ubinized) root filesystem.
+
+You will need the following files:
+
+  * ''openwrt-lantiq-xway-BTHOMEHUBV2B-uImage'' //(kernel image to install)//
+  * ''openwrt-lantiq-xway-BTHOMEHUBV2B-uImage-initramfs'' //(initramfs image, used only during the installation process)//
+
+plus one of the following root filesystem images: 
+
+  * ''openwrt-lantiq-xway-BTHOMEHUBV2B-squashfs-ubinized.bin'' //(squashfs/ubifs overlay)//
+  * ''openwrt-lantiq-xway-BTHOMEHUBV2B-ubifs-ubinized.bin'' //(ubifs)//
+
+The following instructions assume you are using the squashfs overlay image. Simply replace ''openwrt-lantiq-xway-BTHOMEHUBV2B-squashfs-ubinized.bin'' with ''openwrt-lantiq-xway-BTHOMEHUBV2B-ubifs-ubinized.bin'' if you prefer to use the pure ubifs image.
+
+Copy kernel images to your tftpboot folder:
+
+    cp openwrt-lantiq-xway-BTHOMEHUBV2B-uImage-initramfs /var/lib/tftpboot/
+    cp openwrt-lantiq-xway-BTHOMEHUBV2B-uImage /var/lib/tftpboot/
+
+Erase the nand flash, preserving only the first 0x4000 bytes which contain calibration data for the wireless card. Then flash the kernel image. From the uboot prompt on the Home Hub:
+
+    tftpboot 81000000 openwrt-lantiq-xway-BTHOMEHUBV2B-uImage
+    nand erase 0x004000 0x1ffC000
+    nand write 81000000 0x004000 0x200000
+
+DO NOT BOOT THIS IMAGE YET! Instead, load the ramdisk image and boot that:
+
+    tftpboot 81000000 openwrt-lantiq-xway-BTHOMEHUBV2B-uImage-initramfs
+    bootm 81000000
+
+VERY IMPORTANT! The above lines are only for the very first time that you install a ubi-enabled image. On subsequent occasions you should not erase the whole nand, only the kernel partition, otherwise wear leveling data for the ubi partition will be lost. So for subsequent installs the above five lines become:
+
+    tftpboot 81000000 openwrt-lantiq-xway-BTHOMEHUBV2B-uImage
+    nand erase 0x004000 0x200000
+    nand write 81000000 0x004000 0x200000
+
+    tftpboot 81000000 openwrt-lantiq-xway-BTHOMEHUBV2B-uImage-initramfs
+    bootm 81000000
+
+Now use the ramdisk image to flash the root filesystem. Log in to a console on the Home Hub, make sure that the dropbearkey process has finished running and enable ssh by setting a root password.
+
+From the PC, copy the ubinized root filesystem image to the Home Hub (download pscp and use "pscp -scp" instead of just "scp" if you are using Windows). You may need to set up admin password first, (go to [[http://192.168.1.1]] and follow the steps you'll read on the top):
+
+    scp openwrt-lantiq-xway-BTHOMEHUBV2B-squashfs-ubinized.bin root@192.168.1.1:/tmp
+
+On the Home Hub, format the ubi partition using the ubi image just copied:
+
+    ubidetach -p /dev/mtd7
+    ubiformat /dev/mtd7 -f /tmp/openwrt-lantiq-xway-BTHOMEHUBV2B-squashfs-ubinized.bin
+
+    reboot
+
+To boot into OpenWrt automatically, the uboot environment needs to be set up to execute some commands automatically on power on, so [[packages:pkgdata_lede17_1:uboot-envtools|uboot-envtools package]] must be copied in order to add that commands to boot options. You may need to set up admin password again, going to [[http://192.168.1.1]]:
+
+    scp http://downloads.openwrt.org/barrier_breaker/14.07/lantiq/xway/packages/base/uboot-envtools_2014.04-4_lantiq.ipk root@192.168.1.1:/tmp
+
+Now, on the Home Hub, install the [[packages:pkgdata_lede17_1:uboot-envtools|uboot-envtools package]] and add boot commands:
+
+    opkg install /tmp/uboot-envtools_2014.04-4_lantiq.ipk
+    echo /dev/mtd1 0x0 0x10000 0x10000 >/etc/fw_env.config
+    fw_printenv
+    fw_setenv nboot "nand read 0x81000000 0x004000 0xe50000; bootm 0x81000000"
+    fw_setenv bootcmd "run nboot"
+    fw_setenv bootdelay 20
+    fw_setenv preboot "setenv stdin nc; setenv stdout serial; setenv stderr serial"
+    reboot
+
+Correct fw_env.config at startup: Add the line below to the custom startup:
+    echo /dev/mtd1 0x0 0x10000 0x10000 >/etc/fw_env.config
+(I think the defaults are broken, I get 'CRC failure' when running fw_printenv).  Then Re-add uboot_envtools software.
+
+
+Note: this hardware does seem to support swconfig - just add kmod-swconfig, and configuration to etc/config/network, and you will get new menu options. (see https://openwrt.ebilan.co.uk/viewtopic.php?f=4&t=49 )
+
+===== Upgrading =====
+
+{{page>meta:infobox:outdated&noheader&nofooter&noeditbtn}}
+
+<WRAP center box 70%>
+FIXME //The firmware images mentioned below are outdated and have changed names (see table above). Please update the instructions accordingly.//  --- //[[tmo26@gmx.de|tmomas]] 2019/10/02 13:33//
+</WRAP>
+
+If you are brave, then you can go up to 15.05.1 quite simply from here:
+download ''openwrt-15.05.1-lantiq-xway-BTHOMEHUBV2B-ubifs-sysupgrade.tar'' from:
+    https://downloads.openwrt.org/chaos_calmer/15.05.1/lantiq/xway/
+
+Go to LuCI web interface, System/Backup Flash Firmware, and flash this new firmware image. Wait a while, and you have 15.05. Keeping configurations worked for me.
+
+**WARNING** for Type B model\\
+Only upgrade to Chaos Calmer 15.05.1 if you dont need a working USB function! [[https://openwrt.ebilan.co.uk/viewtopic.php?f=4&t=144#p1232]]
+
+Type B LEDE 17.01.1 has the same issue as Chaos Calmer 15.05.1 **however** the latest LEDE Development Snapshot build (as of 01/04/2017) has a working USB function but must stress that LEDE snapshot builds have no Web GUI but can be installed from SSH command line with PuTTY but must have a working WAN port to get the files for the LuCI web configuration package, Info here [[docs:guide-quick-start:developmentinstallation#installing_a_openwrt_snapshot]]
+
+===== Alternative ADSL firmware =====
+
+The default openwrt-supplied ADSL firmware works well for the majority of people. If, however, you're using a POTS (Annex-A) connection and you suffer from frequent ADSL disconnections, it may be worth replacing the standard firmware blob (/lib/firmware/ltq-dsl-fw-a-danube.bin, md5sum: a6c7836e2cc3d26172b15e4732ae636f) with the original BT-distributed firmware blob (md5sum: a8a49c615da9453fe790073c224c5e58). 
+
+This method has cured the "ADSL disconnections" problem for the author of this section, and is documented at [[https://openwrt.ebilan.co.uk/viewtopic.php?f=4&t=68]]. You can download the BT-distributed firmware blob from that location too.
+
+===== Support and Links =====
+
+Following the sad closure of [[http://psidoc.com]], the best source of support is probably [[https://openwrt.ebilan.co.uk]].
+
+  * How to install OpenWrt 14.07 on a HH2B: [[https://openwrt.ebilan.co.uk/viewtopic.php?f=4&t=90]]
+  * Instructions on how to obtain access to the bootloader can be found here: [[https://openwrt.ebilan.co.uk/viewtopic.php?f=11&t=6]]
+
+For Linux folks reluctant to use the filesystem image included with those instructions, it's easy to reproduce. The essence of the method is:
+
+  * The firmware's Samba automounts filesystems found on attached USB sticks.  (IIRC there mustn't be a partition table, just a bare FS.)
+  * The firmware's Samba follows symlinks across filesystem boundaries, so any filesystem containing a symlink to "/" at the top level will let you read and write the filesystem.  This includes allowing you to overwrite Samba's own configuration file, as well as letting you add other binaries.  (Since you're writing to a tmpfs overlay, these changes don't persist, but do give you enough access to make some changes that will.)
+  * Samba can be configured to run a given binary (here, a telnetd) as root when a client connects to a share (originally used for informational messages and for audit).  smbclient works fine for connecting on Linux.
+
+The unofficial patches used to generate the first fully working images and a community build of trunk r34686 using them can be found here:
+[[https://openwrt.ebilan.co.uk/viewtopic.php?f=4&t=3]]
+
+For reference, the initial work done to get OpenWrt running on the Home Hub 2B is available here:
+
+  * [[http://sourceforge.net/projects/hh2b4ever/]]
+  * [[https://sourceforge.net/p/hh2b4ever/code/ci/7c17843ab0596dccb2bd972ed9df6c4ccd9995a8/tree/]]
+
+===== Firmware =====
+[[toh:bt:homehub_v2b:bootlog|Bootlog of the OEM firmware]]
+
+==== NAND Flash Layout ====
+^ NAND - 32 Mbytes:                                       ^
+| 0x00000000-0x00004000 : "Atheros EEPROM"                |
+| 0x00004000-0x00E04000 : "OpenRG Image 1"                |
+| 0x00E04000-0x00F00000 : ? (empty)                       |
+| 0x00F00000-0x01D00000 : "OpenRG Image 2 (empty)"        |
+| 0x01D00000-0x01E00000 : ? (empty)                       |
+| 0x01E00000-0x02000000 : "Dect configuration? (empty)"   |
+
+==== NOR Flash Layout ====
+^ NOR - 512k:                                    ^
+| 0x00000000-0x00040000 : first u-boot           |
+| 0x00040000-0x00050000 : u-boot stored config   |
+| 0x00050000-0x00060000 : RG conf 1 16k          |
+| 0x00060000-0x00070000 : RG conf 2 16k          |
+| 0x00070000-0x00080000 : RG factory conf 16k    |
+
+==== Flash Details ====
+
+''
+NOR:
+PHYS_FLASH_1		0xB0000000 /* Flash Bank #1 */
+16 bit
+in EBU region 0
+
+NAND:
+PHYS_FLASH_2		0xB4000000 /* Flash Bank #2 */
+Sector size 256
+nand max floors 1
+nand max chips 1
+in EBU region 1
+
+''
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set|Architecture]]  | [[wp>MIPS architecture|MIPS]] |
+^ Vendor                               | [[wp>Lantiq]]  |
+^ [[docs:techref:bootloader]]          | [[docs:techref:bootloader:uboot|U-Boot]] |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  |[[http://pdf.datasheetarchive.com/indexerfiles/Datasheets-UD3/DSAUD0055683.pdf|Lantiq Danube PSB-S 50712 (MIPS 24Kec)]]|
+^ [[docs:techref:hardware:cpu|CPU]]/Speed       | 333 MHz Dual Core|
+^ NOR Flash   | [[http://www.spansion.com/Support/Datasheets/S29AL004D_00.pdf|Spansion S29AL004D]]  4MiB |
+^ NAND Flash  | [[http://www.kontest.ru/datasheet/samsung/k9f5608u0d.pdf|Samsung K9F5608U0D-JIB0]] 32MiB |
+^ RAM Chip    | [[http://www.samsung.com/global/system/business/semiconductor/product/2009/3/4/203011ds_k4h51xx38f_industrial_rev11.pdf|Samsung K4H511638F]] |
+^ RAM Specs   | 64 MiB  |
+^ Wireless    | Atheros 9160-BC1A 802.11b/g/n, pci, 0x18000000, irq 22 |
+^ Ethernet    | Infineon AD9669I |
+^ USB         | Yes |
+^ DECT        | SiTel SC14488 |
+^ Slic        | Teridian 73m1966, Infineon Vinetic PEF4268F 'Ringing SLIC with Integrated DC/DC Converter'|
+^ Serial      | [[#Serial|Yes]] |
+^ JTAG        | ? |
+
+
+==== Photos ====
+{{media:bt:homehub2b_pcb_top.jpg?400}}
+{{media:bt:homehub2b_pcb_bottom.jpg?400}}
+
+==== Serial ====
+In the photos above, wires are soldered on to the 3.3v serial lines.
+
+The connections are:
+| Top      | GND   |
+| Middle   | Rx    |
+| Bottom   | Tx    |
+
+Note that the original u-boot has 'silent' mode enabled
+
+==== GPIOs ====
+The CPU has 2 x 16 possible GPIO pins.\\
+For each pin there are control bits:\\
+DIR: direction (0=input, 1=output)\\
+IN/OUT: value read from/written to pin\\
+ALTSEL0/ALTSEL1: function multiplexed to the pin (see pinctrl driver)\\
+OD: 0=open drain, 1='normal mode' push-pull\\
+PUDSEL: pullup/down select (1=up)\\
+PUDEN: pullup/down enable (1=enabled)\\
+
+uboot initial values\\
+|bit    |dir|out|altsel0|altsel1|od|pudsel|puden|usage|
+|-      |70   |FF|73|01|FF|00|00|-|
+|GPIO-00|0 in |1 |1 |1 |1 |0 |0 ||
+|GPIO-01|0 in |1 |1 |0 |1 |0 |0 | FXO Interrupt|
+|GPIO-02|0 in |1 |0 |0 |1 |0 |0 | Reset button|
+|GPIO-03|1 out |1 |0 |0 |1 |0 |0 | <del>CLK-OUT2 - (25mhz for amd9669i? - danube_clock.c in u-boot)</del> \\ Reset to Defaults button - (in Linux)|
+|GPIO-04|1 out|1 |1 |0 |1 |0 |0 | - stp-st (maybe also likely boot clock select 1 = 36mhz)|
+|GPIO-05|1 out|1 |1 |0 |1 |0 |0 | - stp-d|
+|GPIO-06|1 out|1 |1 |0 |1 |0 |0 | - stp-sh|
+|GPIO-07|0 in |1 |0 |0 |1 |0 |0 |-|
+|name|dir|out|altsel0|altsel1|od|pudsel|puden|usage|
+|-      |26   |FB|38|02|77|48|48|-|
+|GPIO-08|0 in |1 |0 |0 |1 |0 |0 ||
+|GPIO-09|1 out|1 |0 |1 |1 |0 |0 |- FXO Chip Select|
+|GPIO-10|1 out|0 |0 |0 |1 |0 |0 |- FXO reset|
+|GPIO-11|0 in |1 |1 |0 |0 |1 |1 | - pulled up|
+|GPIO-12|0 in |1 |1 |0 |1 |0 |0 ||
+|GPIO-13|1 out|1 |1 |0 |1 |0 |0 |- USB Power|
+|GPIO-14|0 in |1 |0 |0 |1 |1 |1 |-|
+|GPIO-15|0 in |1 |0 |0 |0 |0 |0 |- find handset button| 
+|name|dir|out|altsel0|altsel1|od|pudsel|puden|usage|
+|-      |BE   |D7|87|00|FC|50|50|-|
+|GPIO-16|0 in |1 |1 |0 |0 |0 |0 |-|
+|GPIO-17|1 out|1 |1 |0 |0 |0 |0 |-|
+|GPIO-18|1 out|1 |1 |0 |1 |0 |0 |-|
+|GPIO-19|1 out|0 |0 |0 |1 |0 |0 |-|
+|GPIO-20|1 out|1 |0 |0 |1 |1 |1 | - pulled up|
+|GPIO-21|1 out|0 |0 |0 |1 |0 |0 | - PCI Reset|
+|GPIO-22|0 in |1 |0 |0 |1 |1 |1 | -  wps button pulled up|
+|GPIO-23|1 out|1 |1 |0 |1 |0 |0 | - likely endian select 0=little|
+|name|dir|out|altsel0|altsel1|od|pudsel|puden|usage|
+|-      |FB   |3F|8B|04|E3|08|08|-|
+|GPIO-24|1 out|1 |1 |0 |1 |0 |0 |-|
+|GPIO-25|1 out|1 |1 |0 |1 |0 |0 |-|
+|GPIO-26|0 in |1 |0 |1 |0 |0 |0 |-|
+|GPIO-27|1 out|1 |1 |0 |0 |1 |1 |- pulled up|
+|GPIO-28|1 out|1 |0 |0 |0 |0 |0 |- SC14488 dect chip reset|
+|GPIO-29|1 out|1 |0 |0 |1 |0 |0 |- pci-req1|
+|GPIO-30|1 out|0 |0 |0 |1 |0 |0 |- pci-gnt1|
+|GPIO-31|1 out|0 |1 |0 |1 |0 |0 |- vmmc-Relay|
+ 
+USB Power? 13\\
+
+from original bootlog:
+ FXO reset using GPIO-10
+ FXO interrupt using GPIO-1
+ FXO Chip Select using GPIO-9
+
+
+from u-boot, initial values are:\\
+|INIT_VAL_P0_DIR        |2670|
+|INIT_VAL_P0_OUT         |FBFF|
+|INIT_VAL_P0_ALTSEL0     |3873|
+|INIT_VAL_P0_ALTSEL1     |0201|
+|INIT_VAL_P0_OD          |77FF|
+|INIT_VAL_P0_PUDSEL      |4800|
+|INIT_VAL_P0_PUDEN       |4800|
+| GPIO1||
+|INIT_VAL_P1_DIR         |FBBE|
+|#ifdef CONFIG_SHC_BT_PORTA_HW_SPIN1||
+|#define INIT_VAL_P1_OUT         |0x00002FD7|
+|#else||
+|#define INIT_VAL_P1_OUT         |0x00003FD7|
+|#endif||
+|INIT_VAL_P1_ALTSEL0     |8B87|
+|INIT_VAL_P1_ALTSEL1     |0400|
+|INIT_VAL_P1_OD          |E3FC|
+|INIT_VAL_P1_PUDSEL      |0850|
+|INIT_VAL_P1_PUDEN       |0850|
+
+The board provides a further 16 or 24? GPOs (for leds) controlled by stp.\\
+
+==== Buttons ====
+^ Port   ^ Bit   ^ Key                    ^
+| 0      | 2     | Restart                |
+| 0      | 15    | Find handset           |
+| 1      | 6     | Wireless association   |
+
+All buttons are active low.
+
+
+==== LEDS ====
+Near the 11 leds, there are two HC595:
+8-Bit Serial-Input/Serial or Parallel-Output Shift Register with Latched 3-State Outputs
+(http://pdf1.alldatasheet.com/datasheet-pdf/view/46165/SLS/HC595.html)
+
+| The leds are grouped   |
+| 3 for Power            |
+| 3 for Broadband        |
+| 2 for phone            |
+| 2 for wireless         |
+| 1 for upgrading        |
+
+LED control base address is 0xBE100BB0 which correlates with ltq_register_gpio_stp.
+
+^ Name        ^ Colour                         ^ bit                                  ^
+| Upgrading   | <color orange>Orange</color>   | = bit 13 (213 with 200 base added)   |
+| Phone       | <color orange>Orange</color>   | = bit 14 (214)                       |
+| :::         | <color blue>Blue</color>       | = bit 15 (215)                       |
+| Wireless    | <color orange>Orange</color>   | = bit 16 (216)                       |
+| :::         | <color blue>Blue</color>       | = bit 17 (217)                       |
+| Broadband   | <color red>Red</color>         | = bit 18 (218)                       |
+| :::         | <color orange>Orange</color>   | = bit 19 (219)                       |
+| :::         | <color blue>Blue</color>       | = bit 20 (220)                       |
+| Power       | <color red>Red</color>         | = bit 21 (221)                       |
+| :::         | <color orange>Orange</color>   | = bit 22 (222)                       |
+| :::         | <color blue>Blue</color>       | = bit 23 (223)                       |
+
+5 spare GPOs are located on the back on the PCB, top left directly above the tiny shift register chip (208 - 212).
+
+==== Wireless ====
+Atheros 9160-BC1A 802.11b/g/n, pci, 0x18000000, irq 22, slot 14\\
+Marked as device 168C:FF1C
+
+The calibration data is stored in the first 0x4000 bytes of the nand\\
+the first 0x60 of these contain PCI register fixups, organised as Reg16:Value32. These need to be written to the PCI register space BEFORE the PCI device is probed...  Support for this is now in trunk (Barrier Breaker).
+
+Unfortunately, wireless (PCI) and NAND (EBU) interact.  for the moment, PCI gets inhibited while the nand chip is selected; I felt it better to have some wireless degradation rather than file system corruption.
+
+==== FXO/FXS ====
+The FXO/FXS interface for telephony is a combination of Teridian 73m1966 and Infineon Vinetic PEF4268F 'Ringing SLIC with Integrated DC/DC Converter', for which some drivers are available. I believe that as I write, some work may be being done on using SIP with the telephone interfaces.
+
+==== DECT ====
+The DECT modem (SiTel SC14488) is a processor in it's own right.
+It is connected to ttyLTQ0, and also to Danube PCM Lines?
+We would need firmware to run within the SiTel modem to talk to the Dect phones, and to understand the protocols on the serial control, as well as implement the PCM communication (which seems to be DMAed).
+There is an un-populated site for a serial eeprom? - so the firmware must be programmed by the main cpu at startup. 
+
+Although we have the original BT firmware for the DECT modem, there is little or no information regarding how this may be controlled.  The control seems to be done from within the OpenRG application, for which we have no source.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>lantiq danube 32NAND 64RAM 4port FastEthernet 802.11bgn 1USB USB2.0 ADSL2+}}

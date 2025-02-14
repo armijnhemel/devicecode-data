@@ -1,0 +1,125 @@
+====== ITian Square One SQ201 ======
+
+{{ media:itian:sq201:sq201-small.jpg?200| ITian SQ201 }}
+
+The ITian Square One SQ201 is a combined 4+1 router and NAS with space for an internal 3.5" SATA hard drive. It also has three USB ports, external SATA connector, two external antenna connectors.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^Square One SQ201$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^Square One SQ201$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^Square One SQ201$"}
+} -->
+
+===== Quick Installation Procedure =====
+
+Obtain the latest snapshot image and extract the actual image files:
+
+   cd /var/lib/tftpboot
+   curl http://downloads.openwrt.org/snapshots/targets/gemini/generic/openwrt-gemini-itian_sq201-squashfs-factory.bin | tar xvz
+
+This should download and extract the files ''zImage'', ''rd.gz'' and ''hddapp.tgz'' into ''/var/lib/tftpboot''. This is just an example, but to install the images you will need a TFTP server and this is the most common location of the TFTP file server directory.
+
+For background and details about TFTP see [[docs:guide-user:installation:generic.flashing.tftp|the generic OpenWrt TFTP instructions]].
+
+Don't mind the fact that these files are not at all what they say they are: in the original firmware this is indeed a zImage and initial ramdisk etc. In OpenWrt the kernel is split upp between zImage and rd.gz, and hddapp.tgz is the actual root filesystem.
+
+These files can be installed using a UART console and interactive TFTP if you have a UART console (see below). But there is also a way to just install it directly from TFTP:
+
+  * Connect the router to a local link on your host, using a crossed ethernet-cable if your PHY does not auto-detect crossed mode
+  * Set up the network socket on your host manually using e.g. NetworkManager and a fixed IPv4 address to ''192.168.10.254'' netmask ''255.255.255.0''
+  * Make sure you have a TFTP server running on this socket and that the root of the TFTP server contains the images above: ''zImage'', ''rd.gz'' and ''hddapp.tgz''
+  * Power-cycle the device
+  * You should be able to check the logs of your TFTP server to see that the files downloaded successfully to the router
+
+Now OpenWrt is installed on your router, and you can proceed to [[docs:guide-quick-start:checks_and_troubleshooting|basic configuration]].
+
+The same method with the same named files from a stock firmware recovery image can be used to revert back to the original firmware.
+===== Hardware =====
+
+==== PCB photos ====
+
+{{media:itian:sq201:sq201-top-large.jpg?300|PCB Top}}
+{{media:itian:sq201:sq201-bottom-large.jpg?323|PCB Bottom}}
+
+==== Identified electronics ====
+
+  * Top of board: boring electronics... 24MHz crystal. The IC on the left is a Richtec RT9183 Low-dropout regulator for 1.2-3.3 V
+  * Bottom left: 2 x Nanya Technology Corp NT5DS32M16BS-6K (comprising 2 x 32Mbit x 16 = 1024Mbit = 128MiB DDR SDRAM)
+  * Bottom low: Spansion S29GL128N90TFIR1 (128Mbit, 16MiB) Flash memory
+  * Bottom low (at the battery): JMicron JM20339 high-speed USB to SATA bridge, providing the external SATA port over USB (this kind of chip is pretty popular in different external hard drives like LaCie).
+  * Bottom middle: Gemini Storlink SL3516 chip
+  * Bottom right: MiniPCI card with a RaLink RT2561T wireless card
+  * Under the wireless card is a VIA Vectro VT6212LUSB 2.0 USB controller on PCI
+  * Bottom right, low: Vitesse (acquired by Microsemi in april 2015, acquired by Microchip Technology in march 2018) VSC7395XYV 5+1 Integrated Gigabit [[docs:techref:hardware:switch|ethernet switch]] with transcievers facing LAN1, LAN2, LAN3 and LAN4 ports - this is an entire SoC with an 8051 CPU and RAM and peripherals that get booted somehow
+  * Bottom low right: Marvell 88E1111 Ethernet transciever facing the WAN port.
+
+==== Mounting UART serial port ====
+
+For background and generic information see [[docs:techref:hardware:port.serial|the generic serial console documentation]].
+
+I connected a serial port after some simple tinkering. There is a helpful header named "console" for the UART and even another helpful header named "JTAG" for the JTAG. The port is 115200 baud.
+
+In the PCB image above you can see some wires connected to the UART connector. These are:
+
+  YELLOW   power +5V
+  ORANGE   in RX
+  RED      GND
+  GREEN    out TX
+  
+For this device I used an Embed Inc RSLink2 RS232 adapter, but any standard UART adapter should work fine.
+
+==== Serial console hacking ====
+
+If you boot to the default system image you can log in with admin/admin
+
+At boot after pressing the button on the front, press ''CTRL+C'' and you will be dropped into the boot loader which is called "PLATO" which is a variant of the RedBoot boot loader.
+
+Typing ''5'' takes you to a command line interface where it is possible to load a kernel over Xmodem or TFTP
+
+Load the kernel with Xmodem to 0x01600000 (use for example minicom's ''CTRL+A'' then ''S'') and execute it with:
+
+   sl-boot> load -m xmodem -b 0x1600000
+   sl-boot> go 0x1600000
+
+If you instead set up a TFTP server (which I recommend, because it is faster) you need to set up the IP address in the PLATO menu to be for example ''169.254.1.2'', plug the ethernet crossed cable into one of the LAN ports (not the WAN port!) and then you can use: 
+
+    sl-boot> load -m tftp -b 0x1600000
+    TFTP Server IP Address: 169.254.1.1
+    Image Path and name(e.g. /images/zImage): zImage
+    TFTP Download zImage from 169.254.1.1 .......................................
+    Successful to download by TFTP! Size=4646107
+    sl-boot> go 0x1600000
+
+This should boot the kernel.
+===== Links =====
+
+  * This page is a work in progress and content is being transferred from [[https://dflund.se/~triad/krad/itian-squareone/|the development page]]
+  * [[http://fen.home.pl/pub/sterowniki/Itian%20Squareone/|Stock firmware images and info]]
+===== Tags ======
+{{tag>gemini SL3516 16Flash 128RAM redboot GigabitEthernet JumboFrames 4port ARM Serial JTAG 12v_powered 3USB MiniPCI wlan NAS}}

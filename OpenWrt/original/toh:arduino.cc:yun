@@ -1,0 +1,215 @@
+====== Arduino Yun ======
+
+Arduino Yun pairs a commonly found wifi router chipset, the Atheros AR9331, with a classical AVR microcontroller.
+
+===== AVR/AR9331 Communication =====
+
+//The Yún’s Bridge library enables communication between the two processors, connecting the hardware serial port of the AR9331 to Serial1 on the 32U4 (digital pins 0 & 1). Another post will describe the library in greater depth. The serial port of the AR9331 exposes the Linux console (aka, the command line interface, or CLI) for communication with the 32U4. The console is a means for the Linux kernel and other processes to output messages to the user and receive input from the user. File and system management tools are installed by default. It’s also possible to install and run your own applications using Bridge.//
+
+//The ATmega32U4 can be programmed from the AR9331 by uploading a sketch through the Yún’s WiFi interface. When connected to the same WiFi network as your computer, the board will appear under the "Port" menu of the Arduino IDE. The sketch will be transferred to the AR9331, and the Linux distribution will program the ATmega32U4 through the SPI bus, emulating an AVR ISP programmer.//
+
+Via [[http://blog.arduino.cc/2013/09/02/arduino-yun-hardware-review/|Arduino Yun Hardware Review]]
+
+===== Flashing The Latest OpenWRT =====
+
+By the time I am writing this, this might be the first article that tells you how to install OpenWRT on Arduino Yun because no one talks about it. Also, Arduino Yun is already reached its end of life, and the version history is not well documented in each article so I will write it as clearly as I can. Here I am using the old Arduino Yun. It comes with the 1.1.4 version of the bootloader.
+
+Now to update it to the latest OpenWRT what we will need to do is:
+  - Update the bootloader to 1.1.5 because 1.1.4 does not support bigger kernel upload by default
+  - Flash the firmware from the latest build of OpenWRT
+
+==== Prerequisites ====
+
+  - Arduino Yun v1 (rev 2 is also compatible but haven't tried yet)
+  - Linux PC (Windows or Mac is also compatible but not covered here)
+  - LAN and MicroUSB cable
+  - Access Point with Internet Connection
+==== Board Development History ====
+
+The old version of Yun is able to use the latest OpenWRT. The 1.1.5 bootloader is also available for rev. 2 so I think the Yun rev. 2 is also able to boot the latest OpenWRT. No need to be afraid of bricking, if you still have the bootloader, everything can be reflashed. [[https://docs.arduino.cc/tutorials/yun-rev2/yun-u-boot-reflash|Go here]] if you need to re-flashing the stock Yun firmware.
+
+==== Bootloader Mode ====
+
+Connect Yun LAN and Micro USB to your PC. Open Arduino IDE, and download the bridge library. Select menu Sketch > Include Library > Manage Libraries ... Search bridge on library manager and install
+
+{{:media:arduino-bridge-library.png|}}
+
+Open YunSerialTerminal sketch by selecting File > Example > Bridge > YunSerialTerminal. Upload YunSerialTerminal; open the serial monitor and set the baud rate to 115200. Press enter and a terminal will show up:
+
+{{:media:arduino-serial-openwrt-terminal.png|}}
+
+Reset Yun by pressing a white button near the LEDs. Go to boot mode quickly, and send lin (or depending on the message, some bootloaders need ard, some only need to press any character) command into the serial monitor until the bootloader command prompt is shown below
+
+{{:media:yun-boot-mode.png|}}
+
+==== Setting TFTP Server ====
+Now let's set up the host. Make sure your PC IP connected to Yun is 192.168.1.2 with gateway 192.168.1.1. You can use any IP here, but if you want to follow me just use the same IP as my configuration. Below is my PC IP, 192.168.1.2
+
+{{:media:yun-host-ip.png|}}
+
+Install tftp server
+
+''$ sudo apt-get install tftpd-hpa''
+
+In my Linux OS, after installing, check the tftp folder
+
+<code>$ cat /etc/default/tftpd-hpa
+# /etc/default/tftpd-hpa
+
+TFTP_USERNAME="tftp"
+TFTP_DIRECTORY="/srv/tftp"
+TFTP_ADDRESS=":69"
+TFTP_OPTIONS="--secure"</code>
+
+in my case it is ''/srv/tftp''
+
+Now download this [[https://github.com/arduino/yun-go-updater/releases/download/1.2/yun-go-updater-linux64.tar.gz|Yun-Go-Updater]], and extract the bootloader file only:
+
+''u-boot-arduino-lede.bin''
+
+And move it to the ''/srv/tftp'' directory
+
+''$ mv u-boot-arduino-lede.bin /srv/tftp''
+
+Then get the latest OpenWRT firmware [[https://firmware-selector.openwrt.org/?version=22.03.3&target=ath79%2Fgeneric&id=arduino_yun|here]]
+
+By the time I am writing this, it is 22.03.3
+
+{{:media:download-latest-openwrt.png?800|}}
+
+Put the firmware also in tftp folder
+
+''openwrt-22.03.3-ath79-generic-arduino_yun-squashfs-sysupgrade.bin''
+
+So now the ''/srv/tftp'' contains our bootloader and OpenWRT firmware.
+
+==== Flashing the Bootloader and OpenWRT Firmware ====
+
+After everything is set up then send these commands in Yun serial monitor:
+<code>
+linino> setenv serverip 192.168.1.2;
+
+linino> setenv ipaddr 192.168.1.1;
+</code>
+The Yun is set to 192.168.1.1 and our PC is 192.168.1.2
+
+Send the bootloader to Yun
+
+''tftp 0x80060000 u-boot-arduino-lede.bin''
+
+Then erase the old bootloader and replace using these commands.
+<code>
+erase 0x9f000000 +0x40000;
+cp.b $fileaddr 0x9f000000 $filesize;
+erase 0x9f040000 +0x10000
+</code>
+Below is the output
+
+{{:media:flashing-bootloader-yun.png|}}
+
+Then we can send the OpenWRT firmware to Yun, erase the previous firmware, and write the OpenWRT
+<code>
+tftp 0x80060000 openwrt-22.03.3-ath79-generic-arduino_yun-squashfs-sysupgrade.bin;
+erase 0x9f050000 +0xE50000;
+cp.b $fileaddr 0x9f050000 $filesize;
+</code>
+Below is the output
+
+{{:media:flashing-openwrt-yun.png|}}
+
+Now reset by pressing the white Yun reset button near the LEDs. Now we can see the new bootloader and running the latest and the most bleeding edge OpenWRT
+
+{{:media:latest-openwrt-installed-yun.png|}}
+
+Press Enter again in the serial monitor to activate the console
+
+{{:media:yun-openwrt-new-console.png|}}
+
+Now we have the latest OpenWRT installed on Arduino Yun! By default, the wifi is turned off. To access the Yun, run this command to set the Yun IP.
+
+''ifconfig eth0 192.168.1.1''
+
+Once the IP is set, you can access the OpenWRT web interface on the browser by visiting 192.168.1.1
+
+Connect to your Wifi access point and run opkg update to update the package list.
+
+==== Expand the Yun Storage ====
+
+There are so many packages that you can install but the Yun memory is too small. However, we can expand the storage using [[:docs:guide-user:additional-software:extroot_configuration|extroot]] method.
+
+The [[https://docs.arduino.cc/tutorials/yun-rev2/expanding-yun-disk-space|old storage expanding steps]] does not work on the newest OpenWRT. So to expand the storage using a microSD card, [[:docs:guide-user:additional-software:extroot_configuration|use the OpenWRT instruction]]. Here is the screenshot of the expanded storage size of my Arduino Yun.
+
+{{:media:yun-expanded-storage.png|}}
+
+===== Vital Links for Building =====
+
+[[http://download.linino.org/dogstick/all-in-one/latest/build-config.txt|Stock Buildconfig]] for the release unit and the customized [[https://github.com/arduino/linino.git|Linino OpenWrt redistribution]] it is built upon.
+
+
+===== Linino Build Instructions =====
+
+Below steps from //**[[http://fibasile.github.io/arduino-yun-custom-buildroot.html|Building a custom image for Arduino YUN]]**//, via Fiore Basile:
+
+==== Startup ====
+As soon as I got my hands on the YUN I found the selection of packages lacks many interesting pieces of software that could help building interesting appliances. I think Arduino people selected those packages that would easily fit in the minimal 64MB flash.
+
+So first of all I formatted a 4GB mini-sd as ext3 and plugged it in to the mini, it was recognized as /dev/sda1, so I quickly added an /opt folder and mounted in there instead. Now I have plenty of space to add my custom packages, and some "secure" disk space just in case I have to wipe my YUN loosing all flash content.
+
+Resetting the YUN flash is done by holding the reset button for 30 seconds. Holding it for 5 just resets the WiFi config.
+
+Then I spent some time to collect all the information needed to setup our own buildroot for the YUN, here you can find a few tips to do it yourself.
+
+==== Getting the source ====
+First of all you should clone the Arduino YUN buildroot sources, available from github.
+
+<code>git clone https://github.com/arduino/linino.git linino</code>
+This will checkout the OpenWrt buildroot with specific Arduino YUN modifications
+
+==== Prerequisites ====
+In order to successfully compile the builroot you'll need a few packages installed: for Debian Stable you can easily get them by running as root (or with sudo)
+
+<code>apt-get install subversion build-essential git-core libncurses5-dev zlib1g-dev gawk asciidoc \
+bash bc binutils bzip2 fastjar flex g++ gcc util-linux zlib1g-dev libncurses5-dev \
+libssl-dev perl-modules python2.6-dev rsync ruby sdcc unzip wget gettext xsltproc \
+zlib1g-dev libxml-parser-perl</code>
+I've included a few you might already have installed, just in case someone had removed them, it won't hurt anyway to put them on the command line.
+
+==== Configuring the kernel ====
+Once you're done with prerequisites go on to configure the kernel:
+
+<code>
+cd  linino/trunk    
+./scripts/feeds update -a
+./scripts/feeds install -a
+make menuconfig
+</code>
+If all the steps above have been done correctly you will be presented with a familiar menu, similar to the standard Linux kernel build. Go on and select the kernel modules, and packages you want to build.
+
+Once you exit you can compare with diff the generated config with the one available on the Arduino YUN package repository, this should be located at http://download.linino.org/dogstick/all-in-one/latest/build-config.txt.
+
+EDIT: If you want to keep the same config and packages getting built by Yun developers, also do:
+
+<code>
+./scripts/feeds uninstall -a
+rm -rf feeds
+./scripts/feeds update -a
+./scripts/feeds install -a
+rm -f .config
+git checkout .config
+make oldconfig
+</code>
+Build it
+Now you can just run make to start the build process, get a cup of coffee, or several considering it needs to fetch many packages i.e. the Linux kernel and build lots of stuff.
+
+<code>make V=s</code>
+Please note that using the ''V=s'' param switches on verbose output. If you like you can add ''-j4'' or ''-j8'' depending on how many cores you configured on your machine or VM to speed things up a little.
+
+At the end of the process you should have images ready to be uploaded via TFTP (I'm currently investigating how), and a complete cross-compiling toolchain to test out new packages, and eventually package and contribute them to the offical repository.
+
+===== Linino Packages =====
+
+[[https://github.com/arduino/linino/tree/master/trunk/package/linino]]
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>AR9331 16flash 64ram}}

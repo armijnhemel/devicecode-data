@@ -1,0 +1,570 @@
+======Meraki MR18======
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^MR18$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^MR18$"}
+} -->
+
+===== Flash Layout =====
+==== Stock ====
+<code>
+[    0.352000] Creating 5 MTD partitions on "ath79-nand":     
+[    0.356000] 0x000000000000-0x000000080000 : "nandloader"                     
+[    0.364000] 0x000000080000-0x000000880000 : "part1"                          
+[    0.372000] 0x000000880000-0x000001080000 : "part2"                          
+[    0.376000] 0x000001080000-0x000007f80000 : "ubi"                            
+[    0.384000] 0x000007fe0000-0x000008000000 : "odm-caldata"     
+</code>
+
+==== OpenWrt ====
+<code>
+/ # cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00080000 00020000 "nandloader"
+mtd1: 00800000 00020000 "kernel"
+mtd2: 00800000 00020000 "recovery"
+mtd3: 06f00000 00020000 "ubi"
+mtd4: 00020000 00020000 "odm-caldata"
+</code>
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^MR18$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+These devices were "cloud-connected" with automatic upgrades and therefore today it's rare to find devices running anything other than the latest Cisco firmware. This means your only possible means of installation is likely to be to use the JTAG connector (though this not difficult; a method using only a Raspberry Pi is described below)
+
+In the event that you have an older device, methods A/B/C may work. You can find which version of the firmware is on your device by running the command "odm fw_version" on the serial connection. If this command reports as "UNRECOGNIZED", it means a modern firmware is running and JTAG must be used.
+
+Please use the table below to find out which to use:
+
+^ Firmware Version               ^ Flash Method                      ^
+| 25.11 and Up                     | [[#JTAG]] only | 
+| 24-* to 25.9                     | [[#Flashing Method C|Method C]]   |
+| 22-* to 23-*                     | [[#Flashing Method B|Method B]]   |
+| 20-123302 (Factory Firmware)     | [[#Flashing Method A|Method A]]   |
+
+If none of the flashing methods work for you or your device, then you will need to [[#JTAG]] your device.
+
+==== JTAG ====
+
+There is a [[docs:techref:hardware:port.jtag.cables|14 pin EJTAG connector]] present, the pinout is the same as regular 14 pin JTAG.
+
+There are two methods described for JTAG programming this device; they are:
+
+  * Using OpenOCD to [[toh:meraki:mr18:jtag|load a kernel into the device's RAM]], boot from it and flash from there.
+  * [[http://www.usbjtag.com|USBJTAG NT]] to flash the device directly. To ID/Detect the flash you need to send a PROGRAM command after powering on the router and counting to one. The forums contain a [[http://www.usbjtag.com/jtagnt/router/mr18.php|an MR18 config XML and USP script]] and [[http://www.usbjtag.com/vbforum/showthread.php?t=9343|further information]] including videos. 
+
+==== Flashing Method A ====
+ 1. Hookup UART and Ethernet to the MR18, with the Ethernet directly wired to your local machine. This is also done to prevent the MR18 from reaching the internet.
+ 
+ 2. Once you have your UART console open hold down "s" on your keyboard, and plug in the power to the MR18. After a bit, you should then be dropped into a limited root shell.
+ 
+ 3. From here, you will next need to bootstrap the ''rootfs'' filesystem. To do this, you will want to run the following command:
+ 
+<code>
+cat > /storage/root.sh
+</code>
+
+ 4. Note that at this point the console will sit empty, as this is normal. You will now want to copy and paste the following script into the console:
+
+<code>
+#!/bin/sh
+ROOTFSMTD=$(cat /proc/mtd | grep -e "-1\"" | grep rootfs | awk '{ print substr($1, 4, length($1)-4) }')
+if ! test -f /MERAKI_ARCH ; then
+  # Mount new root
+  mkdir /rootfs
+  mount /dev/mtdblock$ROOTFSMTD /rootfs
+  # Set up special filesystems
+  mount -t devtmpfs dev /rootfs/dev
+  mount -t proc proc /rootfs/proc
+  mount -t sysfs sys /rootfs/sys
+  mount -t tmpfs tmp /rootfs/tmp
+  # Mount storage
+  mount -t ubifs /dev/ubivol/storage /rootfs/storage
+  # Switch to new root and continue execution
+  cp "$0" /rootfs/tmp/root.sh
+  busybox chroot /rootfs sh /tmp/root.sh
+else
+  # Setup network
+  ifconfig eth0 192.168.1.1 netmask 255.255.255.0 up
+  # Give ourselves a shell
+  sh
+fi
+</code>
+
+ 5. Once the code is copied, you can press CTRL+D to exit, which should take you back to a command prompt. Now make the script executable and run it:
+ 
+<code>
+chmod +x /storage/root.sh
+/storage/root.sh
+</code>
+
+ 6. You should now be back to a new root prompt, but with working network connectivity. At this point, you'll want to download the firmware image for the MR18 from the repo at [[https://github.com/riptidewave93/Openwrt-MR18/releases]] and then extract the files to the root of your local webserver. Once this is done and you have verified that the 2 images are extracted and in the webroot folder, you can download the initramfs image to the MR18 and flash it:
+
+<code>
+wget http://192.168.1.2/openwrt-ar71xx-nand-mr18-initramfs.bin -O /storage/openwrt.bin
+dd if=/storage/openwrt.bin of=/dev/mtdblock2
+</code>
+
+ 7. If both commands above completed without error, then you have successfully flashed the ''initramfs'' image to your device! To boot this, you will then want to unplug the power from the MR18, hold down "2" on your keyboard, and then plug in power to your MR18. This will then boot up the OpenWrt ''initramfs'' build.
+
+**NOTE:** In the initramfs image, you may notice wifi does not work. This is because the factory MR18 firmware does not properly populate the UBI ''caldata'' partition with the required information, but we will take care of this shortly.
+
+**Second Note:** If you are unable to boot to the initramfs by holding "2" down, this normally means you are not holding "2" at the right time. You need to hold this down at the exact same time power is applied to the MR18 for the bootloader to recognize the input.
+
+ 8. Now that we have the initramfs build working, you'll want to browse to ''%%http://192.168.1.1/%%'' which should then take you to the LuCI web interface. From here, you can just press login to enter as no password is set. Now, just go to the //System Upgrade// tab, and select the downloaded sysupgrade image named ''openwrt-ar71xx-nand-mr18-squashfs-sysupgrade.tar''. Once selected, de-select the save config option and then press //Upgrade//. Once on the confirmation page, go ahead and flash the image.
+
+ 9. This will remove the stock Meraki kernel, flash OpenWrt, fix the ''caldata'' partition if needed, and auto-expand ''rootfs_data'' to use the rest of the UBI free space.
+
+=== Extras ===
+ - Video walkthrough: https://www.youtube.com/watch?v=ZTywBt3_W8Y
+
+Here are a few ways to run a simple HTTP server on Linux/OS X:
+
+<code>
+lorenzo@miruna ~/meraki_fw $ python -m SimpleHTTPServer
+Serving HTTP on 0.0.0.0 port 8000 ...
+</code>
+
+<code>
+lorenzo@miruna ~/meraki_fw $ php -S 0.0.0.0:8081
+PHP 5.5.9-1ubuntu4.11 Development Server started at Tue Sep  8 02:08:29 2015
+Listening on http://0.0.0.0:8081
+Document root is /home/lorenzo/meraki_fw
+Press Ctrl-C to quit.
+</code>
+
+==== Flashing Method B ====
+from: [[https://snt.sh/2016/02/pwning-the-meraki-mr18/]]
+
+1. Hookup UART to the MR18. No ethernet should be plugged in.
+
+2. On the MR18, hold down the reset button for 12~ seconds. The LED should start blinking, and then turn off. After the LED turns off, release the reset button. This will remove any configurations on the device. Let the MR18 reboot.
+
+3. At this point you should be at a <Meraki> Prompt once the device reboots.
+
+4. At this point, you will want to enter:
+<code>
+odm help
+</code>
+
+5. If you get a “UNRECOGNIZED COMMAND LOGGED TO CLOUD SERVERS.” reply, then please try holding the reset button to do another reset of the device. If you continue to get this message, then sadly your firmware version is NOT rootable using this method.
+
+6. If you got a “Help” output for the "odm" command, then run the following commands:
+<code>
+odm serial_num write Q2XX-XXXX-XXXV
+odm serial_num read
+</code>
+
+7. At this point the output should show “Q2XX-XXXX-XXXV” and your device should have it’s LED’s flashing. Now pull the power from the device, hook up the ethernet connection (connected to a local web server; no connection to the Internet!) and hold down “s” on your UART console when you power back on the device.
+
+8. After a bit, you should then drop to a initramfs root shell, and the device is pwned! Now carry on with [[#Flashing Method A|"Flashing Method A"]], point 6.
+
+Confirmed working on: Firmware Build 22-140575, Build 22-149780, Build 23-162921, Build 23-188206.
+
+==== Flashing Method C ====
+Note: This method requires the use of another router, or setting up a DHCP server on your local system.
+
+1. Wire up UART to your Meraki MR18.
+
+2. Hook up your MR18 to a router, and disconnect the router from the internet. **DO NOT ALLOW THE MR18 TO TOUCH THE INTERNET DURING THIS PROCESS!** This is important as the most reliable way to do this exploit is to have the MR18 use DHCP to get an IP on the same network as your personal computer.
+
+3. Hold the reset button on the MR18 for 10+ seconds. You should see the LED blink, and then turn off. Once the LED turns off you can stop holding the reset button. This does a “Level 2” reset and removes any configs from the access point.
+
+4. From your personal computer that has UART wired to the MR18, plug into the same router the MR18 is using. Then, remember the IP address of your system. In this example, we will use 192.168.1.102.
+
+5. Once the MR18 booted, start a HTTP server (on port 80) on your personal computer in the same directory as the firmware files. If you are running linux, this can be done using the below example:
+
+<code>
+wget https://snt.sh/uploads/files/MR18-LEDE.tar.gz
+tar xzvf ./MR18-LEDE.tar.gz
+cd ./MR18-LEDE/
+sudo python2 -m SimpleHTTPServer 80
+</code>
+
+6. Once started, you can then load this image to the “part2” partition on the MR18. This is done with the following:
+
+<code>
+odm firmware part2 192.168.1.102:80/lede-ar71xx-nand-mr18-initramfs-kernel.bin
+</code>
+
+Note that the above command may timeout, depending at what state your router is during the boot process. If it times out or fails, just wait 60 seconds and try again. Normally the best time to run the command is when the LED on the MR18 is green or flashing orange.
+
+7. Once complete, remove power from the Meraki MR18. Now that power is removed, in your UART session hold down “2” on your keyboard while applying power. This should now boot you into the initramfs image you just flashed to the MR18.
+
+8. Unplug the MR18 from your router, and directly wire your computer to it. Once wired, you should get a IP from the MR18.
+
+9. Now that recovery is flashed, open a browser on your computer and navigate to ''%%http://192.168.1.1%%''. Once signed into LuCI, you can then flash the current sysupgrade image for the MR18 [[#installation|(see "installation" section)]].
+
+10. Once flashed, your MR18 should reboot and be fully running OpenWrt/LEDE!
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                                                             |
+^ Vendor           | Atheros/Qualcomm                                                 |
+^ Bootloader       | [[https://github.com/riptidewave93/meraki-linux/tree/linux-3.4-r23-20150601/arch/mips/ath79/loader|Cisco Nandloader]]        |
+^ System-On-Chip   | Atheros/Qualcomm QCA9557-AT4A                                    |
+^ CPU Speed        | 720MHz                                                           |
+^ Flash-Chip       | Hynix H27U1G8F2BTR-BC TSOP48 ONFI NAND                           |
+^ Flash size       | 128MiB                                                           |
+^ RAM              | 2x Unknown DDR2 64MiB                                            |
+^ RAM Size         | 128MiB                                                           |
+^ Wireless         | SoC AR9550 + 2x Atheros AR9582-AR1A                              |
+^ Switch           | None                                                             |
+^ Ethernet ports   | 1x Gigabit Atheros AR8035-A, 802.3af PoE capable                 |
+^ USB              | No                                                               |
+^ Serial           | [[docs:techref:hardware:port.serial.cables|Yes]], [[#serial|settings]]   |
+^ JTAG             | [[#JTAG|Yes]]                           |
+
+==== Photos ====
+{{:media:meraki:mr18-4.jpg?200|}}
+{{:media:meraki:mr18-5.jpg?200|}}
+{{:media:meraki:mr18-6.jpg?200|}}
+{{:media:meraki:mr18-7.jpg?200|}}
+{{:media:meraki:mr18-8.jpg?200|}}
+
+==== Serial ====
+
+{{:media:meraki:mr18-11.jpg?200|}}
+
+Connect on UART (Console). J4 is closest to the boot set jumper under the console pins.
+
+| **J4:** VCC   |
+| **J3:** RX    |
+| **J2:** TX    |
+| **J1:** GND   |
+
+
+===== Bootlogs =====
+==== Stock Bootlog ====
+<WRAP bootlog>
+<nowiki>__________________sri____________________
+944x BootROM Ver. (asic) 1.0 [Nov  8 2011 13:42:57]
+_________________________________________
+find_hif: bootstrap = 0x31458
+Nand Flash init
+hdr: [0xbd000400 : 0xbd000400 : 0x6fb4 : 0xe5c86b84]
+nand_load_fw: read 13 pages
+nand_load_fw: 0x10000 0x800 0xbd000bf0
+nand_load_fw: 0x20000 0x800 0xbd0013f0
+nand_load_fw: 0x30000 0x800 0xbd001bf0
+nand_load_fw: 0x40000 0x800 0xbd0023f0
+nand_load_fw: 0x50000 0x800 0xbd002bf0
+nand_load_fw: 0x60000 0x800 0xbd0033f0
+nand_load_fw: 0x70000 0x800 0xbd003bf0                                          
+nand_load_fw: 0x80000 0x800 0xbd0043f0                                          
+nand_load_fw: 0x90000 0x800 0xbd004bf0                                          
+nand_load_fw: 0xa0000 0x800 0xbd0053f0                                          
+nand_load_fw: 0xb0000 0x800 0xbd005bf0                                          
+nand_load_fw: 0xc0000 0x800 0xbd0063f0                                          
+nand_load_fw: 0xd0000 0x800 0xbd006bf0                                          
+f/w 0 read complete, jumping to 0xbd000400                                      
+                                                                                
+                                                                                
+                                                                                
+Meraki Atheros LinuxLoader MR18 built Jan 31 2014 15:53:22                      
+qca955x_init_ddr ok                                                             
+test_memory ok                                                                  
+D-cache size: 64K                                                               
+I-cache size: 32K                                                               
+init_dram_uncached ok                                                           
+init_icache ok                                                                  
+init_dcache ok                                                                  
+enable_caches ok                                                                
+test_memory ok                                                                  
+nand_flash_init ok                                                              
+loading fw at 256                                                               
+hdr: [0x8e73ed8a : 0x400 : 0x169718 ]                                           
+part1: Copying image to memory ... ...........                                  
+done.                                                                           
+part1: Checking sha1 (from 0x80060000 length 1480472) ... match                 
+part1: sha1 calculated: 412910ca51c6ada1ba83e036562ef3427dc6ece0                
+starting stage2                                                                 
+decompressing embedded kernel image 0x81a02640(0x1670b7)                        
+got osize 430c44                                                                
+.....................done                                                       
+starting linux                                                                  
+[    0.000000] Linux version 3.4.80-meraki-ar7100+ (meraki@buildbot105.meraki.c4
+[    0.000000] bootconsole [early0] enabled                                     
+[    0.000000] CPU revision is: 00019750 (MIPS 74Kc)                            
+[    0.000000] SoC: Qualcomm Atheros QCA9558 rev 0                              
+[    0.000000] Clocks: CPU:720.000MHz, DDR:600.000MHz, AHB:200.000MHz, Ref:40.0z
+[    0.000000] Determined physical RAM map:                                     
+[    0.000000]  memory: 07fb0000 @ 00050000 (usable)                            
+[    0.000000] Wasting 2560 bytes for tracking 80 unused pages                  
+[    0.000000] Initrd not found or empty - disabling initrd                     
+[    0.000000] Zone PFN ranges:                                                 
+[    0.000000]   Normal   0x00000050 -> 0x00008000                              
+[    0.000000] Movable zone start PFN for each node                             
+[    0.000000] Early memory PFN ranges                                          
+[    0.000000]     0: 0x00000050 -> 0x00008000                                  
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pa2
+[    0.000000] Kernel command line:  console=ttyS0,115200 machtype=Meraki ubi.m8
+[    0.000000] PID hash table entries: 512 (order: -1, 2048 bytes)              
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)   
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)     
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.  
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32s
+[    0.000000] Writing ErrCtl register=00000000                                 
+[    0.000000] Readback ErrCtl register=00000000                                
+[    0.000000] Memory: 125084k/130752k available (2224k kernel code, 5668k rese)
+[    0.000000] SLUB: Genslabs=9, HWalign=32, Order=0-3, MinObjects=0, CPUs=1, N1
+[    0.000000] NR_IRQS:51                                                       
+[    0.000000] Calibrating delay loop... 359.42 BogoMIPS (lpj=718848)           
+[    0.028000] pid_max: default: 32768 minimum: 301                             
+[    0.032000] Mount-cache hash table entries: 512                              
+[    0.036000] Performance counters: mips/74K PMU enabled, 4 32-bit counters av3
+[    0.040000] devtmpfs: initialized                                            
+[    0.044000] NET: Registered protocol family 16                               
+[    0.048000] gpiochip_add: registered GPIOs 0 to 23 on device: ath79          
+[    0.052000] MIPS: machine is Meraki Access Point                             
+[    0.056000] registering PCI controller with io_map_base unset                
+[    0.060000] registering PCI controller with io_map_base unset                
+[    0.068000] bio: create slab <bio-0> at 0                                    
+[    0.072000] PCI host bridge to bus 0000:00                                   
+[    0.076000] pci_bus 0000:00: root bus resource [mem 0x10000000-0x11ffffff]   
+[    0.080000] pci_bus 0000:00: root bus resource [io  0x0000]                  
+[    0.084000] pci 0000:00:00.0: BAR 0: assigned [mem 0x10000000-0x1001ffff 64b]
+[    0.088000] pci 0000:00:00.0: BAR 6: assigned [mem 0x10020000-0x1002ffff pre]
+[    0.092000] PCI host bridge to bus 0000:01                                   
+[    0.096000] pci_bus 0000:01: root bus resource [mem 0x12000000-0x13ffffff]   
+[    0.100000] pci_bus 0000:01: root bus resource [io  0x0001]                  
+[    0.104000] pci 0000:01:00.0: BAR 0: assigned [mem 0x12000000-0x1201ffff 64b]
+[    0.108000] pci 0000:01:00.0: BAR 6: assigned [mem 0x12020000-0x1202ffff pre]
+[    0.112000] pci 0000:00:00.0: using irq 40 for pin 1                         
+[    0.116000] pci 0000:01:00.0: using irq 41 for pin 1                         
+[    0.120000] Switching to clocksource MIPS                                    
+[    0.124000] NET: Registered protocol family 2                                
+[    0.128000] IP route cache hash table entries: 1024 (order: 0, 4096 bytes)   
+[    0.136000] TCP established hash table entries: 4096 (order: 3, 32768 bytes) 
+[    0.144000] TCP bind hash table entries: 4096 (order: 2, 16384 bytes)        
+[    0.148000] TCP: Hash tables configured (established 4096 bind 4096)         
+[    0.156000] TCP: reno registered                                             
+[    0.160000] UDP hash table entries: 256 (order: 0, 4096 bytes)               
+[    0.164000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)          
+[    0.172000] NET: Registered protocol family 1                                
+[    0.188000] Detected Meraki MR18                                             
+[    0.204000] squashfs: version 4.0 (2009/01/31) Phillip Lougher               
+[    0.208000] msgmni has been set to 244                                       
+[    0.216000] io scheduler noop registered                                     
+[    0.216000] io scheduler deadline registered (default)                       
+[    0.224000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled         
+[    0.252000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11) is a 16550A    
+[    0.256000] console [ttyS0] enabled, bootconsole disabled                    
+[    0.256000] console [ttyS0] enabled, bootconsole disabled                    
+[    0.268000] Trying to register dev faulty etc                                
+[    0.276000] ONFI param page 0 valid                                          
+[    0.276000] ONFI flash detected                                              
+[    0.280000] NAND device: Manufacturer ID: 0xad, Chip ID: 0xf1 (Hynix H27U1G8)
+[    0.292000] Scanning device for bad blocks                                   
+[    0.352000] Creating 5 MTD partitions on "ath79-nand":                       
+[    0.356000] 0x000000000000-0x000000080000 : "nandloader"                     
+[    0.364000] 0x000000080000-0x000000880000 : "part1"                          
+[    0.372000] 0x000000880000-0x000001080000 : "part2"                          
+[    0.376000] 0x000001080000-0x000007f80000 : "ubi"                            
+[    0.384000] 0x000007fe0000-0x000008000000 : "odm-caldata"                    
+[    0.388000] UBI: attaching mtd3 to ubi0                                      
+[    0.392000] UBI: physical eraseblock size:   131072 bytes (128 KiB)          
+[    0.400000] UBI: logical eraseblock size:    129024 bytes                    
+[    0.404000] UBI: smallest flash I/O unit:    2048                            
+[    0.412000] UBI: sub-page size:              512                             
+[    0.416000] UBI: VID header offset:          512 (aligned 512)               
+[    0.420000] UBI: data offset:                2048                            
+[    0.564000] UBI: max. sequence number:       1947                            
+[    0.580000] UBI: attached mtd3 to ubi0                                       
+[    0.584000] UBI: MTD device name:            "ubi"                           
+[    0.588000] UBI: MTD device size:            111 MiB                         
+[    0.592000] UBI: number of good PEBs:        888                             
+[    0.596000] UBI: number of bad PEBs:         0                               
+[    0.600000] UBI: number of corrupted PEBs:   0                               
+[    0.604000] UBI: max. allowed volumes:       128                             
+[    0.612000] UBI: wear-leveling threshold:    4096                            
+[    0.616000] UBI: number of internal volumes: 1                               
+[    0.620000] UBI: number of user volumes:     7                               
+[    0.624000] UBI: available PEBs:             486                             
+[    0.628000] UBI: total number of reserved PEBs: 402                          
+[    0.636000] UBI: number of PEBs reserved for bad PEB handling: 8             
+[    0.640000] UBI: max/mean erase counter: 10/2                                
+[    0.644000] UBI: image sequence number:  0                                   
+[    0.648000] UBI: background thread "ubi_bgt0d" started, PID 201              
+[    0.664000] tun: Universal TUN/TAP device driver, 1.6                        
+[    0.668000] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>           
+[    0.676000] input: gpio-keys-polled as /devices/platform/gpio-keys-polled/in0
+[    0.688000] TCP: cubic registered                                            
+[    0.692000] NET: Registered protocol family 17                               
+[    0.696000] devtmpfs: mounted                                                
+[    0.708000] Freeing unused kernel memory: 1468k freed                        
+[    0.712000] Made it into bootsh: Nov 24 2014 18:15:08                        
+[    0.716000] bootsh build 22-149780                                           
+[    0.728000] Mapping 5596 bytes for /lib/modules/leds-gpio.ko                 
+[    0.736000] Mapping 133512 bytes for /lib/modules/ag7240_mod.ko              
+[    0.748000] qca955x_GMAC: Length per segment 1536                            
+[    0.752000] 955x_GMAC: qca955x_gmac_attach                                   
+[    0.756000] 955x_GMAC: qca955x_set_gmac_caps                                 
+[    0.760000] Currently in polling mode unit0                                  
+[    0.764000] Registering AR8033 Phy....                                       
+[    0.768000] qca955x_GMAC: Mac address for unit 0:bfff1000                    
+[    0.772000] qca955x_GMAC: 00:00:00:00:00:00                                  
+[    0.780000] qca955x_GMAC: Max segments per packet :   1                      
+[    0.784000] qca955x_GMAC: Max tx descriptor count :   100                    
+[    0.788000] qca955x_GMAC: Max rx descriptor count :   252                    
+[    0.796000] qca955x_GMAC: Mac capability flags    :   4200                   
+[    0.800000] 955x_GMAC: qca955x_gmac_attach                                   
+[    0.804000] 955x_GMAC: qca955x_set_gmac_caps                                 
+[    0.808000] Currently in polling mode unit1                                  
+[    0.812000] Registering AR8033 Phy....                                       
+[    0.816000] qca955x_GMAC: Mac address for unit 1:bfff1006                    
+[    0.824000] qca955x_GMAC: 00:00:00:00:00:00                                  
+[    0.828000] qca955x_GMAC: Max segments per packet :   1                      
+[    0.832000] qca955x_GMAC: Max tx descriptor count :   100                    
+[    0.840000] qca955x_GMAC: Max rx descriptor count :   252                    
+[    0.844000] qca955x_GMAC: Mac capability flags    :   4200                   
+[    1.472000] UBIFS: recovery needed                                           
+[    1.560000] UBIFS: recovery completed                                        
+[    1.564000] UBIFS: mounted UBI device 0, volume 1, name "storage"            
+[    1.568000] UBIFS: file system size:   19869696 bytes (19404 KiB, 18 MiB, 15)
+[    1.576000] UBIFS: journal size:       1032193 bytes (1008 KiB, 0 MiB, 8 LEB)
+[    1.584000] UBIFS: media format:       w4/r0 (latest is w4/r0)               
+[    1.588000] UBIFS: default compressor: lzo                                   
+[    1.592000] UBIFS: reserved for root:  938494 bytes (916 KiB)                
+[    1.632000] Bootsh: trying rootfs path: /dev/mtdblock/rootfs-22-149780-1     
+Attempting to setup root /dev/mtdblock/rootfs-22-149780-1...                    
+[    2.440000] Mapping 5596 bytes for /lib/modules/leds-gpio.ko                 
+[    2.676000] insmod: error initializing module /lib/modules/leds-gpio.ko: Fils
+[    2.684000] Mapping 133512 bytes for /lib/modules/ag7240_mod.ko              
+[    2.696000] insmod: error initializing module /lib/modules/ag7240_mod.ko: Fis
+init started: BusyBox v1.20.2 (2014-11-24 17:48:19 PST)                         
+[    2.988000] Algorithmics/MIPS FPU Emulator v1.5                              
+[    3.200000] Sat Jan  1 00:00:00 UTC 2000                                     
+WARNING! THIS CONSOLE IS LOGGED! UNAUTHORIZED ACCESS FORBIDDEN!                 
+<Meraki> [    4.820000] athr_gmac_ring_alloc Allocated 1600 at 0x803ad800       
+[    4.828000] athr_gmac_ring_alloc Allocated 4032 at 0x87639000                
+[    5.132000] 955x_GMAC: eth0 in RGMII MODE                                    
+[    5.136000] 955x_GMAC: qca955x_gmac_sgmii_res_cal cal value = 0xe            
+[    5.156000] Scorpion -----> 8033 PHY                                         
+[    5.160000] athrs_ar8033_reg_init: Done                                      
+[    5.164000] Setting Drop CRC Errors, Pause Frames and Length Error frames    
+[    5.172000] Setting PHY...                                                   
+[    5.472000] sysctl -w vm.panic_on_oom=2                                      
+[    5.484000] vm.panic_on_oom = 2                                              
+[    6.376000] click: starting router thread pid 454 (87725e00)                 
+[    7.260000] elts_meraki: module license 'unspecified' taints kernel.         
+[    7.428000] Single synchronous check for reset                               
+[    7.716000]                                                                  
+[    7.728000] boot 9 build 22-149780 board ar7100 mac 00:censored:00    
+[    7.740000] Module: dummy  .text=0xc02b1000 .data=0xc02b13b0 .bss=           
+[    7.740000] Module: mach_meraki_mr18_radios  .text= .data= .bss=0xc02b8270   
+[    7.740000] Module: proclikefs  .text=0xc02c3000 .data= .bss=0xc02c3dc0      
+[    7.740000] Module: merakiclick  .text=0xc04ba000 .data=0xc05b0e90 .bss=0xc00
+[    7.740000] Module: elts_meraki  .text=0xc09de000 .data=0xc0b9dda0 .bss=0xc00
+[    8.000000] phram: phram-oops device: 0x4000 at 0x10000                      
+[    8.112000] ramoops: platform device not found, using module parameters      
+[    8.144000] ln: /usr/bin/slowfcgi: File exists                               
+[   10.016000] adf: module license 'Proprietary' taints kernel.                 
+[   10.028000] asf: module license 'Proprietary' taints kernel.                 
+[   10.252000] ath_spectral: module license 'Proprietary' taints kernel.        
+[   10.260000] ath_spectral: Version 2.0.0                                      
+[   10.260000] Copyright (c) 2005-2009 Atheros Communications, Inc. All Rights d
+[   10.272000] SPECTRAL module built on Nov 24 2014 18:10:57                    
+[   10.308000] ath_hal: module license 'Proprietary' taints kernel.             
+[   10.328000] ath_hal: 0.9.17.1 (AR5416, AR9380, DEBUG, REGOPS_FUNC, WRITE_EEP)
+[   10.464000] ath_dfs: module license 'Proprietary' taints kernel.             
+[   10.472000] ath_dfs: Version 2.0.0                                           
+[   10.472000] Copyright (c) 2005-2006 Atheros Communications, Inc. All Rights d
+[   10.500000] ath_rate_atheros: module license 'Proprietary' taints kernel.    
+[   10.508000] ath_rate_atheros: Copyright (c) 2001-2005 Atheros Communicationsd
+[   10.536000] ath_dev: module license 'Proprietary' taints kernel.             
+[   10.564000] ath_dev: Copyright (c) 2001-2007 Atheros Communications, Inc, Ald
+[   10.576000] ath_pktlog: module license 'unspecified' taints kernel.          
+[   10.860000] ath_ahb: 9.5.5.36 (Atheros/multi-bss)                            
+[   10.864000] __ath_attach: Set global_scn[0]                                  
+[   10.872000] ACBKMinfree = 48                                                 
+[   10.872000] ACBEMinfree = 32                                                 
+[   10.876000] ACVIMinfree = 16                                                 
+[   10.880000] ACVOMinfree = 0                                                  
+[   10.880000] CABMinfree = 48                                                  
+[   10.884000] UAPSDMinfree = 0                                                 
+[   10.892000] Bootstrap clock 40MHz                                            
+[   10.896000] Enterprise mode: 0x40000000                                      
+[   10.900000] ar9300_flash_map: mapping EEPROM at 804920e0                     
+[   10.908000] Restoring Cal data from DRAM                                     
+[   10.916000] ath_get_caps[6072] rx chainmask mismatch actual 3 sc_chainmak 0  
+[   10.924000] ath_get_caps[6046] tx chainmask mismatch actual 3 sc_chainmak 0  
+[   10.948000] wifi0: Qualcomm Atheros QCA955X: mem=0xb8100000, irq=47          
+[   10.956000] ath_pci: 9.5.5.36 (Atheros/multi-bss)                            
+[   10.960000] PCI: Enabling device 0000:00:00.0 (0000 -> 0002)                 
+[   10.964000] __ath_attach: Set global_scn[1]                                  
+[   10.968000] ACBKMinfree = 48                                                 
+[   10.972000] ACBEMinfree = 32                                                 
+[   10.976000] ACVIMinfree = 16                                                 
+[   10.980000] ACVOMinfree = 0                                                  
+[   10.980000] CABMinfree = 48                                                  
+[   10.984000] UAPSDMinfree = 0                                                 
+[   10.992000] ar9300_flash_map: mapping EEPROM at c02b9290                     
+[   10.996000] Restoring Cal data from DRAM                                     
+[   11.004000] ath_get_caps[6072] rx chainmask mismatch actual 3 sc_chainmak 0  
+[   11.012000] ath_get_caps[6046] tx chainmask mismatch actual 3 sc_chainmak 0  
+[   11.076000] wifi1: Atheros 9580: mem=0x10000000, irq=40 hw_base=0xb0000000   
+[   11.080000] PCI: Enabling device 0000:01:00.0 (0000 -> 0002)                 
+[   11.088000] __ath_attach: Set global_scn[2]                                  
+[   11.092000] ACBKMinfree = 48                                                 
+[   11.096000] ACBEMinfree = 32                                                 
+[   11.096000] ACVIMinfree = 16                                                 
+[   11.100000] ACVOMinfree = 0                                                  
+[   11.104000] CABMinfree = 48                                                  
+[   11.108000] UAPSDMinfree = 0                                                 
+[   11.112000] ar9300_flash_map: mapping EEPROM at c02ba2b0                     
+[   11.120000] Restoring Cal data from DRAM                                     
+[   11.128000] ath_get_caps[6072] rx chainmask mismatch actual 1 sc_chainmak 0  
+[   11.136000] ath_get_caps[6046] tx chainmask mismatch actual 1 sc_chainmak 0  
+[   11.156000] wifi2: Atheros 9580: mem=0x12000000, irq=41 hw_base=0xb2000000   
+[   11.480000] brain: unloading click config                                    
+[   11.484000] brain: spring cleaning pages                                     
+[   12.884000] wlan_vap_create : enter. devhandle=0x85d803c0, opmode=IEEE80211_0
+[   12.892000] wlan_vap_create : exit. devhandle=0x85d803c0, opmode=IEEE80211_M.
+[   13.728000] wlan_vap_create : enter. devhandle=0x858a03c0, opmode=IEEE80211_0
+[   13.740000] wlan_vap_create : exit. devhandle=0x858a03c0, opmode=IEEE80211_M.
+[   14.272000] brain: loading click config                                      
+[   15.940000] wlan_vap_create : enter. devhandle=0x877b03c0, opmode=IEEE80211_0
+[   15.948000] wlan_vap_create : exit. devhandle=0x877b03c0, opmode=IEEE80211_M.
+[   16.020000] device wifi2 entered promiscuous mode                            
+[   16.280000] In write handler 'run' for 'set_splash_ranges :: Script':        
+[   16.288000]   While calling 'splash_ranges_lookup0.add someip/32 0':  
+[   16.296000]     conflict with existing route 'someip/32 - 0'          
+[   16.388000] In write handler 'run' for 'set_splash_ranges :: Script':        
+[   16.396000]   While calling 'splash_ranges_lookup1.add someip/32 0':  
+[   16.400000]     conflict with existing route 'someip/32 - 0'          
+[   17.388000] device wired0 entered promiscuous mode                           
+[   17.396000] device wired1 entered promiscuous mode</nowiki>
+</WRAP>\\
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ath79 QCA9558 128nand 128RAM 1port gigabitethernet 3WNIC mips}}

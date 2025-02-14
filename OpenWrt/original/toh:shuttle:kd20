@@ -1,0 +1,1339 @@
+====== Shuttle OMNINAS KD20 ======
+{{ media:shuttle:backend_75_201207241250_1087.png?nolink }}
+The Shuttle OMNINAS KD20 is a two-bay SATA network-attached storage (NAS) device featuring Gigabit Ethernet as well as USB 3.0.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^OMNINAS KD20$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["cpu", "cpumhz", "flashmb", "rammb", "sataports", "wlan24ghz", "wlan50ghz", "ethernet1gports", "usbports", "serial", "jtag"],
+  "filterColumns": {"model": "^OMNINAS KD20$"}
+} -->
+
+===== Installation Process =====
+Working on a Linux computer, generate factory image for installation from stock firmware:
+<code>
+git clone -b lede-17.01 https://git.openwrt.org/openwrt/openwrt.git
+cd openwrt
+cat >.config <<EOF
+CONFIG_TARGET_oxnas=y
+CONFIG_TARGET_oxnas_DEVICE_kd20=y
+CONFIG_TARGET_BOARD="oxnas"
+CONFIG_CLEAN_IPKG=y
+# CONFIG_KERNEL_DEBUG_INFO is not set
+# CONFIG_KERNEL_DEBUG_KERNEL is not set
+# CONFIG_KERNEL_KALLSYMS is not set
+# CONFIG_PACKAGE_block-mount is not set
+# CONFIG_PACKAGE_fdisk is not set
+# CONFIG_PACKAGE_kmod-ata-core is not set
+# CONFIG_PACKAGE_kmod-crypto-crc32c is not set
+# CONFIG_PACKAGE_kmod-crypto-hash is not set
+# CONFIG_PACKAGE_kmod-fs-exportfs is not set
+# CONFIG_PACKAGE_kmod-fs-ext4 is not set
+# CONFIG_PACKAGE_kmod-fs-xfs is not set
+# CONFIG_PACKAGE_kmod-lib-crc16 is not set
+# CONFIG_PACKAGE_kmod-lib-crc32c is not set
+# CONFIG_PACKAGE_kmod-md-mod is not set
+# CONFIG_PACKAGE_kmod-nls-base is not set
+# CONFIG_PACKAGE_kmod-scsi-core is not set
+# CONFIG_PACKAGE_kmod-usb-core is not set
+# CONFIG_PACKAGE_kmod-usb-ledtrig-usbport is not set
+# CONFIG_PACKAGE_kmod-usb-storage is not set
+# CONFIG_PACKAGE_kmod-usb2 is not set
+# CONFIG_PACKAGE_kmod-usb2-oxnas is not set
+# CONFIG_PACKAGE_kmod-usb3 is not set
+# CONFIG_PACKAGE_libblkid is not set
+# CONFIG_PACKAGE_libfdisk is not set
+# CONFIG_PACKAGE_libmount is not set
+# CONFIG_PACKAGE_libpthread is not set
+# CONFIG_PACKAGE_librt is not set
+# CONFIG_PACKAGE_libsmartcols is not set
+# CONFIG_PACKAGE_libuclient is not set
+# CONFIG_PACKAGE_libuuid is not set
+# CONFIG_PACKAGE_lsblk is not set
+# CONFIG_PACKAGE_mdadm is not set
+# CONFIG_PACKAGE_opkg is not set
+# CONFIG_PACKAGE_uclient-fetch is not set
+EOF
+
+make oldconfig </dev/null
+make -j$(nproc)
+</code>
+
+That will give you a file bin/targets/oxnas/generic/lede-oxnas-kd20-factory.tar.gz which can be uploaded to the system update web interface of vendor's original firmware.
+If you do not want to or cannot build the initial firmware by yourself you can download it from my server:
+
+https://makrotopia.org/lede-oxnas-kd20-factory.tar.gz
+
+Once you have successfully flashed the intermediate firmware, you can now access it using ssh (assuming KD20 is directly connected to eth0 on your host):
+
+On a Linux workstation:
+<code>
+# download up to date firmware.  To be safe, get both sysupgrade and ubinized with:
+
+wget https://downloads.openwrt.org/releases/19.07.5/targets/oxnas/ox820/openwrt-19.07.5-oxnas-ox820-shuttle_kd20-squashfs-sysupgrade.tar
+
+wget https://downloads.openwrt.org/releases/19.07.5/targets/oxnas/ox820/openwrt-19.07.5-oxnas-ox820-shuttle_kd20-squashfs-ubinized.bin
+
+# go looking for the KD20 on the LAN:
+ping ff02::1%eth0
+
+# look for the duplicate response, that's the KD20 link-local IPv6 address and
+# replace fe80::1234:56ff:fe78:90ab%eth0 below with the actual address you saw
+# in the response
+
+# You can also connect the KD20 to your router and let it acquire an IPv4 address
+# via DHCP, and then check on the router which address it got, and use that.
+
+# Push the downloaded files to the NAS:
+scp openwrt-19.07.5-oxnas-ox820-shuttle_kd20* root@[fe80::1234:56ff:fe78:90ab%eth0]:/tmp
+
+# Using ssh, connect to the NAS:
+ssh root@fe80::1234:56ff:fe78:90ab%eth0
+
+# You are now connected to LEDE initramdisk system on the KD20
+# fingers crossed, this should flash the kernel directly to NAND and write
+# squashfs-rootfs to the rootfs UBI volume.
+
+# make sure UBI volume is detached
+ubidetach --dev-path /dev/mtd4
+# re-format UBI and write rootfs
+ubiformat /dev/mtd4 -f /tmp/openwrt-19.07.5-oxnas-ox820-shuttle_kd20-squashfs-ubinized.bin
+
+# write kernel
+tar xf /tmp/openwrt-19.07.5-oxnas-ox820-shuttle_kd20-squashfs-sysupgrade.tar sysupgrade-shuttle_kd20/kernel -O | mtd write - kernel
+
+reboot
+</code>
+
+
+===== RAID1 Installation Process (Under Review) =====
+
+NOTE: While the RAID1 NAS configuration outlined below seems to work with Windows 10/11, large file transfers to the NAS will cause it to choke.  While it was initailly believed that a hard reset was required to clear the problem, it was later discovered that merely unplugging and reconnecting the LAN cable from/to the NAS would reset the interface and selecting "Retry" would allow the copy process to continue. (Oct 2023 edit)
+
+A solution to this problem would be most welcome. 
+
+Once the NAS is booting the OpenWrt firmware, point your browser to the NAS's IP address to open the GUI (Graphical User Interface).
+
+1. To log in as root (no default password), click Login:
+{{ :media:login.png?direct&600 |}}
+
+
+2. Under System / Administration, set the root password, click SAVE:
+{{ :media:setpass1.png?direct&600 |}}
+
+
+3. Under System / System, General Settings Tab, set your Timezone, click Save & Apply:
+{{ :media:timezone.png?direct&600 |}}
+
+
+4. Under System / Software, click the Update lists...(software) button:
+{{ :media:softwareupdate.png?direct&600 |}}
+
+
+5. __Optional - though not recommended.  See if you can get the system working as-is before you start changing things.__
+
+   Under System / Software Updates tab, update the listed packages:
+{{ :media:update.png?direct&600 |}}
+
+
+6. Under the System / Software - Available tab, install e2fsprogs (to add mkfs.ext4 command).  Input the package name in the filter box and click Install:
+{{ :media:e2f.png?direct&600 |}}
+
+
+7A. KSMBD errored out for me, so I'm going with Samba in 7B below.  If you're game for smbd, under the System / Software - Available tab, install luci-app-ksmbd (to add the Luci ksmbd interface).  Input the package name in the filter box and click Install beside the desired option:
+{{ :media:ksmbd.png?direct&600 |}}
+
+
+**OR**
+
+7B. Under the System / Software Available tab, install the following Samba 4 packages.  Input the package name in the filter box and click Install beside the desired option:
+    samba4-client
+    samba4-libs
+    samba4-server
+    luci-app-samba4
+    
+    Alternatively, these packages can be installed via ssh with the 'opkg install packagename' command.
+
+8. Under System, select reboot.
+
+9. When you reconnect to the NAS and log in, this is how the pulldown menu looks after the ksmbd or Samba Luci interface install (Services / Network Shares now added):
+{{ :media:pulldown.png?direct&600 |}}
+
+
+10. Under System / Mount Points, take note of mounted disks:
+{{ :media:flashmount.png?direct&600 |}}
+
+
+11. Power down the NAS, install the drives in the trays and insert the drive trays in the NAS. 
+
+12. Boot up the NAS.
+
+13. Once the NAS has booted, ssh (either from a Linux terminal, or on Windows with Command Prompt or PowerShell) into the box with the following command.  When prompted, key in the root password specified in step 2 above:
+<code>
+  ssh root@192.168.1.xyz (using your NAS's IP address) 
+</code>
+
+14. To see a list of all block devices, issue the __lsblk__ command:
+<code>
+  root@OpenWrt:~# lsblk
+  NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+  sda           8:0    0 931.5G  0 disk
+  sdb           8:16   0 931.5G  0 disk
+  mtdblock0    31:0    0   256K  1 disk
+  mtdblock1    31:1    0   1.9M  1 disk
+  mtdblock2    31:2    0   128K  0 disk
+  mtdblock3    31:3    0     6M  0 disk
+  mtdblock4    31:4    0   7.8M  0 disk
+  mtdblock5    31:5    0   112M  0 disk
+  ubiblock0_0 254:0    0     3M  0 disk /rom
+</code>
+
+The sda and sdb devices above are the ones of interest in this example (931.5G capacity drives installed in step 10 above).
+
+__Note:__ The following steps were gleaned from: https://www.tecmint.com/create-raid1-in-linux/ 
+
+15. To set up a 'Linux raid autodetect' partition (Type: fd) on disk sda, issue the __fdisk /dev/sda__ command at the prompt:
+<code>
+     root@OpenWrt:~# fdisk /dev/sda
+     Welcome to fdisk (util-linux 2.34).
+     Changes will remain in memory only, until you decide to write them.
+     Be careful before using the write command.
+
+     The old ext4 signature will be removed by a write command.
+
+     Device does not contain a recognized partition table.
+     Created a new DOS disklabel with disk identifier 0xb7f0d647.
+
+     Command (m for help): n  **key in n command to create new partition**
+     Partition type
+        p   primary (0 primary, 0 extended, 4 free)
+        e   extended (container for logical partitions)
+     Select (default p): p    **key in p command to create primary partition**
+     Partition number (1-4, default 1):     **hit enter to select default**
+     First sector (2048-1953525167, default 2048):     **hit enter to select default**
+     Last sector, +/-sectors or +/-size{K,M,G,T,P} (2048-1953525167, default 1953525167):     **hit enter to select default**
+
+     Created a new partition 1 of type 'Linux' and of size 931.5 GiB.     **intermediate step**
+
+     Command (m for help): p     **key in p command to print (or list) partition(s)**
+     Disk /dev/sda: 931.53 GiB, 1000204886016 bytes, 1953525168 sectors
+     Disk model: WDC WD10EZEX-00R
+     Units: sectors of 1 * 512 = 512 bytes
+     Sector size (logical/physical): 512 bytes / 4096 bytes
+     I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+     Disklabel type: dos
+     Disk identifier: 0xb7f0d647
+
+     Device     Boot Start        End    Sectors   Size Id Type
+     /dev/sda1        2048 1953525167 1953523120 931.5G 83 Linux
+
+     Command (m for help): t     **key in t command to select the partition type**
+     Selected partition 1
+     Hex code (type L to list all codes): fd     **key in fd - this type is Linux Raid Autodetect**
+     Changed type of partition 'Linux' to 'Linux raid autodetect'.
+
+     Command (m for help): p     **key in p command to print (or list) partition(s)**
+     Disk /dev/sda: 931.53 GiB, 1000204886016 bytes, 1953525168 sectors
+     Disk model: WDC WD10EZEX-00R
+     Units: sectors of 1 * 512 = 512 bytes
+     Sector size (logical/physical): 512 bytes / 4096 bytes
+     I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+     Disklabel type: dos
+     Disk identifier: 0xb7f0d647
+
+     Device     Boot Start        End    Sectors   Size Id Type
+     /dev/sda1        2048 1953525167 1953523120 931.5G fd Linux raid autodetect
+
+     Command (m for help): w     **key in w command to write the config to disk**
+     The partition table has been altered.
+     Calling ioctl() to re-read partition table.
+     Syncing disks.
+</code>
+
+16. Repeat step 15 with the __fdisk /dev/sdb__ command for /dev/sdb to configure disk sdb to match sda.
+
+17. By issuing the command __uci show mdadm__ you should see something like this:
+<code>
+root@OpenWrt:~# uci show mdadm
+mdadm.@mdadm[0]=mdadm
+mdadm.@mdadm[0].email='root'
+root@OpenWrt:~#
+</code>
+
+18. The following examine command should produce an output something like this:
+<code>
+root@OpenWrt:~# mdadm -E /dev/sd[a-b]
+/dev/sda:
+   MBR Magic : aa55
+Partition[0] :   1953523120 sectors at         2048 (type fd)
+/dev/sdb:
+   MBR Magic : aa55
+Partition[0] :   1953523120 sectors at         2048 (type fd)
+</code>
+
+19. Issue the command:
+<code>
+mdadm --create /dev/md0 --level=mirror --raid-device=2 /dev/sda1 /dev/sdb1
+</code>
+
+This will create and build the array causing the HDD LEDs to flicker rapidly.  
+Depending on disk size, this step could take a few hours.
+
+20. Issue the command __cat /proc/mdstat__ to check the status of the build.
+<code>
+root@OpenWrt:~#cat /proc/mdstat
+Personalities : [raid0] [raid1] [raid10] 
+md0 : active raid1 sdb1[1] sda1[0]
+      976629440 blocks super 1.2 [2/2] [UU]
+      [>....................]  resync =  0.2% (2477120/976629440) finish=352.7min speed=46030K/sec
+      bitmap: 8/8 pages [32KB], 65536KB chunk
+
+unused devices: <none>
+</code>
+
+21. Issuing the lsblk command will list something like the following.  Note the raid1 type of md0 below:
+<code>
+root@OpenWrt:~# lsblk
+NAME        MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda           8:0    0 931.5G  0 disk
+└─sda1        8:1    0 931.5G  0 part
+  └─md0       9:0    0 931.4G  0 raid1  <- *
+sdb           8:16   0 931.5G  0 disk
+└─sdb1        8:17   0 931.5G  0 part
+  └─md0       9:0    0 931.4G  0 raid1  <- *
+mtdblock0    31:0    0   256K  1 disk
+mtdblock1    31:1    0   1.9M  1 disk
+mtdblock2    31:2    0   128K  0 disk
+mtdblock3    31:3    0     6M  0 disk
+mtdblock4    31:4    0   7.8M  0 disk
+mtdblock5    31:5    0   112M  0 disk
+ubiblock0_0 254:0    0     3M  0 disk  /rom
+root@OpenWrt:~#
+</code> 
+
+22. Issuing the __mdadm --detail /dev/md0__ command should produce the following output (note: raid1, size, devices, clean state, active sync):
+<code>
+root@OpenWrt:~# mdadm --detail /dev/md0
+/dev/md0:
+           Version : 1.2
+     Creation Time : Sun Feb 26 12:13:34 2023
+        Raid Level : raid1
+        Array Size : 976629440 (931.39 GiB 1000.07 GB)
+     Used Dev Size : 976629440 (931.39 GiB 1000.07 GB)
+      Raid Devices : 2
+     Total Devices : 2
+       Persistence : Superblock is persistent
+
+     Intent Bitmap : Internal
+
+       Update Time : Sun Feb 26 18:23:50 2023
+             State : clean 
+    Active Devices : 2
+   Working Devices : 2
+    Failed Devices : 0
+     Spare Devices : 0
+
+Consistency Policy : bitmap
+
+              Name : OpenWrt:0  (local to host OpenWrt)
+              UUID : daf41d60:5ebdf797:3a2bca2c:2723f722
+            Events : 4492
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       1       8       17        1      active sync   /dev/sdb1
+</code>
+
+23. To create a file system on the RAID device, issue the __mkfs.ext4 /dev/md0__ command:
+<code>
+root@OpenWrt:~# mkfs.ext4 /dev/md0
+mke2fs 1.44.5 (15-Dec-2018)
+Creating filesystem with 244157360 4k blocks and 61046784 inodes
+Filesystem UUID: 3b086eb3-20ad-456a-9c31-b8cf0f1f2e80
+Superblock backups stored on blocks: 
+	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632, 2654208, 
+	4096000, 7962624, 11239424, 20480000, 23887872, 71663616, 78675968, 
+	102400000, 214990848
+
+Allocating group tables: done                            
+Writing inode tables: done                            
+Creating journal (262144 blocks): done
+Writing superblocks and filesystem accounting information: done  
+</code>
+
+24. Verify output of __uci show mdadm__ as below:
+<code>
+root@OpenWrt:~# uci show mdadm
+mdadm.@mdadm[0]=mdadm
+mdadm.@mdadm[0].email='root'
+mdadm.@array[0]=array
+mdadm.@array[0].uuid='52c5c44a:d2162820:f75d3464:799750f8'
+mdadm.@array[0].device='/dev/md0'
+root@OpenWrt:~# 
+</code>
+
+25. Issue the following commands:
+<code>
+uci delete mdadm.@array[0]
+uci commit mdadm
+reboot
+</code>
+
+26. After reboot, rsh or ssh back into the NAS.  The array should be auto-detected - check with __cat /proc/mdstat__ and the ouput should look like:
+<code>
+root@OpenWrt:~# cat /proc/mdstat
+Personalities : [raid0] [raid1] [raid10] 
+md0 : active raid1 sda1[0] sdb1[1]
+      976629440 blocks super 1.2 [2/2] [UU]
+      bitmap: 0/8 pages [0KB], 65536KB chunk
+
+unused devices: <none>
+root@OpenWrt:~#
+</code> 
+
+Issue the command __lsblk__ and both sda and sdb should show md0 / raid1: 
+<code>
+root@OpenWrt:~# lsblk
+NAME        MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda           8:0    0 931.5G  0 disk  
+└─sda1        8:1    0 931.5G  0 part  
+  └─md0       9:0    0 931.4G  0 raid1  <- *
+sdb           8:16   0 931.5G  0 disk  
+└─sdb1        8:17   0 931.5G  0 part  
+  └─md0       9:0    0 931.4G  0 raid1  <- *
+mtdblock0    31:0    0   256K  1 disk  
+mtdblock1    31:1    0   1.9M  1 disk  
+mtdblock2    31:2    0   128K  0 disk  
+mtdblock3    31:3    0     6M  0 disk  
+mtdblock4    31:4    0   7.8M  0 disk  
+mtdblock5    31:5    0   112M  0 disk  
+ubiblock0_0 254:0    0     3M  0 disk  /rom
+root@OpenWrt:~# 
+</code>
+
+27. From the OpenWrt GUI, log in and select System / Mount Points from the pull-down menu, then click on the "Generate Config" button:
+{{ :media:shuttle:29.png?direct&600 |}}
+
+
+28. Scroll down the page to the Mount Points area.  You should both members of the linux raid listed /mnt/sda1 and /mnt/sdb1 linux, as well as the mirrored array itself, /mnt/md0:
+{{ :media:shuttle:30.png?direct&600 |}}
+
+
+29. Click the Enable box for /mnt/md0:
+{{ :media:shuttle:kd20-31.png?direct&600 |}}
+
+
+30. Scroll down and click Save & Apply:
+{{ :media:shuttle:kd20-32.png?direct&600 |}}
+
+
+31. From the OpenWrt pulldown menu, select System, Reboot and then click Confirm Reboot.
+
+32. When the NAS has rebooted, point your browser back to the KD20's IP address and log back in.  From OpenWrt pulldown menu, select System / Mount Points.  Scroll down the page to Mounted File Systems and Mount Points and you can expect to see that /dev/md0 is mounted, and that /mnt/md0 Mount Point is still enabled:
+{{ :media:shuttle:kd20-34.png?direct&600 |}}
+
+33. In the terminal window, issuing the lsblk command now should produce an output like the following.  
+Note that sda/sda1/md0 and sdb/sdb1/md0 are now flagged with mountpoints /mnt/md0:
+<code>
+root@OpenWrt:~# lsblk
+NAME        MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda           8:0    0 931.5G  0 disk
+└─sda1        8:1    0 931.5G  0 part  
+  └─md0       9:0    0 931.4G  0 raid1 /mnt/md0
+sdb           8:16   0 931.5G  0 disk  
+└─sdb1        8:17   0 931.5G  0 part  
+  └─md0       9:0    0 931.4G  0 raid1 /mnt/md0
+mtdblock0    31:0    0   256K  1 disk  
+mtdblock1    31:1    0   1.9M  1 disk  
+mtdblock2    31:2    0   128K  0 disk  
+mtdblock3    31:3    0     6M  0 disk  
+mtdblock4    31:4    0   7.8M  0 disk  
+mtdblock5    31:5    0   112M  0 disk  
+ubiblock0_0 254:0    0     3M  0 disk  /rom
+root@OpenWrt:~# 
+</code>
+
+34. To set up Samba, from the pulldown menu select Services / Network Shares.  Select the Interface option box and choose LAN (for local access only).  Fill in the Workgroup name.  Click the Add button at the bottom of the page and fill in a name that you want the NAS's file system to be known as on your network, and define the shared path /mnt/md0.  Click the checkbox to allow guests:
+{{ :media:shuttle:share.png?direct&600 |}}
+
+35. Click Save & Apply when complete.
+
+36. Configure Samba (or ksmbd) user(s) and password(s) as outlined elsewhere on openwrt.org
+
+37. From a Windows or Linux computer, point your file explorer at the NAS to access your new networked RAID1 file system!
+===== Serial port =====
+The device has an unexposed unpopulated 3.3V TTL level serial port on it's mainboard.
+
+{{media:shuttle:in_pcb_close2.jpg?direct&400|}}
+
+<code>( ) (GND) (RX) (TX) ( ) CON5</code>
+
+===== Disassembly instructions =====
+Jason has made a document with pictures showing how to dissemble the device in detail.
+
+{{ :media:shuttle:kd20_case_removal.pdf |}}
+
+===== Bootlog =====
+==== running OpenWrt ====
+<code>
+Stage-1 Bootloader 2012-06.13-13:06:32
+Attempting to set PLLA to 750MHz ...
+  plla_ctrl0 : 0x0000000A
+  plla_ctrl1 : 0x000F0000
+  plla_ctrl2 : 0x001D01A0
+  plla_ctrl3 : 0x00000017
+PLLA Set
+
+Setup memory, testing, Image 0
+  Hdr len: 0x00028540
+  Hdr CRC: 0xB64F4EDD
+ OK
+
+     _           _   _   _       
+    | |         | | | | | |      
+ ___| |__  _   _| |_| |_| | ___  
+/ __| '_ \| | | | __| __| |/ _ \ 
+\__ \ | | | |_| | |_| |_| |  __/ 
+|___/_| |_|\__,_|\__|\__|_|\___| 
+          _   _     ____              _
+         | | | |   | __ )  ___   ___ | |_ 
+         | | | |___|  _ \ / _ \ / _ \| __| 
+         | |_| |___| |_) | (_) | (_) | |_ 
+          \___/    |____/ \___/ \___/ \__| 
+
+U-Boot 1.1.2 (Jul  3 2012 - 17:37:46)
+
+U-Boot code: 60D00000 -> 60D28540  BSS: -> 60D3B260
+IRQ Stack: 60cddf7c
+FIQ Stack: 60cdcf7c
+RAM Configuration:
+	Bank #0: 60000000 256 MB
+SRAM Configuration:
+	64KB at 0x50000000
+NAND:128 MiB
+In:    serial
+Out:   serial
+Err:   serial
+Setting Linux mem= boot arg value
+Hit any key to stop autoboot:  2  1  0 
+
+Loading from 128MiB 3,3V 8-bit, offset 0x840000
+   Image Name:   ARM OpenWrt Linux-5.4.77
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    3614537 Bytes =  3.4 MB
+   Load Address: 60008000
+   Entry Point:  60008000
+## Booting image at 61000000 ...
+   Image Name:   ARM OpenWrt Linux-5.4.77
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    3614537 Bytes =  3.4 MB
+   Load Address: 60008000
+   Entry Point:  60008000
+   Verifying Checksum ... OK
+OK
+
+Starting kernel ...
+
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 5.4.77 (builder@buildhost) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r14985-4d4ef1058c)) #0 SMP Fri Nov 20 12:24:48 2020
+[    0.000000] CPU: ARMv6-compatible processor [410fb025] revision 5 (ARMv7), cr=00c5787d
+[    0.000000] CPU: PIPT / VIPT nonaliasing data cache, VIPT aliasing instruction cache
+[    0.000000] OF: fdt: Machine model: Shuttle KD20
+[    0.000000] Memory policy: Data cache writealloc
+[    0.000000] cma: Reserved 64 MiB at 0x6c000000
+[    0.000000] percpu: Embedded 15 pages/cpu s29740 r8192 d23508 u61440
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 64960
+[    0.000000] Kernel command line: earlyprintk console=ttyS0,115200
+[    0.000000] Bootloader command line (ignored): root=ubi0:rootfs ubi.mtd=5,512 rootfstype=ubifs initrd=0x61000000 console=ttyS0,115200 elevator=cfq mac_adr=0x00,0x25,0xb1,0xff,0xff,0x00 mem=256M poweroutage=yes
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 184172K/262144K available (6144K kernel code, 170K rwdata, 1328K rodata, 1024K init, 215K bss, 12436K reserved, 65536K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu: 	RCU event tracing is enabled.
+[    0.000000] rcu: 	RCU restricting CPUs from NR_CPUS=16 to nr_cpu_ids=2.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=2
+[    0.000000] NR_IRQS: 16, nr_irqs: 16, preallocated irqs: 16
+[    0.000000] FPGA IRQ chip 0 "interrupt-controller" @ (ptrval), 32 irqs, parent IRQ: 16
+[    0.000000] random: get_random_bytes called from start_kernel+0x2c0/0x4f0 with crng_init=0
+[    0.000020] sched_clock: 24 bits at 390kHz, resolution 2560ns, wraps every 21474835200ns
+[    0.000069] clocksource: oxnas_rps_clocksource_timer: mask: 0xffffff max_cycles: 0xffffff, max_idle_ns: 19112603332 ns
+[    0.000081] timer_oxnas_rps: Registered clocksource rate 390625Hz
+[    0.000107] timer_oxnas_rps: Registered clock event rate 6250000Hz prescaler 0 period 62500
+[    0.000271] GIC: PPI13 is secure or misconfigured
+[    0.000327] GIC: PPI13 is secure or misconfigured
+[    0.000478] Calibrating delay loop... 298.59 BogoMIPS (lpj=1492992)
+[    0.070305] pid_max: default: 32768 minimum: 301
+[    0.070656] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.070679] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.072058] CPU: Testing write buffer coherency: ok
+[    0.074068] Setting up static identity map for 0x60100000 - 0x6010005c
+[    0.074368] rcu: Hierarchical SRCU implementation.
+[    0.075102] smp: Bringing up secondary CPUs ...
+[    0.076208] GIC: PPI13 is secure or misconfigured
+[    0.140687] smp: Brought up 1 node, 2 CPUs
+[    0.140720] SMP: Total of 2 processors activated (598.42 BogoMIPS).
+[    0.147717] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.147752] futex hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.154547] pinctrl core: initialized pinctrl subsystem
+[    0.155453] NET: Registered protocol family 16
+[    0.160002] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.162572] cpuidle: using governor menu
+[    0.162672] No ATAGs?
+[    0.184870] pps_core: LinuxPPS API ver. 1 registered
+[    0.184890] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.184926] PTP clock support registered
+[    0.185175] workqueue: max_active 576 requested for napi_workq is out of range, clamping between 1 and 512
+[    0.186549] clocksource: Switched to clocksource oxnas_rps_clocksource_timer
+[    0.187980] thermal_sys: Registered thermal governor 'step_wise'
+[    0.188362] NET: Registered protocol family 2
+[    0.189550] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
+[    0.189626] TCP established hash table entries: 2048 (order: 1, 8192 bytes, linear)
+[    0.189678] TCP bind hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.189736] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.189913] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.189969] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.190533] NET: Registered protocol family 1
+[    0.190597] PCI: CLS 0 bytes, default 32
+[    0.192368] workingset: timestamp_bits=14 max_order=16 bucket_order=2
+[    0.203471] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.204408] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 250)
+[    0.207971] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.212096] printk: console [ttyS0] disabled
+[    0.212264] 44200000.serial: ttyS0 at MMIO 0x44200000 (irq = 55, base_baud = 390625) is a 16550A
+[    0.667865] printk: console [ttyS0] enabled
+[    0.689684] brd: module loaded
+[    0.703979] loop: module loaded
+[    0.776729] nand: device found, Manufacturer ID: 0xad, Chip ID: 0xf1
+[    0.783060] nand: Hynix H27U1G8F2BTR-BC
+[    0.786933] nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+[    0.794490] Scanning device for bad blocks
+[    0.884270] 6 fixed-partitions partitions found on MTD device 41000000.nand-controller
+[    0.892190] Creating 6 MTD partitions on "41000000.nand-controller":
+[    0.898549] 0x000000000000-0x000000040000 : "stage1"
+[    0.905400] 0x000000040000-0x000000220000 : "u-boot"
+[    0.912322] 0x000000220000-0x000000240000 : "u-boot-env"
+[    0.919500] 0x000000240000-0x000000840000 : "initrd"
+[    0.926266] 0x000000840000-0x000001000000 : "kernel"
+[    0.933191] 0x000001000000-0x000008000000 : "ubi"
+[    0.940792] libphy: Fixed MDIO Bus: probed
+[    0.945751] oxnas-dwmac 40400000.ethernet: IRQ eth_lpi not found
+[    0.951946] oxnas-dwmac 40400000.ethernet: PTP uses main clock
+[    0.957816] oxnas-dwmac 40400000.ethernet: no reset control found
+[    1.026959] oxnas-dwmac 40400000.ethernet: User ID: 0x12, Synopsys ID: 0x35
+[    1.033914] oxnas-dwmac 40400000.ethernet: 	DWMAC1000
+[    1.039001] oxnas-dwmac 40400000.ethernet: DMA HW capability register supported
+[    1.046282] oxnas-dwmac 40400000.ethernet: RX Checksum Offload Engine supported
+[    1.053598] oxnas-dwmac 40400000.ethernet: COE Type 2
+[    1.058659] oxnas-dwmac 40400000.ethernet: TX Checksum insertion supported
+[    1.065505] oxnas-dwmac 40400000.ethernet: Wake-Up On Lan supported
+[    1.071828] oxnas-dwmac 40400000.ethernet: Enhanced/Alternate descriptors
+[    1.078630] oxnas-dwmac 40400000.ethernet: Enabled extended descriptors
+[    1.085212] oxnas-dwmac 40400000.ethernet: Ring mode enabled
+[    1.090874] oxnas-dwmac 40400000.ethernet: Enable RX Mitigation via HW Watchdog Timer
+[    1.098728] oxnas-dwmac 40400000.ethernet: device MAC address 1e:f4:eb:9f:af:dd
+[    1.115586] libphy: stmmac: probed
+[    1.119045] ICPlus IP1001 stmmac-0:01: attached PHY driver [ICPlus IP1001] (mii_bus:phy_addr=stmmac-0:01, irq=POLL)
+[    1.132715] ledtrig-cpu: registered to indicate activity on CPUs
+[    1.138928] hidraw: raw HID events driver (C) Jiri Kosina
+[    1.146001] NET: Registered protocol family 10
+[    1.152322] Segment Routing with IPv6
+[    1.156088] NET: Registered protocol family 17
+[    1.160739] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.173736] 8021q: 802.1Q VLAN Support v1.8
+[    1.426554] oxnas-pcie 47c00000.pcie-controller: PCIe version/deviceID 0x82510b5
+[    2.436480] oxnas-pcie 47c00000.pcie-controller: link down
+[    2.442288] oxnas-pcie 47c00000.pcie-controller: PCI host bridge to bus 0000:00
+[    2.449638] pci_bus 0000:00: root bus resource [mem 0x48000000-0x49ffffff]
+[    2.456522] pci_bus 0000:00: root bus resource [mem 0x4a000000-0x4bdfffff pref]
+[    2.463800] pci_bus 0000:00: root bus resource [io  0x0000-0xfffff]
+[    2.470072] pci_bus 0000:00: root bus resource [bus 00-7f]
+[    2.476897] PCI: bus0: Fast back to back transfers enabled
+[    2.482885] UBI: auto-attach mtd5
+[    2.486200] ubi0: attaching mtd5
+[    2.621585] ubi0: scanning is finished
+[    2.635673] ubi0: attached mtd5 (name "ubi", size 112 MiB)
+[    2.641203] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 129024 bytes
+[    2.648081] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 512
+[    2.654753] ubi0: VID header offset: 512 (aligned 512), data offset: 2048
+[    2.661537] ubi0: good PEBs: 896, bad PEBs: 0, corrupted PEBs: 0
+[    2.667545] ubi0: user volume: 2, internal volumes: 1, max. volumes count: 128
+[    2.674734] ubi0: max/mean erase counter: 207/78, WL threshold: 4096, image sequence number: 69486587
+[    2.683947] ubi0: available PEBs: 0, total reserved PEBs: 896, PEBs reserved for bad PEB handling: 20
+[    2.693222] ubi0: background thread "ubi_bgt0d" started, PID 50
+[    2.694817] block ubiblock0_0: created from ubi0:0(rootfs)
+[    2.704686] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[    2.711664] hctosys: unable to open rtc device (rtc0)
+[    2.722088] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    2.730964] Freeing unused kernel memory: 1024K
+[    2.756907] Run /sbin/init as init process
+[    3.224960] init: Console is alive
+[    5.194291] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    5.259279] usbcore: registered new interface driver usbfs
+[    5.264816] usbcore: registered new interface driver hub
+[    5.270312] usbcore: registered new device driver usb
+[    5.277007] Button Hotplug driver version 0.4.1
+[    5.289192] ANTFS Module: Version 07.19-b41ba529
+[    5.420113] SGI XFS with security attributes, no debug enabled
+[    5.432220] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    5.446013] SCSI subsystem initialized
+[    5.453841] ehci-fsl: Freescale EHCI Host controller driver
+[    5.472017] ehci-platform: EHCI generic platform driver
+[    6.070097] scsi host0: sata_oxnas
+[    6.074695] scsi host1: sata_oxnas
+[    6.137779] ata1: SATA max UDMA/133 irq 57
+[    6.201930] ata2: SATA max UDMA/133 irq 57
+[    6.210037] sata_oxnas: resetting SATA core
+[    6.726548] ata1: SATA link up 3.0 Gbps (SStatus 123 SControl 300)
+[    6.733360] ata1.00: ATA-9: WDC WD20EFRX-68EUZN0, 80.00A80, max UDMA/133
+[    6.740101] ata1.00: 3907029168 sectors, multi 0: LBA48 NCQ (depth 0/32)
+[    6.747563] ata1.00: configured for UDMA/133
+[    6.752555] scsi 0:0:0:0: Direct-Access     ATA      WDC WD20EFRX-68E 0A80 PQ: 0 ANSI: 5
+[    6.762365] sata_oxnas: resetting SATA core
+[    6.763210] sd 0:0:0:0: [sda] 3907029168 512-byte logical blocks: (2.00 TB/1.82 TiB)
+[    6.774346] sd 0:0:0:0: [sda] 4096-byte physical blocks
+[    6.779650] sata_oxnas: resetting SATA core
+[    8.046548] ata2: SATA link up 3.0 Gbps (SStatus 123 SControl 300)
+[    8.053370] ata2.00: ATA-9: WDC WD20EFRX-68EUZN0, 80.00A80, max UDMA/133
+[    8.060101] ata2.00: 3907029168 sectors, multi 0: LBA48 NCQ (depth 0/32)
+[    8.067555] ata2.00: configured for UDMA/133
+[    8.072517] scsi 1:0:0:0: Direct-Access     ATA      WDC WD20EFRX-68E 0A80 PQ: 0 ANSI: 5
+[    8.083095] sd 1:0:0:0: [sdb] 3907029168 512-byte logical blocks: (2.00 TB/1.82 TiB)
+[    8.090913] sd 1:0:0:0: [sdb] 4096-byte physical blocks
+[    8.096335] sd 1:0:0:0: [sdb] Write Protect is off
+[    8.101478] sd 1:0:0:0: [sdb] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+[    8.466593] ata1: SATA link up 3.0 Gbps (SStatus 123 SControl 300)
+[    8.474531] ata1.00: configured for UDMA/133
+[    8.479040] sd 0:0:0:0: [sda] Write Protect is off
+[    8.484129] sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+[    8.499089]  sdb: sdb1
+[    8.503889] sd 1:0:0:0: [sdb] Attached SCSI disk
+[    8.522647]  sda: sda1
+[    8.527567] sd 0:0:0:0: [sda] Attached SCSI disk
+[    8.535127] sda: detected capacity change from 0 to 2000398934016
+[    8.756559] oxnas-ehci 40200100.ehci: EHCI Host Controller
+[    8.762081] oxnas-ehci 40200100.ehci: new USB bus registered, assigned bus number 1
+[    8.770483] oxnas-ehci 40200100.ehci: irq 52, io mem 0x40200100
+[    8.796561] oxnas-ehci 40200100.ehci: USB 2.0 started, EHCI 1.00
+[    8.803806] hub 1-0:1.0: USB hub found
+[    8.807710] hub 1-0:1.0: 2 ports detected
+[    8.818204] usbcore: registered new interface driver usb-storage
+[    8.825894] input: keys as /devices/platform/keys/input/input0
+[    8.834360] usbcore: registered new interface driver uas
+[    8.840081] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    8.857843] init: - preinit -
+[   10.016046] random: jshn: uninitialized urandom read (4 bytes read)
+[   10.064276] random: jshn: uninitialized urandom read (4 bytes read)
+[   10.104788] random: jshn: uninitialized urandom read (4 bytes read)
+[   10.303554] oxnas-dwmac 40400000.ethernet eth0: PHY [stmmac-0:01] driver [ICPlus IP1001]
+[   10.313566] oxnas-dwmac 40400000.ethernet eth0: No Safety Features support found
+[   10.321049] oxnas-dwmac 40400000.ethernet eth0: IEEE 1588-2008 Advanced Timestamp supported
+[   10.329735] oxnas-dwmac 40400000.ethernet eth0: registered PTP clock
+[   10.336094] oxnas-dwmac 40400000.ethernet eth0: configuring for phy/rgmii link mode
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   12.407121] oxnas-dwmac 40400000.ethernet eth0: Link is Up - 100Mbps/Full - flow control rx/tx
+[   12.415736] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   14.567892] Starting lvm2 during preinit
+[   15.896307] urandom_read: 1 callbacks suppressed
+[   15.896317] random: lvm: uninitialized urandom read (4 bytes read)
+[   16.047841] device-mapper: ioctl: 4.41.0-ioctl (2019-09-16) initialised: dm-devel@redhat.com
+[   16.218024] random: lvm: uninitialized urandom read (4 bytes read)
+[   16.478581] mount_root: loading kmods from internal overlay
+[   16.528714] kmodloader: loading kernel modules from //etc/modules-boot.d/*
+[   16.541409] kmodloader: done loading kernel modules from //etc/modules-boot.d/*
+[   17.022435] UBIFS (ubi0:1): Mounting in unauthenticated mode
+[   17.028485] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 194
+[   17.067217] UBIFS (ubi0:1): recovery needed
+[   17.264563] UBIFS (ubi0:1): recovery completed
+[   17.270005] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[   17.277857] UBIFS (ubi0:1): LEB size: 129024 bytes (126 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   17.287787] UBIFS (ubi0:1): FS size: 86446080 bytes (82 MiB, 670 LEBs), journal size 4386816 bytes (4 MiB, 34 LEBs)
+[   17.298214] UBIFS (ubi0:1): reserved for root: 4083062 bytes (3987 KiB)
+[   17.304801] UBIFS (ubi0:1): media format: w4/r0 (latest is w5/r0), UUID 47C76F0B-E427-4B1B-8A87-99A279A54E81, small LPT model
+[   17.317053] block: attempting to load /tmp/ubifs_cfg/upper/etc/config/fstab
+[   17.326812] block: extroot: not configured
+[   17.337720] UBIFS (ubi0:1): un-mount UBI device 0
+[   17.343234] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" stops
+[   17.355443] UBIFS (ubi0:1): Mounting in unauthenticated mode
+[   17.361664] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 195
+[   17.458649] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[   17.466452] UBIFS (ubi0:1): LEB size: 129024 bytes (126 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   17.476418] UBIFS (ubi0:1): FS size: 86446080 bytes (82 MiB, 670 LEBs), journal size 4386816 bytes (4 MiB, 34 LEBs)
+[   17.486837] UBIFS (ubi0:1): reserved for root: 4083062 bytes (3987 KiB)
+[   17.493427] UBIFS (ubi0:1): media format: w4/r0 (latest is w5/r0), UUID 47C76F0B-E427-4B1B-8A87-99A279A54E81, small LPT model
+[   17.507630] mount_root: loading kmods from internal overlay
+[   17.566341] kmodloader: loading kernel modules from /tmp/overlay/upper/etc/modules-boot.d/*
+[   17.593840] raid6: using algorithm int32x8 gen() 0 MB/s
+[   17.599198] raid6: .... xor() 0 MB/s, rmw enabled
+[   17.603978] raid6: using intx1 recovery algorithm
+[   17.609879] xor: measuring software checksum speed
+[   17.706490]    arm4regs  :   890.000 MB/sec
+[   17.806489]    8regs     :   484.400 MB/sec
+[   17.906483]    32regs    :   595.200 MB/sec
+[   17.910645] xor: using function: arm4regs (890.000 MB/sec)
+[   18.175377] Btrfs loaded, crc32c=crc32c-generic
+[   18.181639] kmodloader: done loading kernel modules from /tmp/overlay/upper/etc/modules-boot.d/*
+[   18.465346] block: attempting to load /tmp/ubifs_cfg/upper/etc/config/fstab
+[   18.474544] block: extroot: not configured
+[   18.480901] mount_root: switching to ubifs overlay
+[   18.496417] urandom-seed: Seeding with /etc/urandom.seed
+[   18.721228] oxnas-dwmac 40400000.ethernet eth0: Link is Down
+[   18.739975] procd: - early -
+[   18.943019] random: fast init done
+[   19.364408] procd: - ubus -
+[   19.489505] random: ubusd: uninitialized urandom read (4 bytes read)
+[   19.527654] random: ubusd: uninitialized urandom read (4 bytes read)
+[   19.534630] random: ubusd: uninitialized urandom read (4 bytes read)
+[   19.546841] procd: - init -
+Please press Enter to activate this console.
+[   20.704563] urngd: v1.0.2 started.
+[   20.864322] kmodloader: loading kernel modules from /etc/modules.d/*
+[   20.867581] random: crng init done
+[   20.874060] random: 1 urandom warning(s) missed due to ratelimiting
+[   21.247569] NET: Registered protocol family 38
+[   21.430740] io scheduler bfq registered
+[   21.533527] Key type dns_resolver registered
+[   21.582200] Key type cifs.idmap registered
+[   21.640760] RPC: Registered named UNIX socket transport module.
+[   21.646848] RPC: Registered udp transport module.
+[   21.651568] RPC: Registered tcp transport module.
+[   21.656248] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[   21.917926] Installing knfsd (copyright (C) 1996 okir@monad.swb.de).
+[   21.969776] NFS: Registering the id_resolver key type
+[   21.974919] Key type id_resolver registered
+[   21.979202] Key type id_legacy registered
+[   22.068119] input: beeper as /devices/platform/beeper/input/input1
+[   22.111902] i2c /dev entries driver
+[   22.188326] sata_oxnas: resetting SATA core
+[   22.539701] sata_oxnas: resetting SATA core
+[   22.976537] ata2: link resume succeeded after 1 retries
+[   23.586577] ata1: SATA link up 3.0 Gbps (SStatus 123 SControl 300)
+[   23.594101] ata1.00: configured for UDMA/133
+[   24.556587] ata2: SATA link up 3.0 Gbps (SStatus 123 SControl 300)
+[   24.564377] ata2.00: configured for UDMA/133
+[   24.646607] sata_oxnas: resetting SATA core
+[   24.662420] sata_oxnas: resetting SATA core
+[   25.816578] ata2: SATA link up 3.0 Gbps (SStatus 123 SControl 300)
+[   25.824099] ata2.00: configured for UDMA/133
+[   25.831523] gpio-fan gpio-fan: GPIO fan initialized
+[   25.848363] fuse: init (API version 7.31)
+[   25.973340] xt_time: kernel timezone is -0000
+[   25.981877] usbcore: registered new interface driver cdc_ether
+[   26.023667] usbcore: registered new interface driver rndis_host
+[   26.064957] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   26.876561] ata1: SATA link up 3.0 Gbps (SStatus 123 SControl 300)
+[   26.884149] ata1.00: configured for UDMA/133
+[   30.447795] md: md127 stopped.
+[   30.567994] md/raid1:md127: active with 2 out of 2 mirrors
+[   30.573608] md127: detected capacity change from 0 to 2000263512064
+[   34.122603] oxnas-dwmac 40400000.ethernet eth0: PHY [stmmac-0:01] driver [ICPlus IP1001]
+[   34.149872] oxnas-dwmac 40400000.ethernet eth0: No Safety Features support found
+[   34.157424] oxnas-dwmac 40400000.ethernet eth0: IEEE 1588-2008 Advanced Timestamp supported
+[   34.167646] oxnas-dwmac 40400000.ethernet eth0: registered PTP clock
+[   34.174000] oxnas-dwmac 40400000.ethernet eth0: configuring for phy/rgmii link mode
+[   36.327764] oxnas-dwmac 40400000.ethernet eth0: Link is Up - 100Mbps/Full - flow control rx/tx
+[   36.336414] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+
+
+
+BusyBox v1.31.1 () built-in shell (ash)
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ OpenWrt SNAPSHOT, r14985-4d4ef1058c
+ -----------------------------------------------------
+root@pfusch:/# 
+</code>
+
+==== running stock ====
+<code>
+ 
+Stage-1 Bootloader 2012-06.13-13:06:32
+Attempting to set PLLA to 750MHz ...
+  plla_ctrl0 : 0x0000000A
+  plla_ctrl1 : 0x000F0000
+  plla_ctrl2 : 0x001D01A0
+  plla_ctrl3 : 0x00000017
+PLLA Set
+
+Setup memory, testing, Image 0
+  Hdr len: 0x00028594
+  Hdr CRC: 0x0BA1B9D0
+ OK
+
+     _           _   _   _       
+    | |         | | | | | |      
+ ___| |__  _   _| |_| |_| | ___  
+/ __| '_ \| | | | __| __| |/ _ \ 
+\__ \ | | | |_| | |_| |_| |  __/ 
+|___/_| |_|\__,_|\__|\__|_|\___| 
+          _   _     ____              _
+         | | | |   | __ )  ___   ___ | |_ 
+         | | | |___|  _ \ / _ \ / _ \| __| 
+         | |_| |___| |_) | (_) | (_) | |_ 
+          \___/    |____/ \___/ \___/ \__| 
+
+U-Boot 1.1.2 (Oct 22 2012 - 10:55:50)
+
+U-Boot code: 60D00000 -> 60D28594  BSS: -> 60D3B2C0
+IRQ Stack: 60cddf7c
+FIQ Stack: 60cdcf7c
+RAM Configuration:
+        Bank #0: 60000000 256 MB
+SRAM Configuration:
+        64KB at 0x50000000
+NAND:128 MiB
+*** Warning - bad CRC or NAND, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Initialising disks
+OX820 SATA Init...
+SATA PHY not ready for device 0
+SATA PHY not ready for device 1
+ide_preinit failed
+Setting Linux mem= boot arg value
+Hit any key to stop autoboot:  0 
+
+Device 0: 128MiB 3,3V 8-bit, sector size 128 KB
+
+NAND read: device 0 offset 0x840000, size 0x300000
+
+Reading data from 0xb3f800 -- 100% complete.
+ 3145728 bytes read: OK
+
+NAND read: device 0 offset 0x240000, size 0x280000
+
+Reading data from 0x4bf800 -- 100% complete.
+ 2621440 bytes read: OK
+## Booting image at 60500000 ...
+   Image Name:   Linux-2.6.31.14_7821
+   Image Type:   ARM Linux Kernel Image (uncompressed)
+   Data Size:    3066352 Bytes =  2.9 MB
+   Load Address: 60008000
+   Entry Point:  60008000
+   Verifying Checksum ... OK
+OK
+## Loading Ramdisk Image at 62000000 ...
+   Image Name:   
+   Image Type:   ARM Linux RAMDisk Image (gzip compressed)
+   Data Size:    2314290 Bytes =  2.2 MB
+   Load Address: 61000000
+   Entry Point:  61000000
+   Verifying Checksum ... OK
+
+Starting kernel ...
+
+Uncompressing Linux........................................................................................................................................................................................ done, booting the kernel.
+[    0.000000] Linux version 2.6.31.14_7821 (root@SoftwareServer) (gcc version 4.2.4) #1 SMP Thu Jun 13 18:07:59 CST 2013
+[    0.000000] CPU: ARMv6-compatible processor [410fb025] revision 5 (ARMv7), cr=00c5387f
+[    0.000000] CPU: VIPT nonaliasing data cache, VIPT nonaliasing instruction cache
+[    0.000000] Machine: Oxsemi NAS
+[    0.000000] 1 memory region
+[    0.000000] Ignoring unrecognised tag 0x00000000
+[    0.000000] Memory policy: ECC disabled, Data cache writealloc
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 65024
+[    0.000000] Kernel command line: root=ubi0:rootfs ubi.mtd=5,512 rootfstype=ubifs initrd=0x61000000 console=ttyS0,115200 elevator=cfq mac_adr=0x00,0x25,0xb1,0xff,0xff,0x00 mem=256M poweroutage=yes
+[    0.000000] PID hash table entries: 1024 (order: 10, 4096 bytes)
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Memory: 256MB = 256MB total
+[    0.000000] Memory: 251392KB available (5308K code, 333K data, 148K init, 0K highmem)
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:128
+[    0.000000] OX820_RPS_init_irq: interrupts 64 to 128
+[    0.000000] ox820_clocksource_init() Timer 2 running at 390625 Hz
+[    0.010000] Console: colour dummy device 80x30
+[    0.010000] console [ttyS0] enabled
+[    0.020000] Calibrating delay loop... 299.00 BogoMIPS (lpj=1495040)
+[    0.240000] Security Framework initialized
+[    0.240000] Mount-cache hash table entries: 512
+[    0.250000] CPU: Testing write buffer coherency: ok
+[    0.250000] Calibrating local timer... 375.50MHz.
+[    0.320000] CPU1: Booted secondary processor
+[    0.420000] Calibrating delay loop... 299.82 BogoMIPS (lpj=1499136)
+[    0.630000] Brought up 2 CPUs
+[    0.640000] SMP: Total of 2 processors activated (598.83 BogoMIPS).
+[    0.650000] NET: Registered protocol family 16
+[    0.650000] Number of DMA channels = 4, version = 4
+[    0.660000] Allocating 303 SRAM generic DMA descriptors
+[    1.170000] PCIeA version/deviceID 082510b5
+[    1.170000] PCIeB version/deviceID 082510b5
+[    2.180000] ox820_pci_preinit() PCIEB link up timeout (00001814)
+[    2.180000] ox820_pciea_setup_resources() resource cf81b200
+[    2.190000] ox820_pci_scan_bus() nr 0 sys cf81b1e0, sys->bus (null)
+[    2.200000] pci 0000:00:00.0: PME# supported from D0 D1 D2 D3hot
+[    2.210000] pci 0000:00:00.0: PME# disabled
+[    2.210000] PCI: bus0: Fast back to back transfers disabled
+[    2.220000] ox820_pci_scan_bus: number 0 primary 0 secondary 0 subordinate 0
+[    2.220000] ox820_map_irq(): dev->bus->number = 0, (primary 0) slot:0, pin:1 - returning IRQ 51
+[    2.230000] Aton-Buttons Device Load
+[    2.250000] bio: create slab <bio-0> at 0
+[    2.250000] SCSI subsystem initialized
+[    2.400000] cfg80211: Calling CRDA to update world regulatory domain
+[    2.400000] NET: Registered protocol family 2
+[    2.410000] Switched to NOHz mode on CPU #0
+[    2.410000] IP route cache hash table entries: 2048 (order: 1, 8192 bytes)
+[    2.410000] Switched to NOHz mode on CPU #1
+[    2.420000] TCP established hash table entries: 8192 (order: 4, 65536 bytes)
+[    2.430000] TCP bind hash table entries: 8192 (order: 4, 65536 bytes)
+[    2.430000] TCP: Hash tables configured (established 8192 bind 8192)
+[    2.440000] TCP reno registered
+[    2.440000] NET: Registered protocol family 1
+[    2.450000] Trying to unpack rootfs image as initramfs...
+[    2.460000] rootfs image is not initramfs (no cpio magic); looks like an initrd
+[    2.480000] Freeing initrd memory: 2260K
+[    2.490000] Aton Buttons Driver Load
+[    2.490000] Create fragment cache
+[    2.500000] Installing knfsd (copyright (C) 1996 okir@monad.swb.de).
+[    2.510000] NTFS driver 2.1.29 [Flags: R/O].
+[    2.510000] fuse init (API version 7.12)
+[    2.520000] SGI XFS with security attributes, large block/inode numbers, no debug enabled
+[    2.520000] msgmni has been set to 495
+[    2.530000] alg: No test for stdrng (krng)
+[    2.540000] io scheduler noop registered
+[    2.540000] io scheduler anticipatory registered
+[    2.550000] io scheduler deadline registered
+[    2.550000] io scheduler cfq registered (default)
+[    2.580000] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    2.590000] serial8250: ttyS0 at MMIO 0x44200000 (irq = 55) is a 16550A
+[    2.600000] brd: module loaded
+[    2.610000] loop: module loaded
+[    2.610000] ox820sata: OX820 sata core.
+[    2.610000] scsi0 : oxnassata
+[    2.620000] scsi1 : oxnassata
+[    2.620000] ata1: SATA max UDMA/133 irq 50
+[    2.630000] ata2: SATA max UDMA/133 irq 50
+[    2.980000] ata1: SATA link down (SStatus 0 SControl 300)
+[    3.330000] ata2: SATA link down (SStatus 0 SControl 300)
+[    3.330000] NAND device: Manufacturer ID: 0xad, Chip ID: 0xf1 (Hynix NAND 128MiB 3,3V 8-bit)
+[    3.340000] Scanning device for bad blocks
+[    3.410000] Creating 5 MTD partitions on "NAND 128MiB 3,3V 8-bit":
+[    3.420000] 0x000000000000-0x000000040000 : "Stage-1"
+[    3.430000] 0x000000040000-0x000000240000 : "U-Boot"
+[    3.430000] 0x000000240000-0x000000840000 : "INITRD"
+[    3.440000] 0x000000840000-0x000001000000 : "Kernel"
+[    3.440000] 0x000001000000-0x000008000000 : "Root"
+[    3.450000] UBI: attaching mtd5 to ubi0
+[    3.460000] UBI: physical eraseblock size:   131072 bytes (128 KiB)
+[    3.460000] UBI: logical eraseblock size:    129024 bytes
+[    3.470000] UBI: smallest flash I/O unit:    2048
+[    3.470000] UBI: sub-page size:              512
+[    3.480000] UBI: VID header offset:          512 (aligned 512)
+[    3.480000] UBI: data offset:                2048
+[    3.870000] UBI: attached mtd5 to ubi0
+[    3.880000] UBI: MTD device name:            "Root"
+[    3.880000] UBI: MTD device size:            112 MiB
+[    3.890000] UBI: number of good PEBs:        896
+[    3.890000] UBI: number of bad PEBs:         0
+[    3.890000] UBI: max. allowed volumes:       128
+[    3.900000] UBI: wear-leveling threshold:    4096
+[    3.900000] UBI: number of internal volumes: 1
+[    3.910000] UBI: number of user volumes:     1
+[    3.910000] UBI: available PEBs:             0
+[    3.920000] UBI: total number of reserved PEBs: 896
+[    3.920000] UBI: number of PEBs reserved for bad PEB handling: 8
+[    3.930000] UBI: max/mean erase counter: 1566/373
+[    3.930000] UBI: image sequence number: 0
+[    3.940000] UBI: background thread "ubi_bgt0d" started, PID 315
+[    3.940000] mice: PS/2 mouse device common for all mice
+[    3.940000] rtc-pcf8563 0-0051: chip found, driver version 0.4.2.5
+[    3.940000] rtc-pcf8563 0-0051: rtc core: registered rtc-pcf8563 as rtc0
+[    3.940000] rtc-pcf8563 0-0051: get date/time...
+[    3.940000] rtc-pcf8563 0-0051: low voltage detected, date/time is not reliable.
+[    3.940000] reset pcf8563...
+[    3.980000] rtc-pcf8563 0-0051: date/time invailid, reset to 2012/01/01...
+[    3.990000] OXNAS bit-bash I2C driver initialisation OK
+[    3.990000] md: linear personality registered for level -1
+[    4.000000] md: raid0 personality registered for level 0
+[    4.010000] md: raid1 personality registered for level 1
+[    4.010000] device-mapper: ioctl: 4.15.0-ioctl (2009-04-01) initialised: dm-devel@redhat.com
+[    4.020000] TCP cubic registered
+[    4.020000] NET: Registered protocol family 10
+[    4.030000] NET: Registered protocol family 17
+[    4.030000] RPC: Registered udp transport module.
+[    4.040000] RPC: Registered tcp transport module.
+[    4.060000] rtc-pcf8563 0-0051: setting system clock to 2012-01-02 00:00:00 UTC (1325462400)
+[    4.070000] md: Waiting for all devices to be available before autodetect
+[    4.070000] md: If you don't use raid, use raid=noautodetect
+[    4.080000] md: Autodetecting RAID arrays.
+[    4.080000] md: Scanned 0 and added 0 devices.
+[    4.090000] md: autorun ...
+[    4.090000] md: ... autorun DONE.
+[    4.090000] RAMDISK: gzip image found at block 0
+[    4.960000] VFS: Mounted root (ext2 filesystem) on device 1:0.
+
+Start InitRD
+mount: can't find /dev/ram0 in /etc/mtab
+mount: can't find /dev/ram0 in /etc/mtab
+rootfs / rootfs rw 0 0
+/dev/root.old / ext2 rw,relatime,errors=continue 0 0
+none /proc proc rw,relatime 0 0
+/sys /sys sysfs rw,relatime 0 0
+HddBoot=No
+[    5.100000] UBI: mtd5 is detached from ubi0
+[    5.120000] UBI: attaching mtd5 to ubi0
+[    5.120000] UBI: physical eraseblock size:   131072 bytes (128 KiB)
+[    5.130000] UBI: logical eraseblock size:    129024 bytes
+[    5.130000] UBI: smallest flash I/O unit:    2048
+[    5.140000] UBI: sub-page size:              512
+[    5.140000] UBI: VID header offset:          512 (aligned 512)
+[    5.150000] UBI: data offset:                2048
+[    5.570000] UBI: attached mtd5 to ubi0
+[    5.570000] UBI: MTD device name:            "Root"
+[    5.570000] UBI: MTD device size:            112 MiB
+[    5.580000] UBI: number of good PEBs:        896
+[    5.580000] UBI: number of bad PEBs:         0
+[    5.590000] UBI: max. allowed volumes:       128
+[    5.590000] UBI: wear-leveling threshold:    4096
+[    5.600000] UBI: number of internal volumes: 1
+[    5.600000] UBI: number of user volumes:     1
+[    5.610000] UBI: available PEBs:             0
+[    5.610000] UBI: total number of reserved PEBs: 896
+[    5.620000] UBI: number of PEBs reserved for bad PEB handling: 8
+[    5.620000] UBI: max/mean erase counter: 1566/373
+[    5.630000] UBI: image sequence number: 0
+[    5.630000] UBI: background thread "ubi_bgt0d" started, PID 365
+UBI device number 0, total 896 LEBs (115605504 bytes, 110.2 MiB), available 0 LEBs (0 bytes), LEB size 129024 bytes (126.0 KiB)
+[    5.780000] UBIFS: recovery needed
+[    5.940000] UBIFS: recovery deferred
+[    5.940000] UBIFS: mounted UBI device 0, volume 0, name "rootfs"
+[    5.950000] UBIFS: mounted read-only
+[    5.950000] UBIFS: file system size:   112637952 bytes (109998 KiB, 107 MiB, 873 LEBs)
+[    5.960000] UBIFS: journal size:       9033728 bytes (8822 KiB, 8 MiB, 71 LEBs)
+[    5.970000] UBIFS: media format:       w4/r0 (latest is w4/r0)
+[    5.970000] UBIFS: default compressor: lzo
+[    5.980000] UBIFS: reserved for root:  0 bytes (0 KiB)
+bin      home     linuxrc  proc     share    tmp
+dev      initrd   mnt      root     sys      usr
+etc      lib      mtdaapd  sbin     system   var
+sys_uuid=fbeaa2bc:69be3af1:df17d095:1b0efef4
+[    6.100000] UBIFS: un-mount UBI device 0, volume 0
+skip!! sda1 is not existed 
+skip!! sdb1 is not existed 
+SysList=
+sda1_uuid=
+error!! sda1 no UUID
+sdb1_uuid=
+error!! sdb1 no UUID
+mount /dev/md0  /mnt/sda1
+[    6.260000] EXT3-fs: unable to read superblock
+[    6.270000] EXT2-fs: unable to read superblock
+[    6.270000] EXT4-fs (md0): unable to read superblock
+[    6.280000] FAT: utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[    6.290000] FAT: unable to read boot sector
+[    6.290000] FAT: utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[    6.300000] FAT: unable to read boot sector
+mount: mounting /dev/md0 on /mnt/sda1 failed: Input/output error
+umount: cannot umount /mnt/sda1: Invalid argument
+End of InitRD -- transfer to /sbin/init
+[    6.590000] UBIFS: recovery needed
+[    6.760000] UBIFS: recovery completed
+[    6.770000] UBIFS: mounted UBI device 0, volume 0, name "rootfs"
+[    6.770000] UBIFS: file system size:   112637952 bytes (109998 KiB, 107 MiB, 873 LEBs)
+[    6.780000] UBIFS: journal size:       9033728 bytes (8822 KiB, 8 MiB, 71 LEBs)
+[    6.790000] UBIFS: media format:       w4/r0 (latest is w4/r0)
+[    6.790000] UBIFS: default compressor: lzo
+[    6.800000] UBIFS: reserved for root:  0 bytes (0 KiB)
+[    6.800000] VFS: Mounted root (ubifs filesystem) on device 0:10.
+[    6.810000] Freeing init memory: 148K
+init start...
+Mounting proc filesystem...
+mount: mounting usbfs on /proc/bus/usb failed: No such file or directory
+Mount RAMDisk to initrd for run-time usage...
+HardDiskBootUp=No
+Boot up from flash
+mknod: /dev/md1: No space left on device
+0 disk is found...
+booting by normal...
+swap_uuid=958a74cd:d4ac4e8e:b03d3d9a:4690dbfe
+chmod: /usr/bin/sudo: No space left on device
+chmod: /etc/sudoers: No space left on device
+[    8.100000] Probing for Synopsis GMAC, unit 0
+[    8.120000] eth0: Tuning GMAC 0 RGMII timings
+[    8.120000] eth0: PHY is ICPlus 1001, type 0x02430d91
+[    8.130000] eth0: Tuning ICPlus 1001 PHY for RGMII
+[    8.130000] GMAC:after:phy_reg16=0xdaab
+[    8.130000] GMAC:after:phy_reg20=0xd6c
+[    8.150000] eth0: GMAC ver = 53, vendor ver = 18 at 0xed400000, IRQ 40
+[    8.160000] eth0: Found PHY at address 1, type 0x02430d91 -> 10/100/1000
+[    8.160000] eth0: Ethernet addr: 80:ee:73:5b:14:07
+[    8.170000] probe() eth0: Leon x2 clock
+libiconv.so.2 already existed.
+libid3tag.so.0 already existed.
+0[   11.400000] usbcore: registered new interface driver usbfs
+[   11.460000] usbcore: registered new interface driver hub
+[   11.480000] usbcore: registered new interface driver ethub
+[   11.500000] usbcore: registered new device driver usb
+[   11.690000] Initializing USB Mass Storage driver...
+[   11.710000] usbcore: registered new interface driver usb-storage
+[   11.710000] USB Mass Storage support registered.
+[   11.990000] PCI: enabling device 0000:00:00.0 (0140 -> 0142)
+[   11.990000] etxhci_hcd_120712 0000:00:00.0: Etron xHCI Host Controller
+[   12.000000] etxhci_hcd_120712 0000:00:00.0: new USB bus registered, assigned bus number 1
+[   12.010000] etxhci_hcd_120712 0000:00:00.0: irq 51, io mem 0x48000000
+[   12.010000] etxhci_hcd_120712 0000:00:00.0: Failed to enable MSI-X
+[   12.020000] etxhci_hcd_120712 0000:00:00.0: failed to allocate MSI entry
+[   12.030000] usb usb1: config 1 interface 0 altsetting 0 endpoint 0x81 has no SuperSpeed companion descriptor
+[   12.210000] usb usb1: configuration #1 chosen from 1 choice
+[   12.230000] ethub 1-0:1.0: USB hub found
+[   12.240000] ethub 1-0:1.0: 4 ports detected
+[   12.560000] usb 1-1: new high speed USB device using etxhci_hcd_120712 and address 2
+[   12.590000] etxhci_hcd_120712 0000:00:00.0: WARN: short transfer on control ep
+[   12.600000] etxhci_hcd_120712 0000:00:00.0: WARN: short transfer on control ep
+[   12.610000] etxhci_hcd_120712 0000:00:00.0: WARN: short transfer on control ep
+[   12.630000] usb 1-1: configuration #1 chosen from 1 choice
+[   12.670000] scsi2 : SCSI emulation for USB Mass Storage devices
+Kernel talks oldstyle dev
+Error: No valid disks found
+chown: /system/tmp: No space left on device
+chmod: /system/tmp: No space left on device
+/tmp is existed, check it...
+chmod: /system: No space left on device
+chmod: /system: No space left on device
+touch: /system/tmp/booting: No space left on device
+[   14.520000] CoPro offload is active on eth0
+[   14.530000] Alloc'ing ARM descs 8192 bytes
+[   14.530000] Alloc'ing CoPro parameters 40 bytes
+[   14.540000] gmac gmac.0: firmware: requesting gmac_copro_firmware
+[   14.760000] CoPro: Programming start address as 0xd000dd00
+[   14.860000] eth0: Resetting GMAC
+[   14.860000] eth0: GMAC reset complete
+[   14.870000] hw_set_mac_address() Storing port0 mac_adr in global array
+[   14.880000] eth0: Setting Rx flow control thresholds for LAN port
+[   14.880000] CoPro available SRAM end 0x1000dc64
+[   14.890000] Copro offload started
+[   15.390000] eth0: link down
+[   17.750000] scsi 2:0:0:0: Direct-Access     Generic  STORAGE DEVICE   9454 PQ: 0 ANSI: 0
+[   17.800000] sd 2:0:0:0: Attached scsi generic sg0 type 0
+[   17.820000] sd 2:0:0:0: [sdc] Attached SCSI removable disk
+[   17.900000] ADDRCONF(NETDEV_UP): eth0: link is not ready
+Hostname: nas.mydomain.com
+Network interfaces: eth0 lo 
+eth0 args=dhcp
+dhcp interfaces= eth0 eth0
+lo args=inet 127.0.0.1 netmask 255.0.0.0
+static interfaces=lo inet 127.0.0.1 netmask 255.0.0.0
+dhcp_flags=-n -s /etc/dhcpcd.script -i
+/sbin/udhcpc -n -s /etc/dhcpcd.script -i eth0
+udhcpc (v1.10.3) started
+Sending discover...
+Sending discover...
+Sending discover...
+No lease, failing
+eth0      Link encap:Ethernet  HWaddr 80:EE:73:5B:14:07  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:40 
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:16436  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+eth0 args=dhcp
+dhcp interfaces= eth0 eth0
+lo args=inet 127.0.0.1 netmask 255.0.0.0
+static interfaces=lo inet 127.0.0.1 netmask 255.0.0.0
+dhcp_flags=-n -n -s /etc/dhcpcd.script -i
+/sbin/udhcpc -n -n -s /etc/dhcpcd.script -i eth0
+udhcpc (v1.10.3) started
+Sending discover...
+Sending discover...
+Sending discover...
+No lease, failing
+eth0      Link encap:Ethernet  HWaddr 80:EE:73:5B:14:07  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:40 
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:16436  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+eth0 args=dhcp
+dhcp interfaces= eth0 eth0
+lo args=inet 127.0.0.1 netmask 255.0.0.0
+static interfaces=lo inet 127.0.0.1 netmask 255.0.0.0
+dhcp_flags=-n -n -n -s /etc/dhcpcd.script -i
+/sbin/udhcpc -n -n -n -s /etc/dhcpcd.script -i eth0
+udhcpc (v1.10.3) started
+Sending discover...
+Sending discover...
+Sending discover...
+No lease, failing
+eth0      Link encap:Ethernet  HWaddr 80:EE:73:5B:14:07  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:40 
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:16436  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+ln: /dev/log: No space left on device
+Starting syslogd...
+  syslogd: cannot create /dev/log: No space left on device
+Starting inetd...
+Starting crond...
+crond[1459]: chdir(/var/spool/cron/crontabs): No such file or directory
+
+
+bound 169.254.255.255:8100
+chmod: /initrd/nasd_action: No such file or directory
+Starting /etc/nasd
+gpio_handler daemon on duty!
+Mon Jan  2 01:00:44 CET 2012
+
+nas.mydomain.com login: 
+
+</code>
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>oxnas 128NAND 256RAM 1port GigabitEthernet 1NIC no_switch 0WNIC USB 3USB USB3.0 SATA2 ARM NAS RTC}}

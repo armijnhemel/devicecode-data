@@ -1,0 +1,1184 @@
+====== D-Link DCS-930L/932L/933L ======
+
+{{section>meta:infobox:432_warning#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+The D-Link DCS-930L, DCS-932L and DCS-933L are IP cameras and WiFi repeaters based on custom Linux distribution.\\   
+
+^ DCS-930L  ^ 933L (932L similar) ^
+| {{:media:dlink:dcs-930l:side.jpg?direct&400|}} | {{:media:dlink:dcs-933l:front.jpg?direct&400|}} |
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^DCS-930L/DCS-932L$"}
+} -->
+
+
+===== Hardware Highlights =====
+
+The 932L and 933L versions have built-in infrared LEDs for night vision. It allow for night time viewing of up to 5 meters (16 feet).\\
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^DCS-930L/DCS-932L$"}
+} -->
+
+
+The DCS-933L is similar to 932L but it's stock firmware started to support streaming in H.264 codec in addition to MJPG.
+933L has double RAM and FLASH. Official webpage says that it only has 32 MB ram, however boot log and ''free'' suggests that its at least double of that amount. 
+Note: The DCS-933L B1 is not compatible with the 930L rom, so don't flash it (yet).
+
+^ Model           ^ H/W Ver ^ CPU                     ^ Ram    ^ Flash   ^ Network          ^ USB                ^ Serial   ^ JTag   ^
+| DCS-933L        | A1      | RaLink RT3050@400MHz    | 64MB   | 8MB     | 1 x 10/100MBit   | No/Internal Only   | Yes      | No?    |
+| DCS-933L*       | B1      | RaLink RT3352F@400MHz   | 64MB   | 8MB     | 1 x 10/100MBit   | No/Internal Only   | Yes      | No?    |
+
+
+Other models:
+  * The DCS-935L is based on a Realtek SoC and will not be supported
+  * The DCS-942L is based on a Grain Media GM8126 SoC and also incompatible
+
+A USB camera modules is attached internally to the system.
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^DCS-930L/DCS-932L$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+**Note:** Currently the instruction bellow doesn't work. Check the [[https://forum.openwrt.org/t/support-for-the-d-link-dcs-930l-webcam/89212/|forum topic]].
+
+
+You do not need serial console to install OpenWrt. \\
+There is an emergency web interface, which has to be used to flash OpenWrt. \\
+Uploading via the regular web interface doesn't work.
+
+
+  * Turn off the camera by removing the power cord.
+  * Press and hold the Reset button.
+  * Plug the power cord back into the device while holding down the Reset until the blue LED goes out (about 8-10 seconds).
+  * Release the Reset button.
+  * The camera will boot and therefore the web interface for emergency recovery will default to IP 192.168.0.20
+  * Connect your computer to the camera with an Ethernet cable.
+  * Configure your computer to a static IP 192.168.0.10 with subnet mask 255.255.255.0 (/24).
+  * Now you need to upload your new firmware in the emergency web interface.
+  * Open in a web browser the emergency web interface on http://192.168.0.20
+
+You should see the following message: "The browser you are using may have difficulty receiving images and video. If you experience any issues viewing this page, we suggest using Internet Explorer.".
+
+The old camera mainly used ActiveX from IE to show a player in a browser. So it checks if the User-Agent of a browser to determine the browser. But the restriction mistakenly also applied for the emergency interface.
+
+To bypass this limitation you can install the [[https://webextension.org/listing/useragent-switcher.html|User Agent switcher]] extension and select the Internet Explorer and Windows. Or you can upload the firmware directly from a command line with curl or wget like:
+<code>
+curl -F firmware=@/tmp/openwrt-ramips-rt305x-dcs-930-squashfs-factory.bin http://192.168.0.20/
+</code>
+
+Wait until end of upload procedure and the camera will reboot. This can take up to 5 minutes.
+After bootup, OpenWrt is reachable at 192.168.1.1 via LAN.
+Now reconfigure your computer's network interface to DHCP client.
+By default, the OpenWrt firmware acts as a router and hands out IP addresses on this interface.
+Now you need to SSH into it and change the camera settings to become a DHCP client for your router.
+You may connect if over WiFi or a cord (preferable).
+
+
+
+===== IR LED support (932L only) =====
+
+The IR LEDs and the IR cutoff filter can be controlled via 3 GPIO lines. Use the [[https://gitlab.aboehler.at/andreas/lightsensor-daemon|lightSensor-daemon]] which is a user space daemon that reads the light sensor and control the circuitry. Makefiles for OpenWrt are also included, but you have to compile the package yourself for now.
+After installing the ''lightSensor-daemon'', the sensor is polled for light changes and the filter and IR LEDs are controlled accordingly. It seems to react faster to changes in lightning than the original firmware does.
+
+===== Motion Detection support =====
+
+You can use the OpenWrt "motion" package to enable motion detection and to stream camera images to other devices. 2-3 fps result in 60-80% CPU load.
+There is a patch for "motion" on the homepage that adds support for static JPEG images. If you apply it, this turns your device into a fully motion-detection capable camera. 
+
+To send out E-Mail notification, you can use "msmtp" or "mini_sendmail". If you use coreutils-base64 (or enable base64 in the busybox configuration), you can even send attachments without the need to install the (much bigger) mutt.
+
+===== mjpg_streamer =====
+
+mjpg_streamer works flawlessly and with very little CPU usage. Recently, I replaced the motion setup on my cameras by mjpg_streamer and put motion on my (more powerful) main router. 
+
+===== Stock firmware =====
+
+The original firmware provides the http://camera_ip/vjview.htm to see the camera from a browser with Java applet. This is not supported nowadays but you may try to use IcedTea.
+
+You may watch the stream directly with VLC player or MXPlayer.
+Here are some links that should work:
+
+  * /video/mjpg.cgi
+  * /mjpeg.cgi
+  * /mjpeg.cgi?user=[USERNAME]&password=[PASSWORD]&channel=[CHANNEL]
+  * /video.cgi
+  * /video.cgi?resolution=vga
+  * /audio.cgi
+  * /Image.jpg
+  * /image/jpeg.cgi
+
+For the VLC or MXPlayer use a URL like ''http://admin:your_pasword@camera_ip/''.
+
+Usually the video delay is about a second over a cord and about 3 seconds over WiFi.
+
+Use the command to merge two streams of video and audio:
+<code>
+ffmpeg -f mjpeg -i http://1:1@192.168.1.9/mjpeg.cgi -i http://1:1@192.168.1.9/audio.cgi -ar 16000 /home/stivali/$FILENAME.avi
+</code>
+
+
+===== Hardware =====
+
+==== Opening the Device ====
+
+The casing is held by plastic clamps, that may break if you try to take off the cover. \\                
+Inside you will find two unpopulated headers (one in the case of the 932L): J1 and J2. 
+
+J1 is a 5-pin connector used for attaching the IR LEDs and IR Cutoff Filter. \\
+J2 is a 4-pin connector or blank header for a serial console. See Photos below.
+
+==== Internal Photos ====
+
+=== DCS-930L-A2 ===
+
+{{media:dlink:dcs-930l_pcb1.jpg?200|}}
+{{media:dlink:dcs-930l_pcb2.jpg?200|}}
+
+PCB is marked A2, exterior case is marked "H/W Ver.: A3".
+U12 is W29GL032CB7S, 4 MiB Flash memory.
+U9 is W9825G6JH, 32 MiB SDRAM.
+
+=== DCS-930L-B1 ===
+{{:media:dlink:dcs-930l-b1-0.jpg?400|}}
+{{:media:dlink:dcs-930l-b1-1.jpg?400|}}
+
+JP1 is a 4-pin connector or blank header serial console. Software settings for the serial port are 57600 8N1.
+
+=== DCS-932L-A1===
+{{:media:dlink:dcs-932l-00.jpg?400|}}
+{{:media:dlink:dcs-932l-02.jpg?400|}}
+
+<color green>**Serial Connection**</color>\\
+{{:media:dlink:dcs-932l-03.jpg?400|}}
+
+JP2 is a 4-pin connector or blank header serial console. Software settings for the serial port are 57600 8N1.\\
+
+=== DCS-933L-A1 ===
+
+{{:media:dlink:dcs-933l-a1-front.jpg?200|}}
+{{:media:dlink:dcs-933l-a1-back.jpg?200|}}
+{{:media:dlink:dcs-933l-a1-ir.jpg?200|}}
+
+  * JP2 is the serial port 57600 8n1
+  * PCB is marked B1, exterior case is marked "H/W Ver.: A1". Which one should be considered?
+  * U6 is RT3352F, although according to this wiki H/W Ver.A1 should be another chip RT3050. The RT3352F should be for Ver. B1.
+  * U7 is M14D5121632A, 64 MiB DDR2 SDRAM.
+  * U11 with ID "OV00780-L28G" is the "Omnivision Technologies IC IMAGE SENSOR" or "Omnivision OV780 H.264 video encoder chip"
+  * U13 is F25L64QA, 64 Mbit Serial Flash Memory
+
+GPIO
+
+  * 0: PUSH_BUTTON_1_IRQ: WPS Button 
+  * 1: HW_ID_1:
+  * 2: POWER_LED: Red Power LED
+  * 7: CHIP_RESET: Reset IC-iPassion Chip
+  * 9: LINK_LED: Green Power LED
+  * 10: PUSH_BUTTON_2_IRQ: RESET Button
+  * 11: LIGHT_SENSOR_IN
+  * 12: IR_LED_OUT_1
+  * 13: WPS_LED: Blue Power LED
+  * 14: IR_LED_OUT_2: IR Cut-off filter controller
+  * 17: OV780_SPI_OUT
+  * 18: OV780_SPI_IN
+  * 19: PIR_IN: PIR Sensor Input
+  * 20: OV780_BOOT_IN
+
+
+===== Bootlogs =====
+==== Factory Bootlog DCS-933L ====
+<WRAP bootlog>
+<nowiki>Linux version 2.6.21 (andy@ipcam-linux.alphanetworks.com) (gcc version 3.4.2) #1619 Mon Apr 21 15:07:52 CST 2014
+
+ The CPU feqenuce set to 400 MHz
+CPU revision is: 0001964c
+Determined physical RAM map:
+ memory: 04000000 @ 00000000 (usable)
+Initrd not found or empty - disabling initrd
+On node 0 totalpages: 16384
+  DMA zone: 128 pages used for memmap
+  DMA zone: 0 pages reserved
+  DMA zone: 16256 pages, LIFO batch:3
+  Normal zone: 0 pages used for memmap
+Built 1 zonelists.  Total pages: 16256
+Kernel command line: console=ttyS1,57600n8 root=/dev/ram0
+Primary instruction cache 32kB, physically tagged, 4-way, linesize 32 bytes.
+Primary data cache 16kB, 4-way, linesize 32 bytes.
+Synthesized TLB refill handler (20 instructions).
+Synthesized TLB load handler fastpath (32 instructions).
+Synthesized TLB store handler fastpath (32 instructions).
+Synthesized TLB modify handler fastpath (31 instructions).
+Cache parity protection disabled
+cause = 40808000, status = 11000000
+PID hash table entries: 256 (order: 8, 1024 bytes)
+calculating r4koff... 00186a00(1600000)
+CPU frequency 400.00 MHz
+Using 200.000 MHz high precision timer.
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Memory: 52016k/65536k available (3126k kernel code, 13456k reserved, 445k data, 5356k init, 0k highmem)
+Calibrating delay loop... 266.24 BogoMIPS (lpj=532480)
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+NET: Registered protocol family 2
+Time: MIPS clocksource has been installed.
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 2048 bind 2048)
+TCP reno registered
+detected lzma initramfs
+detected lzma initramfs
+initramfs: LZMA lc=3,lp=0,pb=2,dictSize=33554432,origSize=16699392
+LZMA initramfs by Ming-Ching Tiew <mctiew@yahoo.com>...............................................................................................................................................................................................................................................................
+******************** CONFIG_RT2880_ROOTFS_IN_RAM
+******************** CONFIG_RT2880_FLASH_8M
+deice id : 8c 41 17 8c 41 (41178c41)
+F25L64QA(8c 41178c41) (8192 Kbytes)
+mtd .name = raspi, .size = 0x00800000 (8M) .erasesize = 0x00010000 (64K) .numeraseregions = 0
+Creating 5 MTD partitions on "raspi":
+0x00000000-0x00800000 : "ALL"
+0x00000000-0x00030000 : "Bootloader"
+0x00030000-0x00040000 : "Config"
+0x00040000-0x00050000 : "Factory"
+0x00050000-0x00800000 : "Kernel"
+RT3xxx EHCI/OHCI init.
+squashfs: version 3.2-r2 (2007/01/15) Phillip Lougher
+squashfs: LZMA suppport for slax.org by jro
+io scheduler noop registered (default)
+Ralink gpio driver initialized
+***** audio_buffer = 808c91ec
+--- Boot Code Signature ---
+Signature: DCS-940            932L  Release 1.01 (2012-07-12)
+===== DCS-933L v1.04 build 1 (2014-04-21) =====
+spidrv_major = 217
+HDLC line discipline: version $Revision: 1.1.1.1 $, maxframe=4096
+N_HDLC line discipline registered.
+Serial: 8250/16550 driver $Revision: 1.7 $ 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at I/O 0xb0000500 (irq = 37) is a 16550A
+serial8250: ttyS1 at I/O 0xb0000c00 (irq = 12) is a 16550A
+RAMDISK driver initialized: 16 RAM disks of 16384K size 1024 blocksize
+loop: loaded (max 8 devices)
+rdm_major = 254
+MAC_ADRH -- : 0x00000000
+MAC_ADRL -- : 0x00000000
+Ralink APSoC Ethernet Driver Initilization. v2.0  256 rx/tx descriptors allocated, mtu = 1500!
+***** Init RF/MAC data from flash memory *****
+LAN MAC: 28 10 7B 1A 30 28
+MAC_ADRH -- : 0x00002810
+MAC_ADRL -- : 0x7b1a3028
+PROC INIT OK!
+PPP generic driver version 2.4.2
+PPP Deflate Compression module registered
+PPP BSD Compression module registered
+NET: Registered protocol family 24
+
+
+=== pAd = c0019000, size = 533296 ===
+
+Wlan STA Mode
+Linux video capture interface: v2.00
+block2mtd: version $Revision: 1.1.1.1 $
+usbmon: debugfs is not available
+rt3xxx-ehci rt3xxx-ehci: Ralink EHCI Host Controller
+rt3xxx-ehci rt3xxx-ehci: new USB bus registered, assigned bus number 1
+rt3xxx-ehci rt3xxx-ehci: irq 18, io mem 0x101c0000
+rt3xxx-ehci rt3xxx-ehci: USB 0.0 started, EHCI 1.00, driver 10 Dec 2004
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 2 ports detected
+ohci_hcd: 2006 August 04 USB 1.1 'Open' Host Controller (OHCI) Driver
+rt3xxx-ohci rt3xxx-ohci: RT3xxx OHCI Controller
+rt3xxx-ohci rt3xxx-ohci: new USB bus registered, assigned bus number 2
+rt3xxx-ohci rt3xxx-ohci: irq 18, io mem 0x101c1000
+usb usb2: configuration #1 chosen from 1 choice
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 2 ports detected
+Advanced Linux Sound Architecture Driver Version 1.0.14rc3 (Wed Mar 14 07:25:50 2007 UTC).
+ALSA device list:
+  No soundcards found.
+nf_conntrack version 0.5.0 (512 buckets, 4096 max)
+ip_tables: (C) 2000-2006 Netfilter Core Team, Type=Restricted Cone
+TCP cubic registered
+NET: Registered protocol family 1
+NET: Registered protocol family 17
+Freeing unused kernel memory: 5356k freed
+Algorithmics/MIPS FPU Emulator v1.5
+usbcore: registered new interface driver uvcvideo
+USB Video Class driver (SVN r209)
+usb 1-1: new high speed USB device using rt3xxx-ehci and address 2
+usb 1-1: configuration #1 chosen from 1 choice
+Found format MJPEG.
+- 640x480 (30.0 fps)
+- 320x240 (30.0 fps)
+- 160x120 (30.0 fps)
+uvcvideo: Found UVC 1.00 device USB Camera Aoni   (05a9:7885)
+
+
+uvcvideo: UVC non compliance - GET_DEF(PROBE) not supported. Enabling workaround.
+usbcore: registered new interface driver snd-usb-audio
+light sensor changed to Night
+devpts: called with bogus options
+MJPEG frame count = 10
+MJPEG frame size = 131032
+H264 frame count = 8
+H264 frame size = 184279
+light sensor changed to Night
+SSID: Airmode_Service
+Cfg PhyMode = 9
+Key1Str is Invalid key length(0) or Type(1)
+Key2Str is Invalid key length(0) or Type(1)
+Key3Str is Invalid key length(0) or Type(1)
+Key4Str is Invalid key length(0) or Type(1)
+HT_BW = BW_20
+--> EEPROMAddressNum = 6
+WLAN MAC: 
+*****> TxStream = 1, RxStream = 1
+Country Region = 80
+Phy Mode = 9
+MCS Set = ff 00 00 00 00
+0x1300 = 00064300
+device ra0 entered promiscuous mode
+device eth2 entered promiscuous mode
+SSID: Airmode_Service
+Cfg PhyMode = 9
+Key1Str is Invalid key length(0) or Type(1)
+Key2Str is Invalid key length(0) or Type(1)
+Key3Str is Invalid key length(0) or Type(1)
+Key4Str is Invalid key length(0) or Type(1)
+HT_BW = BW_20
+--> EEPROMAddressNum = 6
+WLAN MAC: 
+*****> TxStream = 1, RxStream = 1
+Country Region = 80
+Phy Mode = 9
+MCS Set = ff 00 00 00 00
+0x1300 = 00064300
+br0: port 2(eth2) entering learning state
+br0: port 1(ra0) entering learning state
+br0: topology change detected, propagating
+br0: port 2(eth2) entering forwarding state
+br0: topology change detected, propagating
+br0: port 1(ra0) entering forwarding state
+*** Total SSID = 35
+*** site_survey_timer = 142
+*** SaveScanTable OK
+Rcv Wcid(1) AddBAReq
+Start Seq = 00000000
+light sensor changed to Night
+*** sensor_fps = 30
+ CIFS VFS: cifs_mount failed w/return code = -6
+ CIFS VFS: cifs_mount failed w/return code = -6
+*** sensor_fps = 15
+*** sensor_fps = 30
+light sensor changed to Day
+*** sensor_fps = 15
+light sensor changed to Night
+*** sensor_fps = 30
+light sensor changed to Day
+#
+# free -m
+BusyBox v1.12.1 (2014-04-21 15:01:26 CST) multi-call binary
+
+Usage: free
+
+# ./busybox free -m
+             total         used         free       shared      buffers
+Mem:         57436        35812        21624            0            0
+-/+ buffers:              35812        21624
+Swap:            0            0            0
+# cat /proc/cpuinfo
+system type             : Ralink SoC
+processor               : 0
+cpu model               : MIPS 24K V4.12
+BogoMIPS                : 266.24
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 32
+extra interrupt vector  : yes
+hardware watchpoint     : yes
+ASEs implemented        : mips16 dsp
+VCED exceptions         : not available
+VCEI exceptions         : not available</nowiki>
+</WRAP>\\
+
+==== Factory Bootlog DCS-930/932L ====
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.3
+
+
+Board: Ralink APSoC DRAM:  32 MB
+
+relocate_code Pointer at: 81fac000
+
+config usb..
+
+
+ Set info->start[0]=BF000000
+
+flash_protect ON: from 0xBF000000 to 0xBF021767
+
+flash_protect ON: from 0xBF030000 to 0xBF030FFF
+
+*** Warning - bad CRC, using default environment
+
+
+============================================ 
+
+Ralink UBoot Version: 3.5.2.0
+
+-------------------------------------------- 
+
+ASIC 3052_MP2 (Port5<->None)
+
+DRAM component: 256 Mbits SDR
+
+DRAM bus: 16 bit
+
+Total memory: 32 MBytes
+
+Flash component: NOR Flash
+
+============================================ 
+
+icache: sets:256, ways:4, linesz:32 ,total:32768
+
+dcache: sets:128, ways:4, linesz:32 ,total:16384 
+
+
+ ##### The CPU freq = 320 MHZ #### 
+
+ estimate memory size =32 Mbytes
+
+
+Signature: DCS-930            932L  Release 1.11 (2011-05-31)
+
+
+
+Please choose the operation: 
+
+   1: Load system code to SDRAM via TFTP. 
+
+   2: Load system code then write to Flash via TFTP. 
+
+   3: Boot system code via Flash (default).
+
+   4: Entr boot command line interface.
+
+   7: Load Boot Loader code then write to Flash via Serial. 
+
+   9: Load Boot Loader code then write to Flash via TFTP. 
+
+	 4 	 3 	 2 	 1 	 0 
+
+   
+
+3: System Boot system code via Flash.
+
+## Booting image at bf050000 ...
+
+   Image Name:   Linux Kernel Image
+
+   Created:      2013-07-30   3:22:18 UTC
+
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+
+   Data Size:    3579686 Bytes =  3.4 MB
+
+   Load Address: 80000000
+
+   Entry Point:  803b8000
+
+   Verifying Checksum ... OK
+
+   Uncompressing Kernel Image ... OK
+
+No initrd
+
+## Transferring control to Linux (at address 803b8000) ...
+
+## Giving linux memsize in MB, 32
+
+
+Starting kernel ...
+
+
+
+LINUX started...
+
+ THIS IS ASIC
+Linux version 2.6.21 (andy@ipcam-linux.alphanetworks.com) (gcc version 3.4.2) #2857 Tue Jul 30 11:22:08 CST 2013
+
+ The CPU feqenuce set to 320 MHz
+CPU revision is: 0001964c
+Determined physical RAM map:
+ memory: 02000000 @ 00000000 (usable)
+Initrd not found or empty - disabling initrd
+Built 1 zonelists.  Total pages: 8128
+Kernel command line: console=ttyS1,57600n8 root=/dev/ram0
+Primary instruction cache 32kB, physically tagged, 4-way, linesize 32 bytes.
+Primary data cache 16kB, 4-way, linesize 32 bytes.
+Synthesized TLB refill handler (20 instructions).
+Synthesized TLB load handler fastpath (32 instructions).
+Synthesized TLB store handler fastpath (32 instructions).
+Synthesized TLB modify handler fastpath (31 instructions).
+Cache parity protection disabled
+cause = 80800010, status = 1100ff00
+PID hash table entries: 128 (order: 7, 512 bytes)
+calculating r4koff... 00138800(1280000)
+CPU frequency 320.00 MHz
+Using 160.000 MHz high precision timer.
+Console: colour dummy device 80x25
+Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+Memory: 24928k/32768k available (3062k kernel code, 7840k reserved, 741k data, 2380k init, 0k highmem)
+Mount-cache hash table entries: 512
+NET: Registered protocol family 16
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+Time: MIPS clocksource has been installed.
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+TCP: Hash tables configured (established 1024 bind 1024)
+TCP reno registered
+detected lzma initramfs
+detected lzma initramfs
+initramfs: LZMA lc=3,lp=0,pb=2,dictSize=1048576,origSize=7335424
+LZMA initramfs by Ming-Ching Tiew <mctiew@yahoo.com>................................................................................................................<6>squashfs: version 3.2-r2 (2007/01/15) Phillip Lougher
+squashfs: LZMA suppport for slax.org by jro
+fuse init (API version 7.8)
+io scheduler noop registered (default)
+Ralink gpio driver initialized
+--- Boot Code Signature ---
+Signature: DCS-930            932L  Release 1.11 (2011-05-31)
+===== DCS-932L v1.07 build 2 (2013-07-30) =====
+Serial: 8250/16550 driver $Revision: 1.3 $ 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at I/O 0xb0000500 (irq = 37) is a 16550A
+serial8250: ttyS1 at I/O 0xb0000c00 (irq = 12) is a 16550A
+RAMDISK driver initialized: 16 RAM disks of 16384K size 1024 blocksize
+loop: loaded (max 8 devices)
+rdm_major = 254
+PPP generic driver version 2.4.2
+PPP Deflate Compression module registered
+PPP BSD Compression module registered
+PPP MPPE Compression module registered
+NET: Registered protocol family 24
+=== pAd = c0000000, size = 486096 ===
+<-- RTMPAllocAdapterBlock, Status=0
+Wlan STA Mode
+Linux video capture interface: v2.00
+usbcore: registered new interface driver uvcvideo
+USB Video Class driver (SVN r209)
+******************** CONFIG_RT2880_ROOTFS_IN_RAM
+******************** CONFIG_RT2880_FLASH_4M
+ralink flash device: 0x400000 at 0x1f000000
+Ralink SoC physically mapped flash: Found 1 x16 devices at 0x0 in 16-bit bank
+ Amd/Fujitsu Extended Query Table at 0x0040
+number of CFI chips: 1
+cfi_cmdset_0002: Disabling erase-suspend-program due to code brokenness.
+Creating 4 MTD partitions on "Ralink SoC physically mapped flash":
+0x00000000-0x00030000 : "Bootloader"
+0x00030000-0x00040000 : "Config"
+0x00040000-0x00050000 : "Factory"
+0x00050000-0x00400000 : "Kernel"
+block2mtd: version $Revision: 1.1.1.1 $
+usbcore: registered new interface driver usbhid
+drivers/usb/input/hid-core.c: v2.6:USB HID core driver
+dwc_otg: version 2.72a 24-JUN-2008
+DWC_otg: Core Release: 2.66a
+DWC_otg: Periodic Transfer Interrupt Enhancement - disabled
+DWC_otg: Multiprocessor Interrupt Enhancement - disabled
+DWC_otg: Using DMA mode
+DWC_otg: Device using Buffer DMA mode
+dwc_otg lm0: DWC OTG Controller
+dwc_otg lm0: new USB bus registered, assigned bus number 1
+dwc_otg lm0: irq 18, io mem 0x00000000
+DWC_otg: Init: Port Power? op_state=1
+DWC_otg: Init: Power Port (0)
+usb usb1: Product: DWC OTG Controller
+usb usb1: Manufacturer: Linux 2.6.21 dwc_otg_hcd
+usb usb1: SerialNumber: lm0
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 1 port detected
+Advanced Linux Sound Architecture Driver Version 1.0.14rc3 (Wed Mar 14 07:25:50 2007 UTC).
+usb 1-1: new full speed USB device using dwc_otg and address 2
+usb 1-1: configuration #1 chosen from 1 choice
+Found format MJPEG.
+- 640x480 (30.0 fps)
+- 320x240 (30.0 fps)
+- 160x120 (30.0 fps)
+uvcvideo: Found UVC 1.00 device <unnamed> (1b3b:2970)
+uvcvideo: UVC non compliance - GET_DEF(PROBE) not supported. Enabling workaround.
+input: UVC Camera (1b3b:2970) as /class/input/input0
+usbcore: registered new interface driver snd-usb-audio
+ALSA device list:
+  #0: USB Device 0x1b3b:0x2970 at usb-lm0-1, full speed
+nf_conntrack version 0.5.0 (256 buckets, 2048 max)
+ip_tables: (C) 2000-2006 Netfilter Core Team, Type=Restricted Cone
+arp_tables: (C) 2002 David S. Miller
+TCP cubic registered
+NET: Registered protocol family 1
+NET: Registered protocol family 17
+Bridge firewalling registered
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+GDMA1_MAC_ADRH -- : 0x00000000
+GDMA1_MAC_ADRL -- : 0x00000000
+Ralink APSoC Ethernet Driver Initilization. v2.00  256 rx/tx descriptors allocated, mtu = 1500!
+***** Init RF/MAC data from flash memory *****
+LAN MAC: 28 10 xx xx xx xx 
+GDMA1_MAC_ADRH -- : 0x00002810
+GDMA1_MAC_ADRL -- : 0x7bxxxxxx
+PROC INIT OK!
+Freeing unused kernel memory: 2380k freed
+
+init started: BusyBox v1.12.1 (2013-07-30 11:18:01 CST)
+
+startAlgorithmics/MIPS FPU Emulator v1.5
+ing pid 708, tty '': '/etc_ro/rcS'
+devpts: called with bogus options
+Welcome to
+     _______  _______  ___     __  ____   _  _   ___
+    |  ___  \|   __  ||   |   |__||    \ | || | /  /
+    | |___| ||  |__| ||   |__  __ |     \| || |/  /
+    |   _   /|   _   ||      ||  || |\     ||     \
+    |__| \__\|__| |__||______||__||_| \____||_|\___\
+
+   	             =System Architecture Department=
+
+light sensor changed to Night
+Tue Jan  1 00:00:00 UTC 2013
+*****************
+*  INTERNET.SH  *
+*****************
+Password for 'admin' changed
+telnetd/ftpd close !!!
+save to header file : /var/run/audio.header
+[SetVolume]: min=0, max=254, set=203
+pcmcmd: skip=(500 ms), average=(1000 ms)
+switch reg write offset=14, value=5555
+switch reg write offset=40, value=1001
+switch reg write offset=44, value=1001
+switch reg write offset=48, value=1001
+switch reg write offset=4c, value=1
+switch reg write offset=50, value=2001
+switch reg write offset=70, value=ffffffff
+switch reg write offset=98, value=7f7f
+switch reg write offset=e4, value=7f
+phy_tx_ring = 0x00534000, tx_ring = 0xa0534000
+phy_rx_ring = 0x00000000, rx_ring = 0x00000000
+CDMA_CSG_CFG = 81000000
+GDMA1_FWD_CFG = 10000
+MAC_CSR0 [MACVersion:0x28720200]
+RX DESC a0546000  size = 2048
+<-- RTMPAllocTxRxRingMemory, Status=0
+HighPowerPatchDisabled = 1
+SSID: ASUS2.4
+Key1Str is Invalid key length(0) or Type(1)
+Key2Str is Invalid key length(0) or Type(1)
+Key3Str is Invalid key length(0) or Type(1)
+Key4Str is Invalid key length(0) or Type(1)
+--> EEPROMAddressNum = 6
+WLAN MAC: 28 10 7B xx xx xx 
+RfIcType = 5
+Country Region = 80
+Phy Mode = 9
+MCS Set = ff 00 00 00 00
+<==== rt28xx_init, Status=0
+0x1300 = 00064300
+ALSA-pcm :<overrun occurred>
+device ra0 entered promiscuous mode
+device eth2 entered promiscuous mode
+*** begin lan.sh ***
+br0: port 2(eth2) entering learning state
+br0: port 1(ra0) entering learning state
+route: ioctl 0x890c failed: No such process
+udhcpc (v1.12.1) started
+alphapd***** Get Web Language *****
+: Startup!
+br0: topology change detected, propagating
+br0: port 2(eth2) entering forwarding state
+br0: topology change detected, propagating
+br0: port 1(ra0) entering forwarding state
+total files=76
+total file types=3
+ext=js      , num=3
+ext=css     , num=1
+ext=htm     , num=72
+
+***tftp server, listen port: 69***
+alphapd: Running at address 192.168.0.20:80
+mDNSResponder 192.168.0.20 DCS-932L_xxxxxx "DCS-932L_xxxxxx" _http._tcp. 80 &
+Made Service Records for DCS-932L_xxxxxx._http._tcp.local.
+kill: you need to specify whom to kill
+killall: dcp: no process killed
+killall: signalc: no process killed
+killall: upnpc-ddns: no process killed
+killall: tsa: no process killed
+killall: ipca: no process killed
+opt.local stop ok.
+kill: you need to specify whom to kill
+killall: dcp: no process killed
+killall: signalc: no process killed
+killall: upnpc-ddns: no process killed
+killall: tsa: no process killed
+killall: ipca: no process killed
+opt.local stop ok.
+Service DCS-932L_xxxxxx._http._tcp.local. now registered and active
+/mydlink/mydlink-watch-dog.sh: line 103: mdb: not found
+opt.local start ok.
+rm /tmp/mydlink/*.*
+rm: cannot remove '/tmp/mydlink/*.*': No such file or directory
+*** end lan.sh ***
+
+***** g_wl_interface = ra0 ******
+
+/mydlink/mydlink-watch-dog.sh: line 113: pibinfo: not found
+swing: Pan-Tilt function not support
+************************
+*  END OF INTERNET.SH  *
+************************
+
+starting pid 945, tty '/dev/ttyS1': '/bin/sh'
+
+
+BusyBox v1.12.1 (2013-07-30 11:18:01 CST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+# killall: upnpc-ddns: no process killed
+killall: tsa: no process killed
+killall: ipca: no process killed
+opt.local stop ok.
+kill: you need to specify whom to kill
+killall: upnpc-ddns: no process killed
+killall: tsa: no process killed
+killall: ipca: no process killed
+opt.local stop ok.
+/mydlink/mydlink-watch-dog.sh: line 103: mdb: not found
+opt.local start ok.
+/mydlink/mydlink-watch-dog.sh: line 113: pibinfo: not found
+start zcip ...
+init br0
+config br0 169.254.220.103
+mDNSResponder 169.254.220.103 DCS-932L_xxxxxx "DCS-932L_xxxxxx" _http._tcp. 80 &
+Made Service Records for DCS-932L_xxxxxx._http._tcp.local.
+Service DCS-932L_xxxxxx._http._tcp.local. now registered and active
+
+start_DST == 0
+
+# </nowiki>
+</WRAP>\\
+
+===== OpenWrt Bootlog (initramfs) =====
+<WRAP bootlog>
+<nowiki>U-Boot 1.1.3
+
+
+Board: Ralink APSoC DRAM:  32 MB
+
+relocate_code Pointer at: 81fac000
+
+config usb..
+
+
+ Set info->start[0]=BF000000
+
+flash_protect ON: from 0xBF000000 to 0xBF021767
+
+flash_protect ON: from 0xBF030000 to 0xBF030FFF
+
+============================================ 
+
+Ralink UBoot Version: 3.5.2.0
+
+-------------------------------------------- 
+
+ASIC 3052_MP2 (Port5<->None)
+
+DRAM component: 256 Mbits SDR
+
+DRAM bus: 16 bit
+
+Total memory: 32 MBytes
+
+Flash component: NOR Flash
+
+============================================ 
+
+icache: sets:256, ways:4, linesz:32 ,total:32768
+
+dcache: sets:128, ways:4, linesz:32 ,total:16384 
+
+
+ ##### The CPU freq = 320 MHZ #### 
+
+ estimate memory size =32 Mbytes
+
+
+Signature: DCS-930            932L  Release 1.11 (2011-05-31)
+
+
+
+Please choose the operation: 
+
+   1: Load system code to SDRAM via TFTP. 
+
+   2: Load system code then write to Flash via TFTP. 
+
+   3: Boot system code via Flash (default).
+
+   4: Entr boot command line interface.
+
+   7: Load Boot Loader code then write to Flash via Serial. 
+
+   9: Load Boot Loader code then write to Flash via TFTP. 
+
+
+
+You choosed 1
+
+
+ 0 
+
+
+   
+
+1: System Load Linux to SDRAM via TFTP. 
+
+ Please Input new ones /or Ctrl-C to discard
+
+	Input device IP (192.168.0.20) ==:192.168.0.20
+
+	Input server IP (192.168.0.13) ==:192.168.0.13
+
+	Input Linux Kernel filename (openwrt-ramips-rt305x-dcs-930-initramfs-uImage.bin) ==:openwrt-ramips-rt305x-dcs-930-initramfs-uImage.bin
+
+
+ netboot_common, argc= 3 
+
+NetLoop: NetRxPackets[0] = 0x81fe7080
+
+NetLoop: NetRxPackets[1] = 0x81fe7680
+
+NetLoop: NetRxPackets[2] = 0x81fe7c80
+
+NetLoop: NetRxPackets[3] = 0x81fe8280
+
+NetLoop: NetRxPackets[4] = 0x81fe8880
+
+NetLoop: NetRxPackets[5] = 0x81fe8e80
+
+NetLoop: NetRxPackets[6] = 0x81fe9480
+
+NetLoop: NetRxPackets[7] = 0x81fe9a80
+
+NetLoop: NetRxPackets[8] = 0x81fea080
+
+NetLoop: NetRxPackets[9] = 0x81fea680
+
+NetLoop: NetRxPackets[10] = 0x81feac80
+
+NetLoop: NetRxPackets[11] = 0x81feb280
+
+NetLoop: NetRxPackets[12] = 0x81feb880
+
+NetLoop: NetRxPackets[13] = 0x81febe80
+
+NetLoop: NetRxPackets[14] = 0x81fec480
+
+NetLoop: NetRxPackets[15] = 0x81feca80
+
+NetLoop: NetRxPackets[16] = 0x81fed080
+
+NetLoop: NetRxPackets[17] = 0x81fed680
+
+NetLoop: NetRxPackets[18] = 0x81fedc80
+
+NetLoop: NetRxPackets[19] = 0x81fee280
+
+NetLoop: NetTxPacket = 0x81fe6a80
+
+NetLoop: KSEG1ADDR(NetTxPacket) = 0xa1fe6a80
+
+Trying Eth0 (10/100-M)
+
+
+ Waitting for RX_DMA_BUSY status Start... done
+
+
+
+ Header Payload scatter function is Disable !! 
+
+
+ ETH_STATE_ACTIVE!! 
+
+NetLoop: NetOurEther: 00:0C:43:30:52:77
+
+Using Eth0 (10/100-M) device
+
+TFTP from server 192.168.0.13; our IP address is 192.168.0.20
+
+Filename 'openwrt-ramips-rt305x-dcs-930-initramfs-uImage.bin'.
+
+
+ TIMEOUT_COUNT=10,Load address: 0x80800000
+
+Loading: *ArpTimeoutCheck: ArpTimeoutCheck
+
+#################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #################################################################
+
+	 #####################
+
+done
+
+Bytes transferred = 3100261 (2f4e65 hex)
+
+NetBootFileXferSize= 002f4e65
+
+Automatic boot of image at addr 0x80800000 ...
+
+## Booting image at 80800000 ...
+
+   Image Name:   MIPS OpenWrt Linux-3.10.32
+
+   Created:      2014-04-09   2:53:56 UTC
+
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+
+   Data Size:    3100197 Bytes =  3 MB
+
+   Load Address: 80000000
+
+   Entry Point:  80000000
+
+   Verifying Checksum ... OK
+
+   Uncompressing Kernel Image ... OK
+
+No initrd
+
+## Transferring control to Linux (at address 80000000) ...
+
+## Giving linux memsize in MB, 32
+
+
+Starting kernel ...
+
+
+[    0.000000] Linux version 3.10.32 (brown@brown) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.01 r39948) ) #2 Tue Apr 8 21:53:10 CDT 2014
+[    0.000000] SoC Type: Ralink RT3350 id:1 rev:2
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 0001964c (MIPS 24KEc)
+[    0.000000] MIPS: machine is D-Link DCS-930
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 02000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x01ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x01ffffff]
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 16kB, 4-way, VIPT, no aliases, linesize 32 bytes
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 8128
+[    0.000000] Kernel command line: console=ttyS0,57600 rootfstype=squashfs,jffs2
+[    0.000000] PID hash table entries: 128 (order: -3, 512 bytes)
+[    0.000000] Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.000000] Writing ErrCtl register=00026a9e
+[    0.000000] Readback ErrCtl register=00026a9e
+[    0.000000] Memory: 27304k/32768k available (2136k kernel code, 5464k reserved, 534k data, 2256k init, 0k highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:128
+[    0.000000] CPU Clock: 320MHz
+[    0.000000] Calibrating delay loop... 212.58 BogoMIPS (lpj=1062912)
+[    0.080000] pid_max: default: 32768 minimum: 301
+[    0.080000] Mount-cache hash table entries: 512
+[    0.090000] pinctrl core: initialized pinctrl subsystem
+[    0.100000] NET: Registered protocol family 16
+[    0.150000] bio: create slab <bio-0> at 0
+[    0.160000] rt2880_gpio 10000600.gpio: registering 24 gpios
+[    0.170000] rt2880_gpio 10000600.gpio: registering 24 irq handlers
+[    0.180000] Switching to clocksource MIPS
+[    0.190000] NET: Registered protocol family 2
+[    0.200000] TCP established hash table entries: 512 (order: 0, 4096 bytes)
+[    0.220000] TCP bind hash table entries: 512 (order: -1, 2048 bytes)
+[    0.230000] TCP: Hash tables configured (established 512 bind 512)
+[    0.240000] TCP: reno registered
+[    0.250000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.260000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.270000] NET: Registered protocol family 1
+[    5.510000] rt-timer 10000100.timer: maximum frequncy is 6510Hz
+[    5.570000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    5.580000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    5.600000] msgmni has been set to 53
+[    5.610000] io scheduler noop registered
+[    5.620000] io scheduler deadline registered (default)
+[    5.630000] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    5.650000] 10000c00.uartlite: ttyS0 at MMIO 0x10000c00 (irq = 20) is a 16550A
+[    5.670000] console [ttyS0] enabled, bootconsole disabled
+[    5.670000] console [ttyS0] enabled, bootconsole disabled
+[    5.690000] 1f000000.cfi: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x000001 Chip ID 0x001a00
+[    5.710000] Amd/Fujitsu Extended Query Table at 0x0040
+[    5.720000]   Amd/Fujitsu Extended Query version 1.3.
+[    5.730000] number of CFI chips: 1
+[    5.740000] 6 ofpart partitions found on MTD device 1f000000.cfi
+[    5.750000] Creating 6 MTD partitions on "1f000000.cfi":
+[    5.770000] 0x000000000000-0x000000030000 : "u-boot"
+[    5.780000] 0x000000030000-0x000000040000 : "u-boot-env"
+[    5.790000] 0x000000040000-0x000000050000 : "factory"
+[    5.810000] 0x000000050000-0x0000001a0000 : "kernel"
+[    5.820000] 0x000000150000-0x000000400000 : "rootfs"
+[    5.840000] mtd: device 4 (rootfs) set to be root filesystem
+[    5.850000] mtdsplit: no squashfs found in "1f000000.cfi"
+[    5.860000] 0x000000050000-0x000000400000 : "firmware"
+[    5.890000] eth0: done loading
+[    5.900000] rt2880_wdt 10000120.watchdog: Initialized
+[    5.910000] TCP: cubic registered
+[    5.920000] NET: Registered protocol family 17
+[    5.920000] 8021q: 802.1Q VLAN Support v1.8
+[    5.970000] Freeing unused kernel memory: 2256K (8029c000 - 804d0000)
+procd: Console is alive
+procd: - watchdog -
+procd: - preinit -
+[    6.110000] usbcore: registered new interface driver usbfs
+[    6.130000] usbcore: registered new interface driver hub
+[    6.150000] usbcore: registered new device driver usb
+[    6.190000] dwc_otg: version 2.72a 24-JUN-2008
+[    6.190000] dwc_otg: Core Release: 2.66a
+[    6.410000] dwc_otg: Periodic Transfer Interrupt Enhancement - disabled
+[    6.420000] dwc_otg: Multiprocessor Interrupt Enhancement - disabled
+[    6.430000] dwc_otg: Using DMA mode
+[    6.440000] dwc_otg: Device using Buffer DMA mode
+[    6.450000] dwc_otg 101c0000.otg: DWC OTG Controller
+[    6.460000] dwc_otg 101c0000.otg: new USB bus registered, assigned bus number 1
+[    6.470000] dwc_otg 101c0000.otg: irq 26, io mem 0x101c0000
+[    6.480000] dwc_otg: Init: Port Power? op_state=1
+[    6.490000] dwc_otg: Init: Power Port (0)
+[    6.510000] hub 1-0:1.0: USB hub found
+[    6.510000] hub 1-0:1.0: 1 port detected
+[    6.530000] leds-gpio gpio-leds.3: pins are not configured from the driver
+/etc/preinit: line 1: swconfig: not found
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    7.130000] usb 1-1: new full-speed USB device number 2 using dwc_otg
+procd: - early -
+procd: - watchdog -
+procd: - ubus -
+procd: - init -
+Please press Enter to activate this console.
+[   12.140000] NET: Registered protocol family 10
+[   12.170000] nf_conntrack version 0.5.0 (461 buckets, 1844 max)
+[   12.200000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   12.250000] Linux video capture interface: v2.00
+[   12.280000] Loading modules backported from Linux version master-2014-01-23-0-g62c147d
+[   12.300000] Backport generated by backports.git backports-20140124-0-g1256d3e
+[   12.330000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   12.390000] uvcvideo: Found UVC 1.00 device <unnamed> (1b3b:2970)
+[   12.410000] uvcvideo: UVC non compliance - GET_DEF(PROBE) not supported. Enabling workaround.
+[   12.440000] input: UVC Camera (1b3b:2970) as /devices/101c0000.otg/usb1/1-1/1-1:1.0/input/input0
+[   12.470000] usbcore: registered new interface driver uvcvideo
+[   12.480000] USB Video Class driver (1.1.1)
+[   12.540000] xt_time: kernel timezone is -0000
+[   12.600000] cfg80211: Calling CRDA to update world regulatory domain
+[   12.610000] cfg80211: World regulatory domain updated:
+[   12.620000] cfg80211:  DFS Master region: unset
+[   12.630000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp)
+[   12.650000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   12.670000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (300 mBi, 2000 mBm)
+[   12.680000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (300 mBi, 2000 mBm)
+[   12.700000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (300 mBi, 2000 mBm)
+[   12.710000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (300 mBi, 2000 mBm)
+[   12.730000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm)
+[   12.910000] rt2800_wmac 10180000.wmac: failed to load eeprom property
+[   12.930000] ieee80211 phy0: rt2x00lib_request_eeprom_file: Info - Loading EEPROM data from 'soc_wmac.eeprom'.
+[   13.110000] ieee80211 phy0: rt2x00_set_rt: Info - RT chipset 2872, rev 0200 detected
+[   13.120000] ieee80211 phy0: rt2x00_set_rf: Info - RF chipset 0005 detected
+procd: - init complete -
+[   23.700000] device eth0 entered promiscuous mode
+[   23.720000] br-lan: port 1(eth0) entered forwarding state
+[   23.730000] br-lan: port 1(eth0) entered forwarding state
+[   25.730000] br-lan: port 1(eth0) entered forwarding state
+
+
+
+BusyBox v1.19.4 (2014-04-08 19:34:30 CDT) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ BARRIER BREAKER (Bleeding Edge, r39948)
+ -----------------------------------------------------
+  * 1/2 oz Galliano         Pour all ingredients into
+  * 4 oz cold Coffee        an irish coffee mug filled
+  * 1 1/2 oz Dark Rum       with crushed ice. Stir.
+  * 2 tsp. Creme de Cacao
+ -----------------------------------------------------
+root@OpenWrt:/# </nowiki>
+</WRAP>\\
+
+===== Miscellaneous Hardware Documentation =====
+
+DCS-933L A1 gpios are like DCS-930
+  0 is wps button
+  8 is red led
+  9 is green led
+  13 is blue wps led
+  14 is ir filter
+  20 is reset button
+
+===== Useful links =====
+
+  * Taking apart and putting together stock firmware(Russian)(DCS-933L) [[http://forum.dlink.ru/viewtopic.php?f=13&t=164084&start=15#p892794]]
+  * Automated scripts to take apart firmware image file. [[http://dose.0wnz.at/ipcams/]]
+  * Thread in the old OpenWrt forum: [[https://forum.archive.openwrt.org/viewtopic.php?id=49212]]
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ramips rt3050 FastEthernet 32RAM 4Flash MIPS ip_camera}}

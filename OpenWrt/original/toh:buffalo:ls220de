@@ -1,0 +1,388 @@
+====== Buffalo LinkStation LS220DE ======
+{{:media:buffalo:ls421de:ls220de.jpg?nolink&160|}}
+
+This is a low-cost dual-port SATA NAS box. Very similar to [[toh:buffalo:ls421de|LS421DE]] but with lower hardware specs. 
+It comes with one 1GbE network port and one USB 2.0 host port on the back.
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"model": "^LS220DE$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "ethernet1gports", "sataports", "usbports"],
+  "filterColumns": {"model": "^LS220DE$"}
+} -->
+
+===== Installation =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^LS220DE$"}
+} -->
+
+Stuff used in the installation:
+  *  acp-commander: https://github.com/1000001101000/acp-commander
+
+==== Installation through the OEM firmware ====
+The box must have at least 1 hard drive installed in a bay. First check that the stock firmware is working ok. 192.168.1.11 is the IP of the device, 192.168.1.7 is the IP of our computer.
+  - Use acp_commander to enable a root shell over telnet: <code bash>java -jar acp_commander.jar -t 192.168.1.11 -pw password -o</code>
+  - Open a telnet session on the device: <code bash>telnet 192.168.1.11</code>
+  - Backup the stock uImage:<code bash> mv /boot/uImage.buffalo /boot/uImage.buffalo.bak</code>
+  - Download the Openwrt initramfs image and reboot: <code bash>wget -O /boot/uImage.buffalo http://192.168.1.7:8000/openwrt-mvebu-cortexa9-buffalo_ls220de-initramfs-kernel.bin
+sync
+reboot</code>
+  - Now the device will load the Openwrt RAM image (not installed yet). Open a secure shell into Openwrt:<code bash>ssh root@192.168.1.1</code>
+  - Rename boot files inside boot partition <code bash>
+mount -t ext3 /dev/sda1 /mnt
+mv /mnt/uImage.buffalo /mnt/uImage.buffalo.openwrt.bak
+mv /mnt/initrd.buffalo /mnt/initrd.buffalo.bak</code>
+  - Format ubi partitions at the NAND flash (''kernel_ubi'' and ''ubi''):<code bash>
+ubiformat /dev/mtd0
+ubidetach -p /dev/mtd1
+ubiformat /dev/mtd1</code>
+  - Download the sysupgrade image, and install it: <code bash>cd /tmp
+wget http://192.168.1.7:8000/openwrt-mvebu-cortexa9-buffalo_ls220de-squashfs-sysupgrade.bin
+sysupgrade -n openwrt-mvebu-cortexa9-buffalo_ls220de-squashfs-sysupgrade.bin</code>
+  - Wait until it finish. The device will reboot with OpenWrt installed in the NAND flash
+  - ssh to 192.168.1.1 and set a root password, or browse to ''<nowiki>http://192.168.1.1</nowiki>'' if LuCI is installed.
+  
+Note: If you want to start using external storage see [[#nas_configuration|NAS configuration]]
+
+==== Installation using the U-Boot serial console ====
+
+  * //ipaddr//: 192.168.11.150
+  * //serverip//: 192.168.11.1
+
+  - Remove any hard drive inside the bays. Keep it apart if you want to go back to stock firmware later.
+  - Boot the Openwrt initramfs image using the **U-Boot** [[#serial|serial console]]:  <code bash>tftpboot 0x1200000 openwrt-mvebu-cortexa9-buffalo_ls220de-initramfs-kernel.bin
+bootm 0x1200000</code>
+  - Format ubi partitions at the NAND flash (''kernel_ubi'' and ''ubi''):<code bash>
+ubiformat /dev/mtd0
+ubidetach -p /dev/mtd1
+ubiformat /dev/mtd1</code>
+  - Flash the sysupgrade image using the **Openwrt** console: <code bash>sysupgrade -n openwrt-mvebu-cortexa9-buffalo_ls220de-squashfs-sysupgrade.bin</code>
+  - Wait until it finish, the device will reboot with Openwrt installed on the NAND flash.
+
+===== Post Installation =====
+
+==== NAS configuration ====
+
+If you want to start using external storage insert a formatted hard drive inside the bay. The first partition should be never be in **EXT4 filesystem** format or it will hang at startup otherwise.
+
+Tested partitioning configurations: 
+  * **OK**: GPT, 1 partition
+    * 1st: XFS, whole hard drive, storage partition
+  * **OK**: GPT, 2 partitions:
+    * 1st: EXT3, 8MB, dummy partition
+    * 2nd: EXT4, all remaining space, storage partition
+  * **OK**: GPT, 2 partitions:
+    * 1st: SWAP, 1GB, virtual system memory.
+    * 2nd: EXT4, all remaining space, storage partition
+  * **OK**: GPT, 2 partitions:
+    * 1st: SWAP, 1GB, virtual system memory.
+    * 2nd: XFS, all remaining space, storage partition
+  * **FAIL**: GPT, 1 partition
+    * 1st: EXT4, whole hard drive, storage partition
+
+You can use the original hard drive, but the boot partition contains uImage.buffalo and initrd.buffalo. You need to rename them to avoid booting from hardrive. The XFS partitions probably won't be recognized because they use the deprecated V4 version. You may need to reformat this partition or enable the V4 in the kernel (support until 2030).
+
+=== NAS related documentation: ===
+
+  * [[docs:guide-user:services:nas:start|NAS (aka Network Attached Storage)]]
+  * [[docs:guide-user:services:media_server:start|Media Server (aka stream media to devices in your local network)]]
+  * [[:docs:guide-user:services:downloading_and_filesharing:start|Downloading and P2P Filesharing]]
+
+==== Performance Improvements ====
+=== Remove kernel netfilters ===
+
+Since this device is presumably used only for attached storage purposes, you can rid of firewall/routing stuff. Remove the firewall related kernel modules:
+<code bash>mkdir /etc/bak
+mv /etc/modules.d/nf-* /etc/bak/
+mv /etc/modules.d/ipt-* /etc/bak/
+mv /etc/modules.d/*ip6tables* /etc/bak/
+reboot</code>
+After rebooting, the network throughput should be about +15% better.
+
+=== Cypher Engine ===
+See -> [[docs:techref:hardware:cryptographic.hardware.accelerators|Cryptographic Hardware Accelerators]]
+
+This device has a cypher engine called CESA. It can be used for libraries like openssl. 
+
+First install the openssl-util:
+<code bash>opkg update
+opkg install openssl-util </code>
+
+Make a test:
+<WRAP bootlog>
+<nowiki>root@LinkStation:~# time openssl speed -evp aes-256-cbc -elapsed
+You have chosen to measure elapsed time instead of user CPU time.
+Doing aes-256-cbc for 3s on 16 size blocks: 2580520 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 64 size blocks: 787211 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 256 size blocks: 208627 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 1024 size blocks: 52926 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 8192 size blocks: 6647 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 16384 size blocks: 3327 aes-256-cbc's in 3.00s
+OpenSSL 1.1.1j  16 Feb 2021
+built on: Fri Mar 26 09:12:12 2021 UTC
+options:bn(64,32) rc4(char) des(long) aes(partial) blowfish(ptr) 
+compiler: arm-openwrt-linux-muslgnueabi-gcc -fPIC -pthread -Wa,--noexecstack -Wall -O3 -Os -pipe -mthumb -fno-caller-saves -fno-plt -fhonour-copts -Wno-error=unused-but-set-variable -Wno-error=unused-result -mfloat-abi=hard -Wformat -Werror=format-security -fstack-protector -D_FORTIFY_SOURCE=1 -Wl,-z,now -Wl,-z,relro -DPIC -fpic -ffunction-sections -fdata-sections -znow -zrelro -DOPENSSL_USE_NODELETE -DOPENSSL_PIC -DOPENSSL_CPUID_OBJ -DOPENSSL_BN_ASM_MONT -DOPENSSL_BN_ASM_GF2m -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM -DKECCAK1600_ASM -DAES_ASM -DBSAES_ASM -DGHASH_ASM -DECP_NISTZ256_ASM -DPOLY1305_ASM -DNDEBUG -DOPENSSL_PREFER_CHACHA_OVER_GCM -DOPENSSL_SMALL_FOOTPRINT
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+aes-256-cbc      13762.77k    16793.83k    17802.84k    18065.41k    18150.74k    18169.86k
+real    0m 18.02s
+user    0m 17.82s
+sys     0m 0.04s
+root@LinkStation:~#</nowiki>
+</WRAP>\\
+
+Now install the cryptodev module to make the engine available, also install the openssl library:
+<code sh>opkg update
+opkg install kmod-cryptodev
+opkg install libopenssl-devcrypto </code>
+
+Open the **/etc/ssl/openssl.cnf** configuration file and uncomment these lines:
+<code config>[engines]
+devcrypto=devcrypto
+
+[devcrypto] 
+CIPHERS=DES-CBC, DES-EDE3-CBC, AES-128-CBC, AES-192-CBC, AES-256-CBC
+</code>
+
+Now make another test:
+<WRAP bootlog>
+<nowiki>root@LinkStation:~# time openssl speed -evp aes-256-cbc -elapsed
+You have chosen to measure elapsed time instead of user CPU time.
+Doing aes-256-cbc for 3s on 16 size blocks: 91023 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 64 size blocks: 89142 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 256 size blocks: 87199 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 1024 size blocks: 73867 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 8192 size blocks: 22725 aes-256-cbc's in 3.00s
+Doing aes-256-cbc for 3s on 16384 size blocks: 12813 aes-256-cbc's in 3.00s
+OpenSSL 1.1.1j  16 Feb 2021
+built on: Fri Mar 26 09:12:12 2021 UTC
+options:bn(64,32) rc4(char) des(long) aes(partial) blowfish(ptr) 
+compiler: arm-openwrt-linux-muslgnueabi-gcc -fPIC -pthread -Wa,--noexecstack -Wall -O3 -Os -pipe -mthumb -fno-caller-saves -fno-plt -fhonour-copts -Wno-error=unused-but-set-variable -Wno-error=unused-result -mfloat-abi=hard -Wformat -Werror=format-security -fstack-protector -D_FORTIFY_SOURCE=1 -Wl,-z,now -Wl,-z,relro -DPIC -fpic -ffunction-sections -fdata-sections -znow -zrelro -DOPENSSL_USE_NODELETE -DOPENSSL_PIC -DOPENSSL_CPUID_OBJ -DOPENSSL_BN_ASM_MONT -DOPENSSL_BN_ASM_GF2m -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM -DKECCAK1600_ASM -DAES_ASM -DBSAES_ASM -DGHASH_ASM -DECP_NISTZ256_ASM -DPOLY1305_ASM -DNDEBUG -DOPENSSL_PREFER_CHACHA_OVER_GCM -DOPENSSL_SMALL_FOOTPRINT
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+aes-256-cbc        485.46k     1901.70k     7440.98k    25213.27k    62054.40k    69976.06k
+real    0m 18.07s
+user    0m 0.37s
+sys     0m 6.45s
+root@LinkStation:~#</nowiki>
+</WRAP>\\
+
+
+=== Custom build ===
+
+You can also optimize your firmware making your own custom build:
+  * Compile the kernel for single core (no SMP stuff).
+  * Compile the kernel in THUMB2 mode, and also the user space apps.
+  * Patch the kernel to enable the hardware I/O coherency.
+
+===== Recovery =====
+==== Broken bootloader recovery ====
+If for some reason the bootloader is broken (no apparent life from the board), you can recover the device by using the UART [[#serial|serial port]].
+
+<WRAP center round download 60%>
+FIXME
+</WRAP>
+
+  - Connect the Linkstation's [[#serial|serial port]] to your computer
+  - At the computer execute:<code bash>./kwboot -b uboot.uart -t -B 115200 /dev/ttyUSB0</code>
+  - Power on the Linkstation, wait for it to load.
+  - At the Uboot console execute:<code bash>bubt spiflash_134.bak</code>
+
+===== OEM flash layout =====
+
+^ NOR SPI flash  ^^^^^
+^ name       ^ offset  ^ size    ^ size (KiB) ^ content ^
+| u-boot     | 0x00000 | 0xf0000 | 960        | bootloader |
+| u-boot-env | 0xf0000 | 0x10000 | 64         | board parameters |
+
+^ NAND flash  ^^^^^
+^ name     ^ offset     ^ size       ^ size (MiB) ^ content ^
+| boot     | 0x00000000 | 0x02000000 | 32        | initrd.buffalo, uImage.buffalo |
+| rootfs   | 0x02000000 | 0x1e000000 | 480       | hddrootfs.buffalo |
+
+//uImage.buffalo// and //initrd.buffalo// are used to load a RAM firmware with the unique purpose of installing //hddrootfs.buffalo// on a SATA hard drive. Once decompressed it'll contain the whole operating system.
+
+^ Hard Drive (/dev/sda)^^^^
+^ name                ^ filesystem ^ size (GiB) ^ content    ^
+|                     | EXT3       | 1          | boot files |
+| LS421DE-EM7CC:1     | EXT3       | 5          | rootfs     |
+| LS421DE-EM7CC:2     | SWAP       | 1          | virtual RAM |
+| LS421DE-EM7CC:101   | XFS        | all remaining space         | user files |
+
+
+OpenWrt will use a more simple approach, installing the firmware in the NAND flash. No need of using an internal hard drive.
+
+
+===== Hardware =====
+==== Info ====
+^ [[wp>Instruction set]]        | [[wp>ARM architecture|ARM]] little endian  |
+^ Vendor                        | [[wp>Marvell Technology Group]]            |
+^ [[docs:techref:bootloader]]   | [[docs:techref:bootloader:uboot|U-Boot]]   |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | [[http://www.marvell.com/embedded-processors/armada-370/|Marvell Armada-370]] 88F6707 |
+^ [[docs:techref:hardware:cpu|CPU]] @Frq        | Marvell PJ4Bv7 rev1 (ARMv7) @800MHz 1 core |
+^ :::            | [[http://www.arm.com/products/processors/cortex-a/cortex-a9.php|ARM Cortex-A9]] VFPv3-D16 |
+^ Flash Chip 1    | SPI-NOR  |
+^ Flash size 1    | 1 MiB   |
+^ Flash Chip 2    | NAND [[http://www.farnell.com/datasheets/1641689.pdf|Hynix H27U4G8F2DTR-BC]]   |
+^ Flash size 2    | 512 MiB   |
+^ RAM size       | 256 MiB DDR-3                  |
+^ Ethernet       | 1x GbE |
+^ :::            | [[#ethernet_port|Marvell 88E1318s PHY]] via RGMII-ID |
+^ USB            | 1x USB2.0 |
+^ SATA           | 2x 3.0 Gbps                    |
+^ RTC            | SoC integrated |
+^ Case Dimensions (LxWxH) | 205 x 87 x 128 mm     |
+^ FAN            | 1x casing |
+^ PSU            | 12 VDC, 4 A / APD DA-48Q12       |
+^ [[docs:techref:hardware:port.serial|Serial]] | [[#Serial|Yes]] (unpopulated) |
+^ [[docs:techref:hardware:port.jtag|JTAG]] | ? |
+
+==== Photos ====
+
+**Casing**
+
+FIXME
+
+**Opening the case**
+
+FIXME
+
+**Board**
+
+FIXME
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+FIXME 
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+==== Ethernet port ====
+Some boards experience random problems with the ethernet port. This bug is likely caused by an misconfigured voltage on the ethernet pins at the SoC.
+
+  * SoC: as default the RGMII pins are configured to operate at 3.3V
+  * PHY: the Marvel 88E1518 can only operate at 1.8V
+
+It turns out that the SoC can be configured via internal registers to set the correct voltage on the RGMII pins. 
+
+There are three ways to fix this bug:
+  - **Setting the registers from userspace**: it can be done using devmem. But it requires building a custom firmware with ///dev/mem// enabled in the kernel, and the utility //devmem// in busybox: <code bash>devmem 0xd00184e0 32 0xa8a</code>
+  - **Patching the bootloader**: Flashing a new bootloader might brick your device. 
+  - **Patching the kernel**: this seems to be the best option. It won't require user intervention once Openwrt is installed. There is a patch already made for the kernel v5.4.41. But it wouldn't be accepted upstream. See: https://forum.openwrt.org/t/mvneta-help-with-a-voltage-patch/64226
+
+=== Energy-Efficient Ethernet ===
+The ethernet phy is [[wp>Energy-Efficient_Ethernet|EEE]] capable. Enabling this feature (using //ethtool//) may save some miliwatts. Example:
+<code># ethtool --set-eee eth0 eee on</code>
+Check if it has been enabled:
+<code># ethtool --show-eee eth0
+EEE Settings for eth0:
+        EEE status: active
+        Tx LPI: disabled
+        Supported EEE link modes:  100baseT/Full 
+                                   1000baseT/Full 
+        Advertised EEE link modes:  Not reported
+        Link partner advertised EEE link modes:  100baseT/Full 
+                                                 1000baseT/Full 
+</code>
+
+=== Ethernet LEDs ===
+Only one LED pin at the IC is wired to a physical LED.
+  * LED0 has unknown use.
+  * LED1 pin is connected to a physical LED, and used to indicate ethernet link/activity.
+  * LED2 pin is used for poweroff function and maybe for Wake On LAN FIXME
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>FIXME</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>FIXME  </nowiki>
+</WRAP>\\
+
+===== Misc =====
+  * Doozan thread: [[https://forum.doozan.com/read.php?2,71644|Debian Stretch on Armada-370 Buffalo Devices]]
+
+
+==== Unsupported features ====
+  * **Coherency fabric**: it is disabled intentionally in the kernel. This might cause a performance loss. An attempt to reenable the coherence fabric: write-allocate cache policy is required, we also need to disable smp checks for the related stuff.<code diff>--- a/arch/arm/mm/mmu.c
++++ b/arch/arm/mm/mmu.c
+@@ -463,6 +463,12 @@
+ 			initial_pmd_value |= PMD_SECT_S;
+ 		}
+ 	}
++#if defined(CONFIG_MACH_ARMADA_370)
++	else if (cachepolicy != CPOLICY_WRITEALLOC) {
++		pr_warn("Forcing write-allocate cache policy for Armada 370\n");
++		cachepolicy = CPOLICY_WRITEALLOC;
++	}
++#endif
+ 
+ 	/*
+ 	 * Strip out features not present on earlier architectures.
+--- a/arch/arm/mach-mvebu/coherency.c
++++ b/arch/arm/mach-mvebu/coherency.c
+@@ -226,8 +226,6 @@
+ 	 * where we don't know yet on which SoC we are running.
+ 
+ 	 */
+-	if (!is_smp())
+-		return COHERENCY_FABRIC_TYPE_NONE;
+ 
+ 	np = of_find_matching_node_and_match(NULL, of_coherency_table, &match);
+ 	if (!np)
+--- a/arch/arm/mm/proc-v7-2level.S
++++ b/arch/arm/mm/proc-v7-2level.S
+@@ -16,9 +16,9 @@
+ #define TTB_IRGN_WT	((1 << 0) | (0 << 6))
+ #define TTB_IRGN_WB	((1 << 0) | (1 << 6))
+ 
+-/* PTWs cacheable, inner WB not shareable, outer WB not shareable */
+-#define TTB_FLAGS_UP	TTB_IRGN_WB|TTB_RGN_OC_WB
+-#define PMD_FLAGS_UP	PMD_SECT_WB
++/* PTWs cacheable, inner WBWA not shareable, outer WBWA not shareable */
++#define TTB_FLAGS_UP	TTB_IRGN_WBWA|TTB_RGN_OC_WBWA
++#define PMD_FLAGS_UP	PMD_SECT_WBWA
+ 
+ /* PTWs cacheable, inner WBWA shareable, outer WBWA not shareable */
+ #define TTB_FLAGS_SMP	TTB_IRGN_WBWA|TTB_S|TTB_NOS|TTB_RGN_OC_WBWA
+--- a/arch/arm/mm/proc-v7.S
++++ b/arch/arm/mm/proc-v7.S
+@@ -444,6 +444,7 @@
+ 	/* Auxiliary Debug Modes Control 1 Register */
+ 	mrc	p15, 1,	r0, c15, c1, 1
+ 	orr     r0, r0, #PJ4B_CLEAN_LINE
++	orr     r0, r0, #(1 << 7)		@ v7 IO coherency support (Single core). Taken from vendor's GPL.
+ 	orr     r0, r0, #PJ4B_INTER_PARITY
+ 	bic	r0, r0, #PJ4B_STATIC_BP
+ 	mcr	p15, 1,	r0, c15, c1, 1
+
+</code>After re-compiling the kernel without netfilter modules and testing, the network throughput is about 20% better. 
+  * **Suspend**: //CONFIG_SUSPEND// isn't enabled by default in the OpenWrt kernel. After enabling it in a custom firmware, we can call the suspend command: <code bash>echo -n s2idle > /sys/power/mem_sleep
+echo -n mem > /sys/power/state</code> But the machine isn't able to remain suspended, it reboots after the suspend sequence.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>mvebu armada370 512NAND 256RAM 1port GigabitEthernet 1NIC no_switch 0WNIC gt32Flash 1USB USB2.0 SATA2 ARM ARMv7 crypto NAS fan}}

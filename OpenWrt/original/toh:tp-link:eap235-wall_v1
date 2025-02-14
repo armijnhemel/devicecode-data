@@ -1,0 +1,292 @@
+====== TP-Link EAP235-Wall v1======
+
+The EAP235-Wall is an 802.11ac 2x2:2 Gigabit PoE+ MediaTek-based wall mount access point. Aside from the PoE+ Ethernet port that powers the device, it offers three additional gigabit ports, with the last one offering PoE passthrough. So far, **EU** and **US** versions have been spotted (differences are probably in software rather than hardware).
+
+{{media:tplink:eap235-wall:tp-link_eap235-wall_v1.png?200|EAP235-Wall angled view}}
+
+===== Initial Notes and Warning =====
+
+Due to an [[https://github.com/openwrt/mt76/issues/518|issue]] with the driver for the MT7613BE chip, 5GHz Wi-Fi is not stable in the current 21.02.0 release. A [[https://github.com/ptpt52/mt76/commit/eceab757eb708a8348e0b8d6fa860b26eec5e807|workaround]] is available. In order to have stable 5GHz Wi-Fi you need to build 21.02.0 with the patch applied. [[docs:guide-developer:toolchain:use-buildsystem|Build system usage]] has a good description of how to build OpenWrt. Just apply the patch after you did the ''git checkout v21.02.0'' using:
+
+<code bash>
+mkdir package/kernel/mt76/patches/
+wget -O package/kernel/mt76/patches/002-clearPending.patch https://github.com/ptpt52/mt76/commit/eceab757eb708a8348e0b8d6fa860b26eec5e807.patch
+</code>
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^EAP235-Wall$", "version": "^v1$"}
+} -->
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["unsupported_functions"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^EAP235-Wall$", "version": "^v1$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^EAP235-Wall$", "version": "^v1$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^EAP235-Wall$", "version": "^v1$"}
+} -->
+
+See [[toh:tp-link:eap235-wall_v1#oem_easy_installation|OEM easy installation]] for installation instructions through the TP-Link web interface.
+
+See [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic)]] for generic installation procedures.
+
+==== Flash Layout ====
+
+^   TP-Link EAP235-Wall v1 flash layout           ^^^^^^^^^^^
+^ Layer0  |                raw NOR flash memory chip (W25Q128 [[wp>Serial Peripheral Interface Bus|spi]]0.0: w25q128) 16384 KiB                ||||||||||
+^ Layer1  |  mtd0 **//u-boot//**  |  mtd1 **//partition-table//**  |  mtd2 **//product-info//**  |  mtd3 **//firmware//** 13440 KiB  |||  mtd7 **//user-config//**  |  mtd8 **//mutil-log//**  |  mtd9 **//oops//** |  mtd10 **//radio//**  |
+^ Layer2  |                       |   |  |  mtd4 **//kernel//** 2230 KiB*  |  mtd5 **//rootfs//** 11210 KiB*   ||
+^ <color magenta>mountpoint</color>   |                |   |  |                               |  <color magenta>''/''</color>                          ||          |
+^ filesystem   |                              |   |                               |  |  [[docs:techref:filesystems#overlayfs|OverlayFS]]           ||          |
+^ Layer3       |                              |   |                               |  |                 |  mtd6 **//rootfs_data//** 4480 KiB*    |          |
+^ Size in KiB  |  512 KiB             |  64 KiB  |  64 KiB    |  2230 KiB  |  6730 KiB*  |  4480 KiB*  |  192 KiB  |  512 KiB  |  256 KiB  |  64 KiB  |
+^ Name         |  **//u-boot//**   |  |  |  **//kernel//**  |           |  **//rootfs_data//**   |  |  |
+^ <color magenta>mountpoint</color>   |  //none//  |  //none//  |  //none//   |  //none//  |  <color magenta>''/rom''</color>  |  <color magenta>''/overlay''</color>   |  //none//  |  //none//  |  //none//  |  //none//  |
+^ filesystem   |  //none//  |  //none//  |  //none//  |  //none//  | [[docs:techref:filesystems#SquashFS]]  |  [[docs:techref:filesystems#JFFS2]]  |  //none//  |  //none//  |  //none//  |  //none//  |
+
+* These seemingly irregular values are the result of the dynamic mtd splitter resizing the OpenWrt kernel and rootfs 'partitions' as needed. Sizes are extracted from a personalised build, so //kernel//, //rootfs// and //rootfs_data// values may vary on stock OpenWrt builds. Other partition sizes should be identical.
+
+==== OEM easy installation ====
+
+This method only works if the OEM firmware version is below v3 [[https://forum.openwrt.org/t/adding-support-for-eap235-wall/86280/70|as newer versions prevent downgrades and OpenWrt images carry a ''0.0.0'' version number]]. If you still want to use this method, flash https://svanheule.net/files/eap235-wall-v1-squashfs-factory-v3-test.bin instead of an official release, then perform a classic OpenWrt sysupgrade to a current release. An alternative may be to patch an official release factory image using this [[https://gist.github.com/svanheule/9f82e156a3601d4a726639eb7400ec97|safeloader patching script]].
+ 
+Taken from the git commit adding support: The EAP235-Wall will listen on 192.168.0.254 when there is no DHCP server on the network. If there is one, it will obtain an IP through DHCP and be reachable on http://tplinkeap.net. This goes for both the web interface and SSH (once you enabled the latter).
+
+**Update 2022-09-16**: OpenWrt versions 22.03.0 and later do not need patching. See https://firmware-selector.openwrt.org/?version=22.03.0&target=ramips%2Fmt7621&id=tplink_eap235-wall-v1 for a working image.
+
+**Flashing instructions**
+
+  * Enable SSH in the web interface, and SSH into the target device.
+  * Run ''cliclientd stopcs'', this should return "success".
+  * Upload the ''...factory.bin'' image via the web interface.
+  * Once the firmware update is done, the device will reboot and OpenWrt will listen on 192.168.1.1.
+
+==== OEM installation using the TFTP method ====
+Modern TP-Link devices often carry a bootloader with a TFTP client on-board. So far, TFTP recovery on the EAP235-Wall v1 has not been verified or tested. Values below are the ones the EAP235-Wall v1 u-boot uses by default when manually interrupted over serial.
+
+=== Specific values needed for tftp ===
+
+^ Bootloader tftp server IPv4 address  | 192.168.0.100*   |
+^ Bootloader MAC address (special)     | N/A   |
+^ Firmware tftp image                  | **<color #ed1c24>Unsupported</color>; only use with TP-Link OEM images** |
+^ TFTP transfer window                 | ?                                |
+^ TFTP window start                    | ?  |
+^ TFTP client required IP address      | 192.168.0.254*                                 |
+
+* Default values unless changed manually in u-boot.
+
+See [[docs:guide-user:installation:generic.flashing.tftp|TFTP flashing]] for generic instructions and background information.
+===== Upgrading OpenWrt =====
+The EAP235-Wall supports OpenWrt's generic sysupgrade framework. As such, you can just syupgrade [[docs:guide-quick-start:sysupgrade.luci|through the OpenWrt web UI]] or [[docs:guide-user:installation:sysupgrade.cli|on the command line]].
+
+Do make sure to verify checksums prior to flashing, whatever method you use.
+
+===== Debricking =====
+For this, you need [[docs:techref:hardware:port.serial|serial access]] and a [[docs:guide-user:troubleshooting:tftpserver#setting_up_tftp_server|TFTP server]] listening on 192.168.0.100 and serving the RAM disk (initramfs) image. Serial connection parameters are 57600 baud, 8N1 and software flow offloading (hardware flow offloading prevents sending commands to the router). U-boot can be interrupted during boot. This allows you to boot the OpenWrt RAM disk image, from which you can install the OpenWrt sysupgrade image, or fix the device in another way.
+
+  * Access serial header from the side of the board, close to ETH3. Pin-out is as follows (with pin 1 closest to ETH3):
+    * Pin #1: TX (connect to RX pin of USB TTL adapter)
+    * Pin #2: RX (connect to TX pin of USB TTL adapter)
+    * Pin #3: GND (connect to GND pin of USB TTL adapter)
+    * Pin #4: 3.3V (do not connect this one to the USB TTL adapter or you risk to burn it!)
+  * Interrupt bootloader by holding '4' during boot, which drops the bootloader into its shell.
+  * If desired, change default 'serverip' and 'ipaddr' variables. They default to 192.168.0.100 and 192.168.0.254, respectively.
+  * Download initramfs: ''# tftpboot 84000000 openwrt-initramfs.bin''
+  * Boot the RAM disk image: ''# bootm''
+
+See [[docs:guide-user:troubleshooting:generic.debrick|generic debricking instructions]] for more info and background.
+
+
+===== Returning to OEM firmware =====
+Returning to the stock TP-Link firmware from the OpenWrt installation is a two-stage process. You need the following:
+  * A Linux system or VM (WSL2 e.g.).
+  * A recent TP-Link firmware image (**[[https://static.tp-link.com/2020/202011/20201103/EAP235-Wall(EU)_V1_1.0.2%20Build%2020200917.zip|EU]]** or **[[https://static.tp-link.com/2020/202010/20201030/EAP235-Wall(US)_V1_1.0.2%20Build%2020200917.zip|US]]**, depending on the version you have!).
+  * The [[https://downloads.openwrt.org/snapshots/targets/ramips/mt7621/openwrt-sdk-ramips-mt7621_gcc-8.4.0_musl.Linux-x86_64.tar.xz|OpenWrt SDK]], or, if you compiled your own image, the OpenWrt buildroot.
+
+==== Preparing the image ====
+
+Use the ''tplink-safeloader'' utility present in the buildroot or the SDK to convert TP-Link's firmware image to an OpenWrt compatible sysupgrade image. Replace ''EAP235-WALLv1_XXX_up_signed.bin'' with the name of the TP-Link firmware you downloaded.
+<code>$ ./staging_dir/host/bin/tplink-safeloader -B EAP235-WALL-V1 -z EAP235-WALLv1_XXX_up_signed.bin -o eap235-sysupgrade.bin
+</code>
+
+==== Replacing OpenWrt ====
+
+  - Flash the prepped sysupgrade image using the OpenWrt sysupgrade interface. The image will appear to be incompatible and <color #ed1c24>must be force flashed, without keeping the current configuration</color>.
+  - Once the AP has booted into the OEM firmware, flash **the clean TP-Link firmware image** through the TP-Link web interface, so the OEM settings get added. The first stage sysupgrade image does not contain these.
+
+===== Failsafe mode =====
+Failsafe mode can be triggered by pushing the LED button on top of the device during the boot sequence.
+
+For generic failsafe instructions and background, see [[docs:guide-user:troubleshooting:failsafe_and_factory_reset|Failsafe Mode, Factory Reset, and Recovery Mode]].
+
+===== Basic configuration =====
+-> [[docs:guide-user:base-system:start|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+===== Specific Configuration =====
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description   ^ Default configuration   ^
+| br-lan           | LAN & WiFi    | 192.168.1.1/24          |
+| wlan0            | WiFi          | Disabled                |
+
+M7621 being a [[docs:techref:hardware:switch#dsa_distributed_network_switch|DSA]] target as of 21.02 means you can manipulate every LAN port directly by specifying lan0 (first port) through lan3 (fourth port).
+
+==== Switch Ports (for VLANs) ====
+The PoE-<abbr title="Power Delivery">PD</abbr> port on the back is labeled as ''ETH0 (PoE IN)''.
+
+The PoE-<abbr title="Power Sourcing Equipment">PSE</abbr> on the bottom right is labeled ''ETH3 (PoE OUT)'' and offers PoE+ passthrough.
+
+OpenWrt numbering follows manufacturer numbering.
+
+^ Port                                                ^ Switch port   ^
+| ETH0 (PoE-<abbr title="Power Delivery">PD</abbr>)   |     lan0      |
+| ETH1                                                |     lan1      |
+| ETH2                                                |     lan2      |
+| ETH3 (PoE passthrough)                              |     lan3      |
+
+You can check the current PoE passthrough status of the ETH3 port with:
+<code>
+cat /sys/class/gpio/poe-passthrough/value
+</code>
+
+If the former command outputs ''0'' then PoE passthrough is disabled, otherwise it is ''1'' which means it is enabled.
+
+Controlling the PoE passthrough status of ETH3 can be done with ''uci'' with:
+<code bash>
+uci delete system.poe_passthrough
+uci set system.poe_passthrough=gpio_switch
+uci set system.poe_passthrough.name="PoE Passthrough"
+uci set system.poe_passthrough.gpio_pin=poe-passthrough
+uci set system.poe_passthrough.value=1
+uci commit
+reload_config
+</code>
+
+==== Buttons ====
+Aside from the receded reset button, the EAP235-Wall v1 offers a single button on top of the device, which stock firmware uses to turn the LED on or off.
+
+^ BUTTON       ^ Event           ^
+| LED toggle   | lights_toggle   |
+| Reset        | reset           |
+
+You can replicate the behaviour of the LED button by dropping the script below into ''/etc/rc.button/'' and making it executable:
+<code>
+#!/bin/sh
+
+[ "$(cat /tmp/sysinfo/board_name)" = "tplink,eap235-wall-v1" ] || exit 0
+
+[ "${ACTION}" = "pressed" -a "${BUTTON}" = "lights_toggle" ] || exit 0
+
+[ "$(cat /sys/class/leds/white\:status/brightness)" = "255" ] && \
+	echo "0" > /sys/class/leds/white\:status/brightness || \
+	echo "255" > /sys/class/leds/white\:status/brightness
+</code>
+
+See [[https://forum.openwrt.org/t/toggle-led-with-push-button/71599/4|this forum topic]] and [[docs:guide-user:hardware:hardware.button|Attach functions to a push button]] on how use and configure the hardware button(s).
+
+===== Hardware =====
+==== Info ====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^TP-Link$", "model": "^EAP235-Wall$", "version": "^v1$"}
+} -->
+
+==== Photos ====
+
+//Front://\\
+**Insert photo of front of the casing**
+
+//Back://\\
+**Insert photo of back of the casing**
+
+//Backside label://\\
+{{:media:media:tplink:eap235-wall:eap235-wall_v1_backplate_2.jpg?200|}}
+
+==== Opening the case ====
+Remove the two screws that fixate the backplate onto the outer shell. After that, gently wedge some opening picks into the small gap between the outer shell and the backplate, and work your way around the backplate. See a pic of the backplate below to locate the clips.
+
+{{:media:media:tplink:eap235-wall:eap235-wall_v1_backplate_1.jpg?200|}}
+
+**Note:** This will void your warranty!
+
+//Main PCB://
+
+{{:media:media:tplink:eap235-wall:eap235-wall_v1_board_1.jpg?200|}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+Serial connection (by default there is no header soldered):
+
+{{:media:media:tplink:eap235-wall:eap235-wall_v1_board_3.jpg?250|}}
+
+^ Serial connection parameters for TP-Link EAP235-Wall v1 | 57600, 8N1, Software Flow Offloading |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+===== Bootloader mods =====
+-> [[docs:techref:bootloader]]
+
+===== Hardware mods =====
+
+None so far.
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>COPY HERE THE BOOTLOG WITH THE ORIGINAL FIRMWARE</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>COPY HERE THE BOOTLOG ONCE OPENWRT IS INSTALLED AND RUNNING</nowiki>
+</WRAP>\\
+
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * ...
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ramips mt7621 16flash 128ram 4port GigabitEthernet 802.11bgn 802.11ac PoE wall_embedded}} 

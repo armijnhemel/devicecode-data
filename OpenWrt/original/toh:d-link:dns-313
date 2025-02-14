@@ -1,0 +1,396 @@
+====== D-Link DNS-313 ======
+
+
+{{ media:dlink:dns-313-large.jpg?200|D-Link DNS-313}}
+
+The D-Link DNS-313 is a very vanilla NAS released by D-Link in October 2007 with TV-adverts and everything (see below YouTube video).
+
+
+{{youtube>LqK2ENsYiAQ?medium}}
+
+
+It is using the Gemini platform based on ARMv4 Faraday silicon design. New firmware was still being released in 2010. The source files are dated october 2013. It has the following features (see the [[https://dflund.se/~triad/krad/dlink-dns-313/dns_313_datasheet_en_uk.pdf|datasheet]] for details).
+
+The stock firmware is by now very outdated and dangerous to use on any open network due to the number of accumulated security flaws in the software packages. The OpenWrt images are recommended for use of this device.
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^dns-313$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^dns-313$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^dns-313$"}
+} -->
+
+==== Quick Install of Hard Disk Boot ====
+
+It is possible to prepare any SATA hard disk and use that to boot OpenWrt and set the device up as a NAS without any soldering or other trickery. You can just use any 3.5" SATA harddrive of any size for OpenWrt, keeping the old harddrive around as fallback without any changes. The operating system is completely contained on the harddrive and no changes ever gets written to the flash memory which only store the boot loader and some ethernet MAC etc. All you need to have is:
+
+  * USB SATA cradle
+  * A Linux command line
+  * Basic knowledge in how to use OpenWrt
+
+Then follow the following procedure:
+
+  - Put a SATA disk in a cradle to prepare it, any size works. If some filesystems get automounted under ''/run/media/...'' or so, unmount them.
+  - Download the latest build of OpenWrt (or build it yourself): <code>curl https://downloads.openwrt.org/snapshots/targets/gemini/generic/openwrt-gemini-dlink_dns-313-ext4-factory.bin.gz > rootfs.bin.gz</code> if you want to use a pre-built image with //ksmbd// and //LuCI// compiled in, please [[https://dflund.se/~triad/krad/dlink-dns-313/|visit this DNS-313 page]].
+  - Unpack the rootfs: <code>gunzip rootfs.bin.gz</code>
+  - Copy the whole rootfs image to your harddrive: <code>sudo dd if=rootfs.bin of=/dev/sdN && sync</code>
+  - Remove harddisk from cradle, insert into the DNS-313, boot.
+  - OpenWrt things work as usual with OpenWrt: the device will give YOUR computer an IP from DHCP (as if it was a router), then it comes up and you can telnet or SSH in to set it up (usually just ''ssh root@192.168.1.1'').
+  - You might want to remove the large harddisk image file.
+
+If your disk is large, there will likely be a lot of unpartitioned space after this procedure, as OpenWrt only installs in the first few hundred megabytes. Partition this free space like this:
+
+  - Log in to NAS or use the console if you have one.
+  - ''fdisk /dev/sda''
+  - press **n**, **p** **ENTER**, **ENTER**, **ENTER**, **ENTER**, **w** to create ''/dev/sda1'' - you might be surprised that ''/dev/sda2'', ''/dev/sda3'' and ''/dev/sda4'' already exists, but that is where the swap partition, kernel and root filesystem of the device is residing. Those are created from the ext4 image you flashed in the beginning, leaving the first partition unused.
+  - ''mkfs.ext4 /dev/sda1''
+  - ''mkswap /dev/sda2''
+  - [[docs:guide-user:storage:fstab|Use the ''block'' tool]] to set up the ''/dev/sda1'' partion for mounting, and the ''/dev/sda2'' partition for swap: <code>
+block detect | uci import fstab
+uci set fstab.@mount[0].enabled='1'
+uci set fstab.@swap[0].enabled='1'
+uci commit fstab
+</code>
+  - You can verify that we set up ''/dev/sda1'' for mounting and ''/dev/sda2'' as swap partition with ''cat /etc/config/fstab''
+  - Reboot
+  - When the device comes up ''df'' should show you ''/dev/sda1'' mounted as ''/mnt/sda1'', and ''swapon -s'' should show you the swap partition is in active use.
+
+
+==== Huge hard drives ====
+
+With disks **larger than 2 TB** you will need to created a hybrid MBR/GPT partition table on the disk, lest the NAS will not boot. With this technique it is possible to use e.g. a 10 TB disk in the DNS-313 without any problems. The trick here is to make sure to fill out the MBR compatible table with partitions so that the 4th one is the one that the device will boot from.
+
+To create a hybrid partition table you need to use ''gdisk'' (at least that is what I used) while the disk is connected in a USB cradle on a host computer. First you install the OpenWrt image using dd as described above, then I used the following procedure on a 10 TB disk:
+
+  - Keep the newly installed harddisk (that you installed using ''dd'') in the USB cradle
+  - ''gdisk /dev/sda''
+  - Select the MBR (1) table if some damage or old partitions are discovered
+  - press **n**, **ENTER**, **ENTER**, **ENTER**, **ENTER**, to create ''/dev/sda1''. This partition should be really big and will contain your primary data storage.
+  - The rest of the partitions should already be defined by the MBR from the ext4 image.
+  - Next go into the recovery/transformation menu and create a hybrid partition table using the command sequence **r** **h**, state partitions **2 3 4** as hybrid (1 is too big and will remain in the GPT) set up the three basic partitions (used for swap, rootfs and boot) and write the hybrid partition table with **w**\\ \\ The command sequence should look like the following:\\ <code>
+  Command (? for help): r
+  
+  Recovery/transformation command (? for help): h
+  
+  Type from one to three GPT partition numbers, separated by spaces, to be
+  added to the hybrid MBR, in sequence: 2 3 4
+  
+  Place EFI GPT (0xEE) partition first in MBR (good for GRUB)? (Y/N): y
+  
+  Creating entry for GPT partition #2 (MBR partition #2)
+  Enter an MBR hex code (default 82): ENTER
+  Set the bootable flag? (Y/N): n
+  
+  Creating entry for GPT partition #3 (MBR partition #3)
+  Enter an MBR hex code (default 83): ENTER
+  Set the bootable flag? (Y/N): n
+  
+  Creating entry for GPT partition #4 (MBR partition #4)
+  Enter an MBR hex code (default 83): ENTER
+  Set the bootable flag? (Y/N): n
+  
+  Recovery/transformation command (? for help): w
+</code>
+  - After this power down the harddrive and put it into the DNS-313 and perform a first time boot as usual.
+  - Right after your system is back online, format the new big ''/dev/sda1'' partition with ''mkfd.ext4 /dev/sda1'' and it will be one very big partition that you can use for your NAS etc.
+
+===== Basic configuration =====
+
+Since this part is identical for all devices, see [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]].
+
+===== Set Up Network =====
+
+OpenWrt assumes by default that everything it boots on is a router and tries to bridge 'lan' and provide IP addresses for that lan and obtain an uplink on the interface 'wan'. This is pretty helpful when first setting up the device: you can just connect it to your computers ethernet socket. Your computer will be assigned an IP number by the DNS313 using DHCP and you can then telnet or SSH into it as it will be host **192.168.1.1**.
+
+When using the device on your home network as a NAS this setup is not very helpful since it is not a router. In recent OpenWrt releases the DNS-313 has been modified to use DHCP by default.
+
+If you're not running the latest nightly builds, you may need to configure it to obtain an IP number from some other router and then just sit there and be NAS. This is similar to how we configure [[docs:guide-user:network:wifi:dumbap|a dumb AP]] using [[docs:guide-user:base-system:managing_services|managed services]]
+
+So set up your **/etc/config/network** interface named **lan** like this:
+
+  config interface 'lan'
+        option device 'br-lan'
+        option proto 'dhcp'
+        
+**NOTICE:** this will not be necessary on OpenWrt releases after 22.03.
+
+After configuring your device to obtain it's address from DHCP you will have to figure out what IP number it got. Either use //ifconfig// on the console (if you have a console) or check in your router for a new D-Link device in the list of DHCP leases on your network. You can now SSH to the device, or browse to it if you have compiled-in LuCI.
+===== Disable unused services =====
+
+Next, do the following from the command line as **root** to disable unnecessary services (an alternative is of course to build the image without these components by removing them during menuconfig):
+
+  - Disable dnsmasq\\ <code>
+  service dnsmasq disable
+  service dnsmasq stop
+</code>
+  - Disable odhcpd\\ <code>
+  service odhcpd disable
+  service odhcpd stop
+</code>
+  - Disable firewall\\ <code>
+  service firewall disable
+  service firewall stop
+</code>
+  - Edit ''/etc/config/network'' to something simplistic like this for the **lan** interface:\\ <code>
+  config interface 'lan'
+      option device 'br-lan'
+      option proto 'dhcp'
+</code>
+  - If there is some **wan** section for ''eth1'' then just delete that entirely.
+  - Edit ''/etc/config/system'' to reflect your timezone, or all timestamps will be in UTC. For example I set: <code>option timezone 'CET-1CEST,M3.5.0,M10.5.0/3'</code>
+  - Type **poweroff** to shut down the DNS-313
+  - Plug it into some ethernet port on your LAN that will provide DHCP for devices, and it should happily connect to that network and come up. You need to figure out the IP address but usually you can check what devices have appeared on your network in your main DHCP server/router.
+
+
+===== Set Up as NAS =====
+
+A basic configuration as an [[docs:guide-user:services:nas:start|OpenWrt NAS]] is very simple and straight forward, for this memory-constrained device it is recommended to [[docs:guide-user:services:nas:ksmbd|use ksmbd as SMB file server]] if you desire to use the SMB protocol to access your NAS (such as with Windows and many media players). The most common SMB server samba4 is unfortunately too memory hungry and can make the device thrash and hang, and connections and transfers time out as a result.
+
+Enable **hdparm** in your build by:
+
+
+  make menuconfig
+
+
+From the top menu: ''Base system -> Customize busybox options -> Miscellaneous utilities -> hdparm''
+
+This tool is used to instruct the harddrive to spin down when unused. Not doing that will be annoying since the drive will always be spinning.
+
+If you rebuild the firmware image from scratch to get ksmbd you can do like this:
+
+
+  scripts/feeds update
+  scripts/feeds install ksmbd-server
+  make menuconfig
+
+
+From the top menu, select ''Network -> Filesystem -> ksmbd-server'', then select as 'y' (star) for both ''ksmbd-server'' and ''ksmbd-utils'' to get into default install and rebuild OpenWrt. I usually also install the utils, but they are only needed if you want to create individual users. After you put the resulting ext4 filesystem on the drive, rebooted and made basic set-up like above ''/dev/sda'' should exist and you can proceed to set up a samba share:
+
+
+  chown nobody:nogroup /mnt/sda1
+
+
+Edit ''/etc/config/ksmbd'' to contain something like this:
+
+
+  config globals
+      option 'workgroup'              'WORKGROUP'
+      option 'description'            'ksmbd on DNS-313'
+
+  config share
+      option path                   '/mnt/sda1'
+      option name                   'dns313'
+      option create_mask            '0666'
+      option dir_mask               '0777'
+      option read_only              'no'
+      option guest_ok               'yes'
+
+
+Reboot and you can browse to the IP number (etc) of your NAS, use the ''dns313'' share and upload and download files that will appear in ''/mnt/sda1'', of course you can set up whatever partition etc you like.
+
+===== Hardware =====
+
+==== PCB photos ====
+
+{{media:dlink:dns-313:dns-313-front-large.jpg?500|PCB Front}}
+{{media:dlink:dns-313:dns-313-cpu-large.jpg?177|CPU close-up}}
+
+{{media:dlink:dns-313:dns-313-flash-ethernet-phy-large.jpg?200|Flash and ethernet PHY}}
+{{media:dlink:dns-313:dns-313-dram-large.jpg?295|DRAM close-up}}
+
+==== Identified electronics ====
+
+  * Cortina Systems QWCS3512C A3 Gemini SoC
+  * A G751-2f temperature sensor from Kynix Semiconductor
+  * cFeon EN29LV400AB-70TCP 4Mbit (512KB) Flash memory
+  * Nanya NT5DS32M16BS-6K 512Mbit (64MB) DRAM memory
+  * Realtek RTL8211B Ethernet PHY
+  * Holtek HT48F06E MCU with EEPROM (Nobody knows what this does. Some devices reportedly doesn't even have this component mounted.)
+  * CR2032 standard button cell lithium battery
+  * 14-pin Texas Instruments SN54AC04 hex inverter (six inverters)
+  * Two AX3106 PWM step-down converters with diodes and coils in the power supply circuitry
+  * AIC1383A termination regulator
+  * LM317K adjustable regulator
+  * One pushbutton in the front
+  * One pushbutton in the back
+  * USB type-B recepticle
+  * Ethernet TP cable port connected to the Realtek PHY
+  * DC input barrel connector
+  * SATA connector
+  * 3-pin fan connector
+  * Debugging header
+  * ADDA fan AD0405HB-G73, three-wire, according to specifications DC5V, 0.25A, 40x40x10mm 6.7CFM, runs at 6000 RPM
+  * There is an unsoldered 20-pin connector next to the battery. I have no clue what this might be, but I suspect either the second SATA interface is routed there, or it is a JTAG (ICE) debug connector used during development.
+
+==== Mounting UART serial port ====
+
+For background and generic information see [[docs:techref:hardware:port.serial|the generic serial console documentation]].
+
+For deep core hacking like kicking kernels directly from the network over TFTP and interactive initramfs console it is necessary to mount a UART. This is not necessary to just use OpenWrt, it is a tool for deep core hacking.
+
+The UART is located above the SoC right of the G751-2f temperature sensor. You need to solder three leads for GND, RX and TX. I don't know if the fourth lead supplies UART power, maybe it does? I just used these three anyways. Once you verified that the UART is working (see below, both RX and TX must work so you get an interactive console) then do not leave it like this! The soldered wires are usually not super-stable there. Instead do what I always do: cover the soldered leads in a blob of epoxy glue. Else they will inevitably come off. Then connect the things to a UART-to-serial adapter/converter such as this SparkFun FTDI adapter like shown in the picture.
+
+{{media:dlink:dns-313:dns313-uart-large.jpg?350|UART connector close-up}}
+{{media:dlink:dns-313:dns313-uart-soldered-large.jpg?305|UART connector with wires soldered}}
+{{media:dlink:dns-313:dns313-uart-ftdi-large.jpg?202|UART FTDI adapter with wires connected}}
+
+Once the UART is properly connected open (in this case) ''/dev/ttyUSB0'' in your serial console (terminal) program and set it to 19200 baud, no hardware flow control (obviously, do you see any CTS or DTS leads) 8 bits, 1 stop bit.
+
+Then connect the DC connector and power on the device using the pushbutton on the front. The blue (power) LED should blink and then come on permanently and the following should appear in the console if no harddrive is connected:
+
+
+  found magic num
+  found magic num
+  found magic num
+  bootLoader made time: 1238800322
+  bootLoader version: 2.00b08
+  bootloader model name : dns-313v3
+  Waiting for disk ready & detect ...
+  Failed to init IDE disks!
+  Failed to init IDE disks!
+
+
+As you see it fails to find an IDE disk. It's because you haven't connected one. At this point, the console is interactive, so just hit **CTRL+C** twice and then the green (hard disk) LED comes on, and this happens:
+
+
+   Aborted by user!
+  Not found /.boot/zImage
+  can not boot from ide
+  
+  
+  Processor: SL3512c3
+  CPU Rate: 300000000
+  AHB Bus Clock:150MHz    Ratio:2/1
+  MAC 1 Address: 14:D6:4D:A8:3C:4F
+  MAC 2 Address: 00:50:C2:22:22:22
+  inet addr: 0.0.0.0/255.255.255.0
+  Kernel RAM Location: 0x00600000  Filename: /.boot/zImage
+  Initrd RAM Location: 0x00800000  Filename: /.boot/ramdisk.bin.gz
+  Andge Test Code 0.03 (DAS Mode LED) ...
+  PHY 0 Addr 1 Vendor ID: 0x001cc912
+  ==> enter ^C to abort booting within 2 seconds ......
+  Boot Menu
+  ==============================================================================
+  0: Reboot
+  1: Start the Kernel Code
+  5: Enter Command Line Interface
+  6: Set IP Address
+  8: Show Configuration
+  I: Initialize IDE
+  X: Upgrade Boot
+  => Select:
+
+
+So now you have a ROM/Flash root prompt. This is all the software that the DNS-313 stores in its flash: the rest is loaded from the IDE drive or from the network.
+
+===== Hacking =====
+
+The device is pretty much finished from an OpenWrt perspective, one thing that remains to fix is the USB slave mode: being able to use the USB port to mount the internal drive as USB mass storage from a computer.
+
+For an overview of how the device is structured see [[https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/arch/arm/boot/dts/gemini-dlink-dns-313.dts|the DNS-313 device tree in the Linux kernel]].
+
+==== TODO ====
+
+This is a suggested list of things that "would be nice" to fix on this device:
+
+  * Make USB slave mode work and configure up OpenWrt kernel to act properly as dual file server and USB harddrive
+  * Mount the flash partition(s) and store the OpenWrt ''/etc/config'' directory there so the config persists across updates
+  * Find a good way to make sysupgrade work on the boot and root partitions on the harddrive without destroying ''/dev/sda1'' where you normally store all your NAS data
+
+==== Kernel hacking ====
+
+A mainline Linux kernel works pretty well on the device since we're not using esoteric OpenWrt features such as mtdsplit. You don't even have to use the OpenWrt ARMv4 cross compiler, as the kernel is not using the C library. Just build your gemini kernel with any ARMv4-capable cross compiler something like this:
+
+
+  git clone https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/
+  cd linux
+  make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- gemini_defconfig
+  make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage
+  make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- dtbs
+  cat arch/arm/boot/dts/gemini-dlink-dns-313.dtb >> arch/arm/boot/zImage
+  cp  arch/arm/boot/zImage /var/lib/tftpboot
+
+
+This builds the kernel and the device tree, catenates the device tree to the kernel and copies the resulting zImage to the TFTP daemon image directory.
+
+==== Boot a modified kernel from hard drive ====
+
+If you don't have a soldered serial port this is your only option.
+
+If you have prepared your harddrive with the EXT4 image as above, just mount ''/dev/sdN3'' at e.g. ''/mnt/boot'' and make a backup copy of ''/mnt/boot/.boot/zImage'' and then replace ''/mnt/boot/.boot/zImage'' with your new kernel.
+
+It is pretty nice to have a serial console in case your kernel doesn't work properly, else the only symptom will be "NAS don't boot".
+
+==== Boot a modified kernel over TFTP ====
+
+If you have a TFTP server set up, and a serial console, you can use the flash-resident boot loader to boot a new kernel over TFTP without replacing the ''zImage'' on the hard drive.
+
+If you copy your ''zImage'' to the TFTP root follow this procedure.
+
+Connect a crossed ethernet cable between your statically configured network interface on a host computer and the DNS-313. I just set up the ethernet port on my host computer statically to 169.254.1.1 netmask 255.255.255.0 and go with that subnet (local link).
+
+At boot press **CTRL+C** twice and you should get dropped to this boot menu:
+
+
+  Boot Menu
+  ==============================================================================
+  0: Reboot
+  1: Start the Kernel Code
+  5: Enter Command Line Interface
+  6: Set IP Address
+  8: Show Configuration
+  I: Initialize IDE
+  X: Upgrade Boot
+  
+  => Select:
+
+
+Typing **5** takes you to a command line interface where it is possible to load a kernel over TFTP.
+
+First press **6** to set up the target IP address to something reasonable. Here I am assuming your host is using 169.254.1.1 netmask 255.255.255.0 and statically configured.
+
+
+  sl-boot> load -m tftp -b 0x400000
+  TFTP Server IP Address: 169.254.1.1
+  Image Path and name(e.g. /images/zImage): zImage
+  TFTP Download zImage from 169.254.1.1 .......................................
+  Successful to download by TFTP! Size=4646107
+  sl-boot> go 0x400000
+
+
+Your kernel should come up and you can see the boot messages on the console.
+
+===== Links =====
+
+  * This page is based on content from the [[https://dflund.se/~triad/krad/dlink-dns-313/|former development page]]
+  * [[https://dflund.se/~triad/krad/gemini/|Gemini information page]]
+
+===== Tags ======
+[[meta:tags|How to add tags]]
+{{tag>gemini 64RAM redboot 1port GigabitEthernet no_switch Serial 12v_powered armv4 NAS}}

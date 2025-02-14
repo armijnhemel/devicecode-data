@@ -1,0 +1,255 @@
+====== ZyXEL NSA3xx ======
+
+The Zyxel NSA310, NSA310b, NSA310s, NSA320, NSA325 is a [[docs:techref:targets:kirkwood|Kirkwood]] based [[docs:guide-user:services:nas:start|NAS (aka Network Attached Storage)]] with one or two <abbr>HDD [Hard Disk Drive]</abbr> bay using <abbr>SATA [Serial ATA]</abbr>.
+
+===== OpenWRT Support =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"brand": "^Zyxel$", "model": "^NSA3.*$"}
+} -->
+
+===== Firmware Downloads =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^Zyxel$", "model": "^NSA3.*$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "sataports", "usbports"],
+  "filterColumns": {"brand": "^Zyxel$", "model": "^NSA3.*$"}
+} -->
+
+==== Hardware Serial Interface ====
+
+| PIN   | NO PIN   | PIN   | PIN   | PIN   |
+| *     | -        | *     | *     | *     |
+| GND   | N/A      | RX    | TX    | VCC   |
+
+:!: NEVER CONNECT THE VCC PIN. ONLY connect GND, RX and TX.
+
+^ Serial connection parameters | 3.3V, 115200 Baud |
+
+===== Preparation =====
+==== Hardware ====
+  * 3.3V USB to serial adapter 
+  * USB stick (FAT16 formatted, single partition)
+:!: There seem to be different root causes in case your USB stick is not detected correctly
+  * Up to date USB sticks were not detected correctly by the stock U-Boot. I had to use the "oldest" USB Stick I found, which supports USB 1.1 only! [[https://forum.openwrt.org/t/serial-install-problems-on-nsa310/37306/11|OpenWrt Forum serial-install-problems-on-nsa310]]
+  * A active USB Hub (with external power supply) might be necessary [[https://forum.doozan.com/read.php?3,119919,119964|doozan.com]]
+  * Two USB sticks might be needed. One to flash the U-Boot. The second one to flash the OpenWrt image. [[https://forum.doozan.com/read.php?3,119919,119964|doozan.com]]
+
+Alternative: Use [[docs:guide-user:troubleshooting:tftpserver|Setting up a TFTP server for TFTP Recovery/Install]] plus the description [[https://forum.openwrt.org/t/serial-install-problems-on-nsa310/37306/11|OpenWrt Forum - TFTP settings]] (no successful report found) or the flashing through IDE interface ([[https://forum.openwrt.org/t/serial-install-problems-on-nsa310/37306/44|tested successfully]]).
+
+==== Binaries ====
+
+:!: Carefully choose the correct U-Boot for your hardware version otherwise you brick the hardware! Please check the latest release for the latest version of U-Boot\\
+|**NSA310**| [[https://downloads.openwrt.org/releases/21.02.1/targets/kirkwood/generic/u-boot-nsa310/|uboot-NSA310 delivered with OpenWRT 21.02.1]]| OpenWrt Image NSA310b working|
+|**NSA310b**| [[https://downloads.openwrt.org/releases/21.02.1/targets/kirkwood/generic/u-boot-nsa310/|uboot-NSA310 delivered with OpenWRT 21.02.1]]| OpenWrt Image NSA310b working|
+|**NSA310s**| [[https://downloads.openwrt.org/releases/21.02.1/targets/kirkwood/generic/u-boot-nsa310s/|uboot-NSA310s delivered with OpenWRT 21.02.1]]| OpenWrt Image NSA310s working|
+|**NSA320**|[[https://bitly.com/2iC3E69|uboot.2017.07-tld-1.nsa320.bodhi.tar]]| [[https://forum.openwrt.org/t/support-for-zyxel-nsa320/18572/7|Not supported by OpenWrt]]|
+|**NSA325**|[[https://downloads.openwrt.org/releases/21.02.1/targets/kirkwood/generic/u-boot-nsa325/|uboot-NSA325 delivered with OpenWRT 21.02.1]]| OpenWrt Image NSA325 working|
+
+Copy the ''u-boot.kwb'', ''u-boot.bin'' and ''u-boot.kwb'' files to a FAT16 formatted USB stick with msdos partition table (single partition).
+
+:!: u-boot are also available in more up to date versions from the OpenWRT snapshot daily built !
+==== Backup / Safety ====
+This chapter is based on a post in the [[https://forum.doozan.com/read.php?3,12381|Doozan Forum]].\\
+  * Connect the USB to Serial converter (**3.3V not 5V!**) to the pins of the NSA3xx main board (''Tx -> Rx; Rx <- Tx; GND -> GND'').
+  * Boot the stock firmware and access the NSA3xx through the serial interface
+  * Check the Ethernet MAC Address and note it
+
+    fw_printenv ethaddr
+
+  * save the environment variables
+
+    fw_printenv > current_envs.txt
+    or
+    blparam >  current_envs.txt
+
+  *  Check bad blocks in NAND
+
+:!: Be sure there is no bad block in the first 1M of your NAND (check dmesg). <color #ed1c24>This is very important</color>, if there is bad block in the first 1M (8 blocks), don't flash u-boot, because you will almost certainly brick your box. Please post your question here (there is a work around for it).
+
+    dmesg | grep -i 'bad'
+      [    2.413231] Scanning device for bad blocks
+      [    2.417731] Bad eraseblock 3 at 0x000000060000
+
+This bad block is the 4th block which resides within mtd0 (block 0 to block 7). **So u-boot should not be flashed**.
+
+[[https://git.openwrt.org/?p=openwrt/openwrt.git;a=commit;h=94676dd99d96871e9f540a8ace26bdb317c010cf|Overview for advanced users (git commit)]]
+
+===== Flashing =====
+Basically we command the device through a terminal (using the serial interface) to load and flash our files to NAND.
+
+:!: **Please note that to write to NAND you have to erase the NAND first, which means all data on the NAND will be __deleted__! Meaning stock firmware, bootloader, settings and everything will be gone! So make sure you got the proper files ready before you start as it's vital that you flash the new bootloader __before__ you restart your device as it would otherwise get soft-bricked.**
+
+<tabbox USB>
+
+Plug in the USB stick into the NAS (front USB) with the correct files and booting into u-boot (press any key on the serial communication to interrupt the boot progress). \\ The first step is to install OpenWrt's u-boot. Therefor send those commands in the U-Boot command line:
+  NSA310>>usb reset
+  (Re)start USB...
+    USB:   scanning bus for devices... 3 USB Device(s) found
+    scanning bus for storage devices... 1 Storage Device(s) found
+  NSA310>>fatload usb 0 0x1000000 u-boot.kwb
+    reading u-boot.kwb
+    ............................................
+    524288 bytes read
+  NSA310>>nand erase 0x0 0x100000
+    Erasing at 0xe0000 -- 100% complete.
+    OK
+  NSA310>>nand write 0x1000000 0x00000 $filesize
+    1048576 bytes written: OK
+  NSA310>>reset
+
+:!: In case you get below error message there are different things you can try to
+   * use an active USB Hub (with seperate power supply) [[https://forum.doozan.com/read.php?3,119919,119964|doozan.com]]
+   * use [[docs:guide-user:troubleshooting:tftpserver|Setting up a TFTP server for TFTP Recovery/Install]] to load the files. IP configuration described at [[https://forum.openwrt.org/t/serial-install-problems-on-nsa310/37306/9|serial-install-problems-on-nsa310]]. However this has not been tested successfully yet.\\
+  NSA310>>usb reset
+    USB:   scanning bus for devices... 1 USB Device(s) found
+    scanning bus for storage devices... 0 Storage Device(s) found
+  NSA310>> fatload usb 1 0x1000000 u-boot.kwb
+  ** Can't read from device 1 **
+  ** Unable to use usb 1:1 for fatload **
+  NSA310>> fatload usb 0 0x1000000 u-boot.kwb
+  ** Can't read from device 0 **
+  ** Unable to use usb 0:1 for fatload **
+
+<tabbox TFTP>
+[[https://forum.openwrt.org/t/serial-install-problems-on-nsa310/37306/41|Install NSA310]] \\
+:!: The uboot CANNOT use network (tftp) on nsa310 as it has an external network chip and bodhi (he made the uboot also OpenWrt uses) never fixed that. Openwrt can use the network chip so this is a problem only when installing the first time and you are using uboot.
+
+
+<tabbox IDE>
+:!: You may need to try a few times, and from true power off state. Disconnect power from nsa310, press power button for 5 seconds (to make sure everything is discharged and power is off)
+:!: SSD might not be detected. Try with HDD instead.
+
+<code bash>
+NSA310>> ide reset
+
+Reset IDE: 
+Marvell Serial ATA Adapter
+Integrated Sata device found
+[0 0 0]: Enable DMA mode (6)
+  Device 0 @ 0 0:
+Model: xxxxx                           Firm: xxx  Ser#: xxx        
+            Type: Hard Disk
+            Supports 48-bit addressing
+            Capacity: 114473.4 MB = 111.7 GB (234441648 x 512)
+
+NSA310>> fatload ide 0 0x1000000 uboot.kwb
+reading uboot.kwb
+524288 bytes read
+
+NSA310>> nand erase 0x0 0x100000
+NAND erase: device 0 offset 0x0, size 0x100000
+Erasing at 0xe0000 -- 100% complete.
+OK
+
+NSA310>> nand write 0x1000000 0x00000 $filesize
+NAND write: device 0 offset 0x0, size 0x100000
+ 1048576 bytes written: OK
+
+NSA310>> reset
+</code>
+</tabbox>
+
+After the device reboots into the OpenWrt u-boot we adjust the device's MAC address (adjust the values, see the sticker under the NAS case):
+  
+  NSA310>>setenv ethaddr AB:CD:EF:00:00:00
+    Address in SROM is         AB:CD:EF:00:00:00
+    Address in environment is  AB:CD:EF:00:11:11
+  NSA310>>saveenv
+    Saving Environment to NAND...
+    Erasing NAND...
+    Erasing at 0xc0000 -- 100% complete.
+    Writing to NAND... OK
+
+Now we set the correct environment variables
+  NSA310>>setenv mtdparts 'mtdparts=orion_nand:0x00c0000(uboot),0x80000(uboot_env),0x7ec0000(ubi)'
+  NSA310>>setenv bootcmd 'run setenv bootargs; ubi part ubi; ubi read 0x800000 kernel; bootm 0x800000'
+  NSA310>>saveenv
+    Saving Environment to NAND...
+    Erasing NAND...
+    Erasing at 0xc0000 -- 100% complete.
+    Writing to NAND... OK
+  NSA310>>reset
+    resetting ...
+
+Then we proceed to flashing OpenWrt itself (which we called nsa310.bin for less typing):
+:!: There could be the need to use two different USB Sticks. One for the U-Boot and one for the OpenWrt firmware [[https://forum.doozan.com/read.php?3,119919,119964|doozan.com]]
+
+  NSA310>>usb reset
+    USB0:   USB EHCI 1.00
+    scanning bus 0 for devices... 3 USB Device(s) found
+    scanning usb for storage devices...
+    Use USB retry period from the environment: 15 second(s)
+    1 Storage Device(s) found
+  NSA310>>fatload usb 0 0x2000000 nsa310.bin
+    reading openwrt.bin
+    4063232 bytes read in 210 ms (18.5 MiB/s)
+  NSA310>>nand erase.part ubi
+   NAND erase.part: device 0 offset 0x140000, size 0x7ec0000
+    Skipping bad block at  0x00540000
+    Skipping bad block at  0x05580000
+    Skipping bad block at  0x06120000
+    Skipping bad block at  0x06aa0000
+    Erasing at 0x7fe0000 -- 100% complete.
+    OK
+  NSA310>>nand write 0x2000000 ubi $filesize
+    NAND write: device 0 offset 0x140000, size 0x600000
+    Skip bad block 0x00540000
+    6291456 bytes written: OK
+
+Note that the number at the end indicates the size to write in hex. In this case up to 6 MiB. Increasing this number should work but has not been tested.
+ 
+And now we reboot to OpenWrt:
+
+  reset
+
+===== Specific Configuration =====
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+
+The device has the following buttons:
+
+^ BUTTON                       ^ Event  ^
+| Power                        | power  |
+| Reset                        | reset  |
+| Copy                         | copy   |
+
+===== Recovery =====
+This is based on [[https://forum.openwrt.org/t/unbricking-nsa310s-after-i-flashed-the-wrong-u-boot/67502/4|unbricking-nsa310s-after-i-flashed-the-wrong-u-boot]] and [[https://forum.doozan.com/read.php?3,7852,7852|UART Booting HowTo for Selected Kirkwood Devices]].\\
+
+   * Download [[https://manpages.debian.org/testing/u-boot-tools/kwboot.1.en.html|kwboot]]. You will need a Linux PC, or you can install Virtualbox in your PC and create a Linux Virtual Machine.
+   * Disconnect power from NSA3xx, press power button for 5 seconds (to make sure everything is discharged and power is off)
+   * Sending kwboot command from console and see that the bar is spinning.\\ <code bash> kwboot -t -B 115200 /dev/ttyUSB0 -b u-boot.kwb -p </code>\\ **Use the correct U-Boot version for your hardware**
+   * Connect power and then power up the NSA3xx with button.
+   * Flashing process begins. Once this process finished, the device started to boot. 
+   * Interrupted this before the booting started and get access to the bootloader shell.\\ Repeated the u-boot flashing process mentioned above.
+
+
+===== Serial connection =====
+==== NSA310 ====
+{{:media:zyxel:nsa310_serial01.jpg?400|}}
+{{:media:zyxel:nsa310_serial02.jpg?400|}}
+{{:media:zyxel:nsa310_serial03.jpg?400|}}
+
+==== NSA310S ====
+{{media:zyxel:nsa310s_pinout_uart.jpg?direct&400|}}
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>kirkwood 128flash 256ram 1port GigabitEthernet serial USB2.0 SATA2 NAS ARMv5}}

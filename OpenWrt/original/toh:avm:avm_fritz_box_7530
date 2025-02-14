@@ -1,0 +1,1846 @@
+====== AVM FRITZ!Box 7520 / 7530 ======
+
+The FRITZ!Box 7520 and 7530 are AC1200 Dual-Band WiFi Routers (up to 1.2Gbps).
+They have 4x 1G LAN ports, a DSL/VDSL port up to 300Mb, and a USB 3.0 port.
+
+The FRITZ!Box 7520 is the same hardware platform as the 7530, but its OEM software reduces the speed of 2x LAN ports and the USB port. Those limits do not apply to OpenWRT.
+
+The FRITZ!Box 7530 AX, IS **NOT SUPPORTED** as it uses a broadcom SoC with a broadcom DSL chipset, see https://en.avm.de/products/fritzbox/fritzbox-7530-ax/
+
+{{media:avm:fritz-box-7530-total.jpg?400|AVM FritzBox 7530}}
+{{media:avm:fritz-box-7530-back.jpg?400|AVM FritzBox 7530}}
+
+Product Page (English): [[https://en.avm.de/products/fritzbox/fritzbox-7530/technical-data/]]
+
+Source Code: [[http://osp.avm.de/fritzbox/fritzbox-7520/|FRITZ!Box 7520]] and [[http://osp.avm.de/fritzbox/fritzbox-7530/|FRITZ!Box 7530]]
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "forumsearch", "deviceid"],
+  "filterColumns": {"brand": "^AVM$", "cpu": "^Qualcomm IPQ4019$", "model": "^FRITZ!Box 75.*0$"}
+} -->
+
+NB: 
+  * Some models of the 7530 have a changed flash chip which is only supported for releases after 22.03 and snapshot builds. There is no known way to identify these boards from the outside. The only known box this happened with was an ISP-branded 7530 (A1).
+  * On some 7530/7520 the modem connects, but no data is transferred over the link. Affected devices can be recognized by the message ''vrx518 0000:01:00.0: dc_ep_clk_on failed'' in the kernel log. This issue has been fixed in OpenWrt 24.10.
+  * The "Typ B" model of the 7520 is not (yet?) supported. It uses the same SoC but a different DSL chipset.
+  * The AX hardware is a completely different platform and not supported at all.
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["unsupported_functions"],
+  "filterColumns": {"brand": "^AVM$", "cpu": "^Qualcomm IPQ4019$", "model": "^FRITZ!Box 75.*0$"}
+} -->
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "cpucores", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"brand": "^AVM$", "cpu": "^Qualcomm IPQ4019$", "model": "^FRITZ!Box 75.*0$"}
+} -->
+
+<code>
+root@fritzbox:~# cat /proc/cpuinfo
+
+model name      : ARMv7 Processor rev 5 (v7l) - Quad Core CPU
+Features        : half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt vfpd32 lpae evtstrm
+
+Hardware        : Generic DT based system
+Revision        : 0000
+Serial          : 0000000000000000
+</code>
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"brand": "^AVM$", "cpu": "^Qualcomm IPQ4019$", "model": "^FRITZ!Box 75.*0$"}
+} -->
+
+<WRAP center round info 60%>
+For the 7520 model, replace all occurences of 7530 by 7520
+</WRAP>
+
+  - Grab the uboot for the Device from the [[https://downloads.openwrt.org/snapshots/targets/ipq40xx/generic/u-boot-fritz7530/|u-boot-fritz7530 subdirectory]]. Place it in the same directory as the ''[[https://github.com/openwrt/openwrt/blob/master/scripts/flashing/eva_ramboot.py|eva_ramboot.py]]'' script.
+  - Assign yourself the IP address 192.168.178.10/24. Connect your Computer to one of the boxes LAN ports.
+  - Connect Power to the Box. As soon as the LAN port of your computer shows link, load the U-Boot to the box using following command. \\ <code>
+> ./eva_ramboot.py --offset 0x85000000 192.168.178.1 uboot-fritz7530.bin
+</code> \\ <WRAP center round info 60%>
+Some models use IP address 192.168.1.1 during boot. If the command above fails repeatedly, try the command with 192.168.1.1 as target (after assigning yourself IP address 192.168.1.70/24)
+</WRAP> \\ <WRAP center round tip 60%>
+For a more accurate timing when the link is established, the acoustic option of ''ping'' can be used in a second terminal like this: ''ping -a 192.168.1.1'' 
+</WRAP>
+
+  - The U-Boot will now start. Now assign yourself the IP address 192.168.1.70/24. Copy the OpenWrt **initramfs** (!) image to a installed TFTP server root directory (see instructions here: [[:docs:guide-user:troubleshooting:tftpserver|TFP Server]]) on our Computer and rename it to either ''FRITZ7530.bin'' or ''FRITZ7520.bin'' depending on your device model. Keep monitoring the verbose logs of ''tftpd'', and if you see recurring messages like ''Client 192.168.1.1 File not found FRITZ7520.bin'', then that means that **initramfs** has the wrong name and you likely have to rename ''FRITZ7530.bin'' to ''FRITZ7520.bin'' in the tftpd root directory. Similarly if the ''FRITZ7530.bin'' is missing then that should be the target name. Do not continue to the next step unless you see among the log messages like ''Client 192.168.1.1 finished FRITZ7520.bin'', which can certainly be attributed to the router pulling it, and not some former tests.
+  - The Box will now pull the file (a pull request every 5 seconds) and boot OpenWrt into RAM. This can take up to two minutes.
+  - Copy the U-Boot and the OpenWrt **sysupgrade** (!) image to the Box using scp, like \\ <code>scp /tmp/uboot-fritz7530.bin root@192.168.1.1:/tmp/
+scp /tmp/avm_fritzbox-7530-squashfs-sysupgrade.bin  root@192.168.1.1:/tmp/
+</code> \\ <WRAP center round info 60%>
+If you get an error like ''ash: /usr/libexec/sftp-server: not found'', run scp with the ''-O'' flag: ''scp -O /tmp/uboot-fritz7530.bin root@192.168.1.1:/tmp/''
+</WRAP> \\ SSH into the Box and first write the Bootloader to both previous kernel partitions. \\ <code>
+mtd write /tmp/uboot-fritz7530.bin uboot0
+mtd write /tmp/uboot-fritz7530.bin uboot1
+</code>
+  - Remove the AVM filesystem partitions to make room for our kernel + rootfs + overlayfs. \\ <code>
+ubirmvol /dev/ubi0 --name=avm_filesys_0
+ubirmvol /dev/ubi0 --name=avm_filesys_1
+</code>
+  - Flash OpenWrt peristently using sysupgrade. \\ <code>sysupgrade -n /tmp/avm_fritzbox-7530-squashfs-sysupgrade.bin</code>
+
+==== DSL modem ====
+
+<WRAP center round info 60%>
+The integrated VRX518 DSL modem is only supported in snapshot and releases from 23.x onwards. It does **not work** on 22.03.x and earlier.
+</WRAP>
+
+Starting with snapshots and releases on 24.10.x, the modem is supported without extra steps.
+Before, you need to do the steps below:
+
+Due to licensing uncertainties, only the drivers are included but no firmware files are provided. After installing OpenWrt, the firmware files need to be installed manually on the device. Download the following files to your computer and transfer the files to your device:
+
+<code>
+mkdir -p firmware/09a9
+wget -P firmware/09a9 https://gitlab.com/prpl-foundation/intel/vrx518_aca_fw/-/raw/ugw-8.5.2/platform/xrx500/aca_fw.bin
+wget -P firmware https://gitlab.com/prpl-foundation/intel/vrx518_ppe_fw/-/raw/ugw_8.5.2.10/platform/xrx500/ppe_fw.bin
+wget -P firmware https://gitlab.com/prpl-foundation/intel/dsl_vr11_firmware_xdsl/-/raw/ugw-8.5.2/xcpe_8D1507_8D0901.bin
+</code>
+
+
+
+Then transfer the files to your device:
+
+<code>
+scp -O -r firmware/* root@192.168.1.1:/lib/firmware
+</code>
+
+One symlink needs to be created on the device. Log in via SSH and run the following command **on your box**:
+
+<code>
+ln -s xcpe_8D1507_8D0901.bin /lib/firmware/vdsl.bin
+</code>
+
+Finally, reboot your device and you should end up with working VDSL support. Please also verify that you also set the correct VLAN ID for you WAN interface. Otherwise you might not be able to connect to your provider ([[:docs:guide-user:network:wan:isp-configurations#vdsl1]]).
+
+If you want the firmware files to survive ''%%sysupgrade%%'', simply add the following lines to ''%%/etc/sysupgrade.conf%%'':
+
+<code>
+/lib/firmware/ppe_fw.bin
+/lib/firmware/xcpe_8D1507_8D0901.bin
+/lib/firmware/vdsl.bin
+/lib/firmware/09a9/aca_fw.bin
+</code>
+
+<del>NB: What happens with the ''%%vdsl.bin%%'' symlink is not yet tested. If you tried it, please clarify this section.</del> (Tested by upgrading from 23.05.2 to 23.05.3, symlink survived the upgrade and DSL worked right away)
+
+For the required ISP configurations to configure your DSL connection, use: [[:docs:guide-user:network:wan:isp-configurations]]
+
+==== Flash Layout ====
+<code>dev:    size   erasesize  name
+mtd0: 00080000 00020000 "SBL1"
+mtd1: 00080000 00020000 "MIBIB"
+mtd2: 00080000 00020000 "QSEE"
+mtd3: 00040000 00020000 "CDT"
+mtd4: 00080000 00020000 "QSEE_B"
+mtd5: 00040000 00020000 "urlader0"
+mtd6: 00040000 00020000 "urlader1"
+mtd7: 00840000 00020000 "nand-tffs"
+mtd8: 00400000 00020000 "uboot0"
+mtd9: 00400000 00020000 "uboot1"
+mtd10: 06d00000 00020000 "ubi"</code>
+
+==== OEM installation using the TFTP method ====
+
+See Installation
+
+===== Upgrading OpenWrt =====
+
+==== LuCI Web Upgrade Process ====
+
+  * Browse to ''<nowiki>http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/</nowiki>'' LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+==== Terminal Upgrade Process ====
+
+=== sysupgrade ===
+
+  * Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+wget https://downloads.openwrt.org/releases/22.03.3/targets/ipq40xx/generic/openwrt-22.03.3-ipq40xx-generic-avm_fritzbox-7530-squashfs-sysupgrade.bin
+sysupgrade /tmp/openwrt-22.03.3-ipq40xx-generic-avm_fritzbox-7530-squashfs-sysupgrade.bin
+</code>
+
+=== WinScp ===
+
+If no Internet or WAN configured use ''WinScp''. and upload the file to /tmp
+
+  * 1st Login as root via WinScp on 192.168.1.1, then browse to /tmp and upload the openwrt-21.XX.XX-ipq40xx-generic-avm_fritzbox-7530-squashfs-sysupgrade.bin file
+  * 2nd Login as root via SSH on 192.168.1.1, then enter the following commands:
+
+<code>
+cd /tmp
+sysupgrade openwrt-22.03.3-ipq40xx-generic-avm_fritzbox-7530-squashfs-sysupgrade.bin
+</code>
+
+===== Debricking =====
+For debrick and / or factory image recovery use the [[docs:guide-user:installation:recovery_methods:avm_recovery_tool|AVM Recovery Tool]].
+
+===== Basic configuration =====
+
+==== Network interfaces ====
+
+The default network configuration as of 22.03.3
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | LAN & WiFi                   | 192.168.1.1/24           |
+| eth0             | Unknown port                 | Unknown port             |
+| eth1             | LAN 1-4                      | LAN 1-4                  |
+| wlan0            | 2.4GHz WiFi                  | Disabled                 |
+| wlan1            | 5 GHz WiFi                   | Disabled                 |
+| DSL              | Unsupported                  | Unsupported              |
+
+
+The default network configuration as of SNAPSHOTS
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | LAN & WiFi                   | 192.168.1.1/24           |
+| lo               | Loopback                     | 127.0.0.1                |
+| eth1             | LAN 1-4                      | LAN 1-4                  |
+| phy0-ap0         | 2.4GHz WiFi                  | Disabled                 |
+| phy1-ap0         | 5 GHz WiFi                   | Disabled                 |
+| dsl0             | DSL/VDSL                     | Disabled                 |
+
+==== VLAN Setup ====
+This device has one Ethernet interface with 4 LAN ports. It does not have a fifth eth port for WAN like FB4040
+
+eth0 is connected to the 4 LAN ports as well as the CPU. VLANs can be configured the standard OpenWrt way. The table below shows how they are displayed and numbered in LUCI.
+
+Up to and including at least 22.03.5 - the Switch LAN port ordering is *reversed*. Meaning Physical LAN1 = Switch LAN4 ... Physical LAN4 = Switch LAN1.
+
+
+
+=== Switch Ports ===
+
+^ Port             ^ Switch port   ^
+| CPU (eth0)       | 0             |
+| LAN 1            | 1             |
+| LAN 2            | 2             |
+| LAN 3            | 3             |
+| LAN 4            | 4             |
+
+A working VLAN setup is shown in the image below. This uses LAN 1 as a trunk port that receives tagged VLAN traffic from the network. LAN 2 and LAN 3 are members of VLAN 42 (used for the "Internal" network), LAN 4 is connected to VLAN 99 (used for a "Guest" network)
+
+
+{{ :media:avm:fritzbox_4040:vlan_config_fritzbox_4040.png?nolink |}}
+
+When configuring the VLANs it is very **important to bind the LUCI network interfaces to the correct physical interfaces before applying the settings**. Otherwise you will be locked out of the device and need to factory reset it. 
+
+For the above VLAN example, go to LUCI->Network->Interfaces and check the "Physical Settings" for each one. Following the example above "Internal" would be connected to eth0.42 and "Guest" to eth0.99. When everything works as expected, corresponding WIFI networks can be added as a bridge here later on.
+
+Alternatively, so as not to **break WIFI** (from a factory config) by changing the Physical Settings of the default 'br-lan', you must follow this order:
+  - Under LUCI->Network->Switch, set VLANs, save but don't apply
+  - LUCI->Network->Interfaces->Devices, Configure br-lan, choose the appropriate Switch VLAN
+
+It has been mentioned in the forums that with this SoC, VLAN IDs 1 and 2 are treated specially by the hardware driver (https://forum.openwrt.org/t/vlans-on-ipq40xx-alternative-config-for-fritzbox-4040/41832/6) so it is probably best to avoid VLAN ID 1 and 2 if possible. This may change with updated hardware drivers.
+
+==== Fibre via Ethernet to Physical LAN1 ====
+
+The following assumes that the Physical/Switch LAN port numbering is reversed (as is the case up to 22.03.5).
+
+Some (UK, Zen) providers are upgrading from ADSL to Fibre. Connect the Fibre adaptor to Physical LAN4 (or LAN1 if not reversed), configure the Switch like so (assuming a factory config):
+
+  - Under LUCI->Network->Switch, set VLANs, save but don't apply:
+
+VLAN 10, CPU (eth0) tagged, LAN 1 untagged, LAN 2-4 off <- this is Physical LAN 4
+
+VLAN 20, CPU (eth0) tagged, LAN 1 off, LAN 2-4 untagged <- these are Physical LAN 1-3
+
+Note: VLANs can be any number, except 1 and 2 - 10 and 20 are just an example. 
+
+  - LUCI->Network->Interfaces->Devices, Configure br-lan, choose the appropriate Switch VLAN
+
+  - LUCI->Network->Interfaces->Interfaces, Add new, name: WAN, Prootocol, PPPoE, Device: Switch VLAN: "eth0.10"
+
+Apply config. 
+
+If for some reason your devices Switch ports are not in reverse order, it would be:
+
+VLAN 10, CPU (eth0) tagged, LAN 1 untagged, LAN 2-4 off <- this is Physical LAN 1
+
+VLAN 20, CPU (eth0) tagged, LAN 1 off, LAN 2-4 untagged <- these are Physical LAN 2-4
+
+==== Factory Reset of OpenWrt ====
+
+With LAN cable:
+  - Disconnect power 
+  - connect your LAN cable to any of Physical LAN1-3 (assuming the ports are reversed as in 22.03.5)
+  - Connect power while pressing the WIFI button
+  - You should see the INFO LED flash orange and all LED blink off
+  - Run wireshark to capture LAN traffic
+  - wait about 5 seconds
+  - When you see a UDP packet from 192.168.1.1, to 192.168.1.255 press the WIFI button multiple times (while the Power LED flashes green) until the INFO LED flashes RED rapidly
+  - ssh root@192.168.1.1 ...
+Without LAN cable
+  - Disconnect power 
+  - Connect power while pressing the WIFI button
+  - You should see the INFO LED flash orange and all LED blink off
+  - wait about 5 seconds
+  - press the WIFI button multiple times while the Power LED flashes green until the INFO LED flashes RED rapidly
+  - ssh root@192.168.1.1 ...
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs
+
+The AVM FRITZ!Box 7530 has the following buttons:
+
+^ BUTTON  ^ Event   ^ Hex Code ^
+| WLAN    |  wlan   |    00f7  |
+| DECT    |   ???   |    00a9  |
+| WPS     |   wps   |    0211  |
+
+</WRAP>
+
+===== Hardware =====
+==== Info ====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^AVM$", "cpu": "^Qualcomm IPQ4019$", "model": "^FRITZ!Box 75.*0$"}
+} -->
+
+==== Power consumption ====
+Measured with Peaktech P9035 (CS5460A-BSZ) at the wall power plug, the device consumes 5.5W with both WiFis active and one 1 Gigabit Ethernet link established without much traffic. Power consumption is no different between scaling governors ''ondemand'' (Idle with 200 MHz) or ''performance'' (Idle with 716 MHz).
+
+==== Photos ====
+/* =====>>>>> Standard size for photos: add ?400 to the medialink                                */
+/* When uploading photos, **name them** intelligently. Nobody knows what 20100930_000602.jpg is! */
+/* e.g. {{:media:yourbrand:yourbrand_yourmodel_front.jpg?400|}}                                  */
+/* Thanks, your wiki administration - Oct. 2015 */
+
+//Front://\\
+{{:media:avm:fritzbox_7530:cover_front.jpg?400|}}
+
+//Back://\\
+{{:media:avm:fritzbox_7530:cover_back.jpg?400|}}
+
+==== Opening the case ====
+
+**Note:** This will void your warranty!
+
+  * Remove 4 Torx TR10 screws from the bottom of the case
+  * Lift white cover up from the front (side of the case where the buttons are)
+
+
+//Main PCB://\\
+{{:media:avm:fritzbox_7530:pcb_front.jpg?400|}}
+{{:media:avm:fritzbox_7530:pcb_back.jpg?400|}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:\\
+{{:media:avm:fritzbox_7530:uart.jpg?400|}}
+
+^ Serial connection parameters\\ for AVM FRITZ!Box 7530 | 115200, 8N1 |
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>Format: Log Type - Time(microsec) - Message - Optional Info
+Log Type: B - Since Boot(Power On Reset),  D - Delta,  S - Statistic
+S - QC_IMAGE_VERSION_STRING=AVM_BOOT.BF.3.1.1
+S - IMAGE_VARIANT_STRING=DAABANAZA
+S - OEM_IMAGE_VERSION_STRING=1204
+S - Boot Config, 0x00000025
+S - Reset status Config, 0x00000000
+S - Core 0 Frequency, 0 MHz
+B -       261 - PBL, Start
+B -      1338 - bootable_media_detect_entry, Start
+B -      2608 - bootable_media_detect_success, Start
+B -      2622 - elf_loader_entry, Start
+B -      4037 - auth_hash_seg_entry, Start
+B -      5964 - auth_hash_seg_exit, Start
+B -    110032 - elf_segs_hash_verify_entry, Start
+B -    300425 - PBL, End
+B -         0 - SBL1, Start
+B -    400751 - pm_device_init, Start
+D -         9 - pm_device_init, Delta
+B -    401873 - boot_flash_init, Start
+D -     81093 - boot_flash_init, Delta
+B -    487314 - boot_config_data_table_init, Start
+D -     13959 - boot_config_data_table_init, Delta - (419 Bytes)
+B -    503735 - clock_init, Start
+D -      7449 - clock_init, Delta
+B -    514261 - CDT version:2,Platform ID:8,Major 
+B -    515567 - sbl1_ddr_set_params, Start
+B -    520276 - cpr_init, Start
+D -         4 - cpr_init, Delta
+B -    525354 - Pre_DDR_clock_init, Start
+D -         5 - Pre_DDR_clock_init, Delta
+D -     13022 - sbl1_ddr_set_params, Delta
+B -    538745 - pm_driver_init, Start
+D -         4 - pm_driver_init, Delta
+B -    574203 - sbl1_wait_for_ddr_training, Start
+D -        30 - sbl1_wait_for_ddr_training, Delta
+B -    590303 - Image Verify, Start 0:QSEE
+D -    283790 - QSEE Image Loaded, Delta - (293144 Bytes)
+B -    874407 - Image Verify, Start 0:QSEE_B
+D -    286569 - QSEE Image Loaded, Delta - (293144 Bytes)
+B -   1161336 - Selected TZ0: 10228 (0:QSEE)
+B -   1164395 - Image Load, Start
+D -    286463 - QSEE Image Loaded, Delta - (293144 Bytes)
+B -   1451171 - Image Load, Start
+D -      2029 - SEC Image Loaded, Delta - (2048 Bytes)
+B -   1464732 - Image Verify, Start 0:APPSBL
+D -    131566 - APPSBL Image Loaded, Delta - (125256 Bytes)
+B -   1596619 - Image Verify, Start 0:APPSBL_B
+D -    134863 - APPSBL Image Loaded, Delta - (125256 Bytes)
+B -   1731825 - Selected EVA0: 10733 (0:APPSBL)
+B -   1735672 - Image Load, Start
+D -    133858 - APPSBL Image Loaded, Delta - (125256 Bytes)
+B -   1869846 - QSEE Execution, Start
+D -        56 - QSEE Execution, Delta
+B -   1876026 - SBL1, End
+D -   1878159 - SBL1, Delta
+S - Flash Throughput, 2121 KB/s  (1257667 Bytes,  592859 us)
+S - DDR Frequency, 672 MHz
+NAND corrected 1 @ page: 623
+NAND corrected 1 @ page: 623
+NAND corrected 1 @ page: 623
+NAND corrected 1 @ page: 669
+NAND corrected 1 @ page: 669
+NAND corrected 1 @ page: 669
+NAND corrected 1 @ page: 687
+NAND corrected 1 @ page: 687
+NAND corrected 1 @ page: 687
+NAND corrected 1 @ page: 70F
+NAND corrected 1 @ page: 70F
+NAND corrected 1 @ page: 70F
+NAND corrected 1 @ page: 741
+NAND corrected 1 @ page: 741
+NAND corrected 1 @ page: 741
+NAND corrected 1 @ page: 783
+NAND corrected 1 @ page: 783
+NAND corrected 1 @ page: 783
+NAND corrected 1 @ page: 7B6
+NAND corrected 1 @ page: 7B6
+NAND corrected 1 @ page: 7B6
+NAND corrected 1 @ page: 7C8
+NAND corrected 1 @ page: 7C8
+NAND corrected 1 @ page: 7C8
+NAND corrected 1 @ page: 855
+NAND corrected 1 @ page: 855
+NAND corrected 1 @ page: 855
+NAND corrected 1 @ page: 918
+NAND corrected 1 @ page: 918
+NAND corrected 1 @ page: 918
+
+
+(AVM) EVA Revision: 1.10733
+
+(C) Copyright 2018 AVM Date: Dec 16 2019 Time: 16:18:22 (0) 3 0x0-0x46409
+
+[NAND:] 128MB MACRONIX 2048 Pagesize 128k Blocksize 1024 Blocks HW
+[SYSTEM:] CortexA9 
+
+Eva_AVM >NAND corrected 1 @ page: 1721
+NAND corrected 1 @ page: 1734
+NAND corrected 1 @ page: 182C
+NAND corrected 1 @ page: 18D5
+NAND corrected 1 @ page: 1B04
+NAND corrected 1 @ page: 1BBC
+.........................................................Device Tree Blob for SubRevision 3 not found.
+Using Device Tree Blob of SubRevision 2 
+[    0.000000][0] Booting Linux on physical CPU 0x0
+[    0.000000][0] Linux version 4.4.60 (jenkins@jenkins-ci.avm.de) (gcc version 5.5.0 (Buildroot 2018.11.4-g908cf03c90) ) #1 SMP PREEMPT 2021-04-26
+[    0.000000][0] CPU: ARMv7 Processor [410fc075] revision 5 (ARMv7), cr=10c5387d
+[    0.000000][0] CPU: PIPT / VIPT nonaliasing data cache, VIPT aliasing instruction cache
+[    0.000000][0] Machine model: AVM FRITZ!Box 7530
+[    0.000000][0] Memory policy: Data cache writealloc
+[    0.000000][0] [fw-info] Version 07.28
+[    0.000000][0] [module-mem] Use 0x80e00000-0x81083fff (mapped at c0e00000-c1083fff) for 8 modules
+[    0.000000][0] [module-mem] Using whitelist, set default strict_mode=1
+[    0.000000][0] PERCPU: Embedded 12 pages/cpu @cfdb1000 s19788 r8192 d21172 u49152
+[    0.000000][0] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 60928
+[    0.000000][0] Kernel command line:  clk_ignore_unused audit=1 slub_debug=FL
+[    0.000000][0] audit: enabled (after initialization)
+[    0.000000][0] setup_slub_debug: slub_debug = DEBUG_FREE STORE_USER_LITE
+[    0.000000][0] PID hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000000][0] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000][0] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000][0] Memory: 227708K/245760K available (5793K kernel code, 1276K rwdata, 2028K rodata, 240K init, 2657K bss, 18052K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000][0] Virtual kernel memory layout:
+[    0.000000][0]     vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+[    0.000000][0]     fixmap  : 0xffc00000 - 0xfff00000   (3072 kB)
+[    0.000000][0]     vmalloc : 0xd0800000 - 0xff800000   ( 752 MB)
+[    0.000000][0]     lowmem  : 0xc0000000 - 0xd0000000   ( 256 MB)
+[    0.000000][0]     pkmap   : 0xbfe00000 - 0xc0000000   (   2 MB)
+[    0.000000][0]     modules : 0xbf000000 - 0xbfe00000   (  14 MB)
+[    0.000000][0]       .text : 0xc0208000 - 0xc09ab898   (7823 kB)
+[    0.000000][0]       .init : 0xc09ac000 - 0xc09e8000   ( 240 kB)
+[    0.000000][0]       .data : 0xc09e8000 - 0xc0b27000   (1276 kB)
+[    0.000000][0]        .bss : 0xc0b29000 - 0xc0dc170c   (2658 kB)
+[    0.000000][0] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000][0] Preemptible hierarchical RCU implementation.
+[    0.000000][0] 	Build-time adjustment of leaf fanout to 32.
+[    0.000000][0] NR_IRQS:16 nr_irqs:16 16
+[    0.000000][0] Architected cp15 timer(s) running at 48.00MHz (virt).
+[    0.000000][0] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0xb11fd3bfb, max_idle_ns: 440795203732 ns
+[    0.000000][0] sched_clock: 56 bits at 48MHz, resolution 20ns, wraps every 4398046511096ns
+[    0.000000][0] Switching to timer-based delay loop, resolution 20ns
+[    0.000376][0] Calibrating delay loop (skipped), value calculated using timer frequency.. 96.00 BogoMIPS (lpj=192000)
+[    0.000405][0] pid_max: default: 32768 minimum: 301
+[    0.000561][0] Security Framework initialized
+[    0.000596][0] AppArmor: AppArmor initialized
+[    0.000691][0] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000715][0] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.001486][0] CPU: Testing write buffer coherency: ok
+[    0.001941][0] CPU0: thread -1, cpu 0, socket 0, mpidr 80000000
+[    0.002043][0] Setting up static identity map for 0x802082c0 - 0x80208318
+[    0.036471][1] CPU1: thread -1, cpu 1, socket 0, mpidr 80000001
+[    0.048507][2] CPU2: thread -1, cpu 2, socket 0, mpidr 80000002
+[    0.060578][3] CPU3: thread -1, cpu 3, socket 0, mpidr 80000003
+[    0.060685][0] Brought up 4 CPUs
+[    0.060732][0] SMP: Total of 4 processors activated (384.00 BogoMIPS).
+[    0.060748][0] CPU: All CPU(s) started in SVC mode.
+[    0.061568][0] devtmpfs: initialized
+[    0.075795][0] VFP support v0.3: implementor 41 architecture 2 part 30 variant 7 rev 5
+[    0.076299][0] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.076397][0] futex hash table entries: 1024 (order: 4, 65536 bytes)
+[    0.076974][0] pinctrl core: initialized pinctrl subsystem
+[    0.078887][0] NET: Registered protocol family 16
+[    0.080548][0] DMA: preallocated 2048 KiB pool for atomic coherent allocations
+[    0.081080][0] console [avm0] enabled
+[    0.092493][0] cpuidle: using governor ladder
+[    0.104516][0] cpuidle: using governor menu
+[    0.104554][0] Creating Config Table
+[    0.108940][0] [qcom:qtimer_ipq40xx_probe] WARNING avm,clk-rate not set in dt, using built in default
+[    0.112881][0] [qcom:watchdog] wdt_ipq40xx_probe ...
+[    0.124604][0] hw-breakpoint: debug architecture 0x5 unsupported.
+[    0.127023][0] Read of property:soc_version_minor from node failed
+[    0.127048][0] Read of property:soc_version_major from node failed
+[    0.127064][0] Read of property:cpu_type from node failed
+[    0.127084][0] CPU: unavail, SoC Version: 4294967295.4294967295
+[    0.127265][0] <CORE> glink_init: IPC Logging Disabled
+[    0.128009][0] avm_alloc_page_extension node_extension_table[0] entries=65536 (size=262144)  alloced
+[    0.128048][0] [fdt_get_reserved_mem_resource] mem_count = 6; search name = "avm_reboot_string"
+[    0.128074][0] Reboot Status is: Power-On 
+[    0.129768][0] console [pstore0] enabled
+[    0.129790][0] pstore: Registered ramoops as persistent store backend
+[    0.129813][0] ramoops: attached 0x100000@0x86000000, ecc: 0/0
+[    0.151817][0] SCSI subsystem initialized
+[    0.152349][0] usbcore: registered new interface driver usbfs
+[    0.152471][0] usbcore: registered new interface driver hub
+[    0.152629][0] usbcore: registered new device driver usb
+[    0.154773][0] Advanced Linux Sound Architecture Driver Initialized.
+[    0.155762][0] AVM PA for Linux version 4.4.60 (jenkins@jenkins-ci.avm.de) (gcc version 5.5.0 (Buildroot 2018.11.4-g908cf03c90) ) #1 SMP PREEMPT 2021-04-26
+[    0.155762][0]  (early init)
+[    0.156211][0] NET: Registered protocol family 8
+[    0.156239][0] NET: Registered protocol family 20
+[    0.156645][0] TZ-pin nr 15 reprioritized to 60
+[    0.156678][0] TZ-pin nr 36 reprioritized to 60
+[    0.156774][0] TZ-pin nr 206 reprioritized to 60
+[    0.156796][0] TZ-pin nr 213 reprioritized to 60
+[    0.156820][0] TZ-pin nr 225 reprioritized to 60
+[    0.156839][0] TZ-pin nr 226 reprioritized to 60
+[    0.156922][0] TZ-pin nr 227 reprioritized to 60
+[    0.156942][0] TZ-pin nr 228 reprioritized to 60
+[    0.156962][0] TZ-pin nr 229 reprioritized to 60
+[    0.156981][0] TZ-pin nr 230 reprioritized to 60
+[    0.157000][0] TZ-pin nr 231 reprioritized to 60
+[    0.157019][0] TZ-pin nr 232 reprioritized to 60
+[    0.157038][0] TZ-pin nr 233 reprioritized to 60
+[    0.157072][0] TZ-pin nr 269 reprioritized to 60
+[    0.157352][2] [AVM_FIQ] FIQ disabled on CPU3 to install new vector!
+[    0.157360][1] [AVM_FIQ] FIQ disabled on CPU2 to install new vector!
+[    0.157394][0] [AVM_FIQ] FIQ disabled on CPU1 to install new vector!
+[    0.157417][0] [AVM_FIQ] FIQ disabled on CPU0 to install new vector!
+[    0.157436][0] [AVM_FIQ] Vector installed!
+[    0.157438][0] Set FIQ handler address
+[    0.157473][1] [AVM_FIQ] FIQ enabled again on CPU2!
+[    0.157480][3] [AVM_FIQ] FIQ enabled again on CPU1!
+[    0.157516][0] [AVM_FIQ] FIQ enabled again on CPU3!
+[    0.157554][0] [AVM_FIQ] FIQ enabled again on CPU0!
+[    0.157556][0] [AVM_FIQ] (Version 1.0)(TZ 10228)
+[    0.157589][0] TZLOG: Buffer allocated
+[    0.157715][0] clocksource: Switched to clocksource arch_sys_counter
+[    0.158480][0] AppArmor: AppArmor Filesystem Enabled
+[    0.160969][0] NET: Registered protocol family 2
+[    0.162313][0] TCP established hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.162377][0] TCP bind hash table entries: 2048 (order: 2, 16384 bytes)
+[    0.162438][0] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.162523][0] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    0.162568][0] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    0.162886][0] avm_pa: try to activate hw accelaration for pid 3 (ipv4) called from avm_pa_dev_pidhandle_register_with_ingress
+[    0.162958][0] NET: Registered protocol family 1
+[    0.163450][0] hw perfevents: enabled with armv7_cortex_a7 PMU driver, 5 counters available
+[    0.166019][0] audit: initializing netlink subsys (enabled)
+[    0.166114][0] audit: type=2000 audit(0.163:1): initialized
+[    0.194405][0] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.195077][0] ANTFS Module: Version 2.46
+[    0.195382][0] jffs2: version 2.2 (NAND) (SUMMARY) (ZLIB) (LZO) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.198675][0] fuse init (API version 7.23)
+[    0.205004][0] Key type asymmetric registered
+[    0.205045][0] Asymmetric key parser 'x509' registered
+[    0.205116][0] io scheduler noop registered
+[    0.205145][0] io scheduler deadline registered (default)
+[    0.209255][0] 40000000.pci supply vdda not found, using dummy regulator
+[    0.209376][0] 40000000.pci supply vdda_phy not found, using dummy regulator
+[    0.209453][0] 40000000.pci supply vdda_refclk not found, using dummy regulator
+[    0.209963][0] PCI host bridge /soc/pci@40000000 ranges:
+[    0.210013][0]    IO 0x40200000..0x402fffff -> 0x40200000
+[    0.210046][0]   MEM 0x48000000..0x57ffffff -> 0x48000000
+[    0.375237][0] qcom-pcie 40000000.pci: link up
+[    0.375570][0] qcom-pcie 40000000.pci: PCI host bridge to bus 0000:00
+[    0.375604][0] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    0.375633][0] pci_bus 0000:00: root bus resource [io  0x0000-0xfffff] (bus address [0x40200000-0x402fffff])
+[    0.375660][0] pci_bus 0000:00: root bus resource [mem 0x48000000-0x57ffffff]
+[    0.376252][0] PCI: bus0: Fast back to back transfers disabled
+[    0.377552][0] PCI: bus1: Fast back to back transfers disabled
+[    0.377766][0] pci 0000:00:00.0: BAR 8: assigned [mem 0x48000000-0x487fffff]
+[    0.377799][0] pci 0000:00:00.0: BAR 0: assigned [mem 0x48800000-0x48800fff]
+[    0.377837][0] pci 0000:01:00.0: BAR 0: assigned [mem 0x48000000-0x487fffff]
+[    0.377878][0] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    0.377905][0] pci 0000:00:00.0:   bridge window [mem 0x48000000-0x487fffff]
+[    0.378322][0] pcieport 0000:00:00.0: Signaling PME through PCIe PME interrupt
+[    0.378349][0] pci 0000:01:00.0: Signaling PME through PCIe PME interrupt
+[    0.383973][0] glink_loopback_server_init: IPC Logging disabled
+[    0.385828][0] NET: Registered protocol family 27
+[    0.385860][0] IPC_RTR: ipc_router_create_log_ctx: IPC Logging disabled
+[    0.385896][0] qmi_log_init: IPC Logging disabled
+[    0.385915][0] qmi_log_init: IPC Logging disabled
+[    0.386307][0] tcsr 194b000.tcsr: setting usb hs phy mode select = e700e7
+[    0.386397][0] tcsr 1953000.ess_tcsr: setting ess interface select = 0
+[    0.386490][0] tcsr 1949000.tcsr: setting wifi_glb_cfg = 41000000
+[    0.386601][0] tcsr 1957000.tcsr: setting wifi_noc_memtype_m0_m2 = 2222222
+[    0.386910][0] TZ Log : Will warn on Access Violation, as paniconaccessviolation is not set
+[    0.388126][0] msm_serial 78af000.serial: msm_serial: detected port #0
+[    0.388280][0] msm_dectuart_probe: set dectuart_port to ttyMSM0
+[    0.388344][0] msm_serial 78af000.serial: uartclk = 1843200
+[    0.388432][0] 78af000.serial: ttyMSM0 at MMIO 0x78af000 (irq = 24, base_baud = 115200) is a MSM
+[    0.388478][0] msm_serial: console setup on port #0
+[    1.396522][0] console [ttyMSM0] enabled
+[    1.401836][0] msm_serial: driver initialized
+[    1.405630][0] msm_serial_hsl_init: driver initialized
+[    1.410252][0] [loadcontrol] set auto - scale=1
+[    1.414587] [avm] configured: watchdog event debug 
+[    1.423825][0] AVM_WATCHDOG: Watchdog Driver for AR7 Hardware (Version 1.0)
+[    1.424218][0] [qcom:watchdog] ar7wdt_hw_init...
+[    1.430898][0] [avm_request_fiq_on] Virtual IRQ numbers are not supported. Use HWIRQ (35) for requested IRQ (25)
+[    1.435698][0] [register_wdt_bark_irq] watchdog as fastirq(35) on all cpus registered with its default prio
+[    1.445810][0] [avm_request_fiq_on] Forcing HW-IRQ 36 instead
+[    1.455295][0] [register_wdt_bark_irq] watchdog as fastirq(36) on all cpus registered with highest prio
+[    1.461172][0] [avm_request_fiq_on] Forcing HW-IRQ 213 instead
+[    1.470399][0] [register_secure_wdt_bark_irq] secure watchdog as fastirq(213) on all cpus registered with highest prio
+[    1.476363][0] [qcom:ar7wdt_hw_init] Wdt bark time: 320000, bite time: 640000
+[    1.486978][0] [qcom:ar7wdt_hw_init] Secure watchdog: bark: 20s, bite time: 40s
+[    1.494404][0] Register push button event to receive the set_factory_kernel event
+[    1.514190][0] AVM Simple Profiling enabled Version 3.0
+[    1.514243][0] [simple-profiling]:4 performance counters implemented
+[    1.518290][0] [simple-profiling]all cpus:performance-mode: round-robin
+[    1.524892][0] [simple-profiling]all cpus:performance-mode: round-robin
+[    1.531216][0] [simple-profiling]all cpus:performance-mode: round-robin
+[    1.537809][0] [simple-profiling]all cpus:performance-mode: round-robin
+[    1.545594][0] avm_net_trace: Up and running.
+[    1.554431][0] loop: module loaded
+[    1.556648][0] zram: Added device: zram0
+[    1.561296][0] nand: device found, Manufacturer ID: 0xc2, Chip ID: 0xf1
+[    1.562902][0] nand: Macronix MX30LF1G18AC
+[    1.569210][0] nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+[    1.573411][0] [TFFS3_Register_Panic_CB] registering panic callback for mtd qcom_nand.0
+[    1.581347][0] 5 ofpart partitions found on MTD device qcom_nand.0
+[    1.589093][0] Creating 5 MTD partitions on "qcom_nand.0":
+[    1.595343][0] 0x000000b00000-0x000000f00000 : "kernel"
+[    1.606738][0] 0x000000000000-0x0000002c0000 : "urlader"
+[    1.611385][0] 0x0000002c0000-0x000000b00000 : "nand-tffs"
+[    1.621445][0] 0x000000f00000-0x000001300000 : "reserved-kernel"
+[    1.627358][0] 0x000001300000-0x000008000000 : "ubi"
+[    1.738695][0] libphy: Fixed MDIO Bus: probed
+[    1.739456][0] qca-mdio 90000.mdio: Could not find phy-reset-gpio, idx 0
+[    1.742323][0] libphy: qca_mdio: probed
+[    1.751399][0] qca-mdio 90000.mdio: qca-mdio driver was registered
+[    1.752541][0] tun: Universal TUN/TAP device driver, 1.6
+[    1.758702][0] tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+[    2.071233][0] i2c /dev entries driver
+[    2.073477][0] sdhci: Secure Digital Host Controller Interface driver
+[    2.073948][0] sdhci: Copyright(c) Pierre Ossman
+[    2.080434][0] sdhci-pltfm: SDHCI platform and OF driver helper
+[    2.118716][0] intf_tdm_probe: ena: dma-tx-channel=0 stereo-tx-port=0 ena: dma-rx-channel=7 stereo-rx-port=3
+[    2.118910][0] AVM PA for Linux Linux version 4.4.60 (jenkins@jenkins-ci.avm.de) (gcc version 5.5.0 (Buildroot 2018.11.4-g908cf03c90) ) #1 SMP PREEMPT 2021-04-26
+[    2.118910][0]  (late init)
+[    2.128423][0] gre: GRE over IPv4 demultiplexor driver
+[    2.146725][0] NET: Registered protocol family 10
+[    2.152073][0] avm_pa: try to activate hw accelaration for pid 4 (ipv6) called from avm_pa_dev_pidhandle_register_with_ingress
+[    2.154716][0] sit: IPv6 over IPv4 tunneling driver
+[    2.166940][0] NET: Registered protocol family 17
+[    2.171026][0] Bridge broadcast ratelimiter registered
+[    2.175489][0] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    2.180572][0] Bridge firewalling registered
+[    2.193327][0] KOAM is loaded successfully.
+[    2.197866][0] l2tp_core: L2TP core driver, V2.0
+[    2.201674][0] l2tp_ip: L2TP IP encapsulation support (L2TPv3)
+[    2.206889][0] l2tp_netlink: L2TP netlink interface
+[    2.212263][0] l2tp_eth: L2TP ethernet pseudowire support (L2TPv3)
+[    2.216984][0] l2tp_ip6: L2TP IP encapsulation support for IPv6 (L2TPv3)
+[    2.223537][0] 8021q: 802.1Q VLAN Support v1.8
+[    2.230240][0] Registering SWP/SWPB emulation handler
+[    2.234379][0] [fdt_get_reserved_mem_resource] mem_count = 6; search name = "avm_sbl_boot_string"
+[    2.239462][0] SBL Boot Info Version 1204 Boot TZ 0 Boot Eva 0
+[    2.248303] TZ0 Version 10228 
+[    2.254027][0] TZ1 Version 10228
+[    2.257128][0] EVA0 Version 10733
+[    2.260449][0] EVA1 Version 10733
+[    2.263809][0] [avm_request_fiq_on] Using virtual IRQ (250)
+[    2.267006][0] [avm_request_fiq_on] Using virtual IRQ (251)
+[    2.272380][0] [avm_request_fiq_on] Using virtual IRQ (252)
+[    2.277935][0] [avm_request_fiq_on] Using virtual IRQ (253)
+[    2.283653][0] fastirq_to_linux_ipi_init: successfully installed irq=254
+[    2.289172][0] fastirq_to_linux_ipi_init: successfully installed irq=255
+[    2.296417][0] fastirq_to_linux_ipi_init: successfully installed irq=256
+[    2.303054][0] fastirq_to_linux_ipi_init: successfully installed irq=257
+[    2.312858][0] Could not find Env 'kernel_args' in the device tree
+[    2.316404][0] [TFFS3_Init] Called.
+[    2.322058][0] [TFFS3_CACHE_Configure] Setting up caching for backend nand
+[    2.325390][0] [TFFS3-CACHE] Caching module for TFFS 3.x
+[    2.332391][0] [TFFS3-NAND] NAND storage backend for TFFS 3.x
+[    2.333156][1] ubi0: attaching mtd4
+[    2.711878][0] random: nonblocking pool is initialized
+[    4.551451][0] [TFFS3-NAND] Initialisation successful, 66/66/66 NAND blocks active, fill rate 8%
+[    4.551745][0] TFFS: tiny flash file system driver. GPL (c) AVM Berlin (Version 3.0)
+[    4.559451][0] Adam2 environment variables API installed.
+[    4.693160][1] ubi0: scanning is finished
+[    4.704227][1] ubi0: attached mtd4 (name "ubi", size 109 MiB)
+[    4.704276][1] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    4.709017][1] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    4.716113][1] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    4.723226][1] ubi0: good PEBs: 869, bad PEBs: 3, corrupted PEBs: 0
+[    4.730256][1] ubi0: user volume: 4, internal volumes: 1, max. volumes count: 128
+[    4.736421][1] ubi0: max/mean erase counter: 4/2, WL threshold: 4096, image sequence number: 1490635380
+[    4.744064][1] ubi0: available PEBs: 0, total reserved PEBs: 869, PEBs reserved for bad PEB handling: 17
+[    4.753297][0] ubi0: background thread "ubi_bgt0d" started, PID 93
+[    4.764803][1] mtd: device 5 (filesystem) set to be root filesystem
+[    4.774074][1] hctosys: unable to open rtc device (rtc0)
+[    4.782047][1] clk: Not disabling unused clocks
+[    4.782105][1] ALSA device list:
+[    4.785391][1]   No soundcards found.
+[    4.793245][1] VFS: Mounted root (squashfs filesystem) readonly on device 31:5.
+[    4.796579][1] devtmpfs: mounted
+[    4.800640][1] Freeing unused kernel memory: 240K (c09ac000 - c09e8000)
+
+starting pid 101, tty '/dev/ttyMSM0': '/etc/boot.d/1'
+modprobe: module hui not found in modules.dep
+[    5.531403][2] led_module: module license '
+[    5.531403][2] (C) Copyright 2012 by AVM
+[    5.531403][2] ' taints kernel.
+[    5.531475][2] Disabling lock debugging due to kernel taint
+[    5.544950][2] [LED] use GPIO 39 for 'gpio_avm_led_power'
+[    5.547109][2] [LED] use GPIO 35 for 'gpio_avm_led_fon'
+[    5.552593][2] [LED] use GPIO 34 for 'gpio_avm_led_wlan'
+[    5.557624][2] [LED] use GPIO 45 for 'gpio_avm_led_connect'
+[    5.563179][2] [LED] use GPIO 633 for 'gpio_avm_led_info'
+[    5.571815][2] [LED] use GPIO 632 for 'gpio_avm_led_info_red'
+[    5.577345][2] [LED] use GPIO 630 for 'gpio_avm_dim_leds'
+[    5.583147][2] [BUTTON] use GPIO 42 for 'gpio_avm_button_wlan'
+[    5.585202][2] [BUTTON] use GPIO 41 for 'gpio_avm_button_connect'
+[    5.590932][2] [BUTTON] use GPIO 43 for 'gpio_avm_button_dect'
+[    5.597215][2] [avm_connect][state_machine_init] starting event worker thread
+[    5.603234][2] led_module: Waiting for event system to be ready...
+[    5.653965][0] [TFFS_Cache] Allocate segement buffer cache (size=2024)
+[    5.654496][0] TFFS Name Table N
+[Supervisor] Info: start disable_ipv6.service
+[Supervisor] Info: start tffs.service
+[Supervisor] Info: disable_ipv6.service exit success
+Jan  1 00:00:06 ar7cfgctl[185]: load_config(ar7): open problem - factory default loaded
+
+Jan  1 00:00:06 ar7cfgctl[191]: load_config(ar7): open problem - factory default loaded
+
+
+Please press Enter to activate this console. Jan  1 00:00:06 ar7cfgctl[203]: load_config(ar7): open problem - factory default loaded
+
+P-Defaults: do nothing
+[Supervisor] Info: tffs.service exit success
+[Supervisor] Info: start untrustedd.service
+00000007.624385 01.01.70/00:00:07 untrusted_api.c:183 Database is empty.
+[Supervisor] Info: start rekey.service
+firmwarecfg config_rekey: nop
+[Supervisor] Info: rekey.service exit success
+[Supervisor] Info: start environment.service
+[Supervisor] Info: environment.service exit success
+[Supervisor] Info: start cortexa9.service
+SBL ACK done
+[TZ-Update]
+mount: mounting proc on /proc failed: Device or resource busy
+Found mibib @ page 524288
+2 TZs stored, updating index 0 first
+[/usr/sbin/tz_update] TZ0 already up to date Version 10228
+[/usr/sbin/tz_update] TZ1 already up to date Version 10228
+... tz not updated
+[Supervisor] Info: cortexa9.service exit success[    9.007408][0] [0]system-load  79% loadavg 0.16 0.3 0.1 - softirqs:4.14% (vchan_complete 34%) pgstat: sum=55284 free=50642 slab=1779 alloc=2168/s fault=1780/s (sleep 1)
+
+[Supervisor] Info: start flash-update.service
+[Supervisor] Info: flash-update.service exit success
+[Supervisor] Info: start oemcheck.service
+[Supervisor] Error: could not start: /etc/boot.d/core/oemcheck
+[Supervisor] execvp returned: No such file or directory
+[Supervisor] Info: oemcheck.service exit error
+[Supervisor] Info: start watchdog.service
+[    9.063588][0] AVM_WATCHDOG: System Init Ueberwachung 120 Sekunden
+[Supervisor] Info: watchdog.service exit success
+[Supervisor] Info: start capi-config.service
+[Supervisor] Info: start udev.service
+[Supervisor] Info: start udevadm.service
+[Supervisor] Info: capi-config.service exit success
+[    9.271747][1] udevd[377]: starting version 3.2.5
+[    9.331936][1] udevd[377]: specified group 'tty' unknown
+[    9.332256][1] udevd[377]: specified group 'dialout' unknown
+[    9.336608][1] udevd[377]: specified group 'kmem' unknown
+[    9.342226][1] udevd[377]: specified group 'input' unknown
+[    9.347535][1] udevd[377]: specified group 'video' unknown
+[    9.352990][1] udevd[377]: specified group 'audio' unknown
+[    9.358537][1] udevd[377]: specified group 'lp' unknown
+[    9.363988][1] udevd[377]: specified group 'disk' unknown
+[    9.369031][1] udevd[377]: specified group 'cdrom' unknown
+[    9.374634][1] udevd[377]: specified group 'tape' unknown
+[    9.382814][1] udevd[377]: starting eudev-3.2.5
+[    9.402041][1] [1]system-load  73% loadavg 0.16 0.3 0.1 - task runtime:21% max:udevd 17%  pgstat: sum=55413 free=49800 slab=2065 alloc=2435/s fault=1985/s (sleep 2)
+[    9.499667][3] vrx518: Intel(R) SmartPHY DSL(VRX518) PCIe EP/ACA Driver - version 2.1.0-k
+[    9.499728][3] vrx518: Copyright (c) 2016 Intel Corporation.
+[    9.512497][3] vrx518 0000:01:00.0: enabling device (0140 -> 0142)
+[    9.893637] ssdk_switch_device_num_init[1027]:INFO:ess-switch dts node number: 1
+[    9.897402] ssdk_dt_get_switch_node[866]:INFO:ess-switch DT exist!
+[    9.904385] ssdk_dt_parse_access_mode[767]:INFO:switch_access_mode: local bus
+[    9.910548] ssdk_dt_parse_access_mode[780]:INFO:switchreg_base_addr: 0xc000000
+[    9.917665] ssdk_dt_parse_access_mode[781]:INFO:switchreg_size: 0x80000
+[    9.924863] ssdk_dt_parse_mac_mode[248]:INFO:mac mode = 0x0
+[    9.931107] ssdk_dt_parse_mac_mode[254]:INFO:mac mode1 doesn't exit!
+[    9.936667] ssdk_dt_parse_mac_mode[263]:INFO:mac mode2 doesn't exit!
+[    9.943002] ssdk_dt_parse_phy_info[521]:INFO:qcom,port_phyinfo DT doesn't exist!
+[    9.949351] ssdk_dt_parse_mdio[618]:INFO:mdio DT exist!
+[    9.956387] ssdk_dt_parse_led[840]:INFO:current dts led_source_num is 0
+[    9.961570] ssdk_dt_parse_psgmii[732]:INFO:ess-psgmii DT exist!
+[    9.968541][1] ssdk_plat_init start
+[    9.970482] ssdk_plat_init[1434]:INFO:Enable ess clk
+[   10.039523] malibu_phy_api_ops_init[2874]:INFO:qca probe malibu phy driver succeeded!
+[   10.046941] regi_init[3888]:INFO:Initializing DESS!!
+[   10.150023][2] [2]system-load  69% loadavg 0.39 0.8 0.3 - task runtime:37% max:udevd 17%  pgstat: sum=55069 free=48272 slab=2199 alloc=2545/s fault=2012/s (sleep 1)
+[   10.777927][3] [3]system-load  66% loadavg 0.39 0.8 0.3 - task runtime:24% max:udevd 24%  pgstat: sum=55069 free=48272 slab=2199 alloc=2416/s fault=1910/s (sleep 2)
+[   11.409736][1] avm_power: [avm_power_temperature] No cpu sensor registered
+[   11.735519] ssdk_switch_register[1860]:INFO:Chip version 0x1401
+[   11.738576] qca_link_polling_select[1516]:INFO:link-polling-required node does not exist
+[   11.744780] ssdk_switch_register[1885]:INFO:polling is selected
+[   11.752501] regi_init[3897]:INFO:Initializing DESS Done!!
+[   11.757459][1] [regi_init] AVM_PA init
+[   11.785626] regi_init[3936]:INFO:qca-ssdk module init succeeded!
+[   11.809362][1] [module-mem] give 0x10000 bytes at c0e01000 to module 'essedma' (0x273000 bytes left)
+[   11.811574][1] Using 4 netdevs
+[   11.818792][1] EDMA  Dev eth0 (0) --> phy mdio 0
+[   11.820474][1] EDMA  Dev eth1 (1) --> phy mdio 1
+[   11.825282][1] EDMA  Dev eth2 (2) --> phy mdio 2
+[   11.829861][1] EDMA  Dev eth3 (3) --> phy mdio 3
+[   11.834696][1] [avm_request_fiq_on] Virtual IRQ numbers are not supported. Use HWIRQ (272) for requested IRQ (78)
+[Supervisor] Info: udevadm.service exit success
+[Supervisor] Info: start piglet.service
+[   11.926069][3] 
+[   11.926069][3] [avm_debug] redirecting kernel-messages (/dev/debug)
+[   11.955299][2] Could not find Env 'kernel_args' in the device tree
+[   11.955379][2] [piglet]use default-settings (2 gpios from hw_config)
+[   12.019261][2] Could not find Env 'ptest' in the device tree
+[   12.019644][2] [piglet]patch_dectfw: patch_adress: a0 max_len: 53 with Version 1 Len: 17
+[   12.019691][2] [piglet]patch_de[   12.030121] 
+[38m
+[piglet]===== shared usage of UART (DECT and CONSOLE) - unusual characters shown
+
+<illegible output removed from log>
+
+
+ctfw: RFPI tag found 032fe7cc10
+[   12.019720][2] [piglet]get_t[   17.769834] 
+[0m
+
+
+
+
+
+[piglet]===== end of shared usage of UART (DECT and CONSOLE) ====
+[0mag_value: tag 9 not found -> ignore
+[   12.019749][2] [piglet]patch_dectfw: dectmode 5
+[   12.020079][2] [piglet]patch_dectfw: d1e13000, totallen = 51637(c9b5) crc=0xd7
+
+[   12.034917][2] [piglet]slow: dect_loader-bootmode
+[   13.123505][2] 
+[   13.436287] *************************
+[   17.743046][1] 
+[   17.769748][1] [piglet]dect_file_process: upload of '/lib/modules/dectfw_secondlevel_441.hex' successfull
+
+[   19.433994][1] [1]system-load  51% loadavg 0.44 0.10 0.3 - task runtime:16% max:modprobe 16%  pgstat: sum=53684 free=47042 slab=2614 alloc=511/s fault=181/s (sleep 2)
+[   19.978017][1] [piglet]TDM: FS: 8000 Hz CLK: 1025720 Hz
+[Supervisor] Info: piglet.service exit success
+[Supervisor] Info: start capi.service
+[Supervisor] Info: start modules-load.service
+[   20.046240][0] cchardevice: loaded
+[   20.117697][3] [module-mem] give 0x59000 bytes at c0e11000 to module 'pcmlink' (0x21a000 bytes left)
+[   20.121609][3] Could not find Env 'kernel_args' in the device tree
+[   20.222027][2] [2]system-load  31% loadavg 0.64 0.15 0.5 - task runtime:9% max:modprobe 3%  pgstat: sum=52899 free=45790 slab=2614 alloc=491/s fault=131/s (sleep 1)
+[   20.331155][2] [module-mem] give 0x135000 bytes at c0e6a000 to module 'isdn_fbox_fon5' (0xe5000 bytes left)
+[   20.339500][2] [capi_oslib]avm_stack_attach: cpu2 -> cpu1
+[   20.391724][1] mbox_dma_init: irq=107 hwirq=191
+[   20.391844][1] [avm_request_fiq_on] Forcing HW-IRQ 191 instead
+[   20.391960][1] mbox_dma_init: 1 0xc065dad4 mbox_dma_irq+0x0/0x498 c0c1372c success
+[   20.568967][2] kdsld: init start (sizeof(struct sk_buff) = 456)
+[   20.569021][2] kdsld: Initialisation of debughandles ...
+[   20.569122][2] kdsld: Initialisation of debughandles [OK]
+[   20.569156][2] kdsld: Initialisation of global ...
+[   20.569637][2] kdsld: Initialisation of global [OK]
+[   20.569670][2] kdsld: Initialisation of procfs ...
+[   20.569780][2] kdsld: Initialisation of procfs [OK]
+[   20.569810][2] kdsld: Initialisation of kmod_debugctl ...
+[   20.569857][2] kdsld: Initialisation of kmod_debugctl [OK]
+[   20.569882][2] kdsld: Initialisation of cenv ...
+[   20.569905][2] kdsld: Initialisation of cenv [OK]
+[   20.569927][2] kdsld: Initialisation of ctimer ...
+[   20.570347][2] kdsld: Initialisation of ctimer [OK]
+[   20.570383][2] kdsld: Initialisation of dsld_setup ...
+[   20.570416][2] kdsld: Initialisation of dsld_setup [OK]
+[   20.570440][2] kdsld: Initialisation of adsl_net ...
+[   20.571651][2] kdsld: Initialisation of adsl_net [OK]
+[   20.571700][2] kdsld: Initialisation of ppptty_net ...
+[   20.572994][2] kdsld: Initialisation of ppptty_net [OK]
+[   20.573049][2] kdsld: Initialisation of ingress_shaping ...
+[   20.574513][2] kdsld: Initialisation of ingress_shaping [OK]
+[   20.574578][2] kdsld: Initialisation of pppdp ...
+[   20.592073][2] kdsld: Initialisation of pppdp [OK]
+[   20.592129][2] kdsld: Initialisation of kmodcmddev ...
+[   20.592192][2] kdsld: Initialisation of kmodcmddev [OK]
+[   20.592223][2] kdsld: Initialisation of kdsldev ...
+[   20.592298][2] kdsld: Initialisation of kdsldev [OK]
+[   20.592331][2] kdsld: Initialisation of kvpnd ...
+[   20.592392][2] kdsld: Initialisation of kvpnd [OK]
+[   20.592424][2] kdsld: Initialisation of kdsluserdev ...
+[   20.592454][2] kdsld: Initialisation of kdsluserdev [OK]
+[   20.592484][2] kdsld: Initialisation of kdsltrafficdev ...
+[   20.592514][2] kdsld: Initialisation of kdsltrafficdev [OK]
+[   20.592539][2] kdsld: Initialisation of kdslmiscdev ...
+[   20.593604][2] kdsld: Initialisation of kdslmiscdev [OK]
+[   20.593639][2] kdsld: Initialisation of packettrace ...
+[   20.593830][2] kdsld: Initialisation of packettrace [OK]
+[   20.593871][2] kdsld: Initialisation of nqos ...
+[   20.595882][2] kdsld: Initialisation of nqos [OK]
+[   20.595938][2] kdsld: Initialisation of http_filter ...
+[   20.595975][2] userman: device registerd (userman_url) with major=234
+[   20.596001][2] kdsld: Initialisation of http_filter [OK]
+[   20.596025][2] kdsld: Initialisation of atmvcchook ...
+[   20.596063][2] kdsld: Initialisation of atmvcchook [OK]
+[   20.596086][2] kdsld: Initialisation of timer ...
+[   20.596129][2] kdsld: Initialisation of timer [OK]
+[   20.596160][2] kdsld: Initialisation of netdevice_notifier ...
+[   20.596237][2] kdsld: Initialisation of netdevice_notifier [OK]
+[   20.596270][2] kdsld: Initialisation of ttychannel_ldisc ...
+[   20.596297][2] kdsld: ttychannel: ldisc 8 registered
+[   20.596321][2] kdsld: Initialisation of ttychannel_ldisc [OK]
+[   20.596347][2] kdsld: Initialisation of guestflt ...
+[   20.596437][2] kdsld: Initialisation of guestflt [OK]
+[   20.596471][2] kdsld: Initialisation of bridgeflt ...
+[   20.596558][2] kdsld: Initialisation of bridgeflt [OK]
+[   20.596594][2] kdsld: Initialisation of krextd ...
+[   20.596621][2] kdsld: Initialisation of krextd:debughandles ...
+[   20.596661][2] kdsld: Initialisation of krextd:debughandles [OK]
+[   20.596691][2] kdsld: Initialisation of krextd:global ...
+[   20.596719][2] kdsld: Initialisation of krextd:global [OK]
+[   20.596750][2] kdsld: Initialisation of krextd:memcache ...
+[   20.598550][2] kdsld: Initialisation of krextd:memcache [OK]
+[   20.598603][2] kdsld: Initialisation of krextd:igmpcompr ...
+[   20.598660][2] kdsld: Initialisation of krextd:igmpcompr [OK]
+[   20.598697][2] kdsld: Initialisation of krextd:krextdev ...
+[   20.598745][2] kdsld: Initialisation of krextd:krextdev [OK]
+[   20.598777][2] kdsld: Initialisation of krextd:krextdev_wland ...
+[   20.598814][2] kdsld: Initialisation of krextd:krextdev_wland [OK]
+[   20.598846][2] kdsld: Initialisation of krextd:netdevice_notifier ...
+[   20.598896][2] kdsld: Initialisation of krextd:netdevice_notifier [OK]
+[   20.598929][2] kdsld: Initialisation of krextd:krextdprocfs ...
+[   20.599049][2] kdsld: Initialisation of krextd:krextdprocfs [OK]
+[   20.599086][2] kdsld: Initialisation of krextd:krextdtimer ...
+[   20.599117][2] kdsld: Initialisation of krextd:krextdtimer [OK]
+[   20.599141][2] kdsld: Initialisation of krextd [OK]
+[   20.599165][2] kdsld: Initialisation of kdsldprocfs ...
+[   20.599223][2] kdsld: Initialisation of kdsldprocfs [OK]
+[   20.599248][2] kdsld: Initialisation of pcp ...
+[   20.600020][2] kdsld: Initialisation of pcp [OK]
+[   20.600058][2] kdsld: Initialisation [OK]
+[   20.693754][1] 6[isdn]PCMLINK:  Codecslots=6 Slics=1 Pots=0 TE=0 NT=0 DECT=4 no HwCross DSP-EC: 0
+modprobe: module qcrypto not found in modules.dep
+[31m[ERROR][0m Failed to load kernel module qcrypto
+[Supervisor] Info: modules-load.service exit success
+[Supervisor] Info: start devnodes.service
+[   21.009190][0] [module-mem] give 0x57000 bytes at c0f9f000 to module 'capi_codec' (0x8e000 bytes left)
+[   21.121649][0] [module-mem] give 0x46000 bytes at c0ff6000 to module 'avm_dect' (0x48000 bytes left)
+[   21.153382][2] 3[DECTDRV_ERR] fpCap ext data queueSize 20, avmTpui 16/390, etsiTpui 406/40
+[Supervisor] Info: capi.service exit success
+[Supervisor] Info: devnodes.service exit success
+[Supervisor] Info: start apparmor.service
+[Supervisor] Info: start filesystem.service
+[   21.439941][0] audit: type=1400 audit(21.435:2): apparmor="STATUS" operation="profile_load" name="/sbin/nqcs" pid=549 comm="dd"
+0+1 records in
+0+1 records out
+[Supervisor] Info: apparmor.service exit success
+[   21.445944][3] UBIFS (ubi0:3): background thread "ubifs_bgt0_3" started, PID 551
+[   21.480913][1] UBIFS (ubi0:3): recovery needed
+[   21.571496][1] UBIFS (ubi0:3): recovery completed
+[   21.571698][1] UBIFS (ubi0:3): UBIFS: mounted UBI device 0, volume 3, name "avm_userdata"
+[   21.571735][1] UBIFS (ubi0:3): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   21.571765][1] UBIFS (ubi0:3): FS size: 11808768 bytes (11 MiB, 93 LEBs), journal size 1015809 bytes (0 MiB, 6 LEBs)
+[   21.571790][1] UBIFS (ubi0:3): reserved for root: 557756 bytes (544 KiB)
+[   21.571820][1] UBIFS (ubi0:3): media format: w4/r0 (latest is w4/r0), UUID 4CABEC6E-4AEF-4BAE-9120-890389532042, small LPT model
+[32m[INFO][0m /dev/ubi0_3 mounted at /var/media/ftp
+[Supervisor] Info: filesystem.service exit success
+[Supervisor] Info: start default-files.service
+TAM: create directory /data/tam
+[   21.760410][1] [avm_power]pm_ressourceinfo_scriptparse: powerdevice_wlan: norm_power_rate=100 act_rate=0 mul=130 div=10 offset=100 NormP=1400 mW -> SumNormP=1400 mW
+[   21.760536][1] [avm_power]pm_ressourceinfo_scriptparse: powerdevice_cpuclock: norm_power_rate=100 act_rate=100 mul=0 div=1 offset=0 NormP=0 mW -> SumNormP=1400 mW
+[   21.760580][1] [avm_power]pm_ressourceinfo_scriptparse: powerdevice_loadrate: norm_power_rate=100 act_rate=25 mul=29 div=10 offset=-17 NormP=273 mW -> SumNormP=1673 mW
+[   21.760620][1] [avm_power]pm_ressourceinfo_scriptparse: powerdevice_dspclock: norm_power_rate=100 act_rate=100 mul=0 div=1 offset=1500 NormP=1500 mW -> SumNormP=3173 mW
+[   21.760665][1] [avm_power]pm_ressourceinfo_scriptparse: powerdevice_systemclock: norm_power_rate=100 act_rate=100 mul=0 div=1 offset=2500 NormP=2500 mW -> SumNormP=5673 mW
+[   21.760710][1] [avm_power]pm_ressourceinfo_scriptparse: powerdevice_dect: norm_power_rate=100 act_rate=0 mul=200 div=78 offset=150 NormP=406 mW -> SumNormP=6079 mW
+[   21.760756][1] [avm_power]pm_ressourceinfo_scriptparse: powerdevice_usb_host: norm_power_rate=900 act_rate=0 mul=5 div=1 offset=0 NormP=4500 mW -> SumNormP=10579 mW
+[   21.760798][1] [avm_power]pm_ressourceinfo_scriptparse: powerdevice_dsl: norm_power_rate=100 act_rate=0 mul=15 div=1 offset=0 NormP=1500 mW -> SumNormP=12079 mW
+[   21.760842][1] [avm_power]pm_ressourceinfo_scriptparse: powerdevice_ethernet: norm_power_rate=2267 act_rate=134217728 mul=1 div=1 offset=50 NormP=2317 mW -> SumNormP=14396 mW
+[Supervisor] Info: default-files.service exit success
+[Supervisor] Info: start config.service
+[Supervisor] Info: start debug.service
+[Supervisor] Info: start sysctl.service
+net.ipv4.tcp_min_snd_mss = 536
+vm.laptop_mode = 2
+vm.dirty_expire_centisecs = 100
+vm.dirty_writeback_centisecs = 100
+[32m[INFO][0m have to stop cat /dev/debug.
+[   21.827559] sysrq: SysRq : Changing Loglevel
+[   21.827628][2] sysrq: Loglevel set to 4
+kernel.panic_on_oops = 1
+vm.panic_on_oom = 2
+kernel.printk = 4
+net.ipv4.ip_forward = 1
+net.ipv4.tcp_min_tso_segs = 100
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+[Supervisor] Info: sysctl.service exit success
+cat: read error: Broken pipe
+[Supervisor] Info: debug.service exit success
+[Supervisor] Info: config.service exit success
+[Supervisor] Info: start avmipcd.service
+[Supervisor] Info: start boxnotify.service
+[Supervisor] Info: start capitcp.service
+[Supervisor] Info: start dsl.service
+[Supervisor] Info: start psupport-init-prenet.service
+[Supervisor] Info: start run_clock.service
+[Supervisor] Info: avmipcd.service exit success
+[Supervisor] Info: start avmnexusd.service
+[Supervisor] Info: start psetd.service
+run_clock demon started
+
+[Supervisor] Info: boxnotify.service exit success
+[Supervisor] Info: psupport-init-prenet.service exit success
+[Supervisor] Info: start net.service
+[Supervisor] Info: run_clock.service exit success
+/etc/ewnw_devfiles.sh: checking /dev files ....
+/etc/ewnw_devfiles.sh: /dev/kdsld already exists
+/etc/ewnw_devfiles.sh: mknod /dev/kvpnd c 242 0
+[Supervisor] Info: capitcp.service exit success
+/etc/ewnw_devfiles.sh: /dev/kdsldptrace0 already exists
+/etc/ewnw_devfiles.sh: /dev/kdsldptrace1 already exists
+/etc/ewnw_devfiles.sh: /dev/kdsldptrace2 already exists
+/etc/ewnw_devfiles.sh: /dev/kdsldptrace3 already exists
+/etc/ewnw_devfiles.sh: /dev/kdsldptrace4 already exists
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace5 c 238 5
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace6 c 238 6
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace7 c 238 7
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace8 c 238 8
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace9 c 238 9
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace10 c 238 10
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace11 c 238 11
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace12 c 238 12
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace13 c 238 13
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace14 c 238 14
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace15 c 238 15
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace16 c 238 16
+/etc/ewnw_devfiles.sh: /dev/kdsldptrace17 already exists
+/etc/ewnw_devfiles.sh: /dev/kdsldptrace18 already exists
+/etc/ewnw_devfiles.sh: /dev/kdsldptrace19 already exists
+/etc/ewnw_devfiles.sh: /dev/kdsldptrace20 already exists
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace21 c 238 21
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace22 c 238 22
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace23 c 238 23
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace24 c 238 24
+Jan  1 00:00:22 avmnexusd[605]: starting ... (normal)
+
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace25 c 238 25
+1970-01-01 00:00:22 avmnexusd[605]: ready (0sec)
+[Supervisor] Info: avmnexusd.service exit success
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace26 c 238 26
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace27 c 238 27
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace28 c 238 28
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace29 c 238 29
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace30 c 238 30
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace31 c 238 31
+/etc/ewnw_devfiles.sh: mknod /dev/kdsldptrace32 c 238 32
+/etc/ewnw_devfiles.sh: mknod /dev/knqos c 237 0
+/etc/ewnw_devfiles.sh: mknod /dev/avmtrackd c 236 0
+/etc/ewnw_devfiles.sh: mknod /dev/avmtrackdquery c 235 0
+/etc/ewnw_devfiles.sh: mknod /dev/bridgeflt c 233 0
+/etc/ewnw_devfiles.sh: mknod /dev/krextd c 232 0
+/etc/ewnw_devfiles.sh: mknod /dev/krextd_wlan c 231 0
+/etc/ewnw_devfiles.sh: /dev files checked
+[Supervisor] Info: psetd.service exit success
+Jan  1 00:00:23 l2tpv3d[872]: starting ... (normal)
+
+1970-01-01 00:00:23 l2tpv3d[872]: ready (0sec)
+Jan  1 00:00:23 l2tpv3d[874]: started.
+
+Jan  1 00:00:23 l2tpv3d[874]: verbose: DISABLED
+
+[dsl sus] dsl line test calib factory file available
+[dsl get xtse] ANNEX=A DSLMODE=0
+[dsl get xtse] setting ADSL Annex A/L/M and VDSL2 oPOTS
+[dsl get xtse] 04 00 04 00 4C 01 04 07
+[dsl sus] AVM MEI diag enabled
+[dsl sus] loaded vr11 tc driver: vrx518_tc.ko
+[dsl sus] starting vr11 dsp...
+[dsl sus] ANNEX=A DSLMODE=0
+[dsl sus] loaded vr11 mei driver: /lib/modules/4.4.60/kernel/drivers/mei/drv_mei_cpe.ko with params: , avmDslDiagEnabled=1
+[dsl sus] loaded vr11 dsl driver: /lib/modules/4.4.60/kernel/drivers/dsl/drv_dsl_cpe_api.ko with params: 
+[dsl sus] created vr11 dsl device node /dev/dsl_vr11/0 (major: 228, minor: 0)
+[dsl sus] created vr11 mei device node /dev/mei_cpe/0 (major: 229, minor: 0)
+[dsl sus] started dsl_control (configuration: -i04_00_04_00_4C_01_04_07 -f/var/dsl/dspfw/vr11-A-dsl.bin -n/etc/dsl/notify/dsl_notify.sh  )
+nohup: appending output to nohup.out
+[dsl sus] started dsl_monitor with rc=0
+[dsl sus] ....vr11 dsp started
+[Supervisor] Info: dsl.service exit success
+[Supervisor] Info: start inetd.service
+[Supervisor] Info: inetd.service exit success
+Jan  1 00:00:24 ctlmgr[884]: pcpc_create_ctx: no pcpserver found
+
+Jan  1 00:00:24 vpnd[946]: /var/flash/vpn.cfg: is empty
+
+Jan  1 00:00:24 vpnd[946]: load_config(vpn): file empty - factory default loaded
+
+Jan  1 00:00:24 vpnd[946]: starting ... (normal)
+
+Jan  1 00:00:24 vpnd[950]: /var/flash/vpn.cfg: is empty
+
+Jan  1 00:00:24 vpnd[950]: load_config(vpn): file empty - factory default loaded
+
+Jan  1 00:00:24 vpnd[950]: [main]: startup ($Revision$$CompileDate: Jul  8 2021 18:26:03 $)
+
+1970-01-01 00:00:24 vpnd[946]: ready (0sec)
+Jan  1 00:00:24 ctlmgr[937]: /var/flash/ahausr.cfg: is empty
+
+Jan  1 00:00:24 ctlmgr[937]: load_config(ahausr): file empty - factory default loaded
+
+Jan  1 00:00:25 upnpd[957]: starting ... (normal)
+
+1970-01-01 00:00:25 upnpd[957]: ready (0sec)
+Jan  1 00:00:27 multid[965]: /var/flash/vpn.cfg: is empty
+
+Jan  1 00:00:27 multid[965]: load_config(vpn): file empty - factory default loaded
+
+Jan  1 00:00:27 multid[965]: startup ($Revision$$CompileDate: Jul  8 2021 18:26:03 $)
+
+Jan  1 00:00:27 multid[965]: starting ... (normal)
+
+Jan  1 00:00:27 multid[971]: HWRevision=236
+
+Jan  1 00:00:27 multid[971]: opt_without_tr069discover=0, tr069disc=1, AR7CFG->vinax_hsi_lan_ports=(null), multid.tcom_targetarch=0, is_eth_switch_installed()=0, multid.cpmac_no_ata_possible=0, pppoeiface=ptm0
+
+Jan  1 00:00:27 multid[971]: bridge_configured: nqos_bridge_active=0, bridge_port_set=0x0, igmp_flt_portset=0x0
+
+Jan  1 00:00:27 ctlmgr[937]: SAR: trigger avm_event_id_dsl_get ts=27:828841786 => now = 27828 ms. last = 0 ms
+
+
+Jan  1 00:00:27 ctlmgr[937]: SAR: avm_event_id_dsl_get read data ts=27829
+
+
+Jan  1 00:00:27 ctlmgr[937]: SAR: avm_event_id_dsl_get read data req_ts=27828 now_ts=27828
+
+
+Jan  1 00:00:28 ctlmgr[937]: dsl_utils_get_dslparams: Config from dsl_manager: ControlBits 0x00000000 DsMargin 0 DsINP 0 RFI_mode 0 UsNoiseBits 0 DisableUs1WhenDs1LatnIsAboveDb 0 DisableUs2WhenDs1LatnIsAboveDb 0
+
+
+Jan  1 00:00:28 ctlmgr[937]: SAR: trigger avm_event_id_dsl_get ts=28:330792681 => now = 28330 ms. last = 27828 ms
+
+
+Jan  1 00:00:28 ctlmgr[937]: dsl_utils_get_dslparams: data newer than 1500 msec or ts==0 (ts=27828)
+
+
+Jan  1 00:00:28 multid[971]: flood ratelimiting on bridge lan is supported
+
+
+Jan  1 00:00:28 multid[971]: list[0]=lan
+
+Jan  1 00:00:28 multid[971]: list[0]=lan
+
+Jan  1 00:00:28 multid[971]: list[0]=lan
+
+Jan  1 00:00:28 multid[971]: list[0]=lan
+
+Jan  1 00:00:29 ctlmgr[937]: WLANLIB: wlan_plugin_init:868: prj revision 0x1c35e1c
+
+Jan  1 00:00:29 ctlmgr[937]: WLANLIB: wlan_libs_nexus_init:260: Get Nexus info failed: try again later.
+
+Jan  1 00:00:29 multid[971]: flood ratelimiting on bridge guest is supported
+
+
+Jan  1 00:00:29 multid[971]: mrouter: using IGMPv3 for upstream interface dsl
+
+Jan  1 00:00:29 multid[971]: mrouter: using IGMPv3 for other interfaces
+
+Jan  1 00:00:29 multid[971]: resolv.conf with 127.0.0.1 written
+
+Jan  1 00:00:29 multid[971]: DHCPD on lan
+
+Jan  1 00:00:29 multid[971]: DHCPD on lan:0 skipped, is virtual interface
+
+Jan  1 00:00:29 multid[971]: DHCPD on guest
+
+Jan  1 00:00:29 multid[971]: open(/dev/userman) - No such file or directory (2)
+
+Jan  1 00:00:29 multid[971]: open(/dev/userman) - No such file or directory (2)
+
+Jan  1 00:00:29 multid[971]: open(/dev/userman) - No such file or directory (2)
+
+Jan  1 00:00:29 multid[971]: open(/dev/userman) - No such file or directory (2)
+
+Jan  1 00:00:29 multid[971]: open(/dev/userman) - No such file or directory (2)
+
+Jan  1 00:00:29 multid[971]: open(/dev/userman) - No such file or directory (2)
+
+Jan  1 00:00:29 multid[971]: open(/dev/userman) - No such file or directory (2)
+
+Jan  1 00:00:29 multid[971]: open(/dev/userman) - No such file or directory (2)
+
+Jan  1 00:00:29 multid[971]: Warning: dnsd_start: no dns server added
+
+Jan  1 00:00:29 multid[971]: interface lo up.
+
+Jan  1 00:00:29 multid[971]: interface lo carrier up
+
+Jan  1 00:00:29 multid[971]: list[0]=lan
+
+Jan  1 00:00:29 multid[971]: list[1]=guest
+
+Jan  1 00:00:29 multid[971]: br_get_interfaces(guest)=0
+
+Jan  1 00:00:29 multid[971]: interface eth0 up.
+
+Jan  1 00:00:29 multid[971]: list[0]=lan
+
+Jan  1 00:00:29 multid[971]: list[1]=guest
+
+Jan  1 00:00:29 multid[971]: br_get_interfaces(guest)=0
+
+Jan  1 00:00:29 multid[971]: interface eth1 up.
+
+Jan  1 00:00:29 multid[971]: list[0]=lan
+
+Jan  1 00:00:29 multid[971]: list[1]=guest
+
+Jan  1 00:00:29 multid[971]: br_get_interfaces(guest)=0
+
+Jan  1 00:00:29 multid[971]: interface eth2 up.
+
+Jan  1 00:00:29 multid[971]: list[0]=lan
+
+Jan  1 00:00:29 multid[971]: list[1]=guest
+
+Jan  1 00:00:29 multid[971]: br_get_interfaces(guest)=0
+
+Jan  1 00:00:29 multid[971]: interface eth3 up.
+
+Jan  1 00:00:29 multid[971]: DHCPD on lan
+
+Jan  1 00:00:29 multid[971]: interface lan up.
+
+Jan  1 00:00:29 multid[971]: DHCPD on lan
+
+Jan  1 00:00:29 multid[971]: mrouter: lan: vif 0 if_index 11
+
+Jan  1 00:00:29 multid[971]: interface guest up.
+
+Jan  1 00:00:29 multid[971]: DHCPD on guest
+
+Jan  1 00:00:29 multid[971]: mrouter: lan: vif 0 if_index 11
+
+Jan  1 00:00:29 multid[971]: mrouter: guest: vif 1 if_index 12
+
+Jan  1 00:00:29 multid[971]: verbose: DISABLED
+
+1970-01-01 00:00:29 multid[965]: ready (2sec)
+Jan  1 00:00:30 ddnsd[1058]: startup ($Revision$$CompileDate: Jul  8 2021 18:26:03 $)
+
+Jan  1 00:00:30 ddnsd[1058]: starting ... (normal)
+
+Jan  1 00:00:30 ddnsd[1062]: DDNS: no valid accounts
+
+Jan  1 00:00:30 ddnsd[1062]: [1062] Start failed
+
+
+1970-01-01 00:00:30 ddnsd[1058]: [1058]: Daemon start failed (0sec)
+FATAL: ddnsd not running after started
+Jan  1 00:00:30 pcpd[1064]: startup (Jul  8 2021 18:26:03)
+
+Jan  1 00:00:30 pcpd[1064]: starting ... (normal)
+
+Jan  1 00:00:30 pcpd[1066]: Local v4 address: 192.168.1.1
+
+Jan  1 00:00:30 pcpd[1066]: verbose: DISABLED
+
+1970-01-01 00:00:30 pcpd[1064]: ready (0sec)
+Jan  1 00:00:30 ctlmgr[937]: WLANLIB: wcsi_socket_connect:313: Establishing RPC connection failed with TIMEOUT
+
+rc.wlan: Start WLAN...
+WLAND:[01078]:00:00.30/[0030.860]:[VER]Registered new module default, DEFAULT, 0
+WLAND:[01078]:00:00.30/[0030.860]:[VER]Registered new module global, GLOBAL, 0
+WLAND:[01078]:00:00.30/[0030.860]:[ALW]BUILD: May 31 2021, 18:38:39
+Jan  1 00:00:31 dsld[1081]: set no arch
+
+Jan  1 00:00:31 dsld[1081]: set no arch
+
+Jan  1 00:00:31 dsld[1081]: startup ($Revision$$CompileDate: Jul  8 2021 18:26:03 $)
+
+ctlmgr stderr: tar: ./voip_providers: not found in archive
+Jan  1 00:00:31 dsld[1081]: starting ... (normal)
+
+Jan  1 00:00:31 dsld[1091]: DSL Mac 3c:a6:2f:0a:77:e8
+
+Jan  1 00:00:31 dsld[1091]: VOIP Mac 3c:a6:2f:0a:77:e9
+
+Jan  1 00:00:31 dsld[1091]: VCC2 Mac 3c:a6:2f:0a:77:ea
+
+Jan  1 00:00:31 dsld[1091]: VCC3 Mac 3c:a6:2f:0a:77:ec
+
+Jan  1 00:00:31 dsld[1091]: sync_dsl is igd_device
+
+Jan  1 00:00:31 dsld[1091]: interface lo carrier_up.
+
+Jan  1 00:00:31 dsld[1091]: egress shaping with fq_codel
+
+Jan  1 00:00:31 dsld[1091]: ingress shaping with fq_codel
+
+Jan  1 00:00:31 dsld[1091]: verbose: DISABLED
+
+1970-01-01 00:00:31 dsld[1081]: ready (0sec)
+Jan  1 00:00:31 ctlmgr[937]: /var/flash/vpn.cfg: is empty
+
+Jan  1 00:00:31 ctlmgr[937]: load_config(vpn): file empty - factory default loaded
+
+Jan  1 00:00:31 cloudmsgd[1106]: starting ... (normal)
+
+cloudmsgd not running after started
+Jan  1 00:00:31 ctlmgr[937]: /var/flash/vpn.cfg: is empty
+
+Jan  1 00:00:31 ctlmgr[937]: load_config(vpn): file empty - factory default loaded
+
+Jan  1 00:00:31 deviceinfod[1121]: starting ... (normal)
+
+1970-01-01 00:00:31 deviceinfod[1121]: ready (0sec)
+[Supervisor] Info: net.service exit success
+[Supervisor] Info: start aha.service
+[Supervisor] Info: start kpid.service
+[Supervisor] Info: start meshd.service
+[Supervisor] Info: start plcd.service
+[Supervisor] Info: start ptest_release.service
+[Supervisor] Info: start usb.service
+mount: mounting usbfs on /proc/bus/usb failed: No such file or directory
+kpid: Sending section usb failed with error -1:
+sysfs_usb 1 {"sv":"gen/v1","kpi":{}}
+kpid: Sending section hwpa failed with error -1:
+sysfs_hwpa 1 {"sv":"gen/v1","kpi":{}}
+kpid: Sending section system failed with error -1:
+sysfs_system 1 {"sv":"gen/v1","kpi":{"chip":{"value0":536873337,"value1":0,"value2":63925803,"value3":3094896896,"value4":45352397,"value5":68814382,"value6":0,"value7":0},"temperatures":{}}}
+[Supervisor] Info: ptest_release.service exit success
+[Supervisor] Info: start configd.service
+[Supervisor] Info: start voip.service
+Jan  1 00:00:32 plcd[1128]: event=Opening the HomePlug library. str1= str2= str3=
+
+Jan  1 00:00:32 plcd[1128]: event=Service started. str1= str2= str3=
+
+[Supervisor] Info: configd.service exit success
+starting XHCI driver
+XHCI USB 3.0 Host with port_config:0 started
+XHCI Platform Driver started
+[Supervisor] Info: usb.service exit success
+Jan  1 00:00:33 telefon[1208]: use clock_gettime(CLOCK_MONOTONIC)!
+
+Jan  1 00:00:33 telefon[1208]: No S0NT!
+
+Jan  1 00:00:33 telefon[1208]: NoOldMSNNames
+
+telefon: SIGCHLD PID 1309 received!
+Jan  1 00:00:33 telefon[1208]: INFO No MOH file '/data/tam/fx_moh' !
+
+Jan  1 00:00:33 meshd[1127]: LOG: main: Hello from meshd.
+
+Jan  1 00:00:33 meshd[1127]: starting ... (normal)
+
+Jan  1 00:00:33 meshd[1333]: verbose: DISABLED
+
+Jan  1 00:00:33 plcd[1128]: event=Client connected. str1= str2= str3=
+
+1970-01-01 00:00:33 meshd[1127]: ready (0sec)
+[Supervisor] Info: meshd.service exit success
+[Supervisor] Info: start meshd_config.service
+[Supervisor] Info: meshd_config.service exit success
+telefon: SIGCHLD PID 1389 received!
+Jan  1 00:00:34 voipd[1335]: starting ... (normal)
+
+Jan  1 00:00:35 voipd[1400]: internet: dns_context: internet (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: internet: dns_context: ipv4 only, dns, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: internet: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: internet: dns_context: 127.0.0.1 0
+
+Jan  1 00:00:35 voipd[1400]: internet: if dsl (14) nr 0 connection 0
+
+Jan  1 00:00:35 voipd[1400]: internet: dnscctx internet stay online 1 natstate normal
+
+Jan  1 00:00:35 voipd[1400]: internet: ipv4 no sync
+
+Jan  1 00:00:35 voipd[1400]: internet: stackmode_ipv4
+
+Jan  1 00:00:35 voipd[1400]: internet: dns_context: internet (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: internet: dns_context: ipv4 only, dns, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: internet: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: internet: dns_context: 127.0.0.1 0
+
+Jan  1 00:00:35 voipd[1400]: voip: dns_context: voip (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: voip: dns_context: ipv4 only, sipdns, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: voip: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: voip: dns_context: 127.0.0.1 0
+
+Jan  1 00:00:35 voipd[1400]: voip: if dsl (14) nr -1 connection 0
+
+Jan  1 00:00:35 voipd[1400]: voip: dnscctx voip stay online 1 natstate normal
+
+Jan  1 00:00:35 voipd[1400]: voip: ipv4 no sync
+
+Jan  1 00:00:35 voipd[1400]: voip: stackmode_ipv4
+
+Jan  1 00:00:35 voipd[1400]: voip: dns_context: voip (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: voip: dns_context: ipv4 only, sipdns, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: voip: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: voip: dns_context: 127.0.0.1 0
+
+Jan  1 00:00:35 voipd[1400]: mta: if mta0 (0) netmark 2
+
+Jan  1 00:00:35 voipd[1400]: mta: dnscctx mta stay online 1 natstate no NAT
+
+Jan  1 00:00:35 voipd[1400]: mta: ipv4 no sync
+
+Jan  1 00:00:35 voipd[1400]: mta: ipv6 no sync
+
+Jan  1 00:00:35 voipd[1400]: mta: stackmode_dual
+
+Jan  1 00:00:35 voipd[1400]: mta: dns_context: mta (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: mta: dns_context: ipv4 only, none, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: homenet (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: ipv4 only, none, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: 127.0.0.1 0
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: from 127.0.0.1
+
+Jan  1 00:00:35 voipd[1400]: homenet: if lan (11)
+
+Jan  1 00:00:35 voipd[1400]: homenet: dnscctx homenet stay online 1 natstate no NAT
+
+Jan  1 00:00:35 voipd[1400]: homenet: ipv4 connected
+
+Jan  1 00:00:35 voipd[1400]: homenet: stackmode_ipv4
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: homenet (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: ipv4 only, none, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: 127.0.0.1 0
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: from 127.0.0.1
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: homenet (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: ipv4 only, none, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: 127.0.0.1 0
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: from 127.0.0.1
+
+Jan  1 00:00:35 voipd[1400]: vpn: if dsl (14) nr 0 connection 0
+
+Jan  1 00:00:35 voipd[1400]: vpn: dnscctx homenet stay online 1 natstate normal
+
+Jan  1 00:00:35 voipd[1400]: vpn: ipv4 no sync
+
+Jan  1 00:00:35 voipd[1400]: vpn: stackmode_ipv4
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: homenet (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: ipv4 only, none, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: 127.0.0.1 0
+
+Jan  1 00:00:35 voipd[1400]: homenet: dns_context: from 127.0.0.1
+
+Jan  1 00:00:35 voipd[1400]: tunnel: dns_context: tunnel (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: tunnel: dns_context: ipv4 only, none, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: tunnel: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: tunnel: dns_context: 127.0.0.1 0
+
+Jan  1 00:00:35 voipd[1400]: tunnel: if tun0 (0)
+
+Jan  1 00:00:35 voipd[1400]: tunnel: dnscctx tunnel stay online 1 natstate no NAT
+
+Jan  1 00:00:35 voipd[1400]: tunnel: ipv4 no sync
+
+Jan  1 00:00:35 voipd[1400]: tunnel: ipv6 no sync
+
+Jan  1 00:00:35 voipd[1400]: tunnel: stackmode_dual
+
+Jan  1 00:00:35 voipd[1400]: tunnel: dns_context: tunnel (ref 1)
+
+Jan  1 00:00:35 voipd[1400]: tunnel: dns_context: ipv4 only, none, 0, 2/5 300, 1
+
+Jan  1 00:00:35 voipd[1400]: tunnel: dns_context: 1 name server:
+
+Jan  1 00:00:35 voipd[1400]: tunnel: dns_context: 127.0.0.1 0
+
+1970-01-01 00:00:35 voipd[1335]: ready (1sec)
+[Supervisor] Info: voip.service exit success
+[Supervisor] Info: start voipkpid.service
+[Supervisor] Info: voipkpid.service exit success
+[Supervisor] Info: all Services loaded.
+Jan  1 00:00:35 telefon[1325]: NoOldMSNNames
+
+Jan  1 00:00:35 telefon[1325]: Stop DECT
+
+[Supervisor] Info: start smb2.service
+Jan  1 00:00:35 meshd[1333]: wlancsi_control: Request for get_roles failed. Task status is: TIMEOUT
+
+Jan  1 00:00:35 meshd[1333]: wlancsi_control: Get roles failed! (Event registration will fail as well.): task timeout: Connection timed out
+
+[Supervisor] Info: smb2.service exit success
+Jan  1 00:00:38 plcd[1128]: event=Client connected. str1= str2= str3=
+
+Jan  1 00:00:46 upnpd[959]: initlib libtcloud
+
+telefon: SIGCHLD PID 1410 received!
+telefon: SIGCHLD PID 1397 received!
+telefon: SIGCHLD PID 1798 received!
+psetd: Error: Could not send KPIs via avmipc_msg_send()
+telefon: SIGCHLD PID 1799 received!
+Jan  1 00:03:04 telefon[1325]: avmipc_send_kpi exited with status code 255
+
+
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 5.4.188 (builder@buildhost) (gcc version 8.4.0 (OpenWrt GCC 8.4.0 r16554-1d4dea6d4f)) #0 SMP Sat Apr 16 12:59:34 2022
+[    0.000000] CPU: ARMv7 Processor [410fc075] revision 5 (ARMv7), cr=10c5387d
+[    0.000000] CPU: div instructions available: patching division code
+[    0.000000] CPU: PIPT / VIPT nonaliasing data cache, VIPT aliasing instruction cache
+[    0.000000] OF: fdt: Machine model: AVM FRITZ!Box 7530
+[    0.000000] Memory policy: Data cache writealloc
+[    0.000000] On node 0 totalpages: 65024
+[    0.000000]   Normal zone: 576 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 65024 pages, LIFO batch:15
+[    0.000000] percpu: Embedded 15 pages/cpu s30156 r8192 d23092 u61440
+[    0.000000] pcpu-alloc: s30156 r8192 d23092 u61440 alloc=15*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 [0] 2 [0] 3 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 64448
+[    0.000000] Kernel command line: 
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 248620K/260096K available (5794K kernel code, 189K rwdata, 876K rodata, 1024K init, 241K bss, 11476K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] NR_IRQS: 16, nr_irqs: 16, preallocated irqs: 16
+[    0.000000] random: get_random_bytes called from 0xc0a00cfc with crng_init=0
+[    0.000000] arch_timer: cp15 timer(s) running at 48.00MHz (virt).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0xb11fd3bfb, max_idle_ns: 440795203732 ns
+[    0.000007] sched_clock: 56 bits at 48MHz, resolution 20ns, wraps every 4398046511096ns
+[    0.000021] Switching to timer-based delay loop, resolution 20ns
+[    0.000231] Calibrating delay loop (skipped), value calculated using timer frequency.. 96.00 BogoMIPS (lpj=480000)
+[    0.000249] pid_max: default: 32768 minimum: 301
+[    0.000452] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.000470] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.001447] CPU: Testing write buffer coherency: ok
+[    0.002463] Setting up static identity map for 0x80300000 - 0x80300060
+[    0.002597] rcu: Hierarchical SRCU implementation.
+[    0.003030] smp: Bringing up secondary CPUs ...
+[    0.006103] smp: Brought up 1 node, 4 CPUs
+[    0.006121] SMP: Total of 4 processors activated (384.00 BogoMIPS).
+[    0.006130] CPU: All CPU(s) started in SVC mode.
+[    0.010524] VFP support v0.3: implementor 41 architecture 2 part 30 variant 7 rev 5
+[    0.010676] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.010702] futex hash table entries: 1024 (order: 4, 65536 bytes, linear)
+[    0.010902] pinctrl core: initialized pinctrl subsystem
+[    0.011904] NET: Registered protocol family 16
+[    0.012176] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.013389] cpuidle: using governor ladder
+[    0.013434] cpuidle: using governor menu
+[    0.018209] GPIO line 461 (enable USB3 power) hogged as output/high
+[    0.033387] cryptd: max_cpu_qlen set to 1000
+[    0.036736] usbcore: registered new interface driver usbfs
+[    0.036800] usbcore: registered new interface driver hub
+[    0.036864] usbcore: registered new device driver usb
+[    0.036913] pps_core: LinuxPPS API ver. 1 registered
+[    0.036922] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.036948] PTP clock support registered
+[    0.038485] clocksource: Switched to clocksource arch_sys_counter
+[    0.039273] thermal_sys: Registered thermal governor 'step_wise'
+[    0.039553] NET: Registered protocol family 2
+[    0.039710] IP idents hash table entries: 4096 (order: 3, 32768 bytes, linear)
+[    0.040603] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
+[    0.040648] TCP established hash table entries: 2048 (order: 1, 8192 bytes, linear)
+[    0.040686] TCP bind hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.040736] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.040853] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.040891] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.041104] NET: Registered protocol family 1
+[    0.041144] PCI: CLS 0 bytes, default 64
+[    0.042951] workingset: timestamp_bits=14 max_order=16 bucket_order=2
+[    0.048728] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.048742] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.100112] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 248)
+[    0.102186] qcom-pcie 40000000.pci: host bridge /soc/pci@40000000 ranges:
+[    0.102233] qcom-pcie 40000000.pci:    IO 0x40200000..0x402fffff -> 0x40200000
+[    0.102262] qcom-pcie 40000000.pci:   MEM 0x40300000..0x40ffffff -> 0x40300000
+[    0.380060] qcom-pcie 40000000.pci: Link up
+[    0.380219] qcom-pcie 40000000.pci: PCI host bridge to bus 0000:00
+[    0.380239] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    0.380257] pci_bus 0000:00: root bus resource [io  0x0000-0xfffff] (bus address [0x40200000-0x402fffff])
+[    0.380271] pci_bus 0000:00: root bus resource [mem 0x40300000-0x40ffffff]
+[    0.380311] pci 0000:00:00.0: [17cb:1001] type 01 class 0x060400
+[    0.380351] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x00000fff]
+[    0.380422] pci 0000:00:00.0: PME# supported from D0 D3hot
+[    0.381850] PCI: bus0: Fast back to back transfers disabled
+[    0.382056] pci 0000:01:00.0: [8086:09a9] type 00 class 0x028000
+[    0.382183] pci 0000:01:00.0: reg 0x10: [mem 0x00000000-0x007fffff]
+[    0.382676] pci 0000:01:00.0: supports D1 D2
+[    0.382690] pci 0000:01:00.0: PME# supported from D0 D1 D3hot D3cold
+[    0.384222] PCI: bus1: Fast back to back transfers disabled
+[    0.384273] pci 0000:00:00.0: BAR 8: assigned [mem 0x40800000-0x40ffffff]
+[    0.384291] pci 0000:00:00.0: BAR 0: assigned [mem 0x40300000-0x40300fff]
+[    0.384312] pci 0000:01:00.0: BAR 0: assigned [mem 0x40800000-0x40ffffff]
+[    0.384340] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[    0.384357] pci 0000:00:00.0:   bridge window [mem 0x40800000-0x40ffffff]
+[    0.387167] pcieport 0000:00:00.0: AER: enabled with IRQ 94
+[    0.388947] bam-dma-engine 8e04000.dma: num-channels unspecified in dt
+[    0.388965] bam-dma-engine 8e04000.dma: num-ees unspecified in dt
+[    0.390230] tcsr 1949000.tcsr: setting wifi_glb_cfg = 41000000
+[    0.390318] tcsr 194b000.tcsr: setting usb hs phy mode select = e700e7
+[    0.390401] tcsr 1953000.ess_tcsr: setting ess interface select = 0
+[    0.390485] tcsr 1957000.tcsr: setting wifi_noc_memtype_m0_m2 = 2222222
+[    0.390796] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.392627] msm_serial 78af000.serial: msm_serial: detected port #0
+[    0.392670] msm_serial 78af000.serial: uartclk = 1843200
+[    0.392726] 78af000.serial: ttyMSM0 at MMIO 0x78af000 (irq = 24, base_baud = 115200) is a MSM
+[    0.392753] msm_serial: console setup on port #0
+[    1.023422] printk: console [ttyMSM0] enabled
+[    1.028324] msm_serial: driver initialized
+[    1.037245] loop: module loaded
+[    1.038835] nand: device found, Manufacturer ID: 0xc2, Chip ID: 0xf1
+[    1.039359] nand: Macronix MX30LF1G18AC
+[    1.045955] nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+[    1.049644] 11 fixed-partitions partitions found on MTD device qcom_nand.0
+[    1.057155] Creating 11 MTD partitions on "qcom_nand.0":
+[    1.064041] 0x000000000000-0x000000080000 : "SBL1"
+[    1.070908] 0x000000080000-0x000000100000 : "MIBIB"
+[    1.075419] 0x000000100000-0x000000180000 : "QSEE"
+[    1.080278] 0x000000180000-0x0000001c0000 : "CDT"
+[    1.084835] 0x0000001c0000-0x000000240000 : "QSEE_B"
+[    1.089897] 0x000000240000-0x000000280000 : "urlader0"
+[    1.094597] 0x000000280000-0x0000002c0000 : "urlader1"
+[    1.099649] 0x0000002c0000-0x000000b00000 : "nand-tffs"
+[    1.112098] 0x000000b00000-0x000000f00000 : "uboot0"
+[    1.116696] 0x000000f00000-0x000001300000 : "uboot1"
+[    1.117780] random: fast init done
+[    1.124610] 0x000001300000-0x000008000000 : "ubi"
+[    1.253005] ESS reset ok!
+[    1.277136] ESS reset ok!
+[    1.707152] i2c /dev entries driver
+[    1.709149] sdhci: Secure Digital Host Controller Interface driver
+[    1.709446] sdhci: Copyright(c) Pierre Ossman
+[    1.715692] sdhci-pltfm: SDHCI platform and OF driver helper
+[    1.723498] NET: Registered protocol family 10
+[    1.727069] Segment Routing with IPv6
+[    1.730228] NET: Registered protocol family 17
+[    1.733894] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.738193] 8021q: 802.1Q VLAN Support v1.8
+[    1.751347] Registering SWP/SWPB emulation handler
+[    1.764796] UBI: auto-attach mtd10
+[    1.764834] ubi0: attaching mtd10
+[    2.528663] ubi0: scanning is finished
+[    2.538869] ubi0: attached mtd10 (name "ubi", size 109 MiB)
+[    2.538907] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    2.543255] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    2.550247] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    2.557057] ubi0: good PEBs: 868, bad PEBs: 4, corrupted PEBs: 0
+[    2.563871] ubi0: user volume: 5, internal volumes: 1, max. volumes count: 128
+[    2.570111] ubi0: max/mean erase counter: 5/3, WL threshold: 4096, image sequence number: 130102031
+[    2.577113] ubi0: available PEBs: 0, total reserved PEBs: 868, PEBs reserved for bad PEB handling: 16
+[    2.586128] ubi0: background thread "ubi_bgt0d" started, PID 104
+[    2.587232] block ubiblock0_1: created from ubi0:1(rootfs)
+[    2.601524] ubiblock: device ubiblock0_1 (rootfs) set to be root filesystem
+[    2.606799] hctosys: unable to open rtc device (rtc0)
+[    2.618577] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    2.620168] Freeing unused kernel memory: 1024K
+[    2.649359] Run /sbin/init as init process
+[    2.989132] init: Console is alive
+[    2.989362] init: - watchdog -
+[    3.258493] crng init done
+[    3.613590] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    3.733293] dwc3-qcom 8af8800.usb3: IRQ hs_phy_irq not found
+[    3.733330] dwc3-qcom 8af8800.usb3: IRQ dp_hs_phy_irq not found
+[    3.738020] dwc3-qcom 8af8800.usb3: IRQ dm_hs_phy_irq not found
+[    3.743703] dwc3-qcom 8af8800.usb3: IRQ ss_phy_irq not found
+[    3.751694] dwc3 8a00000.dwc3: Failed to get clk 'ref': -2
+[    3.881515] xhci-hcd xhci-hcd.0.auto: xHCI Host Controller
+[    3.881677] xhci-hcd xhci-hcd.0.auto: new USB bus registered, assigned bus number 1
+[    3.886444] xhci-hcd xhci-hcd.0.auto: hcc params 0x0228f665 hci version 0x100 quirks 0x0000000002010010
+[    3.893594] xhci-hcd xhci-hcd.0.auto: irq 98, io mem 0x08a00000
+[    3.903742] hub 1-0:1.0: USB hub found
+[    3.908840] hub 1-0:1.0: 1 port detected
+[    3.912907] xhci-hcd xhci-hcd.0.auto: xHCI Host Controller
+[    3.916667] xhci-hcd xhci-hcd.0.auto: new USB bus registered, assigned bus number 2
+[    3.922001] xhci-hcd xhci-hcd.0.auto: Host supports USB 3.0 SuperSpeed
+[    3.929636] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    3.936663] hub 2-0:1.0: USB hub found
+[    3.944466] hub 2-0:1.0: 1 port detected
+[    3.956375] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    3.963907] init: - preinit -
+[    5.470566] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    9.807651] UBIFS (ubi0:4): Mounting in unauthenticated mode
+[    9.807881] UBIFS (ubi0:4): background thread "ubifs_bgt0_4" started, PID 205
+[    9.848476] UBIFS (ubi0:4): recovery needed
+[    9.950890] UBIFS (ubi0:4): recovery completed
+[    9.951083] UBIFS (ubi0:4): UBIFS: mounted UBI device 0, volume 4, name "rootfs_data"
+[    9.954263] UBIFS (ubi0:4): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[    9.962224] UBIFS (ubi0:4): FS size: 84566016 bytes (80 MiB, 666 LEBs), journal size 4190208 bytes (3 MiB, 33 LEBs)
+[    9.972085] UBIFS (ubi0:4): reserved for root: 3994261 bytes (3900 KiB)
+[    9.982309] UBIFS (ubi0:4): media format: w5/r0 (latest is w5/r0), UUID 3B93DD94-2616-4B56-9B63-6EBAFDFDECB8, small LPT model
+[    9.993225] mount_root: switching to ubifs overlay
+[   10.011631] urandom-seed: Seeding with /etc/urandom.seed
+[   10.120887] procd: - early -
+[   10.121161] procd: - watchdog -
+[   10.704471] procd: - watchdog -
+[   10.714128] procd: - ubus -
+[   10.787450] procd: - init -
+[   11.386681] kmodloader: loading kernel modules from /etc/modules.d/*
+[   11.433842] urngd: v1.0.2 started.
+[   11.461933] Loading modules backported from Linux version v5.10.110-0-g3238bffaf992
+[   11.461969] Backport generated by backports.git v5.10.110-1-0-g1fbde860
+[   11.479632] xt_time: kernel timezone is -0000
+[   11.509150] PPP generic driver version 2.4.2
+[   11.510037] NET: Registered protocol family 24
+[   12.625193] ath10k_ahb a000000.wifi: qca4019 hw1.0 target 0x01000000 chip_id 0x003b00ff sub 0000:0000
+[   12.625240] ath10k_ahb a000000.wifi: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   12.636693] ath10k_ahb a000000.wifi: firmware ver 10.4b-ct-4019-fW-13-5ae337bb1 api 5 features mfp,peer-flow-ctrl,txstatus-noack,wmi-10.x-CT,ratemask-CT,regdump-CT,txrate-CT,flush-all-CT,pingpong-CT,ch-regs-CT,nop-CT,set-special-CT,tx-rc-CT,cust-stats-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT,wmi-bcn-rc-CT crc32 6b2b5c5b
+[   12.718018] ath10k_ahb a000000.wifi: board_file api 2 bmi_id 0:20 crc32 e2dfaa91
+[   14.007157] ath10k_ahb a000000.wifi: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   14.007205] ath10k_ahb a000000.wifi: msdu-desc: 2500  skid: 32
+[   14.043029] ath10k_ahb a000000.wifi: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   14.044006] ath10k_ahb a000000.wifi: wmi print 'free: 53252 iram: 13432 sram: 35752'
+[   14.176206] ath10k_ahb a000000.wifi: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-file max-sta 32 raw 0 hwcrypto 1
+[   14.336153] ath: EEPROM regdomain: 0x0
+[   14.336161] ath: EEPROM indicates default country code should be used
+[   14.336165] ath: doing EEPROM country->regdmn map search
+[   14.336174] ath: country maps to regdmn code: 0x3a
+[   14.336179] ath: Country alpha2 being used: US
+[   14.336183] ath: Regpair used: 0x3a
+[   15.163525] ath10k_ahb a800000.wifi: qca4019 hw1.0 target 0x01000000 chip_id 0x003b00ff sub 0000:0000
+[   15.163574] ath10k_ahb a800000.wifi: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   15.176331] ath10k_ahb a800000.wifi: firmware ver 10.4b-ct-4019-fW-13-5ae337bb1 api 5 features mfp,peer-flow-ctrl,txstatus-noack,wmi-10.x-CT,ratemask-CT,regdump-CT,txrate-CT,flush-all-CT,pingpong-CT,ch-regs-CT,nop-CT,set-special-CT,tx-rc-CT,cust-stats-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT,wmi-bcn-rc-CT crc32 6b2b5c5b
+[   15.230830] ath10k_ahb a800000.wifi: board_file api 2 bmi_id 0:21 crc32 e2dfaa91
+[   16.519467] ath10k_ahb a800000.wifi: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   16.519517] ath10k_ahb a800000.wifi: msdu-desc: 2500  skid: 32
+[   16.555173] ath10k_ahb a800000.wifi: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   16.556137] ath10k_ahb a800000.wifi: wmi print 'free: 53252 iram: 13432 sram: 35752'
+[   16.681370] ath10k_ahb a800000.wifi: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-file max-sta 32 raw 0 hwcrypto 1
+[   16.828353] ath: EEPROM regdomain: 0x0
+[   16.828362] ath: EEPROM indicates default country code should be used
+[   16.828365] ath: doing EEPROM country->regdmn map search
+[   16.828373] ath: country maps to regdmn code: 0x3a
+[   16.828379] ath: Country alpha2 being used: US
+[   16.828383] ath: Regpair used: 0x3a
+[   16.834799] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   21.947436] br-lan: port 1(eth0) entered blocking state
+[   21.947471] br-lan: port 1(eth0) entered disabled state
+[   21.951950] device eth0 entered promiscuous mode
+[   22.968728] br-lan: port 1(eth0) entered blocking state
+[   22.968809] br-lan: port 1(eth0) entered forwarding state
+[   22.974144] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+//Space for additional notes, links to forum threads or other resources.//
+
+  * ...
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ipq40xx IPQ4019 128NAND 256RAM xDSL 4port GigabitEthernet 802.11abgnac 1USB USB3.0 ARMv7}}

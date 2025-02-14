@@ -1,0 +1,180 @@
+====== Ubiquiti Nanostation M5 / Loco M5======
+
+<WRAP center round important 50%>
+Warning! There are two versions of NanoStation: **xm** and **xw**.
+
+**Downgrade procedure fails** for devices with HW revision higher than 1847G. Work in progress [[https://forum.openwrt.org/t/hw-of-ubiquiti-nanostation-m5-has-changed/39225 | in this openwrt forum thread]]
+
+The old **xm** version has limited RAM (32 MB) and thus is not recommended.
+</WRAP>
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "Nanostation.* M5"}
+} -->
+
+
+^ Version/Model ^ Launch Date ^ OpenWrt Version Supported ^ Chip ^ Bugs in Hardware ^ 
+| xm | -    | 14.07  | ar724x |  |
+| xw | 2014 | 14.07 - for Nanostation M5 | ar9342 | |
+| ::: | ::: | 14.07 - for Nanostation Loco M5 | ::: | A [[https://dev.openwrt.org/ticket/19085|hardware bug]] causing loss of eth0 connectivity was fixed in OpenWrt 17.01.|
+
+In 2014 Ubiquiti released a new model of Nanostation M5 devices (old boards use ar724x chip while new ones are using ar934x chip). 
+
+New Ubiquiti Nanostation M5 [[http://www.ubnt.com/download#NanoStation:M5|firmware page]] devices use **xw** firmware image, while older use **xm** image.
+
+  * For newer Nanostation Loco M5 (XW) (models since 2014) there is a new image (openwrt-ar71xx-generic-ubnt-loco-m-xw-squashfs-factory.bin).
+  * For old Nanostation Loco M5 (XM) the image name is openwrt-ar71xx-generic-ubnt-nano-m-squashfs-factory.bin.
+
+<WRAP center round info 60%>
+If you have installed OpenWrt and issue ''cat /proc/cpuinfo'' or look trough boot messages XW based hardware should come back as Atheros AR93xx, XM = Atheros AR72xx
+</WRAP>
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "Nanostation.* M5"}
+} -->
+
+===== LAN enumeration =====
+Observed for a NanoStationlocoM2  (model SWX-M2L, XM firmware).
+Recent OpenWrt compilations, on basis of kernel v5 , enumerate the ethernet interfaces differently.
+In /etc/config/network the iface name of the LAN port is eth1, not eth0 !
+When using the standard network setting the LAN port will appear active from a serial console but it relates to the passthrough port that is not present as a connector.
+So make sure that eth1 is used in the configuration files to reference the LAN connector.
+===== Installation =====
+There is (as of 2023/05) a unresolved problem with builds for Ubnt units with **ONE** ethernet port. Flashing a OpenWRT ath79 version after 19.07.10 will brick the unit. The last working version is 19.07.10 AR71xx. As mentioned in [[toh:ubiquiti:airmaxm|Ubiquiti Airmax M]] install the latest working buld and check your CPU with: 
+ 
+ cat /proc/cpuinfo
+
+if its AR7240 or Ar7241 and then flash the corresponding Ubiquiti **BULLET** M image! This is a one eth port only unit and is tested to be working on locos XM and rocket M.
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "Nanostation.* M5"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+Image name: openwrt-ar71xx-generic-ubnt-nano-m-...
+
+You can install the *-factory image over the webinterface or via tftp rescue.
+Webinterface default address is ''%%http://192.168.1.20/%%''
+
+You may need to downgrade the original AirOS firmware to v5.5 in order to allow a firmware upload via the web interface. Upload via TFTP should work even for new AirOS versions.
+
+To enter tftp rescue mode power cycle the device while keep the reset button pushed (for ~10 sec). Leds will start to blink red and yellow.
+<code>
+# pick an address in the range 192.168.1.1-254 for your network device
+# tftp 192.168.1.20
+tftp> bin
+tftp> trace
+# depending on your version **xm** or **xw**
+tftp> put openwrt-ar71xx-generic-ubnt-nano-m-squashfs-factory.bin
+tftp> put openwrt-ar71xx-generic-ubnt-nano-m-xw-squashfs-factory.bin
+</code>
+[[docs:guide-user:installation:generic.flashing.tftp#bootloader_contains_tftp_server|Installing OpenWrt via TFTP]]
+
+===== PoE passtrough =====
+
+It is possible to supply power to another device via the secondary ethernet port. POE passthrough is disabled by default.
+
+^ Device Model ^ GPIO pin ^
+| xm | 8 |
+| xw | 2 |
+
+===== Configure via UCI =====
+
+The POE passthrough GPIO pin is configurable via UCI:
+
+<code>
+uci show system.poe_passthrough
+</code>
+
+Permanent configuration changes can be specified via command line:
+
+<code>
+uci set system.poe_passthrough.value=1
+uci commit system
+</code>
+
+
+===== Temporary changes via CLI =====
+
+Run the following commands to change the state of the POE passthrough switch:
+
+<code>
+# nanostation xm
+echo 8 > /sys/class/gpio/export
+echo out > /sys/class/gpio/gpio8/direction
+echo 1 > /sys/class/gpio/gpio8/value
+# disable with echo 0 > /sys/class/gpio/gpio8/value
+</code>
+
+<code>
+# nanostation xw
+echo 2 > /sys/class/gpio/export
+echo out > /sys/class/gpio/gpio2/direction
+echo 1 > /sys/class/gpio/gpio2/value
+# disable with echo 0 > /sys/class/gpio/gpio2/value
+</code>
+
+This state does not survive a reboot. See the UCI based setting above for permanent configuration changes.
+
+===== Bootlogs =====
+
+Boot messages from Nanostation M5 Loco:
+
+<code>
+U-Boot 1.1.4.2-s564 (Jul 19 2012 - 10:41:56)
+
+Board: Ubiquiti Networks XM board (rev 1.0 e0a5)
+DRAM:  32 MB
+Flash:  8 MB
+PCIe WLAN Module found (#1).
+Net:   eth0, eth1
+Hit any key to stop autoboot:  0 
+## Booting image at 9f050000 ...
+   Image Name:   MIPS OpenWrt Linux-3.3.8
+   Created:      2014-01-15  15:39:31 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    929404 Bytes = 907.6 kB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+</code>
+
+
+===== Hardware =====
+==== Nanostation M5 Serial Pins ====
+
+{{:media:ubiquiti:nanostation5m_serial.jpg?direct&400}}
+
+==== Nanostation Loco M5 Serial Pins ====
+A pin header can be soldered to the board to use the serial port. The board is mounted to a sled which can be pulled out after the protective cover for the RJ-45 port is removed.
+
+{{:media:ubiquiti:nanostation_loco_m5_serial.jpg?400|}}
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ath79 AR7240 AR9342 8Flash 32RAM 64RAM 1port 2port fastethernet outdoor poe}}

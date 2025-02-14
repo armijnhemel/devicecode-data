@@ -1,0 +1,389 @@
+====== MikroTik RouterBoard RB941-2nD / RB941-2nD-TC (hAP lite) / RB951Ui-2nD (Full hAP) ======
+
+  * hAP lite (RB941-2nd) is the first mikrotik's board for which supports squashfs+jffs2 and sysupgrade (through shell or LuCI). No more crutches with yaffs!
+  * RB941-2nD-TC is a tower case variant of the RB941-2nD.
+  * Since the [[toh:mikrotik:rb951ui-2nd|Full hAP (RB951Ui-2nD)]] is very similar to it younger brother, the description of it is also located here.
+  * The [[toh:mikrotik:rb750_r2|hEX lite (RB750-r2)]] is very similar to RB951Ui-2nD and has its own page.
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "RB941-2nD"}
+} -->
+
+
+===== Hardware =====
+
+^ Model ^ CPU ^ CPU Speed ^ RAM (MByte) ^ Serial Flash(NOR) (MByte) ^ Ethernet ^ PoE ^ Wireless ^ USB ^ UART ^ JTAG ^
+| RB941-2nD | QCA9531 | 650 MHz | 32MB DDR1 200MHz (Winbond W9425G6JH-5) | 16 (W25Q128) | AR8227 BuildIn Switch (10M/100M) | NONE | QCA9531 | NONE | 1x onboard(ttl) | 1x onboard |
+| RB941-2nD-TC | QCA9533 | 650 MHz | 32MB DDR1 200MHz (Winbond W9425G6KH-5) | 16 (W25Q128) | AR8227 BuildIn Switch (10M/100M) | NONE | QCA9531 | NONE | 1x onboard(ttl) | 1x onboard |
+| RB951Ui-2nD | QCA9531 | 650 MHz | 64MB DDR2 300MHz(NANYL NT5TU32M16EG-AC) | 16 (W25Q128) | AR934X BuildIn Switch (10M/100M) | From port 5| QCA9531 | USB 2.0 | 1x onboard(ttl) | 1x onboard |
+
+
+** RB941-2nD (hAP lite) **
+
+{{media:mikrotik:rb941-2nd_pcb_top.jpg?0x300|}}
+{{media:mikrotik:rb941-2nd_pcb_bottom.jpg?0x300|}}
+
+** RB941-2nD-TC (hAP lite) **
+
+{{media:mikrotik:rb941-2nd-tc-front.png?0x300|}}
+{{media:mikrotik:rb941-2nd-tc-rear.png?0x300|}}
+{{media:mikrotik:rb941-2nd-tc-pcb.png?0x300|}}
+
+** RB951Ui-2nD (Full hAP) **
+
+{{media:mikrotik:hap1.png?400|}}
+
+
+===== Installation =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "RB941-2nD"}
+} -->
+
+Caveats highlighted in [[toh:mikrotik:common|Common Procedures for Mikrotik RouterBoard Products]] apply.
+
+Version 19.07.10 is too big for install and upgrade. I install 18.06.9 first in RAM and then upgrade to 19.07.10.
+
+==== Create image (optional)====
+  $ mkdir /home/$USER/mikrotik/
+  $ cd /home/$USER/mikrotik/
+  $ git clone git://git.openwrt.org/openwrt.git
+  $ cd /home/$USER/mikrotik/trunk
+  
+If you want to use LuCI(Web interface):
+  $ ./scripts/feeds update packages luci
+  $ ./scripts/feeds install luci
+  
+  
+If you get errors on dependencies later, run:
+  $ ./scripts/feeds update -a
+  $ ./scripts/feeds install -a  
+  
+  
+Configure image for booting from RAM and NOR flash
+  $ make menuconfig
+
+'' Target System = AR7XXX
+ Subtarget = Mikrotik device with NAND/NOR flash
+ Target Profile = Default Profile
+ Target Images = choose ramdisk and squashfs
+ If you use LuCI then select proper items in LuCI submenu ''
+  
+  $ make kernel_menuconfig CONFIG_TARGET=subtarget 
+'' //Machine selection//
+     //System type// = Atheros AR71XX/AR724X/AR913X based boards
+     //Atheros AR71XX/AR724X/AR913X machine selection// - __Enable__ MikroTik RouterBOARD 941-2nd support
+ //Device Drivers -> Memory Technology Device (MTD) support -> SPI-NOR device support// - __Unselect__ Use small 4096 B erase sectors
+ //File systems// - __Unselect__ yaffs2 file system support
+ //Device Drivers -> Character devices -> Serial drivers// - __Unselect__ ALL
+ //Kernel hacking -> Default kernel command string// - rootfstype=squashfs,jffs2 noinitrd''
+  $ make
+
+==== Run OpenWrt in RAM ====
+Create script: nano /tftp/loader.sh
+  #!/bin/bash
+  USER=user #CHANGE THIS
+  sudo /sbin/ip addr replace 192.168.1.10/24 dev eno1
+  sudo /sbin/ip link set dev eno1 up
+  sudo dnsmasq -i eno1 --dhcp-range=192.168.1.100,192.168.1.200 \
+  --dhcp-boot=openwrt-ar71xx-mikrotik-rb-941-2nd-initramfs-kernel.bin \
+  --enable-tftp --tftp-root=/home/$USER/mikrotik/trunk/bin/ar71xx/ -d -u $USER -p0 -K --log-dhcp --bootp-dynamic
+
+  * Run script loader.sh from **root/sudo**
+  * Plug your Ethernet cable to port 1 (WAN/Internet)
+  * Unplug power jack
+  * Hold reset button 
+  * Plug power jack
+  * The LED will turn on for several seconds, then blink for some time, then stay on for several seconds, then turn off
+  * Only **after** this LED pattern you can release the reset button
+
+Your rb941-2nd should boot into OpenWrt with IP 192.168.1.1
+  * Unplug Ethernet cable from port 1(WAN/Internet) and plug into port 2 (LAN) to access LUCI through browser
+
+If the above method to force TFTPing the initramfs image doesn't work, then:
+
+  * Open webfig (web config), and change sections mentioned.
+  * System → Routerboard → Settings → Boot device: Try ethernet once then NAND
+  * System → Routerboard → Settings → Boot protocol: DHCP
+  * System → Routerboard → Settings → Force Backup Booter: Checked (if supported by your routerboard - !IMPORTANT) - it seemes that last setting is the key))
+  * Reboot router from the webfig (IMPORTANT!), plug-in the cable from pc to wan port, and boot openwrt via tftp (it’s better to do it all as quick as possible).
+
+
+==== Flash OpenWrt to Mikrotik ====
+
+After openwrt build you should have this files in bin/ar71xx/:
+  *   openwrt-ar71xx-mikrotik-rb-941-2nd-initramfs-kernel.bin - ELF image with kernel and rootfs(initramfs) for boot from network
+  *   ''openwrt-ar71xx-mikrotik-rb-941-2nd-squashfs-sysupgrade.bin - Image file for sysupgrade. 
+  It contains: 64k image header + packed to mikrotik's yaffs2 kernel file + squashfs root filesystem''
+To flash openwrt-ar71xx-mikrotik-rb-941-2nd-squashfs-sysupgrade.bin:
+  Using ssh:
+    login into router via 'ssh -l root 192.168.1.1' and then copy it(using wget or nc or...) to /tmp/
+    Do: $ sysupgrade /tmp/openwrt-ar71xx-mikrotik-rb-941-2nd-squashfs-sysupgrade.bin  
+    After reboot you should be able to login via 'ssh -l root 192.168.1.1'
+  Using LuCI:  
+    Go to http://192.168.1.1 and login as root and no password
+    Select System -> Backup / Flash Firmware and then do Flash new firmware image using openwrt-ar71xx-mikrotik-rb-941-2nd-squashfs-sysupgrade.bin file
+
+Note that with the RB941-2nD-TC and if you netbooted openwrt-18.06.2-ar71xx-mikrotik-rb-nor-flash-16M-initramfs-kernel.bin you might encounter this error message:
+
+  $ sysupgrade -n openwrt-18.06.2-ar71xx-mikrotik-rb-nor-flash-16M-squashfs-sysupgrade.bin 
+  Device unknown not supported by this image
+  Supported devices: rb-750-r2 rb-750up-r2 rb-750p-pbr2 rb-911-2hn rb-911-5hn rb-941-2nd rb-951ui-2nd rb-952ui-5ac2nd rb-962uigs-5hact2hnt rb-lhg-5nd rb-map-2nd rb-mapl-2nd rb-wap-2nd
+  Image check 'fwtool_check_image' failed.
+  
+In this case netboot a current snapshot, i.e. openwrt-ar71xx-mikrotik-rb-nor-flash-16M-initramfs-kernel.bin. Then you can sysupgrade any OpenWrt release.
+
+Note also that newer RB941-2nD and RB941-2nD-TC expose slightly changed information in /proc/cpuinfo which is why e.g. the switch is not currently configured in the 18.06.2 release of OpenWrt. This was fixed in Git commit [[https://git.openwrt.org/?p=openwrt/openwrt.git;a=commit;h=6570f3c93aa4110efd1466a6b89742c2e11d7c11|6578f3c9]] on February 8th, 2019, so you need to use a current snapshot of OpenWrt until 19.XX.X comes out or the fix is eventually backported into the 18.06.X series.
+
+
+===== How to enable Serial Port =====
+There is (unsoldered) serial port on the board, which can be used with 3.3V TTL converter. Port settings are **115200/8N1**. However, by default serial port is not enabled (there is no data on it). It is possible to enable it and get full access to the mikrotik bootloader menu, including memory test, CPU frequency selection and boot sequence. To enable serial port you will have to:
+
+  - Use **RouterBoot 3.27 or earlier** versions. 3.29, 3.33 and 3.36 are broken, but it is possible to reflash the boot loader using openwrt.
+  - Download and backup "hard_config" partition. Find byte sequence ''00 04 00 15 00 28 40 01'' and replace it to ''00 04 00 15 00 28 40 00'' to enable serial port
+  - You should rebuild kernel without .mask_flags = MTD_WRITEABLE in the mach-rb941.c for the "hard_config" partition. Flash patched hard_config partition using mtd tool to the device. 
+
+That`s it, after reboot you should see loader prompt:
+
+  RouterBOOT booter 3.22
+  
+  RouterBOARD 941-2nD
+  
+  CPU frequency: 650 MHz
+  Memory speed: 200 MHz
+   Memory size:  32 MiB
+  Storage size:  16 MiB
+  
+  Press any key within 2 seconds to enter setup.
+  
+  RouterBOOT-3.22
+  What do you want to configure?
+  d - boot delay
+  k - boot key
+  s - serial console
+  n - silent boot
+  o - boot device
+  f - cpu frequency
+  r - reset booter configuration
+  e - format storage
+  w - repartition nand
+  g - upgrade firmware
+  i - board info
+  p - boot protocol
+  b - booter options
+  t - do memory testing
+  x - exit setup
+  your choice:
+  
+  loading kernel from nand... OK
+  setting up elf image... OK
+  jumping to kernel code
+
+
+
+===== How reflash boot loader =====
+It is possible to change device boot loader from the OpenWrt, e.g. to downgrade it for enabling serial access. There are 2 bootloaders in the board: **routerboot2** (main loader) and **routerboot** (backup loader, on the beginning on the flash). I am recommending to experiment with the main (routerboot2) loader which is located on the mtd3 partition, because if it is damaged board can still be booted using **routerboot**. If **routerboot** is damaged you will have to reflash the memory chip using programmer. You can choose which loader to use using rbcfg tool or from the routeros menu. To force boot from the backup loader turn device on with button pressed and wait ~30 seconds.
+
+To change the loader you will have to:
+
+  * Download boot loader image from the vendor web site, use url like http://i.mt.lv/routerboard/files/qca9531L_3.27.fwf. First 32 bytes of the file is a header, which should be removed before flashing, e.g. using dd command: ''dd if=./qca9531L_3.27.fwf of=./routerboot-3.27 bs=4 skip=8''. 
+  * Flash protection needs to be removed in the mach-rb941.c for the routerboot2 (or routerboot) partitions. Do backup of the partition first and flash your stripped boot loader using mtd tool. 
+  * Restart device, that's it :)
+
+This post shows how to update to the latest 6.43.7 bootloader on rb-941-2nd-tc with the routeros interface
+
+https://forum.mikrotik.com/viewtopic.php?f=2&t=159749&p=785169#p785169
+
+----
+
+
+===== Bootlogs =====
+
+==== RouterOS bootlog (with serial console enabled) ====
+<WRAP bootlog>
+<nowiki>
+RouterBOOT booter 3.22
+
+RouterBOARD 941-2nD
+
+CPU frequency: 650 MHz
+ Memory speed: 200 MHz
+  Memory size:  32 MiB
+ Storage size:  16 MiB
+
+Press any key within 2 seconds to enter setup..
+
+loading kernel from nand... OK
+setting up elf image... OK
+jumping to kernel code
+Starting...
+Generating SSH 2048bit RSA host key...
+Generating SSH 1024bit DSA host key...
+Starting services...
+MikroTik 6.38.1 (stable)
+MikroTik Login:
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog =====
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 4.4.42 (builder@3d0c773196e1) (gcc version 5.4.0 (LEDE GCC 5.4.0 r3011-5faad30) ) #0 Thu Jan 19 15:29:00 2017
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019374 (MIPS 24Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA9533 ver 2 rev 0
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 02000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 02000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] No valid device tree found, continuing without
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000001ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000001ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000001ffffff]
+[    0.000000] On node 0 totalpages: 8192
+[    0.000000] free_area_init_node: node 0, pgdat 8046a3d0, node_mem_map 81000000
+[    0.000000]   Normal zone: 64 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 8192 pages, LIFO batch:0
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 8128
+[    0.000000] Kernel command line: console=ttyS0,115200 no-nand parts=1 boot_part_size=16777216 gpio=8586815 HZ=325000000 mem=32M kmac=6C:3B:6B:67:B0:1A board=H951L ver=3.22 hw_opt=00284000 boot=1 mlc=8 rootfstype=squashfs noinitrd
+[    0.000000] PID hash table entries: 128 (order: -3, 512 bytes)
+[    0.000000] Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 27360K/32768K available (3287K kernel code, 168K rwdata, 812K rodata, 204K init, 198K bss, 5408K reserved, 0K cma-reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:51
+[    0.000000] Clocks: CPU:650.000MHz, DDR:400.000MHz, AHB:200.000MHz, Ref:25.000MHz
+[    0.000000] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 5880801374 ns
+[    0.000009] sched_clock: 32 bits at 325MHz, resolution 3ns, wraps every 6607641598ns
+[    0.008855] Calibrating delay loop... 432.53 BogoMIPS (lpj=2162688)
+[    0.071953] pid_max: default: 32768 minimum: 301
+[    0.077325] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.084837] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.095927] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.107908] NET: Registered protocol family 16
+[    0.114644] MIPS: machine is MikroTik RouterBOARD 941-2nD
+[    0.353974] clocksource: Switched to clocksource MIPS
+[    0.361124] NET: Registered protocol family 2
+[    0.366904] TCP established hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.374888] TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.382111] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.389459] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.396134] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.403585] NET: Registered protocol family 1
+[    0.408627] PCI: CLS 0 bytes, default 32
+[    0.413522] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.420612] Crashlog allocated RAM at address 0x1f00000
+[    0.441048] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.447755] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.461989] io scheduler noop registered
+[    0.466516] io scheduler deadline registered (default)
+[    0.472627] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.480320] console [ttyS0] disabled
+[    0.504529] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 1562500) is a 16550A
+[    0.514336] console [ttyS0] enabled
+[    0.521883] bootconsole [early0] disabled
+[    0.533439] m25p80 spi0.0: found w25q128, expected m25p80
+[    0.539107] m25p80 spi0.0: w25q128 (16384 Kbytes)
+[    0.543983] Creating 7 MTD partitions on "spi0.0":
+[    0.548936] 0x000000000000-0x00000000e000 : "routerboot"
+[    0.556696] 0x00000000e000-0x00000000f000 : "hard_config"
+[    0.564111] 0x00000000f000-0x000000010000 : "bios"
+[    0.570836] 0x000000010000-0x00000001f000 : "routerboot2"
+[    0.578241] 0x00000001f000-0x000000020000 : "soft_config"
+[    0.585657] 0x000000020000-0x000000a00000 : "rootfs"
+[    0.592511] mtd: device 5 (rootfs) set to be root filesystem
+[    0.598494] 1 squashfs-split partitions found on MTD device rootfs
+[    0.604897] 0x000000200000-0x000000a00000 : "rootfs_data"
+[    0.612234] 0x000000a00000-0x000001000000 : "kernel"
+[    0.643533] libphy: ag71xx_mdio: probed
+[    1.236313] ag71xx-mdio.1: Found an AR934X built-in switch
+[    1.279879] eth0: Atheros AG71xx at 0xba000000, irq 5, mode:GMII
+[    1.288077] NET: Registered protocol family 10
+[    1.296683] NET: Registered protocol family 17
+[    1.301356] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    1.314579] 8021q: 802.1Q VLAN Support v1.8
+[    1.329950] VFS: Mounted root (squashfs filesystem) readonly on device 31:5.
+[    1.338702] Freeing unused kernel memory: 204K (8048d000 - 804c0000)
+[    2.350341] init: Console is alive
+[    2.354218] init: - watchdog -
+[    3.258291] init: - preinit -
+[    3.752774] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[    3.780183] random: procd: uninitialized urandom read (4 bytes read, 6 bits of entropy available)
+[    5.846475] eth0: link up (1000Mbps/Full duplex)
+[    5.860766] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[    7.112036] jffs2: notice: (340) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[    7.129786] mount_root: switching to jffs2 overlay
+[    7.142825] urandom-seed: Seeding with /etc/urandom.seed
+[    7.328366] eth0: link down
+[    7.342795] procd: - early -
+[    7.347789] procd: - watchdog -
+[    7.963696] procd: - ubus -
+[    8.018674] random: ubusd: uninitialized urandom read (4 bytes read, 13 bits of entropy available)
+[    8.028502] random: ubusd: uninitialized urandom read (4 bytes read, 13 bits of entropy available)
+[    8.037959] random: ubusd: uninitialized urandom read (4 bytes read, 13 bits of entropy available)
+[    8.047761] random: ubusd: uninitialized urandom read (4 bytes read, 13 bits of entropy available)
+[    8.057186] random: ubusd: uninitialized urandom read (4 bytes read, 13 bits of entropy available)
+[    8.067365] random: ubusd: uninitialized urandom read (4 bytes read, 13 bits of entropy available)
+[    8.076954] random: ubusd: uninitialized urandom read (4 bytes read, 13 bits of entropy available)
+[    8.086697] procd: - init -
+[    8.380579] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    8.398410] Loading modules backported from Linux version wt-2016-10-03-1-g6fcb1a6
+[    8.406307] Backport generated by backports.git backports-20160324-9-g0e38f5c
+[    8.417203] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    8.431720] nf_conntrack version 0.5.0 (430 buckets, 1720 max)
+[    8.475120] xt_time: kernel timezone is -0000
+[    8.545359] PPP generic driver version 2.4.2
+[    8.552548] NET: Registered protocol family 24
+[    8.605430] ath: EEPROM regdomain: 0x0
+[    8.605454] ath: EEPROM indicates default country code should be used
+[    8.605462] ath: doing EEPROM country->regdmn map search
+[    8.605484] ath: country maps to regdmn code: 0x3a
+[    8.605495] ath: Country alpha2 being used: US
+[    8.605503] ath: Regpair used: 0x3a
+[    8.617140] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[    8.623419] ieee80211 phy0: Atheros AR9531 Rev:2 mem=0xb8100000, irq=47
+[    9.606118] random: jshn: uninitialized urandom read (4 bytes read, 16 bits of entropy available)
+[    9.688917] random: ubusd: uninitialized urandom read (4 bytes read, 16 bits of entropy available)
+[   14.725676] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   14.755625] device eth0.1 entered promiscuous mode
+[   14.760591] device eth0 entered promiscuous mode
+[   14.783228] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   14.831813] IPv6: ADDRCONF(NETDEV_UP): eth0.2: link is not ready
+[   16.326106] eth0: link up (1000Mbps/Full duplex)
+[   16.330917] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   16.339023] br-lan: port 1(eth0.1) entered forwarding state
+[   16.344921] br-lan: port 1(eth0.1) entered forwarding state
+[   16.350779] IPv6: ADDRCONF(NETDEV_CHANGE): eth0.2: link becomes ready
+[   16.404087] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   18.343998] br-lan: port 1(eth0.1) entered forwarding state</nowiki>
+</WRAP>\\
+
+===== References =====
+  * [[https://routerboard.com/RB941-2nD|routerboard.com/RB941-2nD - product specification]]
+  * [[http://www.lan23.ru/forum/showthread.php?t=11898&page=3|www.lan23.ru/forum/showthread.php?t=11898&page=3]] - some information about boot loader, on Russian
+  * Discussion - HAP Lite - Tc [[https://forum.openwrt.org/t/unable-to-flash-hap-lite-rb941-2nd-tc/21430]]
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>QCA9531 16Flash 32RAM 64RAM}}

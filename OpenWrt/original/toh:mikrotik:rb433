@@ -1,0 +1,300 @@
+====== MikroTik RouterBoard RB433 / RB433AH / RB433UAH ======
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "RB433"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "RB433"}
+} -->
+
+  * RB433 [[http://routerboard.com/pdf/69/rb433.pdf|Datasheet]]
+  * RB433AH [[http://routerboard.com/pdf/73/rb433ah.pdf|Datasheet]]
+  * RB433UAH [[http://routerboard.com/pdf/67/rb433UAH.pdf|Datasheet]]
+
+==== RB433UL ====
+The Routerboard RB433UL is currently not supported.
+This Board was initally based upon Atheros AR7161 400MHz CPU but now it is based upon Atheros AR7130 300Mhz CPU.
+RB433UL has 64MB RAM and the serial console is not supported by uboot.
+
+**Remark:** There are two Resets: Reset 1 (Button) and Reset 2 (Pad).
+  * Reset 1 is to reset the RouterOS and for force the netinstall (PXE).
+  * Reset 2 is to choice the backup uboot.
+
+Sometimes you must press both.
+
+
+===== Installation =====
+
+
+:!: **Please have a look at [[toh:mikrotik:common|Common Procedures for Mikrotik RouterBoard Products]] for installation instructions and other information. ** 
+
+**The content of this page here is partially deprecated !**
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl"],
+  "filterColumns": {"model": "RB433"}
+} -->
+
+-> [[toh:mikrotik:common|Common Procedures for Mikrotik RouterBoard Products]]
+
+
+==== Installation overview ====
+
+Here are the three main steps of the installation:
+  * Boot the board on OpenWrt from the network (netboot): DHCP and TFTP servers required on the host.
+  * <del>Install OpenWrt to the internal flash with wget2nand: HTTP or FTP server required on the host.</del> ( wget2nand is no longer used! ) 
+  * get the sysupgrade-image and install it via sysupgrade in the webif or via shell
+  * Reboot on the new installation, configure, etc.
+==== Netboot ====
+
+The bootloader of RB433 is able to load an image in elf format via BOOTP into RAM and execute it.
+
+=== Download the Image ===
+
+If you are not comfortable with building your own trunk you can get the image from official OpenWRT download servers as of 14.07 release:
+
+https://downloads.openwrt.org/barrier_breaker/14.07/ar71xx/mikrotik/openwrt-ar71xx-mikrotik-vmlinux-initramfs.elf
+
+:!: (At least for RB411AH) **The most recent images are to big to load via bootp.**
+
+<code>So this image does not work: http://downloads.openwrt.org/releases/19.07.4/targets/ar71xx/mikrotik/openwrt-19.07.4-ar71xx-mikrotik-vmlinux-initramfs.elf
+
+You would get a error like "kernel out of range".
+
+But the 17.01.07 image did work:
+https://downloads.openwrt.org/releases/17.01.7/targets/ar71xx/mikrotik/lede-17.01.7-ar71xx-mikrotik-vmlinux-initramfs.elf</code>
+
+
+=== Build the Target ===
+
+You need to get OpenWrt trunk. In menuconfig choose:
+  * Target System: //Atheros AR7xxx/AR9xxx//
+  * Subtarget: //Devices with NAND flash (mostly Mikrotik)//
+  * Target Images: //ramdisk// (and also //tar.gz// if you plan to do a permanent install with the same image)
+
+Now build the ram disk version. While it's building create the tftp-root directory if not already done and a symlink to the ram disk image
+<code>sudo mkdir -p /tftpboot
+sudo ln -sf $(HOME)/openwrt/rb433uah-netboot/bin/ar71xx/openwrt-ar71xx-nand-vmlinux-initramfs.elf /tftpboot/openwrt.elf</code>
+
+=== Setup the Host ===
+
+You need a BOOTP and a TFTP server on your host machine, we use ''dnsmasq'' here, since it can provide both services. Install dnsmasq with:
+<code>sudo apt-get install dnsmasq</code>
+
+Changes in /etc/dnsmasq.conf:
+
+  * only listen on the interface which is directly connected to the RouterBoards WAN (PoE) port. e.g. <code>interface=eth0</code>
+
+  * allow a DHCP range, e.g. <code>dhcp-range=192.168.6.100,192.168.6.119,12</code>
+
+  * allocate an IP address to the board, e.g. <code>dhcp-host=00:0C:42:XX:XX:XX,192.168.6.101</code> (replace the XX with the MAC address of your board!)
+
+  * enable dnsmasq's built-in TFTP server <code>enable-tftp</code>
+
+  * set the root directory for files available via FTP. <code>tftp-root=/tftpboot</code>
+
+  * set filename (produced above) and [[docs:guide-user:troubleshooting:tftpserver|tftpd server]] for BOOTP, e. g. <code>dhcp-boot=/tftpboot/openwrt.elf,boothost,192.168.6.1</code>
+
+Finally restart dnsmasq
+<code>sudo /etc/init.d/dnsmasq restart</code>
+
+You will probably need to set the IP of the interface manually:
+<code>sudo ip addr add 192.168.6.1/24 dev eth0</code>
+
+=== Setup the Target ===
+
+  * Connect to the serial port with a null modem cable (115200, 8N1).
+  * Press a key shortly after powering the board.
+  * Press **o** to change the boot device
+  * Press **e** to boot from ethernet in the future.
+  * Press **x** to leave setup (-o-e-x is needed only once, the boot method is saved in non-volatile memory)
+
+If everything is setup correctly it should look like:
+<code>
+RouterBOOT booter 2.16
+
+RouterBoard 433AH
+
+CPU frequency: 680 MHz
+  Memory size: 128 MB
+
+Press any key within 2 seconds to enter setup..
+trying bootp protocol.......... OK
+Got IP address: 192.168.6.101
+resolved mac address 4E:80:00:00:00:00
+Gateway: 192.168.6.1
+transfer started ................................... transfer ok, time=7.16s
+setting up elf image... OK
+jumping to kernel code
+Linux version 2.6.26.7 (joerga@thinkpad) (gcc version 4.1.2) #2 Mon Nov 10 11:23:37 CET 2008
+console [early0] enabled
+...
+</code>
+
+
+==== Permanent Installation ====
+
+You need a working **netboot** first, see above. Please note also that you **cannot** reflash from a previous OpenWrt installation, you need the netboot in any case.
+
+=== Target Image ===
+
+If you want to use the same trunk image as the netboot image (cf. above), you need to have the //tar.gz// target selected in the //Target Images// menu and rebuild if you didn't select it before. You can also use one of the pre-built images (tested with 12.09-rc2); in the download area, browse the ''ar71xx/nand/'' directory and pick the two following files:
+  * ''openwrt-ar71xx-nand-rootfs.tar.gz''
+  * ''openwrt-ar71xx-nand-vmlinux-lzma.elf''
+
+** Update: ** For 14.07 release images are provided at
+
+https://downloads.openwrt.org/barrier_breaker/14.07/ar71xx/mikrotik/
+
+If you don't have many devices to install and your netbooted system can access the Internet, you can probably pass the download URL directly to wget2nand as well, that will save you the web server configuration step (see below).
+
+=== Save your RouterOS license key ===
+
+If you have access to the MikroTik's Winbox software, you can export the license file from System→Licence, as stated on the [[rb411|RouterBoard 411]] page.
+
+Otherwise, boot RouterOS and export the key to a file:
+<code>/system license output</code>
+
+Then list the files on your device to see which file the .key file was saved:
+<code>/file print</code>
+
+On a fresh install, the key file should be #1 (or #0 on a RB433UAH); to open the editor with file #1, type:
+<code>/file edit 1 value-name=contents</code>
+Then copy-paste the text in a file on your computer. The differences between the obtained key file and a key exported with Winbox are that the //SoftwareID// line is not present in the latter, and there are no empty lines, so you should probably delete all the empty lines in your file prior to import it for a new installation; the //SoftwareID// line should not bother the installer (untested).
+
+=== Erase the NAND Flash ===
+
+If you want to install OpenWrt permanently into the NAND flash you once need to erase the NAND flash to get rid of the RouterOS stuff:
+
+  * connect via serial line
+  * press a key shortly after powering the RB433 up
+  * press **e** and type **yes** to format the flash from the bootloader
+
+=== Setup the Host ===
+
+An HTTP web server is required on the host, e.g. mini-httpd in Ubuntu. Install the mini-httpd web server
+<code>sudo apt-get install mini-httpd</code>
+
+In ''/etc/default/mini-httpd'' change
+
+  * Start daemon <code>START=1</code>
+
+In ''/etc/mini-httpd.conf'' change
+
+  * On which host mini_httpd should bind <code>host=192.168.6.1</code>
+
+  * Run in chroot mode <code>chroot</code>
+
+  * Where are the web files stored <code>data_dir=/home/openwrt/rb433uah/bin/ar71xx/</code>
+
+Restart the mini-httpd web server
+<code>sudo /etc/init.d/mini-httpd restart</code>
+
+=== Install OpenWrt into Flash ===
+
+  * Start **netboot** (see above).
+  * Press ENTER to get a shell prompt.
+  * Execute:
+<code>
+wget2nand http://192.168.6.1
+</code>
+
+This script will set an IP address via dhcp on br-lan.
+The output should look like:
+<code>
+root@OpenWrt:/# wget2nand http://192.168.6.254
+Connecting to 192.168.6.254 (192.168.6.254:80)
+kernel               100% |*******************************|  1041k  0:00:00 ETA
+Connecting to 192.168.6.254 (192.168.6.254:80)
+rootfs.tgz           100% |*******************************|  4243k  0:00:00 ETA
+Erasing filesystem...
+[  137.110000] nand_erase_nand: attempt to erase a bad block at page 0x00002240
+[  137.140000] nand_erase_nand: attempt to erase a bad block at page 0x00003ac0
+[  137.180000] nand_erase_nand: attempt to erase a bad block at page 0x00005d40
+[  137.620000] nand_erase_nand: attempt to erase a bad block at page 0x00026a80
+[  137.850000] nand_erase_nand: attempt to erase a bad block at page 0x000373c0
+[  137.860000] nand_erase_nand: attempt to erase a bad block at page 0x00037440
+[  138.000000] yaffs: dev is 32505861 name is "mtdblock5" rw
+[  138.000000] yaffs: passed flags ""
+[  138.020000] yaffs: dev is 32505862 name is "mtdblock6" rw
+[  138.020000] yaffs: passed flags ""
+Mounting /dev/mtdblock6 as new root and /dev/mtdblock5 as kernel partition
+Copying kernel...
+Preparing filesystem...
+./
+./tmp/
+./usr/
+./usr/lib/
+./usr/lib/opkg/
+…
+./proc/
+./sys/
+./www/
+./root/
+./var
+Cleaning up...
+Image written, you can now reboot.  Remember to change the boot source to Boot from Nand
+</code>
+
+  * Reboot the RB433 and change the boot source to NAND.
+
+===== Hardware =====
+==== MicroSD Slot ====
+The MicroSD Slot needs SPI-Bus sharing support, which is not implemented in Backfire.
+
+SPI-Bus sharing has been implemented in Trunk [[https://dev.openwrt.org/changeset/22862|r22862]] the MicroSD Slot is usable now.
+Read speed ist about 0.92 MB/s (11/13/10: I get I/O and -89 errors on the SPI bus while assessing the microSD card).
+
+==== USB Ports ====
+
+To have the USB ports work on the RB433UAH, you need to install the //kmod-usb2// package, as explained on the [[/doc/howto/usb.essentials|USB Basic Support]] page. See also the [[docs:guide-user:hardware:usb.overview|USB Overview]] page.
+
+
+===== Switch setup =====
+
+==== Ethernet Jacks ====
+
+The ethernet jacks are mapped to port numbers of the IP175C switch (looking at the front of the board):
+<code>
+[ port 4 (PoE)] ( serial ) [port 1] [port 2]
+</code>
+
+==== Switch Ports (for VLANs) ====
+
+^ Interface   ^ Switch port   ^
+| eth0        | 4             |
+| eth1        | 1 & 2         |
+
+Port 1 and port 2 are switched in the default config.
+
+
+===== Useful Links =====
+
+  * [[http://blog.vodkamelone.de/archives/148-Installing-OpenWrt-on-a-Microtik-Routerboard-RB433.html|Installing OpenWrt on a Mikrotik Routerboard RB433]]
+  * [[http://opensource.telkomspeedy.com/wiki/index.php/OpenWRT:_Mikrotik_RB433|OpenWRT: Mikrotik RB433]]
+  * [[http://rb1xx.ozo.com/doku.php#netboot_howto|Netboot for RB1xx]]
+  * [[http://inst.eecs.berkeley.edu/~pathorn/ip175c/|phorn's patches for IP175C support with kmod-switch and swconfig]]
+  * [[http://forum.openwrt.org/viewtopic.php?pid=76183|a thread about RB433, IP175C and kmod-switch]]
+
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag> FastEthernet 3Port 2NIC PoE USB USB2.0 0USB 2USB Serial MiniPCI 64RAM 128RAM gt32Flash mips ar71xx devBoard}}

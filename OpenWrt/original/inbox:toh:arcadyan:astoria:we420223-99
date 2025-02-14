@@ -1,0 +1,1529 @@
+====== Arcadyan WE420223-99 ======
+The Arcadyan WE420223-99 is an access point distributed by KPN in the Netherlands under the name "Experia WiFi". It has two ethernet ports and simultaneous dual band with ac support.
+
+{{ media:arcadyan:wg420223-99_front.jpg?200|Front}}
+
+
+===== OpenWrt support =====
+
+Official support landed in OpenWrt 23.
+
+  * OpenWrt forum thread: https://forum.openwrt.org/t/adding-openwrt-support-for-arcadyan-we420223-99-kpn-experia-wifi/132653
+  * Tweakers forum thread: https://gathering.tweakers.net/forum/list_messages/1882915
+
+
+===== Hardware highlights =====
+^ CPU                        ^ Ram      ^ Flash   ^ Network     ^ WLAN   ^ USB      ^ Serial   ^ JTag   ^
+| MT7621AT @ 880 MHz   |  128 MiB  |  32 MiB  |  2x1000  |  bgnac   |  -  |   Yes    |   -    |
+
+A single MT7615DN chip runs the WLAN functionalities. 
+
+Both Ethernet ports are individually connected to the CPU by default. This allows for gigabit routing speeds but decreases switching speed as data is passed through the CPU. By reverting [[https://patchwork.ozlabs.org/project/openwrt/patch/mailman.7995.1660559797.4154159.openwrt-devel@lists.openwrt.org/|this]] patch, the ports are switched and share a single gigabit link to the CPU. For more information, see https://forum.openwrt.org/t/2-gbps-wan-lan-nat-routing-on-ramips-mt7621-devices/131478.
+
+
+===== Installation =====
+If you are running an old firmware version that is equipped with a firmware upload page, that is usable for upgrading to OpenWRT, see 'Flashing via the original web interface' below.
+
+Otherwise, we need to directly write to the flash chip since the official firmware's U-Boot is [[https://forum.openwrt.org/t/adding-openwrt-support-for-arcadyan-we420223-99-kpn-experia-wifi/132653/5?u=harm|password protected]]. The upside of this is that you don't need to solder the serial port.
+
+==== Flashing via the original web interface ====
+
+The original firmware requires signed firmware. The code to do so is on GitHub: https://github.com/hberntsen/we420223-99-sign . You can download a signed OpenWRT initramfs image here: https://mega.nz/file/FjlgQKqD#23bEq46EiVqxMhGuwucYYpN4sbw2q1nLgmtimLORvFA .
+
+  - Flash the signed image via the web interface. OpenWRT should boot and start a DHCP server.
+  - Go to http://192.168.1.1/ and flash a new sysupgrade.bin file
+  - Profit! You might still want to unlock the U-Boot password for recovery in the future (see below)
+==== Writing directly to the flash chip ====
+=== Connecting the flash chip to a Raspberry Pi ===
+A Raspberry Pi can be used to program the flash chip in-circuit (thanks FPSUsername for discovering). On the Raspberry Pi, install ''xxd libubootenv-tool mtd-utils'' using ''apt'' on Raspberry Pi OS. To access the flash chip we have a specially crafted overlay: https://gist.github.com/hberntsen/f37f5047a61c2cfeeaa1e3d0c2f7f033. Download this file and install it with ''sudo dtc -@ -I dts -O dtb -o /boot/overlays/we420223.dtbo  we420223-99_overlay.dts''.
+Enable it in ''/boot/config.txt'' by adding a new line containing ''dtoverlay=we420223''.
+
+Connect the chip directly to the [[https://pinout.xyz/pinout/spi|Raspberry Pi's SPI pins]]. Use the following connections:
+
+{{:media:arcadyan:we420223-99-flash.png?400|}}
+
+^ Flash Chip  ^ Raspberry Pi         ^
+| VCC         | 3v3                  |
+| RESET       | 3v3                  |
+| /CS         | GPIO 8 (SPI0 CE0)    |
+| DO          | GPIO 9 (SPI0 MISO)   |
+| CLK         | GPIO11 (SPI0 SCLK)   |
+| DI          | GPIO 10 (SPI0 MOSI)  |
+| GND         | Ground               |
+
+You can solder wires to the flash chip but using a [[https://a.aliexpress.com/_v4MHHw|clip]] is easier. Make sure to connect the RESET pin to VCC for stability.
+
+After connecting the flash chip and rebooting, the ''/dev/mtd*'' devices should be available. Run ''sudo apt install xxd libubootenv-tool mtd-utils'' to install the required software for flashing.
+
+=== Creating a backup ===
+For recovery, creating a backup of the flash is recommended. Run ''sudo dd if=/dev/mtd0 of=backup.bin'' to create one. It can be restored with ''sudo flashcp backup.bin /dev/mtd0''.
+
+=== Unlocking U-Boot ===
+The password of U-Boot can be removed, though this step is optional. It is particularly useful for recovering the device through the serial port (i.e. booting an OpenWrt initramfs). The following script will unlock U-Boot:
+
+<code>
+#!/bin/bash
+sudo dd if=/dev/mtd1 of=bootloader_original.bin
+
+# these winbond or mxc u-boot variants are known to work
+echo '9127188445ee02811df8b642c90dc8188b422c392a5461db7fd71e46d1393dc4  bootloader_original.bin' | sha256sum -c - > /dev/null 2>&1 || \
+  echo '394e5ae97197d112f1c5e99305be771a124ab65fc4d9ce9e69085b1cb993f201  bootloader_original.bin' | sha256sum -c - > /dev/null 2>&1
+
+if [ $? -ne 0 ]; then
+  echo "Unknown bootloader hash, patch might not be suitable. Exiting.."
+  exit 1
+fi
+
+cp bootloader_original.bin bootloader_patched.bin
+echo '00 00 02 24 08 00 e0 03  00 00 00 00 ' | xxd -r -p | dd conv=notrunc of=bootloader_patched.bin seek=$((0x1420)) bs=1
+sudo flashcp bootloader_patched.bin /dev/mtd1
+</code>
+
+=== Flashing OpenWRT ===
+First we make sure the u-boot bootpartition is set to 0:
+<code>
+echo '/dev/mtd2 0x0 0x1000 0x1000' > fw_env.config
+sudo fw_setenv -c fw_env.config bootpartition 0
+</code>
+
+Download the latest ''squashfs-factory.trx'' release, e.g. ''wget https://downloads.openwrt.org/releases/23.05.2/targets/ramips/mt7621/openwrt-23.05.2-ramips-mt7621-arcadyan_we420223-99-squashfs-factory.trx'' .
+Now flash it with ''sudo flashcp openwrt-23.05.2-ramips-mt7621-arcadyan_we420223-99-squashfs-factory.trx /dev/mtd4''. Disconnect the flash chip from the Raspberry Pi, put the cooling block on and you are ready to test OpenWrt. The first boot will take some time as it is resizing the UBIFS to fully span the partition. You can connect a network cable to configure the device now, the IP is 192.168.1.1 and a DHCP server is enabled.
+
+===== Debricking =====
+When U-Boot's password protection has been removed, OpenWRT can be loaded from TFTP. Alternatively, you can debrick by re-flashing your backup using the steps above.
+
+Start a TFTP server containing the `initramfs-kernel.bin` file on IP 192.168.11.2. Then, run this ''ckermit'' script to boot OpenWRT. It assumes that ''/dev/ttyUSB0'' is connected to the device's serial port.
+
+<code>
+#!/usr/bin/ckermit
+
+# Serial port setup.
+set line /dev/ttyUSB0
+set serial 8n1
+set speed 57600
+
+# General C-Kermit settings.  These probably don't need to change.
+set flow-control none
+set file type bin
+set carrier-watch off
+set prefixing all
+set modem none
+
+echo "Prepared to boot new kernel.  Reset the board now."
+
+input 60 "Please choose the operation:"
+input 9 "default: 3"
+IF FAIL EXIT 1
+output "4"
+
+input 10 "MT7621 \#"
+IF FAIL EXIT 1
+# patch trx check function
+lineout "mm.l 87fa7600"
+input 2 "87fa7600: 3c1c0001"
+IF FAIL EXIT 1
+lineout "24020000"
+input 2 "87fa7604: 279ce370"
+IF FAIL EXIT 1
+lineout "03e00008"
+input 2 "87fa7608: 0399e021"
+IF FAIL EXIT 1
+lineout "0"
+input 2 "87fa760c: 27bdf7a0"
+IF FAIL EXIT 1
+output \3
+input 10 "MT7621 \#"
+
+lineout "tftpboot 85001000 initramfs-kernel.bin"
+input 60 "MT7621 \#"
+lineout bootm 85001000
+
+connect
+</code>
+This script patches the TRX verification code as it does not work here.
+
+Once you are in OpenWRT you can add it to your network with the ''ip a add 192.168.11.1/24 dev br-lan''. Transfer your backup/''.trx'' and flash from here.
+
+/*** if info available: uncomment and fill in
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+===== Specific configuration =====
+In normal operation the power LED will turn green. The other LEDs are accessible by Linux but not configured to do anything. This is still a [[https://forum.openwrt.org/t/adding-openwrt-support-for-arcadyan-we420223-99-kpn-experia-wifi/132653?u=harm|TODO]].
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | LAN & WiFi                   | 192.168.1.1/24           |
+| swp0             | Left port (viewed from back) | Attached to br-lan       |
+| swp1             | Right port (viewed from back)| Attached to br-lan       |
+| wlan0            | 2.4GHz WiFi                  | Disabled                 |
+| wlan1            | 5GHz WiFi                    | Disabled                 |
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+The Arcadyan / Astoria WE420223-99 has the following buttons:
+
+^ BUTTON               ^ Event   ^
+| Reset                |  reset  |
+| WPS                  |  wps    |
+
+===== Hardware =====
+==== Info ====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "devicetype", "availability", "supportedsincecommit", "supportedsincerel", "supportedcurrentrel", "unsupported_functions", "bootloader", "cpu", "target", "cpumhz", "flashmb", "rammb", "switch", "ethernet100mports", "ethernet1gports", "commentsnetworkports", "modem", "vlan", "wlan24ghz", "wlan50ghz", "wlanhardware", "wlancomments", "detachableantennas", "usbports", "sataports", "commentsusbsataports", "serial", "jtag", "ledcount", "buttoncount", "powersupply", "deviceid", "owrt_forum_topic_url", "wikideviurl", "oemdevicehomepageurl", "firmwareoemstockurl", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "comments"],
+  "filterColumns": {"brand": "^Arcadyan$", "model": "^WE420223-99$"}
+} -->
+
+
+==== Flash Layout ====
+
+^  Arcadyan WE420223-99 OpenWRT Flash Layout                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               ||||||||||||
+^ Layer0                                      |  mtd0: raw NOR flash memory chip (Winbond W250256JVFQ or Macronix MX25L25635FMI-10G [[wp>Serial Peripheral Interface Bus|spi]]) 32MiB                                                                                                                                                                                                                                                                                                                                                                                       |||||||||||
+^ Layer1                                      |  mtd1 **//Bootloader//** 192 KiB                                                                                                       | mtd2 **//Config//** 64 KiB                                           || mtd3 **//Factory//** 64KiB  |  mtd4 **//kernel//** 32128 KiB                                                                                            |||  mtd8 **//glbcfg//** 64 KiB  | mtd9 **//board_data//** 64 KiB                         | mtd10 **//glbcfg2//** 64 KiB  | mtd11 **//board_data2//** 64KiB  |
+^ Layer2                                      |                                                                                                                                        | U-Boot environment (4 KiB)   | Stock firmware configuration (60 KiB)  |                             |  **//kernel//** 4352 KiB        |  mtd5 **//rootfs//** 27776 KiB, /dev/ubiblock0_0                                         ||                              |                                                        |                               |                                  |
+^ filesystem                                  |                                                                                                                                        |                              |                                        |                             |                                 |  [[docs:techref:filesystems#ubifs|UBIFS]]                                                ||                              |                                                        |                               |                                  |
+^ Layer3                                      |                                                                                                                                        |                              |                                        |                             |                                 | ubi0_0                                            |  ubi0_1                               |                              |                                                        |                               |                                  |
+^ Name                                        |                                                                                                                                        |                              |                                        |                             |  **//kernel//**                 | **//rom//**                                       |  **//rootfs_data//**                  |                              |                                                        |                               |                                  |
+^ <color magenta>mountpoint</color>           |                                                                                                                                        |                              |                                        |                             |  //none//                       |  <color magenta>''/rom''</color>                  |  <color magenta>''/overlay''</color>  |                              |                                                        |                               |                                  |
+^ filesystem                                  |                                                                                                                                        |                              |                                        |                             |  //none//                       |  [[docs:techref:filesystems#SquashFS]]            |  [[docs:techref:filesystems#UBIFS]]   |                              |                                                        |                               |                                  |
+| Description                                 | U-Boot                                                                                                                                 | Contains U-Boot environment  |                                        | mt7615 eeprom               | LZMA compressed Kernel within TRX structure     |                                                   |                                       | ?                            | Device unique information, ASCII (sn, mac, passwords)  | ?                             | Empty                            |
+
+Which the Kernel logs as:
+<code>
+0x000000000000-0x000002000000 : "ALL"
+0x000000000000-0x000000030000 : "Bootloader"
+0x000000030000-0x000000040000 : "Config"
+0x000000040000-0x000000050000 : "Factory"
+0x000000050000-0x000001fb0000 : "kernel"
+0x000000490000-0x000001fb0000 : "rootfs"
+0x000001000000-0x000001fb0000 : "Kernel2"
+0x000001440000-0x000001fb0000 : "RootFS2"
+0x000001fb0000-0x000001fc0000 : "glbcfg"
+0x000001fc0000-0x000001fd0000 : "board_data"
+0x000001fd0000-0x000001fe0000 : "glbcfg2"
+0x000001fe0000-0x000001ff0000 : "board_data2"
+</code>
+
+The original firmware used an A/B partitioning scheme for updating, hence the ''Kernel2'' and ''RootFS2'' partition. The original firmware logs the following partitions:
+<code>
+0x000000000000-0x000002000000 : "ALL"
+0x000000000000-0x000000030000 : "Bootloader"
+0x000000030000-0x000000040000 : "Config"
+0x000000040000-0x000000050000 : "Factory"
+0x000000050000-0x000001000000 : "Kernel"
+0x0000002bc17c-0x000001000000 : "RootFS"
+mtd: partition "RootFS" doesn't start on an erase block boundary -- force read-only
+0x000001000000-0x000001fb0000 : "Kernel2"
+0x00000126c4dc-0x000001fb0000 : "RootFS2"
+mtd: partition "RootFS2" doesn't start on an erase block boundary -- force read-only
+0x000001fb0000-0x000001fc0000 : "glbcfg"
+0x000001fc0000-0x000001fd0000 : "board_data"
+0x000001fd0000-0x000001fe0000 : "glbcfg2"
+0x000001fe0000-0x000001ff0000 : "board_data2"
+</code>
+
+It looks like the original Linux dynamically calculates the offset of RootFS (squashfs filesystem). The ''Kernel2'' partition is still available on OpenWRT on ''/dev/mtd6''.
+
+=== Dual-booting ===
+The ''bootpartition'' variable in U-Boot determines which partition will be booted. It is possible to store the original firmware on ''/dev/mtd4'' and OpenWRT on ''/dev/mtd6''. By setting the ''bootpartition'' variable (either through U-Boot itself or ''fw_setenv'' in OpenWRT) to 0 or 1 you can switch them. Note that you have to tell the OpenWRT kernel about the changed rootfs location (ubi.mtd=5 to ubi.mtd=7). Given that the default OpenWRT kernel configuration does not take arguments from U-Boot you'd need to change the .dts for this (or change the kernel config to do so).
+
+OpenWRT cannot be stored on ''/dev/mtd4'' because it will resize the UBIFS to the full size of that partition, overwriting ''/dev/mtd6''. That can be fixed by changing the partitions in the device tree so they don't overlap.
+
+==== Photos ====
+{{:media:arcadyan:wg420223-99_front.jpg?400|Front}}
+{{:media:arcadyan:we420223-99_back.jpg?400|Back}}
+
+{{:media:arcadyan:we420223-99_label.jpg?400|Label at the bottom}}
+
+{{:media:arcadyan:we420223-99_antenna.jpg?400|Antennas and heatsink}}
+
+=== Macronix variant ===
+{{media:arcadyan:we420223-99_pcb_mxc_front.jpg?400}}
+{{media:arcadyan:we420223-99_pcb_mxc_back.jpg?400}}
+
+=== Winbond variant ===
+{{media:arcadyan:we420223-99_pcb_winbond_front.jpg?400}}
+{{media:arcadyan:we420223-99_pcb_winbond_back.jpg?400}}
+
+==== Opening the case ====
+  - Unscrew the two screws at the back.\\ {{:media:arcadyan:we420223-99_back.jpg?100|Back}}
+  - Open the case from bottom to top, so start separating the front and back next to the label, and work to the top. You'll find two clips on each side.\\ {{:media:arcadyan:we420223-99_opening_side.jpg?400}}
+  - There is an internal clip at the top of the case, pop it.\\ {{:media:arcadyan:we420223-99_internal_clip.jpg?400}}
+
+The heat sink can be unscrewed. There are thermal pads connecting the heat sink and cans, so pull gently when taking it off. With the heat sink removed, the antennas can also be disconnected. There is some glue on top of the antenna connectors which lets loose very easily.
+
+
+==== Serial ====
+The [[docs:techref:hardware:port.serial|serial]] pinout is as follows:
+
+{{:media:arcadyan:we420223-99_serial_back.jpg?400}}
+
+^ Serial connection parameters | 57600, 8N1, 3.3V |
+
+Note that with cheap serial adapters, you might need to disconnect the serial adapter when resetting the device.
+
+/*** if info available: uncomment and fill in
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:\\
+**Insert photo of PCB with markings for JTAG port**
+***/
+===== Bootlogs =====
+==== OEM bootlog ====
+This is the log from the not-latest firmware, the latest firmware disables the log in Linux.
+<WRAP bootlog>
+<nowiki>
+===================================================================
+     		MT7621   stage1 code 10:33:55 (ASIC)
+     		CPU=500000000 HZ BUS=166666666 HZ
+==================================================================
+Change MPLL source from XTAL to CR...
+do MEMPLL setting..
+MEMPLL Config : 0x11100000
+3PLL mode + External loopback
+=== XTAL-40Mhz === DDR-1200Mhz ===
+PLL4 FB_DL: 0x7, 1/0 = 627/397 1D000000
+PLL3 FB_DL: 0x12, 1/0 = 657/367 49000000
+PLL2 FB_DL: 0x17, 1/0 = 595/429 5D000000
+do DDR setting..[01F40000]
+Apply DDR3 Setting...(use customer AC)
+          0    8   16   24   32   40   48   56   64   72   80   88   96  104  112  120
+      --------------------------------------------------------------------------------
+0000:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0001:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0002:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0003:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0004:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0005:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0006:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0007:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0008:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0009:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    1
+000E:|    0    0    0    0    0    0    0    0    0    1    1    1    1    1    1    1
+000F:|    0    0    0    0    1    1    1    1    1    1    1    1    1    1    1    0
+0010:|    1    1    1    1    1    1    1    1    1    0    0    0    0    0    0    0
+0011:|    1    1    1    1    0    0    0    0    0    0    0    0    0    0    0    0
+0012:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0013:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0014:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0015:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0016:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0017:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0018:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0019:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001E:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001F:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+rank 0 coarse = 15
+rank 0 fine = 72
+B:|    0    0    0    0    0    0    0    1    1    1    0    0    0    0    0    0
+opt_dle value:8
+DRAMC_R0DELDLY[018]=00001E1F
+==================================================================
+		RX	DQS perbit delay software calibration 
+==================================================================
+1.0-15 bit dq delay value
+==================================================================
+bit|     0  1  2  3  4  5  6  7  8  9
+--------------------------------------
+0 |    9 7 8 9 7 7 8 7 8 8 
+10 |    9 10 9 12 9 10 
+--------------------------------------
+
+==================================================================
+2.dqs window
+x=pass dqs delay value (min~max)center 
+y=0-7bit DQ of every group
+input delay:DQS0 =31 DQS1 = 30
+==================================================================
+bit	DQS0	 bit      DQS1
+0  (1~60)30  8  (1~59)30
+1  (1~60)30  9  (1~58)29
+2  (1~60)30  10  (1~60)30
+3  (1~58)29  11  (1~56)28
+4  (1~58)29  12  (1~58)29
+5  (1~60)30  13  (1~59)30
+6  (1~59)30  14  (1~60)30
+7  (1~62)31  15  (1~59)30
+==================================================================
+3.dq delay value last
+==================================================================
+bit|    0  1  2  3  4  5  6  7  8   9
+--------------------------------------
+0 |    10 8 9 11 9 8 9 7 8 9 
+10 |    9 12 10 12 9 10 
+==================================================================
+==================================================================
+     TX  perbyte calibration 
+==================================================================
+DQS loop = 15, cmp_err_1 = ffff0000 
+dqs_perbyte_dly.last_dqsdly_pass[0]=15,  finish count=1 
+dqs_perbyte_dly.last_dqsdly_pass[1]=15,  finish count=2 
+DQ loop=15, cmp_err_1 = ffff00a2
+dqs_perbyte_dly.last_dqdly_pass[1]=15,  finish count=1 
+DQ loop=14, cmp_err_1 = ffff00a0
+DQ loop=13, cmp_err_1 = ffff0080
+DQ loop=12, cmp_err_1 = ffff0000
+dqs_perbyte_dly.last_dqdly_pass[0]=12,  finish count=2 
+byte:0, (DQS,DQ)=(9,8)
+byte:1, (DQS,DQ)=(8,8)
+20,data:89
+[EMI] DRAMC calibration passed
+
+===================================================================
+     		MT7621   stage1 code done 
+     		CPU=500000000 HZ BUS=166666666 HZ
+===================================================================
+
+
+U-Boot 1.1.3 (Dec  4 2017 - 11:37:57) 0.00
+
+Board: Ralink APSoC DRAM:  128 MB
+relocate_code Pointer at: 87f94000
+
+Config XHCI 40M PLL 
+flash manufacture id: c2, device id 20 19
+find flash: MX25L25635E
+============================================ 
+Ralink UBoot Version: 5.0.0.1
+-------------------------------------------- 
+ASIC MT7621A DualCore (MAC to MT7530 Mode)
+DRAM_CONF_FROM: Auto-Detection 
+DRAM_TYPE: DDR3 
+DRAM bus: 16 bit
+Xtal Mode=3 OCP Ratio=1/3
+Flash component: 32 MBytes NOR Flash
+Date:Dec  4 2017  Time:11:37:57
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:256, ways:4, linesz:32 ,total:32768 
+
+ ##### The CPU freq = 880 MHZ #### 
+ estimate memory size =128 Mbytes
+#Reset_MT7530
+set LAN/WAN LLLLW
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. 
+default: 3
+ 4  3  2  1  0 
+   
+3: System Boot system code via Flash[1].
+## Booting image at bd000000 ...
+cur glbcfg partition 1 is good!
+   Verifying Trx ... OK
+   Image Name:   Linux Kernel Image
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    2540670 Bytes =  2.4 MB
+   Load Address: 81001000
+   Entry Point:  814df880
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+No initrd
+## Transferring control to Linux (at address 814df880) ...
+## Giving linux memsize in MB, 128
+
+Starting kernel ...
+LINUX started...
+
+ THIS IS ASIC
+
+SDK 5.0.S.0
+Linux version 3.10.14 (william_chen@sw1.2) (gcc version 4.6.3 (Buildroot 2012.11.1) ) #1 SMP Thu Aug 16 17:16:55 CST 2018
+
+ The CPU feqenuce set to 880 MHz
+GCMP present
+CPU0 revision is: 0001992f (MIPS 1004Kc)
+Software DMA cache coherency
+Determined physical RAM map:
+ memory: 08000000 @ 00000000 (usable)
+Zone ranges:
+  DMA      [mem 0x00000000-0x00ffffff]
+  Normal   [mem 0x01000000-0x07ffffff]
+Movable zone start for each node
+Early memory node ranges
+  node   0: [mem 0x00000000-0x07ffffff]
+Detected 3 available secondary CPU(s)
+Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+PERCPU: Embedded 7 pages/cpu @8186e000 s6528 r8192 d13952 u32768
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 32512
+Kernel command line: console=ttyS1,57600n8 root=/dev/mtdblock5 init=/sbin/preinit rootfstype=squashfs,jffs2
+PID hash table entries: 512 (order: -1, 2048 bytes)
+Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+Writing ErrCtl register=0006b811
+Readback ErrCtl register=0006b811
+Memory: 122216k/131072k available (5022k kernel code, 8856k reserved, 1523k data, 232k init, 0k highmem)
+Hierarchical RCU implementation.
+NR_IRQS:128
+console [ttyS1] enabled
+Calibrating delay loop... 574.46 BogoMIPS (lpj=1148928)
+pid_max: default: 32768 minimum: 301
+Mount-cache hash table entries: 512
+launch: starting cpu1
+launch: cpu1 gone!
+CPU1 revision is: 0001992f (MIPS 1004Kc)
+Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+Synchronize counters for CPU 1: done.
+launch: starting cpu2
+launch: cpu2 gone!
+CPU2 revision is: 0001992f (MIPS 1004Kc)
+Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+Synchronize counters for CPU 2: done.
+launch: starting cpu3
+launch: cpu3 gone!
+CPU3 revision is: 0001992f (MIPS 1004Kc)
+Primary instruction cache 32kB, 4-way, VIPT, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+Synchronize counters for CPU 3: done.
+Brought up 4 CPUs
+devtmpfs: initialized
+NET: Registered protocol family 16
+release PCIe RST: RALINK_RSTCTRL = 7000000
+PCIE PHY initialize
+***** Xtal 40MHz *****
+start MT7621 PCIe register access
+RALINK_RSTCTRL = 7000000
+RALINK_CLKCFG1 = 77ffeff8
+
+*************** MT7621 PCIe RC mode *************
+PCIE0 no card, disable it(RST&CLK)
+PCIE2 no card, disable it(RST&CLK)
+pcie_link status = 0x2
+RALINK_RSTCTRL= 2000000
+*** Configure Device number setting of Virtual PCI-PCI bridge ***
+RALINK_PCI_PCICFG_ADDR = 21007f2 -> 20107f2
+PCIE1 enabled
+interrupt enable status: 200000
+Port 0 N_FTS = 1b105000
+config reg done
+init_rt2880pci done
+bio: create slab <bio-0> at 0
+PCI host bridge to bus 0000:00
+pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff]
+pci_bus 0000:00: root bus resource [io  0x1e160000-0x1e16ffff]
+pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+pci 0000:00:00.0: BAR 0: can't assign mem (size 0x80000000)
+pci 0000:00:00.0: BAR 8: assigned [mem 0x60000000-0x600fffff]
+pci 0000:00:00.0: BAR 1: assigned [mem 0x60100000-0x6010ffff]
+pci 0000:01:00.0: BAR 0: assigned [mem 0x60000000-0x600fffff 64bit]
+pci 0000:00:00.0: PCI bridge to [bus 01]
+pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+PCI: Enabling device 0000:00:00.0 (0004 -> 0006)
+BAR0 at slot 0 = 0
+bus=0x0, slot = 0x0
+res[0]->start = 0
+res[0]->end = 0
+res[1]->start = 60100000
+res[1]->end = 6010ffff
+res[2]->start = 0
+res[2]->end = 0
+res[3]->start = 0
+res[3]->end = 0
+res[4]->start = 0
+res[4]->end = 0
+res[5]->start = 0
+res[5]->end = 0
+bus=0x1, slot = 0x0, irq=0x18
+res[0]->start = 60000000
+res[0]->end = 600fffff
+res[1]->start = 0
+res[1]->end = 0
+res[2]->start = 0
+res[2]->end = 0
+res[3]->start = 0
+res[3]->end = 0
+res[4]->start = 0
+res[4]->end = 0
+res[5]->start = 0
+res[5]->end = 0
+Switching to clocksource Ralink Systick timer
+NET: Registered protocol family 2
+Clockevents: could not switch to one-shot mode:
+Clockevents: could not switch to one-shot mode:
+Clockevents: could not switch to one-shot mode:
+ MIPS is not functional.
+ MIPS is not functional.
+Clockevents: could not switch to one-shot mode: MIPS is not functional.
+Could not switch to high resolution mode on CPU 1
+Could not switch to high resolution mode on CPU 2
+Could not switch to high resolution mode on CPU 3
+ MIPS is not functional.
+Could not switch to high resolution mode on CPU 0
+TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+TCP bind hash table entries: 1024 (order: 1, 8192 bytes)
+TCP: Hash tables configured (established 1024 bind 1024)
+TCP: reno registered
+UDP hash table entries: 256 (order: 1, 8192 bytes)
+UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+NET: Registered protocol family 1
+4 CPUs re-calibrate udelay(lpj = 1167360)
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+msgmni has been set to 238
+io scheduler noop registered (default)
+reg_int_mask=0, INT_MASK= 0 
+HSDMA_init
+
+ hsdma_phy_tx_ring0 = 0x00c00000, hsdma_tx_ring0 = 0xa0c00000
+
+ hsdma_phy_rx_ring0 = 0x00c04000, hsdma_rx_ring0 = 0xa0c04000
+TX_CTX_IDX0 = 0
+TX_DTX_IDX0 = 0
+RX_CRX_IDX0 = 3ff
+RX_DRX_IDX0 = 0
+set_fe_HSDMA_glo_cfg
+HSDMA_GLO_CFG = 465
+Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+serial8250: ttyS0 at MMIO 0x1e000d00 (irq = 27) is a 16550A
+serial8250: ttyS1 at MMIO 0x1e000c00 (irq = 26) is a 16550A
+Ralink gpio driver initialized
+flash manufacture id: c2, device id 20 19
+MX25L25635E(c2 2019c220) (32768 Kbytes)
+mtd .name = raspi, .size = 0x02000000 (32M) .erasesize = 0x00010000 (64K) .numeraseregions = 0
+in find_rootfs_mtd_partitions  off=0x00050000 end=0x01000000
+The  trx header  magic offset 0x0026c17c
+raspi: squash filesystem found at offset 0x002bc17c
+Found image1 partition off 0x002bc17c size 0x00d43e84
+in find_rootfs_mtd_partitions  off=0x01000000 end=0x01fb0000
+The  trx header  magic offset 0x0026c4dc
+raspi: squash filesystem found at offset 0x0126c4dc
+Found image2 partition off 0x0126c4dc size 0x00d43b24
+Creating 12 MTD partitions on "raspi":
+0x000000000000-0x000002000000 : "ALL"
+0x000000000000-0x000000030000 : "Bootloader"
+0x000000030000-0x000000040000 : "Config"
+0x000000040000-0x000000050000 : "Factory"
+0x000000050000-0x000001000000 : "Kernel"
+0x0000002bc17c-0x000001000000 : "RootFS"
+mtd: partition "RootFS" doesn't start on an erase block boundary -- force read-only
+0x000001000000-0x000001fb0000 : "Kernel2"
+0x00000126c4dc-0x000001fb0000 : "RootFS2"
+mtd: partition "RootFS2" doesn't start on an erase block boundary -- force read-only
+0x000001fb0000-0x000001fc0000 : "glbcfg"
+0x000001fc0000-0x000001fd0000 : "board_data"
+0x000001fd0000-0x000001fe0000 : "glbcfg2"
+0x000001fe0000-0x000001ff0000 : "board_data2"
+PPP generic driver version 2.4.2
+PPP BSD Compression module registered
+NET: Registered protocol family 24
+register mt_drv
+
+
+=== pAd = c0181000, size = 3788464 ===
+
+<-- RTMPAllocAdapterBlock, Status=0
+pAd->PciHif.CSRBaseAddress =0xc0080000, csr_addr=0xc0080000!
+RTMPInitPCIeDevice():device_id=0x7615
+DriverOwn()::Try to Clear FW Own...
+DriverOwn()::Success to clear FW Own
+mt_pci_chip_cfg(): HWVer=0x8a10, FWVer=0x8a10, pAd->ChipID=0x7615
+mt_pci_chip_cfg(): HIF_SYS_REV=0x76150001
+RtmpChipOpsHook(492): Not support for HIF_MT yet! MACVersion=0x0
+mt7615_init()-->
+Use the default ePAeLNA bin image!
+Use the default /etc_ro/wlan/MT7615E_EEPROM1.bin bin image!
+<--mt7615_init()
+ChipOpsMCUHook
+cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+cut_through_token_list_init(): 875b6288,875b6288
+cut_through_token_list_init(): TokenList inited done!id_head/tail=0/4096
+cut_through_token_list_init(): 875b6298,875b6298
+<-- RTMPAllocTxRxRingMemory, Status=0
+rdm_major = 253
+GMAC1_MAC_ADRH -- : 0x0000000c
+GMAC1_MAC_ADRL -- : 0x432880a8
+Ralink APSoC Ethernet Driver Initilization. v3.1  1024 rx/tx descriptors allocated, mtu = 1500!
+GMAC1_MAC_ADRH -- : 0x0000000c
+GMAC1_MAC_ADRL -- : 0x432880a8
+PROC INIT OK!
+TCP: cubic registered
+Initializing XFRM netlink socket
+NET: Registered protocol family 10
+NET: Registered protocol family 17
+Ebtables v2.0 registered
+8021q: 802.1Q VLAN Support v1.8
+Boot from /dev/mtdblock7
+VFS: Mounted root (squashfs filesystem) readonly on device 31:7.
+devtmpfs: mounted
+Freeing unused kernel memory: 232K (81666000 - 816a0000)
+Arcadyan the primary config checkout succeed.
+Arcadyan the second config checkout succeed.
+arca.dbus.mng: is ready
+agent_handler(236):arca.dbus.misc: is ready
+MD5=[2e9a0e55bd3587fc2d845b190837c07b]
+
+Please press Enter to activate this console.  0: C:43:28:FFFFFF80:FFFFFFA8
+Raeth v3.1 (Tasklet)
+set CLK_CFG_0 = 0x40a00020!!!!!!!!!!!!!!!!!!1
+phy_free_head is 0xc18000!!!
+phy_free_tail_phy is 0xc19ff0!!!
+txd_pool=a0c60000 phy_txd_pool=00C60000
+ei_local->skb_free start address is 0x876da6cc.
+free_txd: 00c60010, ei_local->cpu_ptr: 00C60000
+ POOL  HEAD_PTR | DMA_PTR | CPU_PTR 
+----------------+---------+--------
+     0xa0c60000 0x00C60000 0x00C60000
+
+phy_qrx_ring = 0x00c1a000, qrx_ring = 0xa0c1a000
+
+phy_rx_ring0 = 0x00c1c000, rx_ring[0] = 0xa0c1c000
+MT7530 Reset Completed!!
+change HW-TRAP to 0x17c8f
+set LAN/WAN LLLLW
+GMAC1_MAC_ADRH -- : 0x0000000c
+GMAC1_MAC_ADRL -- : 0x432880ab
+GDMA2_MAC_ADRH -- : 0x0000000c
+GDMA2_MAC_ADRL -- : 0x432880ac
+eth3: ===> VirtualIF_open
+MT7621 GE2 link rate to 1G
+CDMA_CSG_CFG = 81000000
+GDMA1_FWD_CFG = 20710000
+GDMA2_FWD_CFG = 20710000
+device eth2 entered promiscuous mode
+br0: port 1(eth2) entered forwarding state
+br0: port 1(eth2) entered forwarding state
+device eth2.1000 entered promiscuous mode
+br1: port 1(eth2.1000) entered forwarding state
+br1: port 1(eth2.1000) entered forwarding state
+DriverOwn()::Return since already in Driver Own...
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+==> UserCfgInit: config_method=[0x780]
+[wifi_fwd_set_cb_num] band_cb_offset=33, recv_from_cb_offset=34
+multi-profile merge success, en:1,pf1_num:1,pf2_num:3,total:4
+MacAddress1 = 00:00:00:00:00:00
+RT_CfgSetMacAddress : invalid length (0)
+RT_CfgSetMacAddress : invalid length (0)
+E2pAccessMode=2
+SSID[0]=my-ssid, EdcaIdx=0
+SSID[1]=my-ssid, EdcaIdx=0
+SSID[2]=KPN Fon, EdcaIdx=0
+SSID[3]=KPN_Guest, EdcaIdx=0
+RTMPSetProfileParameters(): DBDC Mode=1
+TriBandChGrp=0/0/0/0
+cfg_mode=15
+cfg_mode=15
+wmode_band_equal(): Band Equal!
+cfg_mode=6
+cfg_mode=6
+cfg_mode=6
+cfg_mode=6
+cfg_mode=6
+cfg_mode=6
+BandSteering=1
+BndStrgBssIdx=1;1;0;0
+[TxPower] BAND0: 30, BAND1: 30 
+[SKUenable] BAND0: 1, BAND1: 1 
+[PERCENTAGEenable] BAND0: 1, BAND1: 1 
+[BFBACKOFFenable] BAND0: 0, BAND1: 0 
+CalCacheApply = 0 
+APEdca0
+Valid=1
+APAifsn[0]=3
+APAifsn[1]=7
+APAifsn[2]=1
+APAifsn[3]=1
+APEdca1
+Valid=1
+APAifsn[0]=3
+APAifsn[1]=7
+APAifsn[2]=1
+APAifsn[3]=1
+APEdca2
+APEdca3
+BSSAifsn[0]=3
+BSSAifsn[1]=7
+BSSAifsn[2]=2
+BSSAifsn[3]=2
+BSSAifsn[0]=3
+BSSAifsn[1]=7
+BSSAifsn[2]=2
+BSSAifsn[3]=2
+BSSAifsn[0]=3
+BSSAifsn[1]=7
+BSSAifsn[2]=2
+BSSAifsn[3]=2
+BSSAifsn[0]=3
+BSSAifsn[1]=7
+BSSAifsn[2]=2
+BSSAifsn[3]=2
+APSDCapable[0]=0
+APSDCapable[1]=0
+default ApCliAPSDCapable[0]=0
+default ApCliAPSDCapable[1]=0
+DfsZeroWaitCacTime=255/255 
+RTMPSetProfileParameters(): ACSCheckTime[0]=0 seconds(24 hours)
+RTMPSetProfileParameters(): ACSCheckTime[1]=86400 seconds(0 hours)
+[PMF]Set_PMFMFPC_Proc:: apidx=0, Desired MFPC=0
+[PMF]Set_PMFMFPC_Proc:: apidx=1, Desired MFPC=0
+[PMF]Set_PMFMFPR_Proc:: apidx=0, Desired MFPR=0
+[PMF]Set_PMFMFPR_Proc:: apidx=1, Desired MFPR=0
+[PMF]Set_PMFSHA256_Proc:: apidx=0, Desired PMFSHA256=0
+[PMF]Set_PMFSHA256_Proc:: apidx=1, Desired PMFSHA256=0
+cfg_mode=8
+cfg_mode=9
+AndesSendCmdMsg: Could not send in band command due to diablefRTMP_ADAPTER_MCU_SEND_IN_BAND_CMD
+HT: WDEV[0] Ext Channel = BELOW
+HT: WDEV[1] Ext Channel = BELOW
+HT: WDEV[2] Ext Channel = BELOW
+HT: WDEV[3] Ext Channel = BELOW
+HT: greenap_cap = 0
+IcapMode = 0
+WtcSetMaxStaNum: MaxStaNum:88, BssidNum:4, WdsNum:0, ApcliNum:2, MaxNumChipRept:32, MinMcastWcid:122
+Top Init Done!
+Use alloc_skb
+RX[0] DESC a0c14000 size = 16384
+RX[1] DESC a0c12000 size = 8192
+Hif Init Done!
+ctl->txq = c0519d90
+ctl->rxq = c0519d9c
+ctl->ackq = c0519da8
+ctl->kickq = c0519db4
+ctl->tx_doneq = c0519dc0
+ctl->rx_doneq = c0519dcc
+mt7615_fw_prepare():FW(8a10), HW(8a10), CHIPID(7615))
+mt7615_fw_prepare(2687): MT7615_E3, USE E3 patch and ram code binary image
+AndesMTLoadRomMethodFwDlRing(1035), cap->rom_patch_len(11102)
+AndesRestartCheck: Current TOP_MISC2(0x1)
+AndesRestartCheck: (TOP_MISC2 = 1), ready to continue...RET(0)
+20170809192718a
+
+platform = 
+ALPS
+hw/sw version = 
+8a108a10
+patch version = 
+00000010
+Patch SEM Status=2
+MtCmdPatchSemGet:(ret = 0)
+
+Patch is not ready && get semaphore success, SemStatus(2)
+EventGenericEventHandler: CMD Success
+MtCmdAddressLenReq:(ret = 0)
+MtCmdPatchFinishReq
+EventGenericEventHandler: CMD Success
+Send checksum req..
+Patch SEM Status=3
+MtCmdPatchSemGet:(ret = 0)
+
+Release patch semaphore, SemStatus(3)
+AndesMTEraseRomPatch
+WfMcuHwInit: Before NICLoadFirmware, check IcapMode=0
+AndesMTLoadFwMethodFwDlRing(809), cap->fw_len(462376)
+Build Date:_201711030345
+Build Date:_201711030345
+AndesRestartCheck: Current TOP_MISC2(0x1)
+AndesRestartCheck: (TOP_MISC2 = 1), ready to continue...RET(0)
+EventGenericEventHandler: CMD Success
+MtCmdAddressLenReq:(ret = 0)
+EventGenericEventHandler: CMD Success
+MtCmdAddressLenReq:(ret = 0)
+MtCmdFwStartReq: override = 1, address = 540672
+EventGenericEventHandler: CMD Success
+Build Date:_201707211524
+EventGenericEventHandler: CMD Success
+MtCmdAddressLenReq:(ret = 0)
+MtCmdFwStartReq: override = 4, address = 0
+EventGenericEventHandler: CMD Success
+WfMcuHwInit: NICLoadFirmware OK, Check IcapMode=0
+MCU Init Done!
+e[41m MtCmdSetRlmPorCal: (ret = 0)e[m 
+efuse_probe: efuse = 10000212
+RtmpChipOpsEepromHook::e2p_type=2, inf_Type=5
+RtmpEepromGetDefault::e2p_dafault=1
+RtmpChipOpsEepromHook: E2P type(2), E2pAccessMode = 2, E2P default = 1
+NVM is FLASH mode. dev_idx [0] FLASH OFFSET [0x0]
+e[34mNICReadEEPROMParameters: EEPROM 0x52 b300e[m
+e[34mNICReadEEPROMParameters: EEPROM 0x52 b300e[m
+Country Region from e2p = 101
+mt7615_antenna_default_reset(): TxPath = 4, RxPath = 4
+mt7615_antenna_default_reset(): DBDC 2G TxPath = 2, 2G RxPath = 2
+mt7615_antenna_default_reset(): DBDC 5G TxPath = 2, 2G RxPath = 2
+rtmp_read_txpwr_from_eeprom(233): Don't Support this now!
+RTMPReadTxPwrPerRate(1381): Don't Support this now!
+RcRadioInit(): DbdcMode=1, ConcurrentBand=2
+RcRadioInit(): pRadioCtrl=875b744c,Band=0,rfcap=1,channel=1,PhyMode=2 extCha=0xf
+RcRadioInit(): pRadioCtrl=875b7538,Band=1,rfcap=2,channel=36,PhyMode=1 extCha=0xf
+MtCmdSetDbdcCtrl:(ret = 0)
+Band Rf: 1, Phy Mode: 2
+Band Rf: 2, Phy Mode: 1
+AntCfgInit(2807): Not support for HIF_MT yet!
+MtSingleSkuLoadParam: RF_LOCKDOWN Feature OFF !!!
+MtBfBackOffLoadTable: RF_LOCKDOWN Feature OFF !!!
+EEPROM Init Done!
+mt_mac_init()-->
+mt_mac_pse_init(2750): Don't Support this now!
+mt7615_init_mac_cr()-->
+mt7615_init_mac_cr(): TMAC_TRCR0=0x82783c8c
+mt7615_init_mac_cr(): TMAC_TRCR1=0x82783c8c
+MtAsicSetMacMaxLen(1300): Not finish Yet!
+<--mt_mac_init()
+CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+CmdRxHdrTransBLUpdateRsp::EventExtCmdResult.u4Status = 0x0
+MAC Init Done!
+MT7615BBPInit():BBP Initialization.....
+	Band 0: valid=1, isDBDC=0, Band=2, CBW=1, CentCh/PrimCh=1/1, prim_ch_idx=0, txStream=2
+	Band 1: valid=0, isDBDC=0, Band=0, CBW=0, CentCh/PrimCh=0/0, prim_ch_idx=0, txStream=0
+MT7615BBPInit() todo 
+PHY Init Done!
+tx_pwr_comp_init():NotSupportYet!
+MtCmdSetMacTxRx:(ret = 0)
+MtCmdSetMacTxRx:(ret = 0)
+CountryCode(2.4G/5G)=1/1, RFIC=25, PHY mode(2.4G/5G)=2/48, support 32 channels
+WifiSysOpen(), wdev idx = 0
+wdev_attr_update(): wdevId0 = re:da:ct:ed
+MtCmdSetDbdcCtrl:(ret = 0)
+radio_operate_init : Error! Check! wdev->channel=0
+ApAutoChannelAtBootUp----------------->
+ApAutoChannelAtBootUp: AutoChannelBootup = 0, AutoChannelFlag = 1
+ApAutoChannelAtBootUp<-----------------
+WifiSysClose(), wdev idx = 0
+WifiSysOpen(), wdev idx = 0
+wdev_attr_update(): wdevId0 = re:da:ct:ed
+MtCmdSetDbdcCtrl:(ret = 0)
+radio_operate_init : Error! Check! wdev->channel=0
+MtAsicSetChBusyStat(840): Not support for HIF_MT yet!
+[PMF]APPMFInit:: apidx=0, MFPC=0, MFPR=0, SHA256=0
+[PMF]WPAMakeRsnIeCap: RSNIE Capability MFPC=0, MFPR=0
+HcUpdatePhyMode(): Update PhyMode for all wdev for this band PhyMode:48,Channel=36
+CountryCode(2.4G/5G)=1/1, RFIC=25, PHY mode(2.4G/5G)=2/48, support 32 channels
+Enable 20/40 BSSCoex Channel Scan(BssCoex=1)
+wtc_acquire_groupkey_wcid: Found a non-occupied wtbl_idx:127 for WDEV_TYPE:1
+ LinkToOmacIdx = 0, LinkToWdevType = 1
+bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO),                 CmdBssInfoBmcRate.u2BcTransmit= 8192,                 CmdBssInfoBmcRate.u2McTransmit = 8196
+MtCmdSetDbdcCtrl:(ret = 0)
+e[1;33m [RadarStateCheck]Set into RD_NORMAL_MODE e[m 
+MtCmdTxPowerSKUCtrl: fgTxPowerSKUEn: 1, BandIdx: 1
+MtCmdTxPowerPercentCtrl: fgTxPowerPercentEn: 1, BandIdx: 1
+MtCmdTxBfBackoffCtrl: fgTxBFBackoffEn: 0, BandIdx: 1
+mt7615_bbp_adjust():rf_bw=2, ext_ch=1, PrimCh=36, HT-CentCh=38, VHT-CentCh=42
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 36,control_ch2=0, central_chl = 42 DBDCIdx= 1, Band= 0 
+BW = 2,TXStream = 2, RXStream = 2, scan(0)
+ap_phy_rrm_init_byRf(): AP Set CentralFreq at 42(Prim=36, HT-CentCh=38, VHT-CentCh=42, BBP_BW=2)
+[WrapDfsRadarDetectStart]: Band0Ch is 36
+[WrapDfsRadarDetectStart]: Band1Ch is 0
+LeadTimeForBcn, OmacIdx = 0, WDEV_WITH_BCN_ABILITY
+MtAsicSetRalinkBurstMode(2605): Not support for HIF_MT yet!
+MtAsicSetPiggyBack(777): Not support for HIF_MT yet!
+MtAsicSetTxPreamble(2584): Not support for HIF_MT yet!
+RTMPSetLEDStatus: before AndesLedEnhanceOP , status=1, LED_CMD=2!
+AndesLedEnhanceOP: Success!
+WifiFwdSet::disabled=0
+ap_ftkd> Initialize FT KDP Module...
+e[1;33mBndStrg_Init()
+e[0mMain bssid = re:da:ct:ed
+AsicRadioOnOffCtrl(): DbdcIdx=1 RadioOn
+MtCmdSetMacTxRx:(ret = 0)
+MtCmdSetMacTxRx:(ret = 0)
+MCS Set = ff ff 00 00 01
+<==== mt_wifi_init, Status=0
+MtCmdEDCCACtrl: BandIdx: 0, EDCCACtrl: 1 
+MtCmdEDCCACtrl: BandIdx: 1, EDCCACtrl: 1 
+WtcSetMaxStaNum: MaxStaNum:88, BssidNum:4, WdsNum:0, ApcliNum:2, MaxNumChipRept:32, MinMcastWcid:122
+red_is_enabled: set CR4/N9 RED Enable to 1.
+cp_support_is_enabled: set CR4 CP_SUPPORT to Mode 2.
+e[1;36mBndStrg_SetInfFlags(): BSS(re:da:ct:ed)e[0me[1;36m set 5G Inf ra0 ready.
+e[0mCorrect apidx from 1 to 0 for WscUUIDInit
+Generate UUID for apidx(0)
+device ra0 entered promiscuous mode
+br0: port 2(ra0) entered forwarding state
+br0: port 2(ra0) entered forwarding state
+WifiSysOpen(), wdev idx = 1
+wdev_attr_update(): wdevId1 = re:da:ct:ed
+MtCmdSetDbdcCtrl:(ret = 0)
+[PMF]APPMFInit:: apidx=1, MFPC=0, MFPR=0, SHA256=0
+[PMF]WPAMakeRsnIeCap: RSNIE Capability MFPC=0, MFPR=0
+HcUpdatePhyMode(): Update PhyMode for all wdev for this band PhyMode:8,Channel=13
+CountryCode(2.4G/5G)=1/1, RFIC=25, PHY mode(2.4G/5G)=10/48, support 32 channels
+Enable 20/40 BSSCoex Channel Scan(BssCoex=1)
+MtCmdSetMacTxRx:(ret = 0)
+MtCmdSetMacTxRx:(ret = 0)
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 6,control_ch2=0, central_chl = 6 DBDCIdx= 0, Band= 0 
+BW = 0,TXStream = 2, RXStream = 2, scan(1)
+AP OBSS SYNC - BBP R4 to 20MHz.l
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 7,control_ch2=0, central_chl = 7 DBDCIdx= 0, Band= 0 
+BW = 0,TXStream = 2, RXStream = 2, scan(1)
+AP OBSS SYNC - BBP R4 to 20MHz.l
+:MtCmdPktBudgetCtrl: bssid(255),wcid(65535),type(0)
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 8,control_ch2=0, central_chl = 8 DBDCIdx= 0, Band= 0 
+BW = 0,TXStream = 2, RXStream = 2, scan(1)
+AP OBSS SYNC - BBP R4 to 20MHz.l
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 9,control_ch2=0, central_chl = 9 DBDCIdx= 0, Band= 0 
+BW = 0,TXStream = 2, RXStream = 2, scan(1)
+AP OBSS SYNC - BBP R4 to 20MHz.l
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 10,control_ch2=0, central_chl = 10 DBDCIdx= 0, Band= 0 
+BW = 0,TXStream = 2, RXStream = 2, scan(1)
+AP OBSS SYNC - BBP R4 to 20MHz.l
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 11,control_ch2=0, central_chl = 11 DBDCIdx= 0, Band= 0 
+BW = 0,TXStream = 2, RXStream = 2, scan(1)
+AP OBSS SYNC - BBP R4 to 20MHz.l
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 12,control_ch2=0, central_chl = 12 DBDCIdx= 0, Band= 0 
+BW = 0,TXStream = 2, RXStream = 2, scan(1)
+AP OBSS SYNC - BBP R4 to 20MHz.l
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 13,control_ch2=0, central_chl = 13 DBDCIdx= 0, Band= 0 
+BW = 0,TXStream = 2, RXStream = 2, scan(1)
+AP OBSS SYNC - BBP R4 to 20MHz.l
+wtc_acquire_groupkey_wcid: Found a non-occupied wtbl_idx:126 for WDEV_TYPE:1
+ LinkToOmacIdx = 11, LinkToWdevType = 1
+bssUpdateBmcMngRate (BSS_INFO_BROADCAST_INFO),                 CmdBssInfoBmcRate.u2BcTransmit= 8192,                 CmdBssInfoBmcRate.u2McTransmit = 8196
+MtCmdSetDbdcCtrl:(ret = 0)
+e[1;33m [RadarStateCheck]Set into RD_NORMAL_MODE e[m 
+MtCmdTxPowerSKUCtrl: fgTxPowerSKUEn: 1, BandIdx: 0
+MtCmdTxPowerPercentCtrl: fgTxPowerPercentEn: 1, BandIdx: 0
+MtCmdTxBfBackoffCtrl: fgTxBFBackoffEn: 0, BandIdx: 0
+mt7615_bbp_adjust():rf_bw=0, ext_ch=0, PrimCh=13, HT-CentCh=13, VHT-CentCh=42
+mt7615_apply_cal_data() : eeprom 0x52 bit 1 is 0, do runtime cal , skip RX reload
+mt7615_apply_cal_data() : eeprom 0x52 bit 0 is 0, do runtime cal , skip TX reload
+MtCmdChannelSwitch: control_chl = 13,control_ch2=0, central_chl = 13 DBDCIdx= 0, Band= 0 
+BW = 0,TXStream = 2, RXStream = 2, scan(0)
+ap_phy_rrm_init_byRf(): AP Set CentralFreq at 13(Prim=13, HT-CentCh=13, VHT-CentCh=42, BBP_BW=0)
+e[1;36mBndStrg_SetInfFlags(): BSS(re:da:ct:ed)e[0me[1;36m set 2G Inf rax0 ready.
+e[0mLeadTimeForBcn, OmacIdx = 11, WDEV_WITH_BCN_ABILITY
+Generate UUID for apidx(1)
+device rax0 entered promiscuous mode
+br0: port 3(rax0) entered forwarding state
+br0: port 3(rax0) entered forwarding state
+==> WscBuildProbeRespIE: config_method=[0x780]
+==> Set_AP_WscConfStatus_Proc: IsAPConfigured=2
+==> WscBuildProbeRespIE: config_method=[0x780]
+[00:00:33][main]Initialize bndstrg
+[00:00:33][driver_wext_init]Initialize ralink wext interface
+[00:00:33][bndstrg_nvram_read_all]
+[00:00:33][bndstrg_run]e[1;32mbndstrg_run[4930]:start
+e[0mstart syslog-ng...
+Port[0]: up => down!
+Port[1]: up => down!
+WAN: Up => Down
+start_upnp: wan_idx -1
+Call Update Tr69 Rule.
+[00:00:35][bndst
+BndStrg_InfStatusRsp:INF [ra0]STATUS QUERY ON
+rg_periodic_exec
+BndStrg_InfStatusRsp:INF [rax0]STATUS QUERY ON
+]e[1;32mbndstrg->state=BNDSTRG_INF_POLL 
+e[0m[00:00:35][bndstrg_table_en_polling]bndstrg=0x429710,table=0x429a08,en=0
+[00:00:35][bndstrg_inf_status_polling]
+[bndstrg_inf_status_polling]inf_name:[ra0]
+[00:00:35][bndstrg_inf_status_polling]
+[bndstrg_inf_status_polling]inf_name:[rax0]
+[00:00:35][bndstrg_ctrl_interface_update]Rx INF STATUS RSP for inf(ra0): 1
+[00:00:35][bndstrg_ctrl_interface_update]Rx INF STATUS RSP for inf(rax0): 1
+[00:00:37][bndstSend DISASSOC frame(3) with ra0
+rg_periodic_execSend DISASSOC frame(3) with ra1
+]e[1;32mbndstrg-Send DISASSOC frame(3) with ra0
+>state=BNDSTRG_TSend DISASSOC frame(3) with ra1
+BL_EN 
+e[0m[00:00:37][bndstrg_table_en_polling]bndstrg=0x429710,table=0x429a08,en=1
+[00:00:38][bndstrg_table_en_polling]bndstrg=0x429710,table=0x429a08,en=1
+[00:00:39][bndstrg_periodic_exec]e[1;32mbndstrg->state=BNDSTRG_TBL_READY DUALBAND
+e[0mTime out! You may increase DEFAULT_TIMEOUT_COUNT[10]!
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>
+===================================================================
+     		MT7621   stage1 code 10:33:55 (ASIC)
+     		CPU=500000000 HZ BUS=166666666 HZ
+==================================================================
+Change MPLL source from XTAL to CR...
+do MEMPLL setting..
+MEMPLL Config : 0x11100000
+3PLL mode + External loopback
+=== XTAL-40Mhz === DDR-1200Mhz ===
+PLL4 FB_DL: 0x3, 1/0 = 571/453 0D000000
+PLL3 FB_DL: 0x11, 1/0 = 600/424 45000000
+PLL2 FB_DL: 0x15, 1/0 = 611/413 55000000
+do DDR setting..[01F40000]
+Apply DDR3 Setting...(use customer AC)
+          0    8   16   24   32   40   48   56   64   72   80   88   96  104  112  120
+      --------------------------------------------------------------------------------
+0000:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0001:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0002:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0003:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0004:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0005:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0006:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0007:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0008:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0009:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+000D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    1
+000E:|    0    0    0    0    0    0    0    0    0    1    1    1    1    1    1    1
+000F:|    0    0    0    0    1    1    1    1    1    1    1    1    1    1    0    0
+0010:|    1    1    1    1    1    1    1    1    1    0    0    0    0    0    0    0
+0011:|    1    1    1    1    0    0    0    0    0    0    0    0    0    0    0    0
+0012:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0013:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0014:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0015:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0016:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0017:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0018:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+0019:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001A:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001B:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001C:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001D:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001E:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+001F:|    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0    0
+rank 0 coarse = 15
+rank 0 fine = 72
+B:|    0    0    0    0    0    0    0    0    0    0    1    1    1    0    0    0
+opt_dle value:11
+DRAMC_R0DELDLY[018]=00001F1F
+==================================================================
+		RX	DQS perbit delay software calibration 
+==================================================================
+1.0-15 bit dq delay value
+==================================================================
+bit|     0  1  2  3  4  5  6  7  8  9
+--------------------------------------
+0 |    9 7 8 10 7 8 8 7 8 8 
+10 |    9 10 9 12 9 10 
+--------------------------------------
+
+==================================================================
+2.dqs window
+x=pass dqs delay value (min~max)center 
+y=0-7bit DQ of every group
+input delay:DQS0 =31 DQS1 = 31
+==================================================================
+bit	DQS0	bit      DQS1
+0  (1~58)29  8  (1~58)29
+1  (1~58)29  9  (1~58)29
+2  (1~59)30  10  (1~60)30
+3  (1~60)30  11  (1~57)29
+4  (1~59)30  12  (1~60)30
+5  (1~60)30  13  (1~59)30
+6  (1~60)30  14  (1~61)31
+7  (1~61)31  15  (1~60)30
+==================================================================
+3.dq delay value last
+==================================================================
+bit|    0  1  2  3  4  5  6  7  8   9
+--------------------------------------
+0 |    11 9 9 11 8 9 9 7 10 10 
+10 |    10 12 10 13 9 11 
+==================================================================
+==================================================================
+     TX  perbyte calibration 
+==================================================================
+DQS loop = 15, cmp_err_1 = ffff0000 
+dqs_perbyte_dly.last_dqsdly_pass[0]=15,  finish count=1 
+dqs_perbyte_dly.last_dqsdly_pass[1]=15,  finish count=2 
+DQ loop=15, cmp_err_1 = ffff00aa
+dqs_perbyte_dly.last_dqdly_pass[1]=15,  finish count=1 
+DQ loop=14, cmp_err_1 = ffff00a0
+DQ loop=13, cmp_err_1 = ffff0080
+DQ loop=12, cmp_err_1 = ffff0000
+dqs_perbyte_dly.last_dqdly_pass[0]=12,  finish count=2 
+byte:0, (DQS,DQ)=(9,8)
+byte:1, (DQS,DQ)=(8,8)
+20,data:89
+[EMI] DRAMC calibration passed
+
+===================================================================
+     		MT7621   stage1 code done 
+     		CPU=500000000 HZ BUS=166666666 HZ
+===================================================================
+
+
+U-Boot 1.1.3 (Dec  4 2017 - 11:37:57) 0.00
+
+Board: Ralink APSoC DRAM:  128 MB
+relocate_code Pointer at: 87f94000
+
+Config XHCI 40M PLL 
+******************************
+Software System Reset Occurred
+******************************
+flash manufacture id: c2, device id 20 19
+find flash: MX25L25635E
+============================================ 
+Ralink UBoot Version: 5.0.0.1
+-------------------------------------------- 
+ASIC MT7621A DualCore (MAC to MT7530 Mode)
+DRAM_CONF_FROM: Auto-Detection 
+DRAM_TYPE: DDR3 
+DRAM bus: 16 bit
+Xtal Mode=3 OCP Ratio=1/3
+Flash component: 32 MBytes NOR Flash
+Date:Dec  4 2017  Time:11:37:57
+============================================ 
+icache: sets:256, ways:4, linesz:32 ,total:32768
+dcache: sets:256, ways:4, linesz:32 ,total:32768 
+
+ ##### The CPU freq = 880 MHZ #### 
+ estimate memory size =128 Mbytes
+#Reset_MT7530
+set LAN/WAN LLLLW
+
+Please choose the operation: 
+   1: Load system code to SDRAM via TFTP. 
+   2: Load system code then write to Flash via TFTP. 
+   3: Boot system code via Flash (default).
+   4: Entr boot command line interface.
+   7: Load Boot Loader code then write to Flash via Serial. 
+   9: Load Boot Loader code then write to Flash via TFTP. 
+default: 3                                                                                                                                                                         0 
+   
+3: System Boot system code via Flash[0].
+## Booting image at bc050000 ...
+old glbcfg partition is broken, magic=[0x23494255][0x55424923]!
+   Verifying Trx ... OK
+   Image Name:   MIPS OpenWrt Linux-5.10.161
+   Image Type:   MIPS Linux Kernel Image (uncompressed)
+   Data Size:    2692535 Bytes =  2.6 MB
+   Load Address: 80001000
+   Entry Point:  80001000
+   Verifying Checksum ... OK
+OK
+No initrd
+## Transferring control to Linux (at address 80001000) ...
+## Giving linux memsize in MB, 128
+
+Starting kernel ...
+
+
+
+OpenWrt kernel loader for MIPS based SoC
+Copyright (C) 2011 Gabor Juhos <juhosg@openwrt.org>
+Decompressing kernel... done!
+Starting kernel at 80001000...
+
+[    0.000000] Linux version 5.10.161 (builder@buildhost) (mipsel-openwrt-linux-musl-gcc (OpenWrt GCC 11.3.0 r21603+2-fb15cb4ce9) 11.3.0, GNU ld (GNU Binutils) 2.37) #0 SMP Tue Dec 27 14:26:24 2022
+[    0.000000] SoC Type: MediaTek MT7621 ver:1 eco:3
+[    0.000000] printk: bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] MIPS: machine is Arcadyan WE420223-99
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] VPE topology {2,2} total 4
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000]   HighMem  empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x0000000007ffffff]
+[    0.000000] percpu: Embedded 15 pages/cpu s30480 r8192 d22768 u61440
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 32480
+[    0.000000] Kernel command line: console=ttyS0,57600 ubi.mtd=5 root=/dev/ubiblock0_0 rootfstype=squashfs,jffs2
+[    0.000000] Dentry cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] Memory: 119472K/131072K available (7032K kernel code, 625K rwdata, 828K rodata, 1292K init, 243K bss, 11600K reserved, 0K cma-reserved, 0K highmem)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] 	Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] NR_IRQS: 256
+[    0.000000] CPU Clock: 880MHz
+[    0.000000] clocksource: GIC: mask: 0xffffffffffffffff max_cycles: 0xcaf478abb4, max_idle_ns: 440795247997 ns
+[    0.000013] sched_clock: 64 bits at 880MHz, resolution 1ns, wraps every 4398046511103ns
+[    0.015854] clocksource: MIPS: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 4343773742 ns
+[    0.033809] Calibrating delay loop... 586.13 BogoMIPS (lpj=2930688)
+[    0.106131] pid_max: default: 32768 minimum: 301
+[    0.115443] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.129849] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.148140] rcu: Hierarchical SRCU implementation.
+[    0.157952] dyndbg: Ignore empty _ddebug table in a CONFIG_DYNAMIC_DEBUG_CORE build
+[    0.173529] smp: Bringing up secondary CPUs ...
+[    0.183279] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.183290] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.183301] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.183376] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.243361] Synchronize counters for CPU 1: done.
+[    0.305528] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.305537] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.305545] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.305593] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.364493] Synchronize counters for CPU 2: done.
+[    0.424841] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.424850] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.424858] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.424912] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.484074] Synchronize counters for CPU 3: done.
+[    0.543685] smp: Brought up 1 node, 4 CPUs
+[    0.556200] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.575716] futex hash table entries: 1024 (order: 3, 32768 bytes, linear)
+[    0.589534] pinctrl core: initialized pinctrl subsystem
+[    0.602231] NET: Registered protocol family 16
+[    0.612267] thermal_sys: Registered thermal governor 'step_wise'
+[    0.613296] cpuidle: using governor teo
+[    0.638657] rt2880-pinmux pinctrl: there is not valid maps for state default
+[    0.683299] clocksource: Switched to clocksource GIC
+[    0.695156] NET: Registered protocol family 2
+[    0.704010] IP idents hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.719695] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
+[    0.736368] TCP established hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.751484] TCP bind hash table entries: 1024 (order: 1, 8192 bytes, linear)
+[    0.765484] TCP: Hash tables configured (established 1024 bind 1024)
+[    0.778246] UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.791129] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+[    0.805229] NET: Registered protocol family 1
+[    0.813806] PCI: CLS 0 bytes, default 32
+[    0.823874] workingset: timestamp_bits=14 max_order=15 bucket_order=1
+[    0.841029] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.852578] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.873035] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 251)
+[    0.889474] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.900824] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.912094] mt7621_gpio 1e000600.gpio: registering 32 gpios
+[    0.923818] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.940573] printk: console [ttyS0] disabled
+[    0.949067] 1e000c00.uartlite: ttyS0 at MMIO 0x1e000c00 (irq = 19, base_baud = 3125000) is a 16550A
+[    0.966996] printk: console [ttyS0] enabled
+[    0.966996] printk: console [ttyS0] enabled
+[    0.983535] printk: bootconsole [early0] disabled
+[    0.983535] printk: bootconsole [early0] disabled
+[    1.005547] spi-mt7621 1e000b00.spi: sys_freq: 220000000
+[    1.017892] spi-nor spi0.0: mx25l25635e (32768 Kbytes)
+[    1.028295] 12 fixed-partitions partitions found on MTD device spi0.0
+[    1.041148] Creating 12 MTD partitions on "spi0.0":
+[    1.050884] 0x000000000000-0x000002000000 : "ALL"
+[    1.061216] 0x000000000000-0x000000030000 : "Bootloader"
+[    1.072829] 0x000000030000-0x000000040000 : "Config"
+[    1.083807] 0x000000040000-0x000000050000 : "Factory"
+[    1.094885] 0x000000050000-0x000001fb0000 : "kernel"
+[    1.105803] 0x000000490000-0x000001fb0000 : "rootfs"
+[    1.116620] mtd: setting mtd5 (rootfs) as root device
+[    1.126800] mtdsplit: no squashfs found in "rootfs"
+[    1.136564] 0x000001000000-0x000001fb0000 : "Kernel2"
+[    1.147590] 0x000001440000-0x000001fb0000 : "RootFS2"
+[    1.158715] 0x000001fb0000-0x000001fc0000 : "glbcfg"
+[    1.169716] 0x000001fc0000-0x000001fd0000 : "board_data"
+[    1.181486] 0x000001fd0000-0x000001fe0000 : "glbcfg2"
+[    1.192745] 0x000001fe0000-0x000001ff0000 : "board_data2"
+[    1.254756] mt7530 mdio-bus:1f: MT7530 adapts as multi-chip module
+[    1.270802] mtk_soc_eth 1e100000.ethernet: generated random MAC address ca:db:70:e5:b0:70
+[    1.287960] mtk_soc_eth 1e100000.ethernet eth0: mediatek frame engine at 0xbe100000, irq 20
+[    1.304794] mtk_soc_eth 1e100000.ethernet: generated random MAC address 2e:72:0b:2d:99:3e
+[    1.321891] mtk_soc_eth 1e100000.ethernet swp0: mediatek frame engine at 0xbe100000, irq 20
+[    1.339883] i2c /dev entries driver
+[    1.349384] mt7621-pci 1e140000.pcie: host bridge /pcie@1e140000 ranges:
+[    1.362784] mt7621-pci 1e140000.pcie:   No bus range found for /pcie@1e140000, using [bus 00-ff]
+[    1.380312] mt7621-pci 1e140000.pcie:      MEM 0x0060000000..0x006fffffff -> 0x0000000000
+[    1.396622] mt7621-pci 1e140000.pcie:       IO 0x001e160000..0x001e16ffff -> 0x0000000000
+[    1.413013] mt7621-pci 1e140000.pcie: Parsing DT failed
+[    1.425752] NET: Registered protocol family 10
+[    1.436434] Segment Routing with IPv6
+[    1.443902] NET: Registered protocol family 17
+[    1.452830] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    1.479010] 8021q: 802.1Q VLAN Support v1.8
+[    1.490791] mt7530 mdio-bus:1f: MT7530 adapts as multi-chip module
+[    1.523677] mt7530 mdio-bus:1f swp1 (uninitialized): PHY [mt7530-0:01] driver [MediaTek MT7530 PHY] (irq=25)
+[    1.547639] mt7530 mdio-bus:1f: configuring for fixed/rgmii link mode
+[    1.564450] DSA: tree 0 setup
+[    1.570659] rt2880-pinmux pinctrl: pcie is already enabled
+[    1.581673] mt7621-pci 1e140000.pcie: host bridge /pcie@1e140000 ranges:
+[    1.595051] mt7621-pci 1e140000.pcie:   No bus range found for /pcie@1e140000, using [bus 00-ff]
+[    1.612586] mt7621-pci 1e140000.pcie:      MEM 0x0060000000..0x006fffffff -> 0x0000000000
+[    1.628889] mt7621-pci 1e140000.pcie:       IO 0x001e160000..0x001e16ffff -> 0x0000000000
+[    1.645286] mt7621-pci-phy 1e149000.pcie-phy: PHY for 0xbe149000 (dual port = 1)
+[    1.660381] mt7621-pci-phy 1e14a000.pcie-phy: PHY for 0xbe14a000 (dual port = 0)
+[    1.675378] mt7621-pci 1e140000.pcie: failed to parse bus ranges property: -22
+[    1.790050] mt7621-pci-phy 1e149000.pcie-phy: Xtal is 40MHz
+[    1.801174] mt7621-pci-phy 1e14a000.pcie-phy: Xtal is 40MHz
+[    1.912472] mt7621-pci 1e140000.pcie: pcie0 no card, disable it (RST & CLK)
+[    1.926353] mt7621-pci 1e140000.pcie: pcie2 no card, disable it (RST & CLK)
+[    1.940216] mt7621-pci 1e140000.pcie: PCIE1 enabled
+[    1.949936] mt7621-pci 1e140000.pcie: PCI coherence region base: 0x60000000, mask/settings: 0xf0000002
+[    1.968667] mt7621-pci 1e140000.pcie: PCI host bridge to bus 0000:00
+[    1.981341] pci_bus 0000:00: root bus resource [io  0x1e160000-0x1e16ffff]
+[    1.995051] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff]
+[    2.008749] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    2.019677] pci_bus 0000:00: root bus resource [mem 0x60000000-0x6fffffff] (bus address [0x00000000-0x0fffffff])
+[    2.039991] pci 0000:00:00.0: [0e8d:0801] type 01 class 0x060400
+[    2.051976] pci 0000:00:00.0: reg 0x10: [mem 0x00000000-0x7fffffff]
+[    2.064478] pci 0000:00:00.0: reg 0x14: [mem 0x60200000-0x6020ffff]
+[    2.077024] pci 0000:00:00.0: supports D1
+[    2.085019] pci 0000:00:00.0: PME# supported from D0 D1 D3hot
+[    2.098149] pci 0000:01:00.0: [14c3:7615] type 00 class 0x000280
+[    2.110179] pci 0000:01:00.0: reg 0x10: initial BAR value 0x00000000 invalid
+[    2.124240] pci 0000:01:00.0: reg 0x10: [mem size 0x00100000 64bit]
+[    2.136901] pci 0000:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s PCIe x1 link at 0000:00:00.0 (capable of 4.000 Gb/s with 5.0 GT/s PCIe x1 link)
+[    2.167861] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[    2.178292] pci 0000:00:00.0:   bridge window [io  0x0000-0x0fff]
+[    2.190442] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    2.203976] pci 0000:00:00.0:   bridge window [mem 0x60100000-0x601fffff pref]
+[    2.218363] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    2.231590] pci 0000:00:00.0: BAR 0: no space for [mem size 0x80000000]
+[    2.244779] pci 0000:00:00.0: BAR 0: failed to assign [mem size 0x80000000]
+[    2.258646] pci 0000:00:00.0: BAR 8: assigned [mem 0x60000000-0x600fffff]
+[    2.272171] pci 0000:00:00.0: BAR 9: assigned [mem 0x60100000-0x601fffff pref]
+[    2.286563] pci 0000:00:00.0: BAR 1: assigned [mem 0x60200000-0x6020ffff]
+[    2.300089] pci 0000:00:00.0: BAR 7: assigned [io  0x1e160000-0x1e160fff]
+[    2.313628] pci 0000:01:00.0: BAR 0: assigned [mem 0x60000000-0x600fffff 64bit]
+[    2.328202] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    2.338092] pci 0000:00:00.0:   bridge window [io  0x1e160000-0x1e160fff]
+[    2.351614] pci 0000:00:00.0:   bridge window [mem 0x60000000-0x600fffff]
+[    2.365140] pci 0000:00:00.0:   bridge window [mem 0x60100000-0x601fffff pref]
+[    2.380951] ubi0: attaching mtd5
+[    2.393603] mt7530 mdio-bus:1f: Link is Up - 1Gbps/Full - flow control rx/tx
+[    2.433220] ubi0: scanning is finished
+[    2.453234] ubi0: attached mtd5 (name "rootfs", size 27 MiB)
+[    2.464596] ubi0: PEB size: 65536 bytes (64 KiB), LEB size: 65408 bytes
+[    2.477780] ubi0: min./max. I/O unit sizes: 1/256, sub-page size 1
+[    2.490082] ubi0: VID header offset: 64 (aligned 64), data offset: 128
+[    2.503076] ubi0: good PEBs: 434, bad PEBs: 0, corrupted PEBs: 0
+[    2.515036] ubi0: user volume: 2, internal volumes: 1, max. volumes count: 128
+[    2.529420] ubi0: max/mean erase counter: 9/5, WL threshold: 4096, image sequence number: 1657914794
+[    2.547599] ubi0: available PEBs: 0, total reserved PEBs: 434, PEBs reserved for bad PEB handling: 0
+[    2.565816] ubi0: background thread "ubi_bgt0d" started, PID 459
+[    2.565936] UBI: block: volume size is not a multiple of 512, last 256 bytes are ignored!
+[    2.595279] block ubiblock0_0: created from ubi0:0(rootfs)
+[    2.614412] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    2.632831] Freeing unused kernel memory: 1292K
+[    2.641888] This architecture does not have kernel memory protection.
+[    2.654743] Run /sbin/init as init process
+[    3.204027] init: Console is alive
+[    3.211196] init: - watchdog -
+[    4.225372] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    4.347999] usbcore: registered new interface driver usbfs
+[    4.359202] usbcore: registered new interface driver hub
+[    4.369958] usbcore: registered new device driver usb
+[    4.389472] SCSI subsystem initialized
+[    4.427621] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    4.453721] init: - preinit -
+[    5.273772] random: jshn: uninitialized urandom read (4 bytes read)
+[    5.360807] random: jshn: uninitialized urandom read (4 bytes read)
+[    5.474410] random: jshn: uninitialized urandom read (4 bytes read)
+[    6.144296] mtk_soc_eth 1e100000.ethernet swp0: PHY [mdio-bus:00] driver [MediaTek MT7530 PHY] (irq=POLL)
+[    6.166211] mtk_soc_eth 1e100000.ethernet swp0: configuring for phy/rgmii link mode
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    8.441218] UBIFS (ubi0:1): Mounting in unauthenticated mode
+[    8.452838] UBIFS (ubi0:1): background thread "ubifs_bgt0_1" started, PID 632
+[    8.485258] UBIFS (ubi0:1): recovery needed
+[    8.753298] random: crng init done
+[    8.760079] random: 7 urandom warning(s) missed due to ratelimiting
+[    9.206221] UBIFS (ubi0:1): recovery completed
+[    9.215286] UBIFS (ubi0:1): UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[    9.230902] UBIFS (ubi0:1): LEB size: 65408 bytes (63 KiB), min./max. I/O unit sizes: 8 bytes/256 bytes
+[    9.249636] UBIFS (ubi0:1): FS size: 21846272 bytes (20 MiB, 334 LEBs), journal size 1111936 bytes (1 MiB, 17 LEBs)
+[    9.270493] UBIFS (ubi0:1): reserved for root: 1031852 bytes (1007 KiB)
+[    9.283722] UBIFS (ubi0:1): media format: w5/r0 (latest is w5/r0), UUID 907AC48D-B261-4D78-B446-E51308CA2E7C, small LPT model
+[    9.471484] mount_root: overlay filesystem has not been fully initialized yet
+[    9.487468] mount_root: switching to ubifs overlay
+[    9.516608] urandom-seed: Seed file not found (/etc/urandom.seed)
+[    9.638014] procd: - early -
+[    9.644115] procd: - watchdog -
+[   10.293459] procd: - watchdog -
+[   10.395972] procd: - ubus -
+[   10.490686] procd: - init -
+Please press Enter to activate this console.
+[   11.278983] kmodloader: loading kernel modules from /etc/modules.d/*
+[   11.444820] urngd: v1.0.2 started.
+[   11.580561] Loading modules backported from Linux version v6.1-rc8-0-g76dcd734eca2
+[   11.595714] Backport generated by backports.git v5.15.81-1-41-g02e352527db5
+[   11.637751] xt_time: kernel timezone is -0000
+[   11.866609] mt7621-pci 1e140000.pcie: bus=1 slot=0 irq=22
+[   11.877437] pci 0000:00:00.0: enabling device (0006 -> 0007)
+[   11.888714] mt7615e 0000:01:00.0: enabling device (0000 -> 0002)
+[   11.993947] PPP generic driver version 2.4.2
+[   12.005458] NET: Registered protocol family 24
+[   12.014141] mt7615e 0000:01:00.0: HW/SW Version: 0x8a108a10, Build Time: 20180518100604a
+[   12.014141] 
+[   12.046858] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   12.268338] mt7615e 0000:01:00.0: N9 Firmware Version: _reserved_, Build Time: 20200814163649
+[   12.293499] mt7615e 0000:01:00.0: CR4 Firmware Version: _reserved_, Build Time: 20190415154149
+[   29.833747] mtk_soc_eth 1e100000.ethernet swp0: PHY [mdio-bus:00] driver [MediaTek MT7530 PHY] (irq=POLL)
+[   29.857310] mtk_soc_eth 1e100000.ethernet swp0: configuring for phy/rgmii link mode
+[   29.875310] br-lan: port 1(swp0) entered blocking state
+[   29.885831] br-lan: port 1(swp0) entered disabled state
+[   29.897080] device swp0 entered promiscuous mode
+[   29.933630] mtk_soc_eth 1e100000.ethernet eth0: configuring for fixed/rgmii link mode
+[   29.950170] mtk_soc_eth 1e100000.ethernet eth0: Link is Up - 1Gbps/Full - flow control rx/tx
+[   29.968455] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   29.983949] device eth0 entered promiscuous mode
+[   29.993952] mt7530 mdio-bus:1f swp1: configuring for phy/gmii link mode
+[   30.007840] 8021q: adding VLAN 0 to HW filter on device swp1
+[   30.023050] br-lan: port 2(swp1) entered blocking state
+[   30.033624] br-lan: port 2(swp1) entered disabled state
+[   30.045040] device swp1 entered promiscuous mode
+</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+===== Tags =====
+[[meta:tags|How to add tags]]

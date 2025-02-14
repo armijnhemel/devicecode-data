@@ -1,0 +1,384 @@
+====== US Robotics 8200 ======
+
+
+{{media:us.robotics:usrobotics-usr8200-front.jpg?400|USRobotics USR8200}}
+
+The [[http://www.usr.com/products/networking/router-product.asp?sku=USR8200|USR8200]] is a 5-port
+router with USB 2.0 and Firewire ports. The internal USRobitics codename for the product is
+"Jeeves". The released firmware is based on Jungo's OpenRG.
+
+===== Supported Versions =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^usr8200$"}
+} -->
+
+There's only one version of the device. However, some units contain older revisions
+of the IXP422 and these are not supported! The install program detects these and
+warns the user.
+
+===== Hardware Highlights =====
+^ CPU      ^ Ram    ^ Flash   ^ Network   ^ USB   ^ Firewire   ^ Serial   ^ JTag   ^
+| IXP422   | 64MB   | 16MB    | 4x1       | Yes   | Yes        | Yes*     | Yes*   |
+
+  * Requires opening the unit.
+
+===== Back up the original firmware =====
+
+The OpenWrt repository contains a python script to extract the flash image from Jungo's OpenRG, typical usage:
+
+<code>
+python2 scripts/flashing/jungo-image.py -p admin 192.168.0.214
+Dumping flash contents (16MB) to USR8200-0014C133FB41.bin
+99%
+</code>
+
+===== RedBoot Installation =====
+
+Installation requires UART access to the device so make sure to mount a UART to proceed.
+You also need a TFTP server, so the device can obtain binaries from the network. In the following examples, the TFTP server has IP number 192.168.1.2.
+Before you begin make sure to note down the hardware (MAC) addresses of your network interfaces, because you will need to add these to your RedBoot configuration later!
+
+Installation involves replacing the manufacturer's firmware (including bootloader).
+The first step is to install Redboot; obtain a copy from here:
+https://github.com/linusw/openwrt/releases/download/USR8200-RedBoot/redboot-usr8200.bin
+
+Typical session to install RedBoot using the resident OpenRG bootloader:
+
+<code>
+USR8200> load -u tftp://192.168.1.2/redboot-usr8200.bin -r 0
+Returned 0
+USR8200> Download completed successfully
+USR8200> reboot
+</code>
+
+When RedBoot starts it should look like this:
+
+<code>
+**Warning** FLASH configuration checksum error or invalid key
+Use 'fconfig -i' to [re]initialize database
+
+Trying NPE-B...success. Using NPE-B with PHY 9.
+Trying NPE-C...success. Using NPE-C with PHY 16.
+Ethernet eth0: MAC address 00:c0:49:f4:31:11
+IP: 192.168.1.1/255.255.255.0, Gateway: 0.0.0.0
+Default server: 0.0.0.0
+
+RedBoot(tm) bootstrap and debug environment [ROM]
+Red Hat certified release, version 2.04 - built 19:55:34, Oct 17 2008
+
+Platform: USRobotics USR8200 (IXP42X 266MHz) BE
+Copyright (C) 2000, 2001, 2002, 2003, 2004, 2007 Free Software Foundation, Inc.
+
+RAM: 0x00000000-0x04000000, [0x00024ac8-0x01fc1000] available
+FLASH: 0x50000000 - 0x51000000, 128 blocks of 0x00020000 bytes each.
+RedBoot>
+</code>
+
+After installing RedBoot for the first time the device flash needs to be initialized and partitioned. First initialize it:
+
+<code>
+RedBoot> fis init
+About to initialize [format] FLASH image system - continue (y/n)? y
+*** Initialize FLASH Image System
+... Unlock from 0x50fe0000-0x51000000: .
+... Erase from 0x50fe0000-0x51000000: .
+... Program from 0x01fd0000-0x01ff0000 at 0x50fe0000: .
+... Lock from 0x50fe0000-0x51000000: .
+
+RedBoot> fis list
+Name              FLASH addr  Mem addr    Length      Entry point
+RedBoot           0x50000000  0x50000000  0x00060000  0x00000000
+FIS directory     0x50FE0000  0x50FE0000  0x0001F000  0x00000000
+RedBoot config    0x50FFF000  0x50FFF000  0x00001000  0x00000000
+</code>
+
+Next create the partitions:
+
+<code>
+fis create -b 0x00000000 -l 0x00120000 -s 0x00120000 -f 0x50060000 -e 0000000000 -r 0x50060000 -n config
+fis create -b 0x00080000 -l 0x00400000 -s 0x00400000 -f 0x50180000 -e 0x00080000 -r 0x00080000 -n linux
+fis create -b 0x00080000 -l 0x00a40000 -s 0x00400000 -f 0x50580000 -e 0x00031000 -r 0x00080000 -n rootfs
+</code>
+
+Then configure RedBoot, e.g. the ethernet MAC addresses:
+
+<code>
+RedBoot> fconfig -i
+Initialize non-volatile configuration - continue (y/n)? y
+Run script at boot: true
+Boot script:
+Enter script, terminate with empty line
+>> fis load linux
+>> exec
+>>
+Boot script timeout (1000ms resolution): 3
+Use BOOTP for network configuration: false
+Gateway IP address: 192.168.1.1
+Local IP address: 192.168.1.107
+Local IP address mask: 255.255.248.0
+Default server IP address: 192.168.1.2
+Console baud rate: 115200
+GDB connection port: 9000
+Force console for special debug messages: false
+Network debug at boot time: false
+Default network device: npe_eth0
+Network hardware address [MAC] for npe_eth0: 0x00:0x14:0xc1:0x33:0xfb:0x41
+Network hardware address [MAC] for npe_eth1: 0x00:0x14:0xc1:0x33:0xfb:0x42
+Update RedBoot non-volatile configuration - continue (y/n)? y
+... Unlock from 0x50fe0000-0x51000000: .
+... Erase from 0x50fe0000-0x51000000: .
+... Program from 0x01fd0000-0x01ff0000 at 0x50fe0000: .
+... Lock from 0x50fe0000-0x51000000: .
+</code>
+
+===== OpenWrt Installation =====
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^usr8200$"}
+} -->
+
+Once you have RedBoot on your device, you can install OpenWrt Linux kernel and root filesystem:
+
+<code>
+load -r -b 0x00080000 -h 192.168.1.2 openwrt-ixp4xx-usr8200-squashfs-kernel.bin
+fis unlock linux
+fis write -f 0x50180000 -b 0x00080000 -l 0x0033791e
+fis lock linux
+load -r -b 0x00080000 -h 192.168.1.2 openwrt-ixp4xx-usr8200-squashfs-rootfs.bin
+fis unlock rootfs
+fis write -f 0x50580000 -b 0x00080000 -l 0x680000
+fis lock rootfs
+</code>
+
+===== Booting Linux kernel from RAM =====
+
+If you just want to boot a new kernel from RAM without flashing it first (such as for testing) you can do it like this:
+
+<code>
+load -r -b 0x00080000 -h 192.168.1.2 openwrt-ixp4xx-usr8200-squashfs-kernel.bin
+exec
+</code>
+
+===== OEM (original firmware) bootlog =====
+
+<WRAP bootlog>
+<nowiki>
+Uncompressing Linux......................................................................................................................................
+................................................ done, booting the kernel.
+Linux version 2.4.21openrg-rmk1 #38 Fri Apr 14 15:41:08 CDT 2006
+CPU: XScale-IXP4xx/IXC11xx revision 1
+Machine: Intel IXP425 Jeeves
+Memory range 0x3fff000-0x4000000 is excluded because of PCI DMA bug
+On node 0 totalpages: 16384
+zone(0): 16384 pages.
+zone(1): 0 pages.
+zone(2): 0 pages.
+Kernel command line: console=ttyS1,115200 root=/dev/ram0 rw nohalt
+Using IXP425 Timer 0 as timer source
+Calibrating delay loop... 266.24 BogoMIPS
+Memory: 64MB = 64MB total
+Memory: 58872KB available (1435K code, 4431K data, 52K init)
+XScale Cache/TLB Locking Copyright(c) 2001 MontaVista Software, Inc.
+Dentry cache hash table entries: 8192 (order: 4, 65536 bytes)
+Inode cache hash table entries: 4096 (order: 3, 32768 bytes)
+Mount cache hash table entries: 512 (order: 0, 4096 bytes)
+Buffer-cache hash table entries: 4096 (order: 2, 16384 bytes)
+Page-cache hash table entries: 16384 (order: 4, 65536 bytes)
+POSIX conformance testing by UNIFIX
+PCI: bus0: Fast back to back transfers disabled
+PCI: Via IRQ fixup for 00:10.0, from 28 to 12
+PCI: Via IRQ fixup for 00:10.1, from 27 to 11
+Linux NET4.0 for Linux 2.4
+Based upon Swansea University Computer Society NET3.039
+Initializing RT netlink socket
+Starting kswapd
+Random: 0x5bb7bb13
+pty: 256 Unix98 ptys configured
+Serial driver version 5.05c (2001-07-08) with MANY_PORTS SHARE_IRQ SERIAL_PCI enabled
+ttyS00 at 0xff000003 (irq = 15) is a XScale UART
+ttyS01 at 0xff001003 (irq = 13) is a XScale UART
+RAMDISK driver initialized: 16 RAM disks of 16384K size 1024 blocksize
+SCSI subsystem driver Revision: 1.00ohci1394: $Rev$ Ben Collins <bcollins@debian.org>
+ohci1394_0: SelfID buffer c4813000 is not aligned on 8Kb boundary... may cause problems on some CXD3222
+chip
+ohci1394_0: OHCI-1394 1.1 (PCI): IRQ=[25] MMIO=[4bfff800-4bffffff] Max Packet=[65536]
+usb.c: registered new driver usbdevfs
+usb.c: registered new driver hub
+ehci_hcd 00:10.2: VIA Technologies, Inc. USB 2.0
+ehci_hcd 00:10.2: irq 26, pci mem c482e700
+usb.c: new USB bus registered, assigned bus number 1
+PCI: 00:10.2 PCI cache line size set incorrectly (0 bytes) by BIOS/FW.
+PCI: 00:10.2 PCI cache line size corrected to 32.
+ehci_hcd 00:10.2: USB 2.0 enabled, EHCI 1.00, driver 2003-Dec-29/2.4
+hub.c: USB hub found
+hub.c: 4 ports detected
+host/usb-uhci.c: $Revision: 1.3.30.1 $ time 20:41:22 Apr 14 2006
+host/usb-uhci.c: High bandwidth mode enabled
+host/usb-uhci.c: USB UHCI at I/O 0xffffff60, IRQ 28
+host/usb-uhci.c: Detected 2 ports
+usb.c: new USB bus registered, assigned bus number 2
+hub.c: USB hub found
+hub.c: 2 ports detected
+host/usb-uhci.c: USB UHCI at I/O 0xffffff40, IRQ 27
+host/usb-uhci.c: Detected 2 ports
+usb.c: new USB bus registered, assigned bus number 3
+hub.c: USB hub found
+hub.c: 2 ports detected
+host/usb-uhci.c: v1.275:USB Universal Host Controller Interface driver
+usb.c: registered new driver usblp
+printer.c: v0.13: USB Printer Device Class driver
+Initializing USB Mass Storage driver...
+usb.c: registered new driver usb-storage
+USB Mass Storage support registered.
+NET4: Linux TCP/IP 1.0 for NET4.0
+IP Protocols: ICMP, UDP, TCP, IGMP
+IP: routing cache hash table of 512 buckets, 4Kbytes
+TCP: Hash tables configured (established 4096 bind 8192)
+NET4: Unix domain sockets 1.0/SMP for Linux NET4.0.
+RAMDISK: Compressed image found at block 0
+Freeing initrd memory: 28K
+VFS: Mounted root (ext2 filesystem).
+Freeing init memory: 52K
+Mounting cramfs image at 'cramfs'
+insmod: add-symbol-file PATH/kos_lib.o 0xc487e060 -s .data 0xc4884cb8 -s .bss 0xc48853a4
+loading license key: Jungo
+loading license key: USRloading license key: USR
+loading license key: USR
+loading license key: USR
+insmod: add-symbol-file PATH/ixp425_flash_mod.o 0xc4887060 -s .dcfi_cmdset_0001: Erase suspend on write
+enabled
+ata 0xc4887420 -s .bss 0xc4887460
+Using buffer write method
+Using predefined MTD partitions.
+Creating 1 MTD partitions on "IXP425 Flash Bank 0":
+0x00000000-0x01000000 : "openrg"
+Press ESC to enter BOOT MENU mode.
+Can't load valid rg_conf - using defaults
+insmod: add-symbol-file PATH/csr.o 0xc58ab060 -s .data 0xc58c6774 -s .bss 0xc58cd6b4
+Module init.
+insmod: add-symbol-file PATH/ixp425_csr_init_mod.o 0xc592d060 -s .data 0xc592d468 -s .bss 0xc592d480
+Intel CSR QMGR & NPE(s) init done.
+insmod: add-symbol-file PATH/ixp425_eth_mod.o 0xc592f060 -s .datInitializing ixp425_eth driver 0.0.8
+a 0xc5930e78 -s .bss 0xc5930ef0
+Found PHY 0 at 9
+Found PHY 1 at 16
+Found PHY 2 at 17
+Found PHY 3 at 18
+Found PHY 4 at 19
+Found PHY 5 at 20
+Found PHY 6 at 24
+Found PHY 7 at 25
+Found PHY 8 at 26
+Found PHY 9 at 27
+Found PHY 10 at 28
+Found PHY 11 at 29
+PHY 0 MAC address is: 04:04:04:04:04:04
+PHY 1 MAC address is: 06:06:06:06:06:06
+insmod: add-symbol-file PATH/igmp_proxy_mod.o 0xc5933060 -s .data 0xc5934488 -s .bss 0xc5934504
+insmod: add-symbol-file PATH/log_chardev.o 0xc5936060 -s .data 0xc5936ab8 -s .bss 0xc5936c00
+insmod: add-symbol-file PATH/rg_bridge.o 0xc5939060 -s .data 0xc593d68c -s .bss 0xc593d820
+failed ipc connect Network is unreachable
+failed ipc connect Network is unreachable
+insmod: add-symbol-file PATH/tcp_mss.o 0xc5940060 -s .data 0xc5940260 -s .bss 0xc594028b
+insmod: add-symbol-file PATH/jfw.o 0xc5942060 -s .data 0xc595d750 -s .bss 0xc595f480
+insmod: add-symbol-file PATH/rg_dhcp_pktfil.o 0xc5964060 -s .data 0xc59649a8 -s .bss 0xc5964a98
+insmod: add-symbol-file PATH/sbp2.o 0xc5966060 -s .data 0xc5969d78 -s .bss 0xc596a170
+sbp2: $Rev$ Ben Collins <bcollins@debian.org>
+insmod: add-symbol-file PATH/rg_ipv4.o 0xc596c060 -s .data 0xc59IPV4 device driver registered
+6c220 -s .bss 0xc596c25e
+insmod: add-symbol-file PATH/krgldr_module.o 0xc596e060 -s .data 0xc596e240 -s .bss 0xc596e268insmod: add-symbol-file PATH/kleds_mod.o 0xc5970060 -s .data 0xc5970710 -s .bss 0xc5970780
+insmod: add-symbol-file PATH/jeeves_rtc7301_mod.o 0xc5972060 -s
+.data 0xc5972928 -s .bss 0xc597299c
+JEEVES_RTC7301: 2000-01-01 00:05:39
+insmod: add-symbol-file PATH/nb_rt.o 0xc5976060 -s .data 0xc5976498 -s .bss 0xc59764ec
+insmod: add-symbol-file PATH/ppp.o 0xc5978060 -s .data 0xc597f668 -s .bss 0xc597fab8
+PHY 0 MAC address is: 00:14:c1:33:fb:41
+PHY 0 MAC address is: 00:14:c1:33:fb:41
+PHY 1 MAC address is: 00:14:c1:33:fb:42
+PHY 1 MAC address is: 00:14:c1:33:fb:42
+Jan 1 00:05:44 pluto[40]: Starting Pluto (FreeS/WAN Version 1.99)
+
+
+</nowiki>
+</WRAP>\\
+
+===== Hardware =====
+==== Info ====
+| **Architecture:**     | ARM                          |
+| **Vendor:**           | Intel                        |
+| **Bootloader:**       | Redboot                      |
+| **System-On-Chip:**   | X-Scale IXP422               |
+| **CPU Speed:**        | 266 Mhz                      |
+| **Flash-Chip:**       | TE28F128 J3C150              |
+| **Flash size:**       | 16 MiB                       |
+| **RAM:**              | 64 MiB                       |
+| **Ethernet:**         | Marvel 88E6060 switch        |
+| **USB:**              | VT6212L USB 2.0 Controller   |
+| **Firewire:**         | VT6307S IEEE 1394            |
+| **Serial:**           | [[#Serial|Yes]]              |
+| **JTAG:**             | [[#JTAG|Yes]]                |
+
+===== Opening the case =====
+**Note:** This will void your warranty! (Which is unlikely that you have since the product is as of writing over 20 years old.)
+
+  *There is one screw under the label on the bottom cover.
+  *There are 7 tabs (4 under the legs).
+  *Pry appart. 
+
+//Main PCB//
+
+{{media:us.robotics:usr8200_pcb.jpg?600| USR8200 PCB}}
+
+  * The unpopulated mini-PCI slot that can be seen on the PCB was intended for a Wireless card.
+  * There is a LED mounted specifically to indicate Wireless activity. The wireless LED is not visible from outside of the case, and the slot was left unpopulated, probably because product plans changed.
+  * There is a LED above the unpopulated flash memory footprint that is illuminating in green when the flash memory is being written.
+===== Serial =====
+
+There is a 10-pin header on the motherboard. It provides RS-232 level signals. The pin assignments (all other pins are not connected):
+
+^ Pin   ^ Signal   ^
+| 3     | TX       |
+| 5     | RX       |
+| 9     | Ground   |
+
+===== JTAG =====
+
+How to connect to JTAG interface, and how to reflash the device with JTAG tools
+
+See [[docs:techref:hardware:port.jtag]] for more JTAG details.
+
+===== Empty battery =====
+
+If you get this boot message:
+
+<code>
+rtc-r7301 52000000.rtc: hctosys: unable to read the hardware clock
+</code>
+
+This usually means the lithium CR2032 cell is empty and needs to be replaced to keep the RTC clock ticking when the device is down.
+===== Specific Configuration =====
+
+==== Interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| EthC             | LAN ports (1 to 4)   | 192.168.1.1             |
+| EthB             | WAN port             | DHCP                    |
+
+EthB and EthC will become eth0 or eth1 depending on probe order: this doesn't matter.
+===== Buttons =====
+The USR8200 has one button: Reset.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>ixp4xx 32flash 64ram}}

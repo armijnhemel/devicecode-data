@@ -1,0 +1,453 @@
+======Meraki MX60======
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^MX60$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^MX60$"}
+} -->
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^MX60$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+==== Prerequisites ====
+  * 1x Meraki MX60/MX60W
+  * 1x UART adapter wired to the MX60/MX60W (speed is 115200 baud and Hardware Flow Control off).
+  * Local computer (Static IP of 192.168.1.101) directly wired to the WAN port.
+  * A local TFTP server.
+
+==== Flashing ====
+
+Note that older builds (e.g. 17.01, 18.06 and 21.02) have a different flashing method due to changes made in the image. Please ensure you are following the correct instructions for the build you are installing. Instructions for the previous version can be found in the Repo Readme at [[https://github.com/riptidewave93/LEDE-MX60/blob/master/README.md#flashing]]
+
+=== OpenWrt 22.03.0 and above ===
+
+1. Download the current meraki_mx60-initramfs-kernel.bin from [[https://downloads.openwrt.org/releases/22.03.0/targets/apm821xx/nand/]]. Then put the file into your TFTP server root directory and rename it to buck.bin
+
+2. Start your TFTP server on the local computer (at 192.168.1.101) and connect the MX60(W) to the WAN Port.
+
+3. Power on the MX60(W), and interrupt u-boot (accessible on the serial console). At the prompt, enter the following commands to update your boot settings:
+
+<code>
+setenv owrt_load1 ubi read \${meraki_loadaddr} kernel
+setenv owrt_load2 ubi read \${meraki_loadaddr} recovery
+setenv lede_bootkernel bootm \${meraki_loadaddr_kernel} - \${meraki_loadaddr_fdt}
+setenv owrt_bootkernel bootm \${meraki_loadaddr}
+setenv owrt_bootargs setenv bootargs console=ttyS0,\${baudrate} rootfstype=squashfs mtdoops.mtddev=oops
+setenv owrt_boot run meraki_ubi owrt_bootargs\; run owrt_load1 meraki_checkpart lede_bootkernel\; run owrt_load2 owrt_bootkernel
+setenv owrt510_boot run meraki_ubi owrt_bootargs\; run owrt_load1 owrt_bootkernel\; run owrt_load2 owrt_bootkernel
+setenv bootcmd run owrt510_boot
+setenv meraki_loadaddr 1000000
+saveenv
+</code>
+
+
+**<color #ed1c24>Note</color>**: You won't be able to use older OpenWrt releases without switching the bootcmd back to owrt_boot (see: [[commit>?p=openwrt/openwrt.git;a=commit;h=8a042450d8fd4e2916fb0e87d65bbbd7e3a97130]]) using the following:
+
+<code>
+setenv bootcmd run owrt_boot
+saveenv
+</code>
+
+
+4. Now enter the following commands to TFTP boot the initramfs image hosted on your local computer.
+
+<code>
+setenv ipaddr 192.168.1.1
+setenv bootargs console=ttyS0,$baudrate mtdoops.mtddev=oops;
+tftpboot $meraki_loadaddr buck.bin;
+bootm $fileaddr
+</code>
+
+5. Once OpenWrt boots and you are at a root prompt, you can Cleanup for maximum space. <code>
+ubirmvol /dev/ubi0 -N part1
+ubirmvol /dev/ubi0 -N part2
+ubirmvol /dev/ubi0 -N storage
+</code>
+
+6. Create a optional recovery UBI partition. This will host an initramfs build so our board can have a failback image in case of a bad flash, or sysupgrade issue. You can also manually boot to recovery by holding the reset button while powering on the device. The recovery ip will always be 192.168.1.1, no matter the changes made in the 'real' system. Note you will first want to upload a copy of the initramfs image to the board (which can be done with SCP/HTTP Server). In the below tutorial note that the new partition is made to be just a bit larger than the initramfs image. You will want to do this as well.
+
+<code>
+ls -alh /tmp/openwrt-apm821xx-nand-meraki_mx60-initramfs-kernel.bin
+ubimkvol /dev/ubi0 -s 10MiB -N recovery
+# This will create a new ubi volume. Make sure to replace the ubi0_X with the right volume number
+ubiupdatevol /dev/ubi0_X /tmp/openwrt-apm821xx-nand-meraki_mx60-initramfs-kernel.bin
+</code>
+
+7.You will want to upload a copy of the squashfs-sysupgrade.bin image to the board (which can be done with SCP/HTTP Server). Once done, you can now use the sysupgrade option to flash the full image to the device using the sysupgrade file named ''openwrt-apm821xx-nand-meraki_mx60-squashfs-sysupgrade.tar''. Then, once you are running a full OpenWRT version (not snapshot) load up LuCI at 192.168.1.1, andFrom this point on, any future updates/builds can just be flashed through LuCI.
+
+<code>
+# Be sure to replace the FILENAME with the correct squashfs-sysupgrade.bin image that you have loaded via SCP/HTTP
+sysupgrade /tmp/FILENAME
+</code>
+===== Hardware =====
+==== Info ====
+^ Architecture     | PowerPC 44x                                                      |
+^ Vendor           | AppliedMicro                                                     |
+^ Bootloader       | U-Boot                                                           |
+^ System-On-Chip   | AppliedMicro APM82181                                            |
+^ CPU Speed        | 800MHz                                                           |
+^ Flash-Chip       | Samsung K9K8G08U0D                                               |
+^ Flash size       | 1GiB                                                             |
+^ RAM              | 4x Nanya NT5TU128M8GE-AC                                         |
+^ RAM Size         | 512MiB                                                           |
+^ Wireless         | MX60 = None - MX60W = Atheros AR9380? (Assumed)                  |
+^ Switch           | Atheros AR8327-BL1A                                              |
+^ Ethernet ports   | 5x 1Gb ports on switch                                           |
+^ USB              | 1x External USB 2.0                                              |
+^ Serial           | [[docs:techref:hardware:port.serial.cables|Yes]], [[#serial|settings]]   |
+^ JTAG             | [[docs:techref:hardware:port.jtag.cables|Yes]]                           |
+
+==== Serial ====
+Can be accessed by removing the metal cover which is secured by four T6H screws.  Connect on Console (J2). P1 is closest to the H1 screw, and P4 is closest to the JTAG port.
+
+| **P1:** VCC   |
+| **P2:** RX    |
+| **P3:** TX    |
+| **P4:** GND   |
+
+^ Serial connection parameters\\ for Meraki MX60 | 115200, 8N1 |
+
+==== Photos ====
+{{:media:meraki:mx60-1.jpg?200|}}
+{{:media:meraki:mx60-2.jpg?200|}}
+{{:media:meraki:mx60-3.jpg?200|}}
+
+{{:media:meraki:mx60-4.jpg?200|}}
+{{:media:meraki:mx60-5.jpg?200|}}
+{{:media:meraki:mx60-6.jpg?200|}}
+
+===== Flash Layout =====
+==== Stock ====
+<code>
+dev:    size   erasesize  name
+mtd0: 00100000 00020000 "firmware"
+mtd1: 00100000 00020000 "environment"
+mtd2: 00040000 00020000 "oops"
+mtd3: 3fdc0000 00020000 "ubi"
+mtd4: 40000000 00020000 "all"
+</code>
+
+Note that UBI contains the Meraki Firmware on partitions named part1 and part2. All persistent data is stored to a ubifs partition called storage.
+
+==== OpenWrt ====
+<code>
+/ # cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00100000 00020000 "u-boot"
+mtd1: 00100000 00020000 "u-boot-env"
+mtd2: 00040000 00020000 "oops"
+mtd3: 3fdc0000 00020000 "ubi"
+mtd4: 40000000 00020000 "all"
+</code>
+
+  
+===== Bootlogs =====
+==== LEDE Bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 2009.08-00048-ga5d8f06 Meraki MX60 (Oct 14 2011 - 21:30:08)
+
+CPU:   AMCC PowerPC  UNKNOWN (PVR=12c41c83) at 800 MHz (PLB=200, OPB=100, EBC=100 MHz)
+       Bootstrap Option D - Boot ROM Location NAND wo/ECC 2k page (8 bits), booting from NAND
+       32 kB I-Cache 32 kB D-Cache
+Board: Buckminster - Meraki Buckminster Cloud Managed Router
+============================
+BoardID: 1 0
+Reset Button Status: 1
+============================
+SDR0_PERCLK=0x40000300
+I2C:   ready
+DRAM:  512 MB
+NAND:  1024 MiB
+I2c read: failed 4
+I2c read: failed 4
+I2c read: failed 4
+Net:   ppc_4xx_eth0
+Initializing Bluestone Ethernet Port ...
+Disabling port 0
+Disabling port 1
+Disabling port 2
+Disabling port 3
+ENET Speed is 1000 Mbps - FULL duplex connection (EMAC0)
+*** ERROR: ping address not given
+RESET is un-pushed
+
+Set serverpath and run meraki_netboot to netboot
+
+Hit any key to stop autoboot:  0
+Creating 1 MTD partitions on "nand0":
+0x000000240000-0x000040000000 : "mtd=2"
+UBI: attaching mtd1 to ubi0
+UBI: physical eraseblock size:   131072 bytes (128 KiB)
+UBI: logical eraseblock size:    129024 bytes
+UBI: smallest flash I/O unit:    2048
+UBI: sub-page size:              512
+UBI: VID header offset:          512 (aligned 512)
+UBI: data offset:                2048
+UBI: attached mtd1 to ubi0
+UBI: MTD device name:            "mtd=2"
+UBI: MTD device size:            1021 MiB
+UBI: number of good PEBs:        8164
+UBI: number of bad PEBs:         10
+UBI: max. allowed volumes:       128
+UBI: wear-leveling threshold:    4096
+UBI: number of internal volumes: 1
+UBI: number of user volumes:     5
+UBI: available PEBs:             69
+UBI: total number of reserved PEBs: 8095
+UBI: number of PEBs reserved for bad PEB handling: 81
+UBI: max/mean erase counter: 29/26
+Volume kernel found at volume id 2
+read 0 bytes from volume 2 to 800000(buf address)
+Read [2322432] bytes
+setting meraki addr env fdt: 0x800400, kernel: 0x810000, ramdisk: 0xbffc00
+## Booting kernel from Legacy Image at 00810000 ...
+   Image Name:   POWERPC LEDE Linux-4.4.30
+   Created:      2016-11-04  15:14:51 UTC
+   Image Type:   PowerPC Linux Kernel Image (gzip compressed)
+   Data Size:    2143744 Bytes =  2 MB
+   Load Address: 00000000
+   Entry Point:  00000000
+   Verifying Checksum ... OK
+## Flattened Device Tree blob at 00800400
+   Booting using the fdt blob at 0x800400
+   Uncompressing Kernel Image ... OK
+[    0.000000] Using PowerPC 44x Platform machine description
+[    0.000000] Linux version 4.4.30 (riptide_wave@990FX-GEN3-R2) (gcc version 5.4.0 (LEDE GCC 5.4.0 r2109) ) #0 Fri Nov 4 15:14:51 2016
+[    0.000000] bootconsole [udbg0] enabled
+setup_arch: initmem
+arch: exit
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x0000000000000000-0x000000001fffffff]
+[    0.000000]   Normal   empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x000000001fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x000000001fffffff]
+[    0.000000] MMU: Allocated 1088 bytes of context maps for 255 contexts
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 130048
+[    0.000000] Kernel command line: console=ttyS0,115200 rootfstype=squashfs mtdoops.mtddev=oops
+[    0.000000] PID hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.000000] Dentry cache hash table entries: 65536 (order: 6, 262144 bytes)
+[    0.000000] Inode-cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Sorting __ex_table...
+[    0.000000] Memory: 514992K/524288K available (3236K kernel code, 152K rwdata, 876K rodata, 176K init, 209K bss, 9296K reserved, 0K cma-reserved)
+[    0.000000] Kernel virtual memory layout:
+[    0.000000]   * 0xfffdf000..0xfffff000  : fixmap
+[    0.000000]   * 0xfde00000..0xfe000000  : consistent mem
+[    0.000000]   * 0xfddfe000..0xfde00000  : early ioremap
+[    0.000000]   * 0xe1000000..0xfddfe000  : vmalloc & ioremap
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:512 nr_irqs:512 16
+[    0.000000] UIC0 (32 IRQ sources) at DCR 0xc0
+[    0.000000] UIC1 (32 IRQ sources) at DCR 0xd0
+[    0.000000] UIC2 (32 IRQ sources) at DCR 0xe0
+[    0.000000] UIC3 (32 IRQ sources) at DCR 0xf0
+[    0.000016] clocksource: timebase: mask: 0xffffffffffffffff max_cycles: 0xb881274fa3, max_idle_ns: 440795210636 ns
+[    0.010238] clocksource: timebase mult[1400000] shift[24] registered
+[    0.016593] pid_max: default: 32768 minimum: 301
+[    0.021246] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.027762] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.038597] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 1911260446275000 ns
+[    0.048748] NET: Registered protocol family 16
+
+[    0.055223] PPC4XX OCM1: 32768 Bytes (enabled)
+[    0.059577] PPC4XX OCM1: 32768 Bytes (non-cached)
+[    0.064237] PPC4XX OCM1: 0 Bytes (cached)
+[    0.068275] debugfs ppc4xx ocm: failed to create file
+[    0.073358] 256k L2-cache enabled
+[    0.076676] PCIE0: Port disabled via device-tree
+[    0.081769] PCI: Probing PCI hardware
+[    0.091864] SCSI subsystem initialized
+[    0.096815] clocksource: Switched to clocksource timebase
+[    0.103117] NET: Registered protocol family 2
+[    0.107799] TCP established hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.114795] TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.121173] TCP: Hash tables configured (established 4096 bind 4096)
+[    0.127503] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.133251] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.139587] NET: Registered protocol family 1
+[    0.147218] dw_dmac 4bffd0800.dma: DesignWare DMA Controller, 2 channels
+[    0.155645] genirq: Setting trigger mode 3 for irq 36 failed (uic_set_irq_type+0x0/0x15c)
+[    0.166171] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.172243] Crashlog allocated RAM at address 0x3f00000
+[    0.186607] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.193155] io scheduler noop registered
+[    0.196999] io scheduler deadline registered (default)
+[    0.202475] Serial: 8250/16550 driver, 2 ports, IRQ sharing enabled
+▒[    0.232784] serial8250.0: ttyS0 at MMIO 0x4ef600400 (irq = 19, base_baud = 462962) is a U6_16550A
+[    0.241557] console [ttyS0] enabled
+[    0.241557] console [ttyS0] enabled
+[    0.248460] bootconsole [udbg0] disabled
+[    0.248460] bootconsole [udbg0] disabled
+[    0.256742] console [ttyS0] disabled
+[    0.260369] console [ttyS0] enabled
+[    0.264750] nand: device found, Manufacturer ID: 0xec, Chip ID: 0xd3
+[    0.271096] nand: Samsung NAND 1GiB 3,3V 8-bit
+[    0.275524] nand: 1024 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 64
+[    0.283162] Scanning device for bad blocks
+[    0.305861] Bad eraseblock 279 at 0x0000022e0000
+[    0.494186] Bad eraseblock 3274 at 0x000019940000
+[    0.504916] Bad eraseblock 3373 at 0x00001a5a0000
+[    0.516566] Bad eraseblock 3487 at 0x00001b3e0000
+[    0.546859] Bad eraseblock 3905 at 0x00001e820000
+[    0.558073] Bad eraseblock 4012 at 0x00001f580000
+[    0.635649] Bad eraseblock 5193 at 0x000028920000
+[    0.767934] Bad eraseblock 7259 at 0x000038b60000
+[    0.773584] Bad eraseblock 7275 at 0x000038d60000
+[    0.804434] Bad eraseblock 7699 at 0x00003c260000
+[    0.839666] 5 ofpart partitions found on MTD device 4e4000000.ndfc.nand
+[    0.846264] Creating 5 MTD partitions on "4e4000000.ndfc.nand":
+[    0.852171] 0x000000000000-0x000000100000 : "u-boot"
+[    0.858021] 0x000000100000-0x000000200000 : "u-boot-env"
+[    0.864215] 0x000000200000-0x000000240000 : "oops"
+[    0.869884] 0x000000240000-0x000040000000 : "ubi"
+[    0.877133] 0x000000000000-0x000040000000 : "all"
+[    0.884542] PPC 4xx OCP EMAC driver, version 3.54
+[    0.889520] MAL v2 /plb/mcmal, 1 TX channels, 1 RX channels
+[    0.895235] RGMII /plb/opb/emac-rgmii@ef601500 initialized with MDIO support
+[    0.902356] TAH /plb/opb/emac-tah@ef601350 initialized
+[    0.907740] /plb/opb/emac-rgmii@ef601500: input 0 in RGMII mode
+[    0.914152] libphy: emac_mdio: probed
+[    0.919867] switch0: Atheros AR8327 rev. 4 switch registered on emac_mdio
+[    0.959795] eth0: EMAC-0 /plb/opb/ethernet@ef600c00, MAC 00:01:73:01:23:41
+[    0.966658] eth0: found Atheros AR8216/AR8236/AR8316 PHY (0x00)
+[    0.972742] i2c /dev entries driver
+[    0.976574] ibm-iic 4ef600700.i2c: using standard (100 kHz) mode
+[    0.982791] ibm-iic 4ef600800.i2c: using standard (100 kHz) mode
+[    1.559824] booke_wdt: powerpc book-e watchdog driver loaded
+[    1.567274] NET: Registered protocol family 10
+[    1.573255] NET: Registered protocol family 17
+[    1.577751] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    1.590322] 8021q: 802.1Q VLAN Support v1.8
+[    1.596508] UBI: auto-attach mtd3
+[    1.599670] ubi0: attaching mtd3
+[    3.736344] ubi0: scanning is finished
+[    3.758488] ubi0: attached mtd3 (name "ubi", size 1021 MiB)
+[    3.764070] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 129024 bytes
+[    3.770924] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 512
+[    3.777602] ubi0: VID header offset: 512 (aligned 512), data offset: 2048
+[    3.784367] ubi0: good PEBs: 8164, bad PEBs: 10, corrupted PEBs: 0
+[    3.790526] ubi0: user volume: 5, internal volumes: 1, max. volumes count: 128
+[    3.797726] ubi0: max/mean erase counter: 29/26, WL threshold: 4096, image sequence number: 1146486028
+[    3.806996] ubi0: available PEBs: 0, total reserved PEBs: 8164, PEBs reserved for bad PEB handling: 150
+[    3.816388] ubi0: background thread "ubi_bgt0d" started, PID 310
+[    3.823593] block ubiblock0_3: created from ubi0:3(rootfs)
+[    3.829087] ubiblock: device ubiblock0_3 (rootfs) set to be root filesystem
+[    3.836050] hctosys: unable to open rtc device (rtc0)
+[    3.844347] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    3.852276] Freeing unused kernel memory: 176K (c0406000 - c0432000)
+[    4.282174] init: Console is alive
+[    4.285716] init: - watchdog -
+[    4.498014] usbcore: registered new interface driver usbfs
+[    4.503552] usbcore: registered new interface driver hub
+[    4.508914] usbcore: registered new device driver usb
+[    5.378921] dwc2 4bff80000.usbotg: DWC OTG Controller
+[    5.384009] dwc2 4bff80000.usbotg: new USB bus registered, assigned bus number 1
+[    5.391413] dwc2 4bff80000.usbotg: irq 32, io mem 0x00000000
+[    5.397736] hub 1-0:1.0: USB hub found
+[    5.401627] hub 1-0:1.0: 1 port detected
+[    5.411276] usbcore: registered new interface driver usb-storage
+[    5.418050] init: - preinit -
+[    5.590585] eth0: link is up, 1000 FDX
+[    5.609467] random: procd: uninitialized urandom read (4 bytes read, 0 bits of entropy available)
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[    8.744117] mount_root: loading kmods from internal overlay
+[    8.853937] UBIFS (ubi0:4): background thread "ubifs_bgt0_4" started, PID 404
+[    8.891980] UBIFS (ubi0:4): recovery needed
+[    8.994869] UBIFS (ubi0:4): recovery completed
+[    8.999375] UBIFS (ubi0:4): UBIFS: mounted UBI device 0, volume 4, name "rootfs_data"
+[    9.007187] UBIFS (ubi0:4): LEB size: 129024 bytes (126 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[    9.017068] UBIFS (ubi0:4): FS size: 1017741312 bytes (970 MiB, 7888 LEBs), journal size 33546240 bytes (31 MiB, 260 LEBs)
+[    9.028070] UBIFS (ubi0:4): reserved for root: 4952683 bytes (4836 KiB)
+[    9.034668] UBIFS (ubi0:4): media format: w4/r0 (latest is w4/r0), UUID CE4CFA2A-1DD0-458B-8CED-2FAC894E2185, small LPT model
+[    9.047994] block: attempting to load /tmp/ubifs_cfg/upper/etc/config/fstab
+[    9.058570] block: extroot: not configured
+[    9.062833] UBIFS (ubi0:4): un-mount UBI device 0
+[    9.067541] UBIFS (ubi0:4): background thread "ubifs_bgt0_4" stops
+[    9.080962] UBIFS (ubi0:4): background thread "ubifs_bgt0_4" started, PID 407
+[    9.151251] UBIFS (ubi0:4): UBIFS: mounted UBI device 0, volume 4, name "rootfs_data"
+[    9.159083] UBIFS (ubi0:4): LEB size: 129024 bytes (126 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[    9.168975] UBIFS (ubi0:4): FS size: 1017741312 bytes (970 MiB, 7888 LEBs), journal size 33546240 bytes (31 MiB, 260 LEBs)
+[    9.179979] UBIFS (ubi0:4): reserved for root: 4952683 bytes (4836 KiB)
+[    9.186576] UBIFS (ubi0:4): media format: w4/r0 (latest is w4/r0), UUID CE4CFA2A-1DD0-458B-8CED-2FAC894E2185, small LPT model
+[    9.265612] block: attempting to load /tmp/ubifs_cfg/upper/etc/config/fstab
+[    9.275988] block: extroot: not configured
+[    9.281446] mount_root: switching to ubifs overlay
+[    9.294887] urandom-seed: Seeding with /etc/urandom.seed
+[    9.352272] procd: - early -
+[    9.355240] procd: - watchdog -
+[    9.906012] procd: - ubus -
+[    9.960520] random: ubusd: uninitialized urandom read (4 bytes read, 3 bits of entropy available)
+[    9.969653] random: ubusd: uninitialized urandom read (4 bytes read, 3 bits of entropy available)
+[    9.978537] random: ubusd: uninitialized urandom read (4 bytes read, 3 bits of entropy available)
+[    9.987747] random: ubusd: uninitialized urandom read (4 bytes read, 3 bits of entropy available)
+[    9.996643] random: ubusd: uninitialized urandom read (4 bytes read, 3 bits of entropy available)
+[   10.005614] random: ubusd: uninitialized urandom read (4 bytes read, 3 bits of entropy available)
+[   10.014569] random: ubusd: uninitialized urandom read (4 bytes read, 3 bits of entropy available)
+[   10.023654] procd: - init -
+Please press Enter to activate this console.
+[   10.193953] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   10.208054] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   10.219925] nf_conntrack version 0.5.0 (8049 buckets, 32196 max)
+[   10.248761] xt_time: kernel timezone is -0000
+[   10.260846] PPP generic driver version 2.4.2
+[   10.266700] NET: Registered protocol family 24
+[   11.614831] random: jshn: uninitialized urandom read (4 bytes read, 4 bits of entropy available)
+[   11.660276] random: ubusd: uninitialized urandom read (4 bytes read, 4 bits of entropy available)
+[   13.466521] eth0: link is up, 1000 FDX
+[   13.478601] device eth0.1 entered promiscuous mode
+[   13.483419] device eth0 entered promiscuous mode
+[   13.517547] br-lan: port 1(eth0.1) entered forwarding state
+[   13.523157] br-lan: port 1(eth0.1) entered forwarding state
+[   15.527808] br-lan: port 1(eth0.1) entered forwarding state
+
+
+
+BusyBox v1.25.1 () built-in shell (ash)
+
+     _________
+    /        /\      _    ___ ___  ___
+   /  LE    /  \    | |  | __|   \| __|
+  /    DE  /    \   | |__| _|| |) | _|
+ /________/  LE  \  |____|___|___/|___|                      lede-project.org
+ \        \   DE /
+  \    LE  \    /  -----------------------------------------------------------
+   \  DE    \  /    Reboot (HEAD, r2109)
+    \________\/    -----------------------------------------------------------
+
+=== WARNING! =====================================
+There is no root password defined on this device!
+Use the "passwd" command to set up a new password
+in order to prevent unauthorized SSH logins.
+--------------------------------------------------
+root@lede:/#</nowiki>
+</WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>apm821xx APM82181 1024flash 512RAM 1WNIC ppc44x mod powerpc}}

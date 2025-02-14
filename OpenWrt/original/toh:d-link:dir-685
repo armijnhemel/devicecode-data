@@ -1,0 +1,237 @@
+====== D-Link DIR-685 ======
+
+{{media:dlink:dir685:dir-685-console-large.jpg?400|D-Link DIR-685}}
+
+The D-Link DIR-685 is some kind of high-profile product from D-Link, it is labeled an Xtreme N Storage Router whatever that means. It is based solely around the Gemini platform, and ARMv5 Faraday FA526 silicon design. It has the following features:
+
+
+  * Router: WAN+4 LAN
+  * 2x USB ports
+  * Wireless card (this is by default a Ralink RT2880F mini PCI iNIC card currently **NOT supported by Linux** in any way)
+  * Mini SATA drive bay
+  * Small video screen (!)
+
+No UART access is required to reflash this device: a recovery web server is available.
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^dir-685$"}
+} -->
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^dir-685$"}
+} -->
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^dir-685$"}
+} -->
+
+==== Obtain firmware image ====
+
+You can use the default OpenWrt builds to install the router.
+
+If you trust it, an image with LuCI and ksmbd working out of the box can be found here: https://dflund.se/~triad/krad/dlink-dir-685/openwrt-gemini-dlink_dir-685-squashfs-factory.bin but rebuilding OpenWrt for your need is more fun.
+
+==== Install using internal web server ====
+
+
+  - Press down the ''reset'' button on the back side of the device with a small screwdriver or paperclip.
+  - Hold ''reset'' press down and power on device, wait around 10 seconds, the device should now be in web firmware upgrade mode
+  - Plug in a host computer with the downloaded firmware file to one of the ''LAN'' TP connectors
+  - Manually configure your host to use IPv4 IP number 192.168.0.2 and netmask 255.255.255.0
+  - Browse to ''http://192.168.0.1''
+  - You will find a web UI to upload the firmware, browse to your firmware file (use ''openwrt-gemini-generic-dlink_dir-685-squashfs-factory.bin''), upload it and wait for the device to reboot
+  - OpenWrt is now flashed and you will get an IP from the router after some two minutes (the router is preparing for first boot which can be slow), and you can ssh to 192.168.1.1 or use the LuCI web UI to do further customization
+
+==== Install from UART ====
+
+Using this method, new installs are downloaded using TFTP, see [[docs:guide-user:installation:generic.flashing.tftp|the generic OpenWrt TFTP instructions]].
+
+The firmware can be reflashed from the RedBoot derivative "Boot Menu" that comes up if you have a serial console and hammer ''Ctrl+C'' during startup like this:
+
+  * You probably want to set a static IP address for the device first by pressing "6" and entering the IP of your TFTP server
+  * Select "Y: Upgrade Kernel" by pressing "Y" (this "kernel image" contains all of OpenWrt including root filesystem)
+  * Select TFTP or serial download (see elsewhere for how that works) Download the ''openwrt-gemini-generic-dlink_dir-685-squashfs-factory.bin'' file using TFTP, you need to rename it because the boot loader cannot handle this long filename. I just name it ''openwrt''
+  * The boot loader will erase and flash the image looking something like this: 
+
+    Erase flash (0x30040000): Size=32768000 ........
+    Program flash (0x30040000): Size=6750212 ........
+
+  * This takes a while. When this ends, reboot to start the new firmware and it should come up. You can hit 0 on the redboot menu.
+  * Let Openwrt load, and wait at least 5 minutes for network to fully initialize upon first boot. DHCP will work on the four switch ports, and the wan port will acquire an IP also.
+
+Now OpenWrt is installed on your router, and you can proceed to [[docs:guide-quick-start:checks_and_troubleshooting|basic configuration]].
+
+
+===== Upgrade procedure =====
+
+Upload the openwrt-gemini-generic-dlink_dir-685-squashfs-sysupgrade.bin image to the routers /tmp directory. If your networking is set up properly it should be just something like:
+
+    scp openwrt-gemini-generic-dlink_dir-685-squashfs-sysupgrade.bin root@192.168.1.2:/tmp
+
+Then issue sysupgrade:
+
+    sysupgrade /tmp/openwrt-gemini-generic-dlink_dir-685-squashfs-sysupgrade.bin
+
+The DIR-685 will flash the firmware upgrade and reboot.
+
+There is no need to wait for the JFFS2 to initialize when upgrading the firmware: this is just needed on factory installs.
+
+===== First boot =====
+
+The first time you boot up the device the integrity of the JFFS2 filesystem will be checked and only after around 300 seconds, when this is finished the remaining flash will be erased and the network will come up:
+
+    [  299.633285] jffs2_scan_eraseblock(): End of filesystem marker found at 0x0
+    jffs2_build_filesystem(): unlocking the mtd device...
+    done.
+    [  299.935160] jffs2_build_filesystem(): erasing all blocks after the end marker...
+
+After an additional 400 seconds the JFFS2 file system is built:
+
+    [  408.373438] jffs2: notice: (1739) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+    [  415.688054] overlayfs: upper fs does not support tmpfile.
+
+After this, the device is fully installed. Do not turn off the device during this initialization time.
+===== Notes on DSA Network =====
+
+This gemini [[docs:techref:hardware:switch|ethernet switch]] uses a DSA (distributed switch architecture) switch which is a reasonably new feature in the mainline kernel (v5+). It allows for individual ports to be configured with more features than just VLAN IDs. Because of this, the network setup is slightly different. Upon typing ifconfig, you should see a distinct 'lan#' port for each lan port on the switch. Users interested in more details can refer to the DSA section in the kernel docs.
+
+===== Partition and mount the hard disk =====
+
+If you slot in a hard disk in the device this can be pretty easily partitioned, formatted and used for storage, e.g. for using the router as a NAS device. With a completely blank disk the procedure is something like this:
+
+  * Log in to NAS or use the console if you have one.
+  * ''fdisk /dev/sda'' press n, p, ENTER, ENTER, ENTER, w to create /dev/sda1
+  * ''mkfs.ext4 /dev/sda1''
+  * [[docs:guide-user:storage:fstab|Use the ''block'' tool]] to set up the partion for mounting:
+  * ''block detect | uci import fstab''
+  * ''uci set fstab.@mount[-1].enabled='1'''
+  * ''uci commit fstab''
+  * You can verify that we set up ''/dev/sda1'' for mounting with ''cat /etc/config/fstab''
+  * Reboot
+  * When the device comes up df should show you ''/dev/sda1'' mounted as ''/mnt/sda1''
+
+The same procedure can be used for a USB disk, just augment the above. If you have both an internal harddrive and a USB disk attached, the internal harddrive will be ''/dev/sda'' and the USB disk will be ''/dev/sdb''.
+
+===== Set Up as NAS =====
+
+A basic configuration as an [[docs:guide-user:services:nas:start|OpenWrt NAS]] is very simple and straight forward, for this memory-constrained device it is recommended to use **ksmbd** as SMB server if you desire to use the SMB protocol to access your NAS (such as with Windows and many media players). The most common SMB server samba4 is unfortunately too memory hungry and can make the device thrash and hang, and connections and transfers time out as a result.
+
+Enable **hdparm** in your build by:
+
+
+  make menuconfig
+
+
+From the top menu: ''Base system -> Customize busybox options -> Miscellaneous utilities -> hdparm''
+
+This tool is used to instruct the harddrive to spin down when unused. Not doing that will be annoying since the drive will always be spinning.
+
+If you rebuild the firmware image from scratch to get ksmbd you can do like this:
+
+
+  scripts/feeds update
+  scripts/feeds install ksmbd-server
+  make menuconfig
+
+
+From the top menu, select ''Network -> Filesystem -> ksmbd-server'', then select as 'y' (star) to get into default install and rebuild OpenWrt. I usually also install the utils, but they are only needed if you want to create individual users. After you put the resulting ext4 filesystem on the drive, rebooted and made basic set-up like above ''/dev/sda'' should exist and you can proceed to set up a samba share:
+
+
+  chown nobody /mnt/sda1
+  chgrp nogroup /mnt/sda1
+
+
+Edit ''/etc/config/ksmbd'' to contain something like this:
+
+
+  config globals
+      option 'workgroup'              'WORKGROUP'
+      option 'description'            'ksmbd on DIR-685'
+
+  config share
+      option path                   '/mnt/sda1'
+      option name                   'dir685'
+      option create_mask            '0666'
+      option dir_mask               '0777'
+      option read_only              'no'
+      option guest_ok               'yes'
+
+
+Reboot and you can browse to the IP number (etc) of your NAS, use the ''dns313'' share and upload and download files that will appear in ''/mnt/sda1'', of course you can set up whatever partition etc you like.
+
+===== Using the screen =====
+
+The little video screen appear as ''tty0'' so one way of making use of it is to install the package ''iftop'' and let init run it, by adding the following to the end of ''/etc/inittab'':
+
+    tty0::respawn:iftop -i br-lan
+
+===== Hardware =====
+
+==== PCB photos ====
+
+{{media:dlink:dir685:dir-685-open-large.jpg?158|Open case}}
+{{media:dlink:dir685:dir-685-pcb-front-large.jpg?500|PCB front}}
+{{media:dlink:dir685:dir-685-pcb-no-shieldboxes.jpg?380|PCB front, no shieldboxes}}
+{{media:dlink:dir685:dir-685-pcb-back-large.jpg?500|PCB back}}
+
+==== Identified electronics ====
+
+
+  * A Ilitek ILI9322 display controller for 320RGBx240 connected to a panel with the label LM918A01-1A SY-B4-091116-E0199 connected to the main PCB with a flat cable (we know this is driven by a ILI9322 from the boot messages)
+  * A touch input module PCB with a Cypress Semiconductor CY8C214 MCU, with a LED connected to it (the WPS flashing LED), connected to the main PCB with a flat cable
+  * A Sunon Maglev GM0502PFV2-8GN 0.4W fan connected to the main PCB, software controlled
+  * A soldered (!) Alpha Networks WMP-N08 Mini-PCI RaLink RT2880F-based wireless network card, inside the shield box is a RT2850L antenna driver. The Linux driver is named "ralink_RT2880_iNIC" and is version v1.1.8.3 in the source drop but it doesn't contain the source code.
+  * Main PCB:
+    * A blue LED indicating power on
+    * A Spansion S29GL256 256 Mbit (32MB) CFI NOR-flash memory
+    * A Hynix HY5DU121622DTP-D43 512 Mbit (64MB) SDRAM classed at 200MHz
+    * A Bothhand GST5009 LF 1000 Base-T magnetic module (galvanic isolator) facing the WAN port
+    *  A RealTek RTL8366RB switch using GPIO for control
+    * Two LFE9407 Delta LFE9407 LAN Filters (also galvanic isolators) facing the four LAN ports
+    * A TI SN54LVC14A schmitt-trigger array
+    * Inside the shield box:
+      * The Storlink SL3516 SoC ASIC
+      * RealTek RTL8366RB ethernet DSA switch
+      * Another Hynix HY5DU121622DTP-D43 of 64MB SDRAM so in total we have 128MB SDRAM
+      * An LXC16373 latch array
+
+==== Mounting UART serial port ====
+
+For background and generic information see [[docs:techref:hardware:port.serial|the generic serial console documentation]].
+
+The J3 header on the top in the front picture is the serial port connector. This is the pin assignment:
+
+   o o o _ o
+   | | |   |
+   | | |   RX
+   | | VCC
+   | GND
+   TX
+
+Once the UART is properly connected open (in this case) ''/dev/ttyUSB0'' in your serial console (terminal) program and set it to 19200 baud, no hardware flow control (obviously, do you see any CTS or DTS leads) 8 bits, 1 stop bit.
+
+===External Links===
+
+* https://dflund.se/~triad/krad/dlink-dir-685
+===== Tags ======
+[[meta:tags|How to add tags]]
+{{tag>gemini SL3516 32Flash 128RAM redboot GigabitEthernet JumboFrames 4port ARM Serial 12v_powered 2USB MiniPCI wlan NAS}}

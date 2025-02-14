@@ -1,0 +1,4215 @@
+====== Huawei HG655a/b/d/m ======
+{{:media:huawei:hg655:hg655b-cover.png?nolink&200}}
+
+The **HG655b** is an adsl/vdsl wifi router distributed by [[wp>Romtelecom]] Romania to their customers. It appears to have very similar features to the HG655d.
+
+The **HG655d** is an adsl/vdsl wifi router distributed by [[wp>T-Online]]/[[wp>T-Mobile]] Netherlands to their customers. It has 64Mb of RAM, 8Mb of Flash, 2.4GHz 11n Wifi and a USB port.
+
+The **HG655m** is a reduced cost adsl/vdsl router common in Asia, and which replaced the HG655a. There is a particularly cheap edition (US$40) available on eBay at the moment which is a Telekom Malaysia unit for their Unifi fibre broadband service. Aliexpress has the same model going for US$30. It has 32Mb of RAM, 16Mb of dual boot Flash, no Wifi and no USB port.
+
+{{section>meta:infobox:broadcom_dsl#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+{{section>meta:infobox:broadcom_wifi#infobox_for_dataentries&noheader&nofooter&noeditbutton}}
+
+==== Extra notes on the HG655m ====
+
+The HG655m unfortunately has no OEM firmware upgrade images available anywhere on the internet (a dump from an existing unit would be very welcome, please talk to https://forum.openwrt.org/viewtopic.php?id=50207 if you are interested in doing this!), however the unit appears to accept OEM firmware images for other models and mostly work despite the lack of a Wifi unit, half the RAM and of course the LEDs no longer match up. Just remember to write the image twice to work around the dual boot feature.
+
+Something else worth investigating is that the HG655m CFE bootloader thinks itself a 96368MVWG, not a HG65x. I tried a few other OEM firmwares to see what would happen:
+
+  * HG612 (bcm96368MVWG_fs_kernel_HG612V100R001C01B028SP10unlocked002): Flashes, but hangs during boot due to inability to mount root partition.
+  * [[toh/huawei/hg622|HG622]] (HG622V100R001C33B021_upgrade_main): This appears to work perfectly, even with the LEDs apparently correct, though obviously without VoIP as the HG622 doesn't have that. Logging into ATP via telnet and then into shell reveals 7Mb of RAM free and another 7Mb used in buffers, probably because the HG622 is also a 32Mb RAM board (indeed the main difference between the HG622 and HG655m is swapping a Wifi for VoIP).
+  * HG655b (HG655b-B025): Flashes, boots, but VoIP appears to be broken. Logging into ATP via telnet and then into shell shows the voip server constantly respawning as RAM is exhausted.
+  * HG655d (HG655dV100R001C02B050_upgrade_main): Flashes, boots, admin web page seems complete, VoIP config page takes settings okay. Unfortunately ATP won't let you into shell on this firmware, so it's hard to tell if lack of RAM is a problem.
+
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "HG655"}
+} -->
+
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "shownColumns": ["model", "unsupported_functions"],
+  "filterColumns": {"model": "HG655"}
+} -->
+
+^ Router version   ^ Board model                                 ^ Supported       ^
+| HG655a           | unknown                                     | not supported   |
+| HG655b           | HG655**<color crimson>B</color>**RZ VER.A   |                 |
+| HG655d           | HG655**<color crimson>D</color>**RZ VER.A   | WIP             |
+| HG655m           | AV1HG655MM VER.B                            | not supported   |
+
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "phoneports", "usbports"],
+  "filterColumns": {"model": "HG655"}
+} -->
+
+^ Model      ^ SoC             ^ Ram       ^ Flash     ^ Network   ^ VoIP POTS   ^ USB   ^ Serial    ^ JTag      ^
+| HG655a     | Broadcom 6368   | unknown   | unknown   | 4 x 1     | 2           | No    | unknown   | unknown   |
+| HG655m     | Broadcom 6368   | 32MiB     | 16MiB     | 4 x 1     | 2           | No    | Yes       | unknown   |
+
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtsnapshotinstallurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "HG655"}
+} -->
+
+**Note:** These firmwares are valid for HG655b and HG655d, but the HG655d rejects to flash it, in this case a JTAG cable is required to replace the CFE bootloader.
+
+:?: What is the difference between Generic and SMP builds? -> [[https://forum.openwrt.org/viewtopic.php?id=61941]]
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+
+==== Flash Layout ====
+Please check out the article [[docs:techref:flash.layout]]. It contains an example and a couple of explanations.
+
+For the HG655b version, with the vendor firmware, the flash chip is divided in several areas storing data for different purposes:
+^ Phys.Addr    ^ Lenght    ^ Description                                        ^
+| 0x00000000   | 131072    | CFE                                                |
+| 0x00020000   | 256       | BCM image tag                                      |
+| 0x00020100   | 5062656   | rootfs partition                                   |
+| 0x00439100   | 909932    | kernel partition                                   |
+| 0x00790000   | 65536     | XML config                                         |
+| 0x007a0000   | 65536     | ATP_LOG                                            |
+| 0x007b0000   | 65536     | Div tr069 conf? Env ...                            |
+| 0x007c0000   | 65536     | [[#wifi_calibration_data|wifi calibration data]]   |
+| 0x007e0000   | 65536     | passwords?                                         |
+
+==== OEM easy installation ====
+This section deals with how you install OpenWrt from a device freshly opened.  
+  * Unplug the power cord
+  * Press the button labeled as //RESET//, don't release it yet!
+  * Plug the power cord
+  * Wait 10 seconds or more
+  * Release the //RESET// button
+  * Browse to http://192.168.1.1
+  * Select the .bin firmware file
+  * Upgrade software
+  * Wait for it to reboot
+  * Telnet to 192.168.1.1 and set a root password, or browse to http://192.168.1.1 if LuCI is installed.
+
+==== OEM installation using the TFTP method ====
+
+->  [[docs:guide-user:installation:generic.flashing.tftp]]
+
+For using tftp you first need serial console access to break into CFE bootloader, this allows to send commands to CFE to pick up the firmware from a tftp server in your computer. The command you need to send to CFE is something like this
+<code>f 192.168.1.35:firmware.bin</code>
+
+where 192.168.1.35 is the IP of your computer where a tftp server is running and serving the firmware.bin file.
+
+
+==== Upgrading OpenWrt ====
+->  [[docs:guide-user:installation:generic.sysupgrade]]
+
+If you have already installed OpenWrt and like to reflash for e.g. upgrading to a new OpenWrt version you can upgrade using the mtd command line tool. It is important that you put the firmware image into the ramdisk (/tmp) before you start flashing.
+
+=== LuCI Web Upgrade Process ===
+
+  * Browse to http://192.168.1.1/cgi-bin/luci/mini/system/upgrade/ LuCI Upgrade URL
+  * Upload image file for sysupgrade to LuCI
+  * Wait for reboot
+
+=== Terminal Upgrade Process ===
+
+  * Login as root via SSH on 192.168.1.1
+  * Use the following commands to upgrade.
+
+<code>
+cd /tmp/
+wget https://downloads.openwrt.org/snapshots/trunk/brcm63xx/smp/openwrt-HG655b-squashfs-cfe.bin
+sysupgrade /tmp/openwrt-HG655b-squashfs-cfe.bin
+</code>
+
+  *If sysupgrade does not support this router, use the following commands.
+
+<code>
+cd /tmp/
+wget https://downloads.openwrt.org/snapshots/trunk/brcm63xx/smp/openwrt-HG655b-squashfs-cfe.bin
+mtd write /tmp/openwrt-HG655b-squashfs-cfe.bin linux && reboot</code>
+
+
+===== Basic configuration =====
+-> [[docs:guide-quick-start:checks_and_troubleshooting|Basic configuration]] After flashing, proceed with this.\\
+Set up your Internet connection, configure wireless, configure USB port, etc.
+
+
+===== Specific Configuration =====
+==== Interfaces ====
+
+The default network configuration is:
+^ Interface Name   ^ Description          ^ Default configuration   ^
+| br-lan           | LAN & WiFi           | 192.168.1.1/24          |
+| vlan0 (eth0.1)   | LAN ports (1 to 4)   | Bridged                 |
+| wlan0            | WiFi                 | Bridged, Disabled       |
+
+==== Switch Ports (for VLANs) ====
+Numbers 0-3 are Ports 1-4 as labeled on the unit, 8 is the internal connection to the router itself. Don't be fooled: Port 1 on the unit is number 0 when configuring VLANs. vlan0 = eth0.0, vlan1 = eth0.1 and so on.
+
+^ Port label   ^ Switch port   ^
+| LAN 1        | 0             |
+| LAN 2        | 1             |
+| LAN 3        | 2             |
+| LAN 4        | 3             |
+| n/a          | 8t            |
+
+==== Failsafe mode ====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+
+^ BUTTON   ^  Event  ^  GPIO  ^
+| RESET    |  reset  |   34   |
+| WPS      |         |   12   |
+| WLAN     |         |   23   |
+
+==== Leds ====
+->[[docs:guide-user:base-system:led_configuration|System configuration: Leds]]
+
+^ Label      ^  GPIO  ^
+| POWER      |   22   |
+| DSL        |   2    |
+| INTERNET   |   5    |
+| LAN1       |   6    |
+| LAN2       |   7    |
+| LAN3       |   8    |
+| LAN4       |   9    |
+| WLAN       |  n/a   |
+| WPS        |   27   |
+| VOIP       |   25   |
+| USB        |   14   |
+
+===== Hardware =====
+==== Info ====
+^                                   ^  HG655b/d  ^^  HG655m  ^^
+| **[[wp>Instruction set]]:**       |  [[wp>MIPS architecture|MIPS]]  ||||
+| **Vendor:**                       |  [[wp>Broadcom]]  ||||
+| **[[docs:techref:bootloader]]:**  |  [[docs:techref:bootloader:cfe]]  ||||
+| **Board Id:**                     |  HW65x  ||  96368MVWG  ||
+| **[[docs:techref:hardware:soc|System-On-Chip]]:**  |  BCM6368  ||||
+| **[[docs:techref:hardware:cpu|CPU]] @Frq**         |  BMIPS4350 V3.1 @400 MHz [[docs:techref:hardware:soc:soc.broadcom.bcm63xx:smp|BMIPS Dual Core]]  ||||
+| **Flash size:**                   |  8192 KiB  ||  16384 KiB  ||
+| **Flash Chip:**                   |  S29GL064N90TF104  | 8KB block size x 8 bottom boot blocks | M29EWH | 128KB block size x 128 blocks |
+| ::: | ::: | 64KB block size x 127 main blocks | ::: | ::: |
+| **RAM size:**                     |  64 MiB   ||  32 MiB  ||
+| **RAM Chips:**                    |  ESMT M13S2561616A-5T / DDR-400   ||  Nanya NT5DS8M16HS-5T / DDR-400  ||
+| **Wireless:**                     |  Ralink RT3062F 2.4GHz 802.11b/g/n  ||  None  ||
+| **[[docs:techref:hardware:switch]]:**                               |  integrated BCM6368 (Fast-ethernet, VLAN)  ||||
+| **[[docs:techref:hardware:internet.access.technologies|Modem]]:**   |  xDSL   ||||
+| **USB:**                          |  Yes 1 x 2.0  ||  None  ||
+| **[[docs:techref:hardware:port.serial|Serial]]:**  |  [[#Serial|Yes]]  ||  [[#Serial|Yes]]  ||
+| **[[docs:techref:hardware:port.jtag|JTAG]]:**      |  [[#JTAG|Yes]]    ||  unsure           ||
+
+==== Photos ====
+=== HG655b ===
+{{media:huawei:hg655:hg655b_pcb_top.jpg?400x300|}}
+{{media:huawei:hg655:hg655b_pcb_bottom.jpg?400x300|}}
+
+=== HG655d ===
+{{:media:huawei:hg655:hg655d_front.jpg?400|}}
+{{:media:huawei:hg655:hg655d_back.jpg?400|}}
+
+=== HG655m ===
+{{media:huawei:hg655:hg655m_pcb_top.jpg?0x300|}}
+{{media:huawei:hg655:hg655m_pcb_bottom.jpg?0x300|}}
+{{media:huawei:hg655:hg655m_leds.jpg?0x300|}}
+
+==== Opening the case ====
+**Note:** This will void your warranty!
+
+=== HG655d ===
+
+Remove the two screws on the lower back of the device. With the screws removed, the front is kept in place by a number of clips. Carefully pry these loose using a small screwdriver or a creditcard to remove the front of the device, exposing the mainboard.
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+How to connect to the Serial Port of this specific device:
+^ J4  ^
+| TX  |
+| GND |
+| VCC |
+| nc  |
+| RX  |
+
+Serial works at 3.3V 115200/8N1, see pin assignments above
+
+|<code>Speed (baud)     - 115200
+Data bits        - 8
+Stop bits        - 1
+Parity           - None
+Flow control     - None</code>|
+
+
+==== JTAG ====
+-> [[docs:techref:hardware:port.jtag]] general information about the JTAG port, JTAG cable, etc.
+
+How to connect to the JTAG Port of this specific device:
+
+**Photo of PCB with markings**
+
+^  J5  ^
+| TDI  |
+| TMS  |
+| TDO  |
+| TRST |
+| TCK  |
+
+=== URJTAG ===
+
+Using the urJtag with an FT2232H I was able to read the flash chip.
+
+urjtag command file used:
+
+''cable FT2232H vid=xxx pid=xxx
+endian big
+detect
+
+register BR 1
+register DIR 32
+register EJIMPCODE 32
+register EJADDRESS 32
+register EJDATA 32
+register EJCONTROL 32
+register EJALL 96
+
+instruction length 5
+instruction BYPASS 11111 BR
+instruction IDCODE 00001 DIR
+instruction EJTAG_IMPCODE 00011 EJIMPCODE
+instruction EJTAG_ADDRESS 01000 EJADDRESS
+instruction EJTAG_DATA 01001 EJDATA
+instruction EJTAG_CONTROL 01010 EJCONTROL
+instruction EJTAG_ALL 01011 EJALL
+
+instruction IDCODE
+shift ir
+shift dr
+dr
+
+initbus ejtag
+
+detectflash 0x38000000
+
+readmem 0x38000000 0x020000 hg655d-CFE.bin''
+
+=== ZJTAG ===
+
+and using zjtag(i used version 1.5)
+
+''zjtag -probeonly /window:18000000 /nompi - to detect flash chip
+zjtag -backup:custom /window:18000000 /start:18000000 /length:800000 /nompi - to backup all flash''
+
+
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+
+===== Bootloader Mods =====
+
+FIXME //Further up this page it is mentioned that HG655d needs bootloader replacement via JTAG. Please describe here how that can be done.//
+
+===== Hardware mods =====
+
+Currently none.
+
+===== Bootlogs =====
+==== HG655b OEM bootlog ====
+<WRAP bootlog>
+<nowiki>CFE version 1.0.37-102.6 for BCM96368 (32bit,SP,BE)
+Build Date: Wed Mar 23 22:59:09 CST 2011 (lihua@IBM_x3500)
+Copyright (C) 2000-2008 Broadcom Corporation.
+
+Parallel flash device: name AM29LV320MB, id 0x2200, size 8192KB
+CPU type 0x2A031: 400MHz, Bus: 160MHz, Ref: 64MHz
+CPU running TP0
+Total memory: 67108864 bytes (64MB)
+Boot Address 0xb8000000
+
+
+Board IP address                  : 192.168.1.1:ffffff00  
+Host IP address                   : 192.168.1.100  
+Gateway IP address                :   
+Run from flash/host (f/h)         : f  
+Default host run file name        : vmlinux  
+Default host flash file name      : bcm963xx_fs_kernel  
+Boot delay (0-9 seconds)          : 1  
+Boot image (0=latest, 1=previous) : 0  
+Board Id (0-6)                    : HW65x  
+Number of MAC Addresses (1-32)    : 11  
+Base MAC Address                  : 02:10:18:01:00:01  
+PSI Size (1-64) KBytes            : 64  
+Main Thread Number [0|1]          : 0  
+
+*** Press any key to stop auto run (2 seconds) ***
+Auto run second count down: 2210
+Decompression OK!
+Entry at 0x80294000
+Closing network.
+Disabling Switch ports.
+Flushing Receive Buffers...
+0 buffers found.
+Closing DMA Channels.
+Starting program at 0x80294000
+Linux version 2.6.21.5 (dongpeiying@IBM_x3500) (gcc version 4.2.3) #567 Thu Sep 1 17:40:41 CST 2011
+
+Pri Table Addr = 0040
+
+ulBootFlag = 0002
+
+Flash 0 at 0xb8000000
+
+  Size : 8 MB
+
+  Regions : 2
+
+    0 : 0x00000000 - 0x00002000 *  8
+
+    1 : 0x00010000 - 0x00010000 * 127
+
+CPU revision is: 0002a031
+
+Determined physical RAM map:
+
+ memory: 03f00000 @ 00000000 (usable)
+
+On node 0 totalpages: 16128
+
+  DMA zone: 32 pages used for memmap
+
+  DMA zone: 0 pages reserved
+
+  DMA zone: 4064 pages, LIFO batch:0
+
+  Normal zone: 94 pages used for memmap
+
+  Normal zone: 11938 pages, LIFO batch:1
+
+Built 1 zonelists.  Total pages: 16002
+
+Kernel command line: root=31:0 ro noinitrd console=ttyS0,115200
+
+brcm mips: enabling icache and dcache...
+
+Primary instruction cache 64kB, physically tagged, 4-way, linesize 16 bytes.
+
+Primary data cache 32kB, 2-way, linesize 16 bytes.
+
+Synthesized TLB refill handler (21 instructions).
+
+Synthesized TLB load handler fastpath (33 instructions).
+
+Synthesized TLB store handler fastpath (33 instructions).
+
+Synthesized TLB modify handler fastpath (32 instructions).
+
+PID hash table entries: 256 (order: 8, 1024 bytes)
+
+Using 200.000 MHz high precision timer.
+
+Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+
+Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+
+Memory: 59484k/64512k available (2081k kernel code, 5012k reserved, 490k data, 104k init, 0k highmem)
+
+KLOB Pool 1 Initialized: 1048576 bytes <0x80300000 ... 0x80400000>
+
+Calibrating delay loop... 398.33 BogoMIPS (lpj=199168)
+
+Mount-cache hash table entries: 512
+
+wait instruction: enabled
+
+bhal: bhalInit entry
+
+NET: Registered protocol family 16
+
+registering PCI controller with io_map_base unset
+
+SCSI subsystem initialized
+
+usbcore: registered new interface driver usbfs
+
+usbcore: registered new interface driver hub
+
+usbcore: registered new device driver usb
+
+NET: Registered protocol family 8
+
+NET: Registered protocol family 20
+
+Time: MIPS clocksource has been installed.
+
+NET: Registered protocol family 2
+
+IP route cache hash table entries: 128 (order: -3, 512 bytes)
+
+TCP established hash table entries: 2048 (order: 2, 16384 bytes)
+
+TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+
+TCP: Hash tables configured (established 2048 bind 2048)
+
+TCP reno registered
+
+squashfs: version 3.2-r2 (2007/01/15) Phillip Lougher
+
+squashfs: LZMA suppport for slax.org by jro
+
+fuse init (API version 7.8)
+
+io scheduler noop registered (default)
+
+PPP generic driver version 2.4.2
+
+NET: Registered protocol family 24
+
+IMQ starting with 3 devices...
+
+IMQ driver loaded successfully.
+
+	Hooking IMQ before NAT on PREROUTING.
+
+	Hooking IMQ after NAT on POSTROUTING.
+
+
+==boot from main kernel==
+
+Registered device mtd[BCM63XX RootFS] dev[0] Flash[0xb8020100,5062656]
+
+PCI: Enabling device 0000:00:0a.0 (0000 -> 0002)
+
+PCI: Setting latency timer of device 0000:00:0a.0 to 64
+
+ehci_hcd 0000:00:0a.0: EHCI Host Controller
+
+ehci_hcd 0000:00:0a.0: new USB bus registered, assigned bus number 1
+
+ehci_hcd 0000:00:0a.0: irq 15, io mem 0x10001500
+
+ehci_hcd 0000:00:0a.0: USB f.f started, EHCI 1.00, driver 10 Dec 2004
+
+usb usb1: configuration #1 chosen from 1 choice
+
+hub 1-0:1.0: USB hub found
+
+hub 1-0:1.0: 2 ports detected
+
+ohci_hcd: 2006 August 04 USB 1.1 'Open' Host Controller (OHCI) Driver
+
+PCI: Enabling device 0000:00:09.0 (0000 -> 0002)
+
+PCI: Setting latency timer of device 0000:00:09.0 to 64
+
+ohci_hcd 0000:00:09.0: OHCI Host Controller
+
+ohci_hcd 0000:00:09.0: new USB bus registered, assigned bus number 2
+
+ohci_hcd 0000:00:09.0: irq 13, io mem 0x10001600
+
+usb usb2: configuration #1 chosen from 1 choice
+
+hub 2-0:1.0: USB hub found
+
+hub 2-0:1.0: 2 ports detected
+
+usbcore: registered new interface driver usblp
+
+drivers/usb/class/usblp.c: v0.13: USB Printer Device Class driver
+
+Initializing USB Mass Storage driver...
+
+usbcore: registered new interface driver usb-storage
+
+USB Mass Storage support registered.
+
+MoniterInit entry
+
+Serial: BCM63XX driver $Revision: 3.00 $
+
+ttyS0 at MMIO 0xb0000100 (irq = 10) is a BCM63XX
+
+ttyS1 at MMIO 0xb0000120 (irq = 11) is a BCM63XX
+
+bcmxtmrt: Broadcom BCM6368B2 ATM/PTM Network Device v0.3 Sep  1 2011 17:39:10
+
+GACT probability on
+
+Mirror/redirect action on
+
+u32 classifier
+
+    input device check on 
+
+    Actions configured 
+
+Netfilter messages via NETLINK v0.30.
+
+ip_tables: (C) 2000-2006 Netfilter Core Team
+
+TCP cubic registered
+
+Initializing XFRM netlink socket
+
+NET: Registered protocol family 1
+
+NET: Registered protocol family 17
+
+NET: Registered protocol family 15
+
+Ebtables v2.0 registered
+
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+
+All bugs added by David S. Miller <davem@redhat.com>
+
+VFS: Mounted root (squashfs filesystem) readonly.
+
+Freeing unused kernel memory: 104k freed
+
+
+init started: BusyBox vv1.9.1 (2011-09-01 17:42:00 CST)
+
+starting pid 104, tty '': '/etc/init.d/rcS'
+RCS DONE
+
+starting pid 106, tty '': '/bin/sh'
+
+
+BusyBox vv1.9.1 (2011-09-01 17:42:00 CST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+-/bin/sh: atserver: not found
+-/bin/sh: usbdiagd: not found
+Loading drivers and kernel modules... 
+pktflow: module license 'Proprietary' taints kernel.
+
+Broadcom Packet Flow Cache  Char Driver v2.2 Aug  6 2010 11:03:27 Registered<242>
+
+NBUFF v1.0 Initialized
+
+Broadcom Packet Flow Cache learning via BLOG enabled.
+
+Created Proc FS /procfs/fcache
+
+Broadcom Packet Flow Cache registered with netdev chain
+
+Constructed Broadcom Packet Flow Cache v2.2 Aug  6 2010 11:03:26
+
+Broadcom Packet CMF (Experimental) Char Driver v0.1 Jul 23 2010 17:43:15 Registered<232>
+
+Broadcom Packet CMF (Experimental) [6368-B2] v0.1 Jul 23 2010 17:43:15 Loaded
+
+bcmxtmcfg: bcmxtmcfg_init entry
+
+adsl: adsl_init entry
+
+KLOB extended to 2 pools
+
+KLOB extended to 3 pools
+
+KLOB extended to 4 pools
+
+KLOB extended to 5 pools
+
+KLOB extended to 6 pools
+
+KLOB extended to 7 pools
+
+KLOB extended to 8 pools
+
+Broadcom Packet CMF (Experimental) SWC RESET.
+
+Broadcom Packet CMF (Experimental) SWC INITIALIZED.
+
+Broadcom Packet CMF (Experimental) Forwarder Net Device 0 v0.1 Jul 23 2010 17:43:16 Registered
+
+Broadcom Packet CMF (Experimental) Forwarder Net Device 0 v0.1 Jul 23 2010 17:43:16 Registered
+
+Broadcom Packet CMF (Experimental) ENABLED.
+
+eth0.5: MAC Address: C8:D1:5E:0D:AD:6C
+
+eth0.4: MAC Address: C8:D1:5E:0D:AD:6C
+
+eth0.3: MAC Address: C8:D1:5E:0D:AD:6C
+
+eth0.2: MAC Address: C8:D1:5E:0D:AD:6C
+
+DSP Driver: DSP init stub
+
+Endpoint: endpoint_init entry
+
+PROV(ts: 4 s 740ms):ALLOC item = 0000 location = 0x83C96A80 size = 40 line = 0
+
+PROV(ts: 4 s 747ms):ALLOC item = 0001 location = 0x83C96A00 size = 40 line = 0
+
+PROV(ts: 4 s 755ms):ALLOC item = 0002 location = 0x83C96980 size = 40 line = 0
+
+PROV(ts: 4 s 762ms):ALLOC item = 0003 location = 0x83C96900 size = 40 line = 0
+
+PROV(ts: 4 s 769ms):ALLOC item = 0004 location = 0x83C96880 size = 40 line = 0
+
+PROV(ts: 4 s 776ms):ALLOC item = 0005 location = 0x83C96800 size = 40 line = 0
+
+PROV(ts: 4 s 783ms):ALLOC item = 0006 location = 0x83C96780 size = 40 line = 0
+
+PROV(ts: 4 s 790ms):ALLOC item = 0007 location = 0x83C96700 size = 40 line = 0
+
+PROV(ts: 4 s 798ms):ALLOC item = 0008 location = 0x83C96680 size = 40 line = 0
+
+PROV(ts: 4 s 805ms):ALLOC item = 0009 location = 0x83C96600 size = 40 line = 0
+
+PROV(ts: 4 s 812ms):ALLOC item = 0011 location = 0x83CE2600 size = 4 line = 0
+
+PROV(ts: 4 s 819ms):ALLOC item = 0200 location = 0x81317E80 size = 248 line = 0
+
+PROV(ts: 4 s 826ms):ALLOC item = 0201 location = 0x81317D80 size = 248 line = 0
+
+PROV(ts: 4 s 833ms):ALLOC item = 0202 location = 0x81317C80 size = 248 line = 0
+
+PROV(ts: 4 s 841ms):ALLOC item = 0203 location = 0x81317B80 size = 248 line = 0
+
+PROV(ts: 4 s 848ms):ALLOC item = 0204 location = 0x81317A80 size = 248 line = 0
+
+PROV(ts: 4 s 855ms):ALLOC item = 0205 location = 0x81317980 size = 248 line = 0
+
+PROV(ts: 4 s 863ms):ALLOC item = 0206 location = 0x81317880 size = 248 line = 0
+
+PROV(ts: 4 s 870ms):ALLOC item = 0207 location = 0x81317780 size = 248 line = 0
+
+PROV(ts: 4 s 877ms):ALLOC item = 0208 location = 0x81317680 size = 248 line = 0
+
+PROV(ts: 4 s 884ms):ALLOC item = 0209 location = 0x81317580 size = 248 line = 0
+
+PROV(ts: 4 s 892ms):ALLOC item = 0210 location = 0x81317480 size = 248 line = 0
+
+PROV(ts: 4 s 899ms):ALLOC item = 0211 location = 0x81317380 size = 248 line = 0
+
+PROV(ts: 4 s 906ms):ALLOC item = 0212 location = 0x81317280 size = 248 line = 0
+
+PROV(ts: 4 s 913ms):ALLOC item = 0213 location = 0x81317180 size = 248 line = 0
+
+PROV(ts: 4 s 921ms):ALLOC item = 0218 location = 0x81317080 size = 248 line = 0
+
+PROV(ts: 4 s 928ms):ALLOC item = 0219 location = 0x8376FE80 size = 248 line = 0
+
+PROV(ts: 4 s 935ms):ALLOC item = 0220 location = 0x8376FD80 size = 248 line = 0
+
+PROV(ts: 4 s 942ms):ALLOC item = 0221 location = 0x8376FC80 size = 248 line = 0
+
+PROV(ts: 4 s 950ms):ALLOC item = 0222 location = 0x8376FB80 size = 248 line = 0
+
+PROV(ts: 4 s 957ms):ALLOC item = 0223 location = 0x8376FA80 size = 248 line = 0
+
+PROV(ts: 4 s 964ms):ALLOC item = 0224 location = 0x8376F980 size = 248 line = 0
+
+PROV(ts: 4 s 971ms):ALLOC item = 0225 location = 0x8376F880 size = 248 line = 0
+
+PROV(ts: 4 s 979ms):ALLOC item = 0400 location = 0x83CE2580 size = 4 line = 0
+
+PROV(ts: 4 s 986ms):ALLOC item = 0401 location = 0x83CE2500 size = 4 line = 0
+
+PROV(ts: 4 s 993ms):ALLOC item = 0402 location = 0x83CE2480 size = 4 line = 0
+
+PROV(ts: 5 s 0  ms):ALLOC item = 0403 location = 0x83CE2400 size = 4 line = 0
+
+PROV(ts: 5 s 7  ms):ALLOC item = 0404 location = 0x83CE2380 size = 4 line = 0
+
+PROV(ts: 5 s 14 ms):ALLOC item = 0405 location = 0x83CE2300 size = 4 line = 0
+
+PROV(ts: 5 s 21 ms):ALLOC item = 0406 location = 0x83CE2280 size = 4 line = 0
+
+PROV(ts: 5 s 28 ms):ALLOC item = 0407 location = 0x83CE2200 size = 4 line = 0
+
+PROV(ts: 5 s 35 ms):ALLOC item = 0408 location = 0x83CE2180 size = 4 line = 0
+
+PROV(ts: 5 s 42 ms):ALLOC item = 0409 location = 0x83CE2100 size = 4 line = 0
+
+PROV(ts: 5 s 49 ms):ALLOC item = 0410 location = 0x83122F80 size = 4 line = 0
+
+PROV(ts: 5 s 56 ms):ALLOC item = 0411 location = 0x83122F00 size = 4 line = 0
+
+PROV(ts: 5 s 64 ms):ALLOC item = 0412 location = 0x83122E80 size = 4 line = 0
+
+PROV(ts: 5 s 71 ms):ALLOC item = 0413 location = 0x83122E00 size = 4 line = 0
+
+PROV(ts: 5 s 78 ms):ALLOC item = 0423 location = 0x83122D80 size = 4 line = 0
+
+PROV(ts: 5 s 85 ms):ALLOC item = 0424 location = 0x83122D00 size = 4 line = 0
+
+PROV(ts: 5 s 92 ms):ALLOC item = 0414 location = 0x83122C80 size = 4 line = 0
+
+PROV(ts: 5 s 99 ms):ALLOC item = 0416 location = 0x83122C00 size = 4 line = 0
+
+PROV(ts: 5 s 106ms):ALLOC item = 0417 location = 0x83122B80 size = 4 line = 0
+
+PROV(ts: 5 s 113ms):ALLOC item = 0418 location = 0x83122B00 size = 4 line = 0
+
+PROV(ts: 5 s 120ms):ALLOC item = 0600 location = 0x83122A80 size = 4 line = 0
+
+PROV(ts: 5 s 127ms):ALLOC item = 0608 location = 0x83122A00 size = 4 line = 0
+
+PROV(ts: 5 s 134ms):ALLOC item = 0609 location = 0x83122980 size = 4 line = 0
+
+PROV(ts: 5 s 141ms):ALLOC item = 0610 location = 0x83122900 size = 4 line = 0
+
+PROV(ts: 5 s 149ms):ALLOC item = 0611 location = 0x83122880 size = 4 line = 0
+
+PROV(ts: 5 s 156ms):ALLOC item = 0612 location = 0x83122800 size = 4 line = 0
+
+PROV(ts: 5 s 163ms):ALLOC item = 0613 location = 0x83122780 size = 4 line = 0
+
+PROV(ts: 5 s 170ms):ALLOC item = 0617 location = 0x83122700 size = 4 line = 0
+
+PROV(ts: 5 s 177ms):ALLOC item = 0618 location = 0x83122680 size = 4 line = 0
+
+PROV(ts: 5 s 184ms):ALLOC item = 0619 location = 0x83122600 size = 4 line = 0
+
+PROV(ts: 5 s 191ms):ALLOC item = 0620 location = 0x83122580 size = 4 line = 0
+
+PROV(ts: 5 s 198ms):ALLOC item = 2000 location = 0x83122500 size = 4 line = 0
+
+PROV(ts: 5 s 205ms):ALLOC item = 0805 location = 0x83122480 size = 4 line = 0
+
+PROV(ts: 5 s 212ms):ALLOC item = 2200 location = 0x83122400 size = 4 line = 0
+
+PROV(ts: 5 s 219ms):ALLOC item = 2201 location = 0x83122380 size = 4 line = 0
+
+PROV(ts: 5 s 226ms):ALLOC item = 2202 location = 0x83122300 size = 4 line = 0
+
+PROV(ts: 5 s 233ms):ALLOC item = 2203 location = 0x83122280 size = 4 line = 0
+
+PROV(ts: 5 s 241ms):ALLOC item = 0616 location = 0x83122200 size = 4 line = 0
+
+PROV(ts: 5 s 248ms):ALLOC item = 2204 location = 0x83122180 size = 4 line = 0
+
+PROV(ts: 5 s 255ms):ALLOC item = 2600 location = 0x83122100 size = 4 line = 0
+
+PROV(ts: 5 s 262ms):ALLOC item = 2601 location = 0x8376EF80 size = 4 line = 0
+
+PROV(ts: 5 s 269ms):ALLOC item = 2602 location = 0x8376EF00 size = 4 line = 0
+
+PROV(ts: 5 s 276ms):ALLOC item = 2603 location = 0x8376EE80 size = 4 line = 0
+
+PROV(ts: 5 s 283ms):ALLOC item = 2604 location = 0x8376EE00 size = 4 line = 0
+
+PROV(ts: 5 s 290ms):ALLOC item = 2605 location = 0x8376ED80 size = 4 line = 0
+
+PROV(ts: 5 s 297ms):ALLOC item = 2606 location = 0x8376ED00 size = 4 line = 0
+
+PROV(ts: 5 s 304ms):ALLOC item = 2800 location = 0x8376EC80 size = 4 line = 0
+
+PROV(ts: 5 s 311ms):ALLOC item = 2801 location = 0x8376EC00 size = 4 line = 0
+
+PROV(ts: 5 s 318ms):ALLOC item = 2802 location = 0x83CF0C00 size = 1024 line = 0
+
+PROV(ts: 5 s 326ms):ALLOC item = 2803 location = 0x8376EB80 size = 4 line = 0
+
+PROV(ts: 5 s 333ms):ALLOC item = 0428 location = 0x8376EB00 size = 4 line = 0
+
+PROV(ts: 5 s 340ms):ALLOC item = 0429 location = 0x8376EA80 size = 4 line = 0
+
+PROV(ts: 5 s 347ms):ALLOC item = 0430 location = 0x8376EA00 size = 4 line = 0
+
+PROV(ts: 5 s 354ms):ALLOC item = 0415 location = 0x8376E980 size = 4 line = 0
+
+PROV(ts: 5 s 361ms):ALLOC item = 0427 location = 0x8376E900 size = 4 line = 0
+
+PROV(ts: 5 s 368ms):ALLOC item = 0000 location = 0x83C96580 size = 40 line = 1
+
+PROV(ts: 5 s 375ms):ALLOC item = 0001 location = 0x83C96500 size = 40 line = 1
+
+PROV(ts: 5 s 383ms):ALLOC item = 0002 location = 0x83C96480 size = 40 line = 1
+
+PROV(ts: 5 s 390ms):ALLOC item = 0003 location = 0x83C96400 size = 40 line = 1
+
+PROV(ts: 5 s 397ms):ALLOC item = 0004 location = 0x83C96380 size = 40 line = 1
+
+PROV(ts: 5 s 404ms):ALLOC item = 0005 location = 0x83C96300 size = 40 line = 1
+
+PROV(ts: 5 s 411ms):ALLOC item = 0006 location = 0x83C96280 size = 40 line = 1
+
+PROV(ts: 5 s 418ms):ALLOC item = 0007 location = 0x83C96200 size = 40 line = 1
+
+PROV(ts: 5 s 426ms):ALLOC item = 0008 location = 0x83C96180 size = 40 line = 1
+
+PROV(ts: 5 s 433ms):ALLOC item = 0009 location = 0x83C96100 size = 40 line = 1
+
+PROV(ts: 5 s 440ms):ALLOC item = 0011 location = 0x8376E880 size = 4 line = 1
+
+PROV(ts: 5 s 447ms):ALLOC item = 0200 location = 0x8376F780 size = 248 line = 1
+
+PROV(ts: 5 s 454ms):ALLOC item = 0201 location = 0x8376F680 size = 248 line = 1
+
+PROV(ts: 5 s 461ms):ALLOC item = 0202 location = 0x8376F580 size = 248 line = 1
+
+PROV(ts: 5 s 469ms):ALLOC item = 0203 location = 0x8376F480 size = 248 line = 1
+
+PROV(ts: 5 s 476ms):ALLOC item = 0204 location = 0x8376F380 size = 248 line = 1
+
+PROV(ts: 5 s 483ms):ALLOC item = 0205 location = 0x8376F280 size = 248 line = 1
+
+PROV(ts: 5 s 491ms):ALLOC item = 0206 location = 0x8376F180 size = 248 line = 1
+
+PROV(ts: 5 s 498ms):ALLOC item = 0207 location = 0x8376F080 size = 248 line = 1
+
+PROV(ts: 5 s 505ms):ALLOC item = 0208 location = 0x8376DE80 size = 248 line = 1
+
+PROV(ts: 5 s 512ms):ALLOC item = 0209 location = 0x8376DD80 size = 248 line = 1
+
+PROV(ts: 5 s 520ms):ALLOC item = 0210 location = 0x8376DC80 size = 248 line = 1
+
+PROV(ts: 5 s 527ms):ALLOC item = 0211 location = 0x8376DB80 size = 248 line = 1
+
+PROV(ts: 5 s 534ms):ALLOC item = 0212 location = 0x8376DA80 size = 248 line = 1
+
+PROV(ts: 5 s 541ms):ALLOC item = 0213 location = 0x8376D980 size = 248 line = 1
+
+PROV(ts: 5 s 549ms):ALLOC item = 0218 location = 0x8376D880 size = 248 line = 1
+
+PROV(ts: 5 s 556ms):ALLOC item = 0219 location = 0x8376D780 size = 248 line = 1
+
+PROV(ts: 5 s 563ms):ALLOC item = 0220 location = 0x8376D680 size = 248 line = 1
+
+PROV(ts: 5 s 570ms):ALLOC item = 0221 location = 0x8376D580 size = 248 line = 1
+
+PROV(ts: 5 s 578ms):ALLOC item = 0222 location = 0x8376D480 size = 248 line = 1
+
+PROV(ts: 5 s 585ms):ALLOC item = 0223 location = 0x8376D380 size = 248 line = 1
+
+PROV(ts: 5 s 592ms):ALLOC item = 0224 location = 0x8376D280 size = 248 line = 1
+
+PROV(ts: 5 s 599ms):ALLOC item = 0225 location = 0x8376D180 size = 248 line = 1
+
+PROV(ts: 5 s 607ms):ALLOC item = 0400 location = 0x8376E800 size = 4 line = 1
+
+PROV(ts: 5 s 614ms):ALLOC item = 0401 location = 0x8376E780 size = 4 line = 1
+
+PROV(ts: 5 s 621ms):ALLOC item = 0402 location = 0x8376E700 size = 4 line = 1
+
+PROV(ts: 5 s 628ms):ALLOC item = 0403 location = 0x8376E680 size = 4 line = 1
+
+PROV(ts: 5 s 635ms):ALLOC item = 0404 location = 0x8376E600 size = 4 line = 1
+
+PROV(ts: 5 s 642ms):ALLOC item = 0405 location = 0x8376E580 size = 4 line = 1
+
+PROV(ts: 5 s 649ms):ALLOC item = 0406 location = 0x8376E500 size = 4 line = 1
+
+PROV(ts: 5 s 656ms):ALLOC item = 0407 location = 0x8376E480 size = 4 line = 1
+
+PROV(ts: 5 s 663ms):ALLOC item = 0408 location = 0x8376E400 size = 4 line = 1
+
+PROV(ts: 5 s 670ms):ALLOC item = 0409 location = 0x8376E380 size = 4 line = 1
+
+PROV(ts: 5 s 677ms):ALLOC item = 0410 location = 0x8376E300 size = 4 line = 1
+
+PROV(ts: 5 s 685ms):ALLOC item = 0411 location = 0x8376E280 size = 4 line = 1
+
+PROV(ts: 5 s 692ms):ALLOC item = 0412 location = 0x8376E200 size = 4 line = 1
+
+PROV(ts: 5 s 699ms):ALLOC item = 0413 location = 0x8376E180 size = 4 line = 1
+
+PROV(ts: 5 s 706ms):ALLOC item = 0423 location = 0x8376E100 size = 4 line = 1
+
+PROV(ts: 5 s 713ms):ALLOC item = 0424 location = 0x8376CF80 size = 4 line = 1
+
+PROV(ts: 5 s 720ms):ALLOC item = 0414 location = 0x8376CF00 size = 4 line = 1
+
+PROV(ts: 5 s 727ms):ALLOC item = 0416 location = 0x8376CE80 size = 4 line = 1
+
+PROV(ts: 5 s 734ms):ALLOC item = 0417 location = 0x8376CE00 size = 4 line = 1
+
+PROV(ts: 5 s 741ms):ALLOC item = 0418 location = 0x8376CD80 size = 4 line = 1
+
+PROV(ts: 5 s 748ms):ALLOC item = 0600 location = 0x8376CD00 size = 4 line = 1
+
+PROV(ts: 5 s 755ms):ALLOC item = 0608 location = 0x8376CC80 size = 4 line = 1
+
+PROV(ts: 5 s 762ms):ALLOC item = 0609 location = 0x8376CC00 size = 4 line = 1
+
+PROV(ts: 5 s 769ms):ALLOC item = 0610 location = 0x8376CB80 size = 4 line = 1
+
+PROV(ts: 5 s 777ms):ALLOC item = 0611 location = 0x8376CB00 size = 4 line = 1
+
+PROV(ts: 5 s 784ms):ALLOC item = 0612 location = 0x8376CA80 size = 4 line = 1
+
+PROV(ts: 5 s 791ms):ALLOC item = 0613 location = 0x8376CA00 size = 4 line = 1
+
+PROV(ts: 5 s 798ms):ALLOC item = 0617 location = 0x8376C980 size = 4 line = 1
+
+PROV(ts: 5 s 805ms):ALLOC item = 0618 location = 0x8376C900 size = 4 line = 1
+
+PROV(ts: 5 s 812ms):ALLOC item = 0619 location = 0x8376C880 size = 4 line = 1
+
+PROV(ts: 5 s 819ms):ALLOC item = 0620 location = 0x8376C800 size = 4 line = 1
+
+PROV(ts: 5 s 826ms):ALLOC item = 2000 location = 0x8376C780 size = 4 line = 1
+
+PROV(ts: 5 s 833ms):ALLOC item = 0805 location = 0x8376C700 size = 4 line = 1
+
+PROV(ts: 5 s 840ms):ALLOC item = 2200 location = 0x8376C680 size = 4 line = 1
+
+PROV(ts: 5 s 847ms):ALLOC item = 2201 location = 0x8376C600 size = 4 line = 1
+
+PROV(ts: 5 s 854ms):ALLOC item = 2202 location = 0x8376C580 size = 4 line = 1
+
+PROV(ts: 5 s 861ms):ALLOC item = 2203 location = 0x8376C500 size = 4 line = 1
+
+PROV(ts: 5 s 869ms):ALLOC item = 0616 location = 0x8376C480 size = 4 line = 1
+
+PROV(ts: 5 s 876ms):ALLOC item = 2204 location = 0x8376C400 size = 4 line = 1
+
+PROV(ts: 5 s 883ms):ALLOC item = 2600 location = 0x8376C380 size = 4 line = 1
+
+PROV(ts: 5 s 890ms):ALLOC item = 2601 location = 0x8376C300 size = 4 line = 1
+
+PROV(ts: 5 s 897ms):ALLOC item = 2602 location = 0x8376C280 size = 4 line = 1
+
+PROV(ts: 5 s 904ms):ALLOC item = 2603 location = 0x8376C200 size = 4 line = 1
+
+PROV(ts: 5 s 911ms):ALLOC item = 2604 location = 0x8376C180 size = 4 line = 1
+
+PROV(ts: 5 s 918ms):ALLOC item = 2605 location = 0x8376C100 size = 4 line = 1
+
+PROV(ts: 5 s 925ms):ALLOC item = 2606 location = 0x8376BF80 size = 4 line = 1
+
+PROV(ts: 5 s 932ms):ALLOC item = 2800 location = 0x8376BF00 size = 4 line = 1
+
+PROV(ts: 5 s 939ms):ALLOC item = 2801 location = 0x8376BE80 size = 4 line = 1
+
+PROV(ts: 5 s 946ms):ALLOC item = 2802 location = 0x83CF0800 size = 1024 line = 1
+
+PROV(ts: 5 s 954ms):ALLOC item = 2803 location = 0x8376BE00 size = 4 line = 1
+
+PROV(ts: 5 s 961ms):ALLOC item = 0428 location = 0x8376BD80 size = 4 line = 1
+
+PROV(ts: 5 s 968ms):ALLOC item = 0429 location = 0x8376BD00 size = 4 line = 1
+
+PROV(ts: 5 s 975ms):ALLOC item = 0430 location = 0x8376BC80 size = 4 line = 1
+
+PROV(ts: 5 s 982ms):ALLOC item = 0415 location = 0x8376BC00 size = 4 line = 1
+
+PROV(ts: 5 s 989ms):ALLOC item = 0427 location = 0x8376BB80 size = 4 line = 1
+
+PROV(ts: 5 s 996ms):Allocated memory = 14200 
+
+Endpoint: endpoint_init COMPLETED
+
+Start mic now ...
+load cfm ok.
+start log proc...
+************************Write flash to db now ..., ulCfgFileType = 0
+ifconfig: SIOCSIFNETMASK: Cannot assign requested address
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+PCI: Enabling device 0000:00:01.0 (0000 -> 0002)
+
+PCI: Setting latency timer of device 0000:00:01.0 to 64
+
+
+
+=== pAd = c03b5000, size = 448000 ===
+
+
+<-- RTMPAllocAdapterBlock, Status=0
+
+pAd->CSRBaseAddress =0xb1000000, csr_addr=0xb1000000!
+
+sh: cannot kill pid 320: No such process
+device wl0 is not a slave of br0
+interface wl0.1 does not exist!
+interface wl0.2 does not exist!
+interface wl0.3 does not exist!
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+
+
+ begin WlanUpInterfaces...
+RX DESC a335f000  size = 2048
+
+<-- RTMPAllocTxRxRingMemory, Status=0
+
+===Ralink RF DATA check ok====
+
+1. Phy Mode = 9
+
+2. Phy Mode = 9
+
+3. Phy Mode = 9
+
+RTMPSetPhyMode: channel is out of range, use first channel=0 
+
+MCS Set = ff ff 00 00 00
+
+RTMPFilterCalibration - can't find a valid value, loopcnt=102 stop calibratingSYNC - BBP R4 to 20MHz.l
+
+Main bssid = 72:d1:5e:0d:ad:6c
+
+<==== rt28xx_init, Status=0
+
+0x1300 = 00064320
+
+@@@RTPRIV_IOCTL_SET CMD=[SSID=RomTelecom-WEP-AD6C], LEN=[25]
+
+@@@RTPRIV_IOCTL_SET CMD=[SSID=RomTelecom-WPA-AD6C], LEN=[25]
+
+@@@RTPRIV_IOCTL_SET CMD=[HideSSID=0], LEN=[11]
+
+@@@RTPRIV_IOCTL_SET CMD=[HideSSID=0], LEN=[11]
+
+@@@RTPRIV_IOCTL_SET CMD=[HideSSID=0], LEN=[11]
+
+@@@RTPRIV_IOCTL_SET CMD=[HideSSID=0], LEN=[11]
+
+@@@RTPRIV_IOCTL_SET CMD=[CountryRegion=1], LEN=[16]
+
+
+
+ wlan_mode set@@@RTPRIV_IOCTL_SET CMD=[WirelessMode=9], LEN=[15]
+
+ come in , argv[2] = bgnmixed
+
+@@@RTPRIV_IOCTL_SET CMD=[HtOpMode=0], LEN=[11]
+
+@@@RTPRIV_IOCTL_SET CMD=[BasicRate=15], LEN=[13]
+
+@@@RTPRIV_IOCTL_SET CMD=[FixedTxMode=HT], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[HtGi=0], LEN=[7]
+
+@@@RTPRIV_IOCTL_SET CMD=[HtBw=1], LEN=[7]
+
+@@@RTPRIV_IOCTL_SET CMD=[HtMcs=33], LEN=[9]
+
+@@@RTPRIV_IOCTL_SET CMD=[HtAutoBa=1], LEN=[11]
+
+@@@RTPRIV_IOCTL_SET CMD=[HtRdg=1], LEN=[8]
+
+@@@RTPRIV_IOCTL_SET CMD=[HtStbc=1], LEN=[9]
+
+@@@RTPRIV_IOCTL_SET CMD=[BGProtection=0], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[ShortSlot=1], LEN=[12]
+
+@@@RTPRIV_IOCTL_SET CMD=[HtOpMode=0], LEN=[11]
+
+@@@RTPRIV_IOCTL_SET CMD=[BasicRate=15], LEN=[13]
+
+@@@RTPRIV_IOCTL_SET CMD=[FixedTxMode=HT], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[RTSThreshold=2347], LEN=[18]
+
+@@@RTPRIV_IOCTL_SET CMD=[FragThreshold=2346], LEN=[19]
+
+@@@RTPRIV_IOCTL_SET CMD=[DtimPeriod=1], LEN=[13]
+
+@@@RTPRIV_IOCTL_SET CMD=[BeaconPeriod=100], LEN=[17]
+
+@@@RTPRIV_IOCTL_SET CMD=[NoForwarding=0], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[MaxStaNum=32], LEN=[13]
+
+@@@RTPRIV_IOCTL_SET CMD=[IgmpSnEnable=1], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[NoForwarding=0], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[MaxStaNum=32], LEN=[13]
+
+@@@RTPRIV_IOCTL_SET CMD=[IgmpSnEnable=1], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[WmmCapable=1], LEN=[13]
+
+@@@RTPRIV_IOCTL_SET CMD=[TxBurst=0], LEN=[10]
+
+@@@RTPRIV_IOCTL_SET CMD=[TxPower=95], LEN=[11]
+
+@@@RTPRIV_IOCTL_SET CMD=[ACLClearAll=1], LEN=[14]
+
+@@@RTPRIV_IOCTL_SET CMD=[ACLClearAll=1], LEN=[14]
+
+@@@RTPRIV_IOCTL_SET CMD=[ACLClearAll=1], LEN=[14]
+
+@@@RTPRIV_IOCTL_SET CMD=[ACLClearAll=1], LEN=[14]
+
+@@@RTPRIV_IOCTL_SET CMD=[AccessPolicy=0], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[AccessPolicy=0], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[AccessPolicy=0], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[AccessPolicy=0], LEN=[15]
+
+
+
+ begin WlanSetupBridge...
+device wl0 entered promiscuous mode
+
+br0: port 1(wl0) entering learning state
+
+br0: topology change detected, propagating
+
+br0: port 1(wl0) entering forwarding state
+
+device wl0.1 entered promiscuous mode
+
+br0: port 2(wl0.1) entering learning state
+
+br0: topology change detected, propagating
+
+br0: port 2(wl0.1) entering forwarding state
+
+
+
+ begin WlanStartServices...
+@@@RTPRIV_IOCTL_SET CMD=[AuthMode=OPEN], LEN=[14]
+
+@@@RTPRIV_IOCTL_SET CMD=[EncrypType=wep], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[IEEE8021X=0], LEN=[12]
+
+@@@RTPRIV_IOCTL_SET CMD=[Key1=34574B415A5254513653564344], LEN=[32]
+
+@@@RTPRIV_IOCTL_SET CMD=[DefaultKeyID=1], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[Key2=32323232323232323232323232], LEN=[32]
+
+@@@RTPRIV_IOCTL_SET CMD=[Key3=33333333333333333333333333], LEN=[32]
+
+@@@RTPRIV_IOCTL_SET CMD=[Key4=34343434343434343434343434], LEN=[32]
+
+@@@RTPRIV_IOCTL_SET CMD=[AuthMode=WPA2PSK], LEN=[17]
+
+@@@RTPRIV_IOCTL_SET CMD=[EncrypType=AES], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[IEEE8021X=0], LEN=[12]
+
+@@@RTPRIV_IOCTL_SET CMD=[WPAPSK=SWYTLEJR6ALQ3], LEN=[21]
+
+@@@RTPRIV_IOCTL_SET CMD=[DefaultKeyID=1], LEN=[15]
+
+@@@RTPRIV_IOCTL_SET CMD=[SSID=RomTelecom-WEP-AD6C], LEN=[25]
+
+@@@RTPRIV_IOCTL_SET CMD=[SSID=RomTelecom-WPA-AD6C], LEN=[25]
+
+ATP_WLAN_Init SUCCESS!!
+bcmxtmrt: MAC address: c8 d1 5e 0d ad 6d
+
+Use default bin /var/cwmp now ...
+
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...bcmxtmrt: MAC address: c8 d1 5e 0d ad 6e
+
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...bcmxtmrt: MAC address: c8 d1 5e 0d ad 6f
+
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...BcmAdsl_Initialize=0xC00AE834, g_pFnNotifyCallback=0xC00D67C4
+
+Clocks for QPROC and AFE are being aligned with step through ... 
+
+AFE is aligned, i = 052, PhaseValue = -050, PhaseCntl = 0x3FCC0000
+
+QPROC is aligned, i = 053, PhaseValue = -050, PhaseCntl = 0x3FCC3FCB
+
+Clocks for QPROC and AFE are aligned with syn_status AFE = 0x70, QPROC = 0x70
+
+AFE  phase control reg @0xb0f570f8 default actual = 0x0021C38F, exp = 0x0021c38f
+
+QPRC phase control reg @0xb0f5f0c0 default actual = 0x0421C38F, exp = 0x0421c38f
+
+pSdramPHY=0xA3FFFFF8, 0xDBA5BEA5 0x73EDFE25
+
+*** XfaceOffset: 0x5FF90 => 0x5FF90 ***
+
+*** PhySdramSize got adjusted: 0xBE300 => 0xEBA20 ***
+
+AdslCoreSharedMemInit: shareMemAvailable=83392
+
+AdslCoreHwReset:  AdslOemDataAddr = 0xA3FB3C78
+
+insmod: can't open '/lib/extra/vnet.ko': No such file or directory
+device eth0.5 entered promiscuous mode
+
+device eth0.2 entered promiscuous mode
+
+device eth0.3 entered promiscuous mode
+
+device eth0.4 entered promiscuous mode
+
+device eth0 is not a slave of br0
+ifconfig: SIOCGIFFLAGS: No such device
+
+ ERROR: set wan media error. 
+atp: cur kernel version:[2.6.21.5] 
+
+bridge: can't decode speed from nas_a2_1: 0
+
+device nas_a2_1 entered promiscuous mode
+
+br0: port 7(nas_a2_1) entering learning state
+
+br0: topology change detected, propagating
+
+br0: port 7(nas_a2_1) entering forwarding state
+
+br0: port 7(nas_a2_1) entering disabled state
+
+/var/wan/nas_a3_2/dial: line 1: 3: not found
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.2
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.2
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.3
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.3
+port_no -1 not surported, br:br0, port:nas_a1_0
+Ritchie app, 0
+Cannot find device "nas0"
+Cannot find device "nas0"
+Action 4 device imq0 ifindex 2
+Cannot find device "nas0"
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+FILE:voicecfg.c,LINE:89,sizeof(TAPI)=884,sizeof(SVC)=31856,sizeof(STATE)=14152
+
+
+Current sntp process is 1119!
+
+
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+
+Set Mirror direction out disabled to eth0.2 Successfully...
+Sean@All modules init return 0.
+DEBUG[tapi.c:L1252]TAPI_GetCfg
+BOS: Enter bosIniBOS: Enter bosInit 
+
+t 
+bosTimerInitEnter bosAppInit 
+
+
+Enter bosAppInExit bosAppInit 
+
+it 
+Exit bosAppBOS: Exit bosInit 
+
+Init 
+BOS: Exitendpoint_open COMPLETED
+
+ bosInit 
+Created message queue "HDSP", depth 40, id 1
+00:00:21 CAEnter bosStartApp
+
+LLCLIENT: Initia
+
+
+bosAppRootTask() - Is it morning already? Spawning app task (epoch #0)...
+
+
+lizing endpointsAppResetDetectionEnable() - Enabled reset detection.
+
+ callSipClientMaExit bosStartApp
+
+in
+Error getting IP address
+sipConfig: sipzParamp=0x7f3ffa44 sipzParamp->regname=129.102.100.11 line 62 file  hsip.c
+sipConfig: sipzParamp=0x7f3ffa44line 72 file  hsip.c
+sipConfig: &mgscb=0x51cf74line 85 file  hsip.c
+00:00:21 CALLCLIENT: Initializing endpoints
+00:00:21 Endpoint will be initialized for country ETS (country code = 7)
+
+Endpoint Event task started with pid 1141...
+Endpoint Packet task started with pid 1142 ...
+br0: port 4(eth0.2) entering disabled state
+
+br0: port 5(eth0.3) entering disabled state
+
+br0: port 6(eth0.4) entering disabled state
+
+br0: port 3(eth0.5) entering disabled state
+
+ifconfig: SIOCSIFFLAGS: Cannot assign requested address
+bridge br0:9 doesn't exist; can't delete it
+Append upnp ssdp listener ok.
+Use default bin /var/upnp now ...
+Enable Got value: 1
+NATEnabled Got value: 1
+
+BHAL(ts: 22s 557ms):Initializing board HAL...
+
+Codec Support: PCMA/PCMU
+
+Codec Support: G722
+
+Codec Support: G729A
+
+Codec Support: G729B
+
+Codec Support: G723
+
+Codec Support: G726
+
+Codec Support: BV16
+
+Codec Support: BV32
+
+Codec Support: LINPCM128
+
+Codec Support: LINPCM256
+
+Codec Support: ILBC
+
+Codec Support: AMRNB
+
+Codec Support: AMRWB
+
+Codec Support: T.38
+
+PCM: Interrupt Masks
+
+---------------
+
+IrqMask                    = 0x000007070000A0B4 
+
+IrqMask1                   = 0x0000000000000000 
+
+PCM_IUDMA->ctrl[0].intMask = 0x00000000 
+
+PCM_IUDMA->ctrl[1].intMask = 0x00000000 
+
+
+PCM: Interrupt Status
+
+-----------------
+
+IrqStatus                  = 0x0000000000000040 
+
+IrqStatus1                 = 0x0000000000000040 
+
+PCM_IUDMA->ctrl[0].intStat = 0x00000000 
+
+PCM_IUDMA->ctrl[1].intStat = 0x00000000 
+
+PCM->pcm_pll_ctrl1         = 0xFC80287D 
+
+PCM->pcm_pll_ctrl2         = 0xD0000000 
+
+PCM->pcm_pll_ctrl3         = 0x380005C0 
+
+PCM->pcm_pll_ctrl4         = 0x00000000 
+
+PCM->pcm_int_pending       = 0x00000000 
+
+PCM->pcm_int_mask          = 0x00000000 
+
+PCM->pcm_ctrl              = 0x00000000 
+
+PCM->pcm_chan_ctrl         = 0x00000000 
+
+PCM_IUDMA->regs.ctrlConfig = 0x00000001 
+
+PCM_IUDMA->ctrl[0].maxBurst                  = 0x00000008 
+
+PCM_IUDMA->ctrl[0].config                    = 0x00000000 
+
+PCM_IUDMA->stram[0].baseDescPointer          = 0x0220CCC2 
+
+PCM_IUDMA->stram[0].stateBytesDoneRingOffset = 0xB3601008 
+
+PCM_IUDMA->stram[0].flagsLengthStatus        = 0x400A5B08 
+
+PCM_IUDMA->stram[0].currentBufferPointer     = 0xD68A0052 
+
+PCM_IUDMA->ctrl[1].maxBurst                  = 0x00000008 
+
+PCM_IUDMA->ctrl[1].config                    = 0x00000000 
+
+PCM_IUDMA->stram[1].baseDescPointer          = 0x802A1582 
+
+PCM_IUDMA->stram[1].stateBytesDoneRingOffset = 0x08128848 
+
+PCM_IUDMA->stram[1].flagsLengthStatus        = 0x2BD74905 
+
+PCM_IUDMA->stram[1].currentBufferPointer     = 0x2258A8EE 
+
+PLL init completed. PLL registers set to:
+
+PCM->pcm_pll_ctrl1       = 0x0080147D 
+
+PCM->pcm_pll_ctrl2       = 0x10000000 
+
+PCM->pcm_pll_ctrl3       = 0x38000700 
+
+PCM->pcm_pll_ctrl4       = 0x00000015 
+
+Set up PCM registers
+
+XDRV:pcm6368_timeslotAlloc 0xB0004040: 0x80000000
+
+
+Channel 0 assigned to timeslot 0
+
+XDRV:pcm6368_timeslotAlloc 0xB0004040: 0x89000000
+
+
+Channel 1 assigned to timeslot 1
+
+XDRV:pcm6368_timeslotAlloc 0xB0004040: 0x89A00000
+
+
+Channel 2 assigned to timeslot 2
+
+rxDescriptorArea       = 24 
+
+txDescriptorArea       = 24 
+
+Unaligned dmaRxDesc_c  = 0xA02D7000 
+
+Unaligned dmaTxDesc_c  = 0xA02AC000 
+
+rxBufferArea          = 1312 
+
+txBufferArea          = 1312 
+
+Unaligned dmaRxData   = 0xA02AD000 
+
+Unaligned dmaTxData   = 0xA02A8000 
+
+Aligned Tx Desc (0xA02AC000): chan 0, buf 0, sts 0xe000, len 640, bufp 0x2a8000 
+
+Aligned Tx Desc (0xA02AC008): chan 0, buf 1, sts 0x7000, len 640, bufp 0x2a8290 
+
+Aligned Rx Desc (0xA02D7000): chan 0, buf 0, sts 0x8000, len 640, bufp 0x2ad000 
+
+Aligned Rx Desc (0xA02D7008): chan 0, buf 1, sts 0x9000, len 640, bufp 0x2ad290 
+
+initIudma: chan 0, descBase 0xa02d7000, descBaseIudma 0x2d7000
+
+initIudma: chan 1, descBase 0xa02ac000, descBaseIudma 0x2ac000
+
+Enter TaskCreate CMT_EXCEPTION_IST
+
+TaskCreate - spawn new task CMT_EXCEPTION_IST
+
+Exit TaskCreate 
+
+BHAL(ts: 23s 17 ms):DSP build date: Fri_Nov_6_2009_15:10:14
+
+
+regStatus (reg 12 sel 0)    = 0x10008501 
+
+regStatus (reg 12 sel 7)    = 0x00000101 
+
+regCause  (reg 13 sel 0)    = 0x00000000 
+
+regCause  (reg 13 sel 7)    = 0x00808000 
+
+regCMT    (reg 22 sel 0)    = 0xe31e1406 
+
+regCMT    (reg 22 sel 1)    = 0x10008001 
+
+XDRV:Kicking off secondary thread processor at entry point 0x8108C740 ...
+
+
+XDRV:Secondary thread processor entry point at 0x8108c740
+
+
+*** DSP TP: Entered main() ***
+XDRV:Thread processor handshake. Secondary app initialized properly.
+
+
+Enter TaskCreate HTSK
+
+TaskCreate - spawn new task HTSK
+
+Exit TaskCreate 
+
+MSPI INITIALIZED
+
+SLIC reset pin: GPIO 32778 
+
+SLIC reset pin: GPIO 32778 
+
+SLIC chip select pin: GPIO 28 
+
+Initializing 89116 device 0 ...
+
+---
+
+SLIC: Starting 89116 device and line initializion...
+
+SLIC: Resetting device using GPIO 32778 ...
+
+SLIC: Reset applied on GPIO pin 32778SLIC: Initializing 89116 device 0
+
+BcmSpiReserveSlave <0,2,6250000>, spiStatus=0
+
+SLIC: Received VP_DEV_EVID_DEV_INIT_CMP event (i = 0)
+
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 1024 
+
+SLIC: 89116 device 0 initialized OK
+
+SLIC: Initializing 89116 FXS line
+
+SLIC: Received VP_LINE_EVID_LINE_INIT_CMP event (i = 0)
+
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 2048 
+
+SLIC: Received VP_EVID_CAL_CMP event (i= 120)
+
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 64 
+
+SLIC: FXS line RX timeslot = 0 
+
+SLIC: FXS line TX timeslot = 0 
+
+SLIC: 89116 FXS line initialized OK
+
+SLIC: 89116 device 0 and FXS/FXO initializion COMPLETED OK !
+
+---
+
+Initializing 89316 device 0 ...
+
+---
+
+SLICDAA: Starting 89316 device and line initializion...
+
+SLICDAA: Skipping SLIC chip reset
+
+SLICDAA: Initializing 89316 device 0
+
+SLIC: Received VP_DEV_EVID_DEV_INIT_CMP event (i = 0)
+
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 1024 
+
+SLICDAA: 89316 device 0 initialized OK
+
+SLICDAA: Initializing 89316 FXS line
+
+SLIC: Received VP_LINE_EVID_LINE_INIT_CMP event (i = 0)
+
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 2048 
+
+SLIC: Received VP_EVID_CAL_CMP event (i= 120)
+
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 64 
+
+SLICDAA: FXS line RX timeslot = 2 
+
+SLICDAA: FXS line TX timeslot = 2 
+
+SLICDAA: 89316 FXS line initialized OK
+
+SLICDAA: Initializing 89316 FXO line
+
+SLICDAA: Locale 7
+
+SLICDAA: Locale 7
+
+SLICDAA: FXO line RX timeslot = 4 
+
+SLICDAA: FXO line TX timeslot = 4 
+
+SLICDAA: 89316 FXO line initialized OK
+
+SLICDAA: 89316 device 0 and FXS/FXO initializion COMPLETED OK !
+
+---
+
+BHAL(ts: 25s 845ms):COMPLETED Initializing board HAL
+
+boardHalInit completed
+
+Codec Support: PCMA/PCMU
+
+Codec Support: G722
+
+Codec Support: G729A
+
+Codec Support: G729B
+
+Codec Support: G723
+
+Codec Support: G726
+
+Codec Support: BV16
+
+Codec Support: BV32
+
+Codec Support: LINPCM128
+
+Codec Support: LINPCM256
+
+Codec Support: ILBC
+
+Codec Support: AMRNB
+
+Codec Support: AMRWB
+
+Codec Support: T.38
+
+Enter TaskCreate HRTBEAT
+
+TaskCreate - spawn new task HRTBEAT
+
+Exit TaskCreate 
+
+HEARTBEAT: Initialized!
+
+Enter TaskCreate VRGEVPR
+
+TaskCreate - spawn new task VRGEVPR
+
+Exit TaskCreate 
+
+Enter TaskCreate HCAS
+
+TaskCreate - spawn new task HCAS
+
+Exit TaskCreate 
+
+gInterruptCounter     = 0x8115BEF4 
+gInterruptErrors      = 0x811493F0 
+gNextRxDesc           = 0x811493E4 
+gNextTxDesc           = 0x811493E0 
+32 ms ECAN tail-length
+*** gStartRxDesc[0] = 0xA02D7000 
+*** gBufferSizeBytes = 640 
+*** gStartTxDesc[0] = 0xA02AC000 
+hal6368PcmInit 343 nextTxDesc = 0xA02AC000 
+hal6368PcmInit 343 nextTxDesc = 0xA02AC008 
+hal6368PcmInit 347 Ownership for TX desc not set. Use this buffer. 
+DSP: Interrupt Masks
+---------------
+IrqMask_high               = 0x00000707 
+IrqMask                    = 0x0000A0B4 
+IrqMask1_high              = 0x40000000 
+IrqMask1                   = 0x00000000 
+PCM_IUDMA->ctrl[0].intMask = 0x00000005 
+PCM_IUDMA->ctrl[1].intMask = 0x00000005 
+
+DSP: Interrupt Status
+-----------------
+IrqStatus_high             = 0x00000000 
+IrqStatus                  = 0x00000040 
+IrqStatus1_high            = 0x00000000 
+IrqStatus1                 = 0x00000040 
+PCM_IUDMA->ctrl[0].intStat = 0x00000000 
+PCM_IUDMA->ctrl[1].intStat = 0x00000000 
+EPT(ts: 26s 185ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x50) of type: 0x0
+
+EPT(ts: 26s 313ms):Setting T.38 error correction mode for vhd 80 to 0x104
+
+EPT(ts: 26s 649ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x51) of type: 0x0
+
+EPT(ts: 26s 777ms):Setting T.38 error correction mode for vhd 81 to 0x104
+
+EPT(ts: 27s 112ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x52) of type: 0x0
+
+EPT(ts: 27s 240ms):Setting T.38 error correction mode for vhd 82 to 0x104
+
+EPT(ts: 27s 576ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x53) of type: 0x0
+
+EPT(ts: 27s 704ms):Setting T.38 error correction mode for vhd 83 to 0x104
+
+EndpointInit completed
+
+
+Enter vrgEndptCEPT(ts: 27s 872ms):endptConfigCIDModeParm classStmType = 2
+
+
+asTimeParamContrEPT(ts: 27s 879ms):ENDPT CREATE: Starting initialization for endpt 0
+
+ol... minHookFlaEPT(ts: 27s 886ms):EPTYPE_FXS
+
+sh = 300, maxHookFlash = 800.
+Codec Support: PCMA/PCMU
+
+Codec Support: G722
+
+Codec Support: G729A
+
+Codec Support: G729B
+
+Codec Support: G723
+
+Codec Support: G726
+
+Codec Support: BV16
+
+Codec Support: BV32
+
+Codec Support: LINPCM128
+
+Codec Support: LINPCM256
+
+Codec Support: ILBC
+
+Codec Support: AMRNB
+
+Codec Support: AMRWB
+
+Codec Support: T.38
+
+EPT(ts: 28s 45 ms):hdspVhdOpen Line VHD success. DSP 0, VHD (0x54) of type: 0x7
+
+HDSP(ts: 28s 63 ms):VHD 0x54: Frame size = 40, Mode = Narrowband
+
+HDSP(ts: 28s 88 ms):Switchboard ON (type Duplex): VHD 0x54/1 with VHD 0x0/0
+
+EPT(ts: 28s 95 ms):Default value for provItemId '608' did not exist
+
+EPT(ts: 28s 101ms):Default value for provItemId '600' did not exist
+
+SLIC: Mode for FXS channel changed to 1 
+
+SLIC: Mode for FXS channel changed to 1 
+
+EPT(ts: 28s 150ms):COMPLETED successful initialization for endpt 0
+
+00:00:28 SIGNAL: EPT(ts: 28s 156ms):SIGNAL: ept:0 cnx:-1 s:79 v:0 d:-1 p:-1 r:-1 
+
+endpt 0, cnx -1,EPT(ts: 28s 163ms):COMPLETED SIGNAL 79
+
+ evt 111 (TxGainEPT(ts: 28s 169ms):SIGNAL: ept:0 cnx:-1 s:80 v:0 d:-1 p:-1 r:-1 
+
+), value 0
+00:0EPT(ts: 28s 176ms):COMPLETED SIGNAL 80
+
+0:28 SIGNAL: endEPT(ts: 28s 181ms):ENDPT CREATE: Starting initialization for endpt 1
+
+pt 0, cnx -1, evEPT(ts: 28s 188ms):EPTYPE_FXS
+
+t 112 (RxGain), value 0
+Codec Support: PCMA/PCMU
+
+Codec Support: G722
+
+Codec Support: G729A
+
+Codec Support: G729B
+
+Codec Support: G723
+
+Codec Support: G726
+
+Codec Support: BV16
+
+Codec Support: BV32
+
+Codec Support: LINPCM128
+
+Codec Support: LINPCM256
+
+Codec Support: ILBC
+
+Codec Support: AMRNB
+
+Codec Support: AMRWB
+
+Codec Support: T.38
+
+EPT(ts: 28s 344ms):hdspVhdOpen Line VHD success. DSP 0, VHD (0x55) of type: 0x7
+
+HDSP(ts: 28s 361ms):VHD 0x55: Frame size = 40, Mode = Narrowband
+
+HDSP(ts: 28s 386ms):Switchboard ON (type Duplex): VHD 0x55/1 with VHD 0x1/0
+
+EPT(ts: 28s 393ms):Default value for provItemId '608' did not exist
+
+EPT(ts: 28s 399ms):Default value for provItemId '600' did not exist
+
+SLICDAA: Mode for FXS channel changed to 1 
+
+SLICDAA: Mode for FXS channel changed to 1 
+
+EPT(ts: 28s 449ms):COMPLETED successful initialization for endpt 1
+
+00:00:28 SIGNAL: EPT(ts: 28s 457ms):SIGNAL: ept:1 cnx:-1 s:79 v:0 d:-1 p:-1 r:-1 
+
+endpt 1, cnx -1,EPT(ts: 28s 464ms):COMPLETED SIGNAL 79
+
+ evt 111 (TxGainEPT(ts: 28s 469ms):SIGNAL: ept:1 cnx:-1 s:80 v:0 d:-1 p:-1 r:-1 
+
+), value 0
+00:0EPT(ts: 28s 477ms):COMPLETED SIGNAL 80
+
+0:28 SIGNAL: endpt 1, cnx -1, evt 112 (RxGain), value 0
+ RTCP thread started with pid 1191 
+00:00:28 rtpInit: RTCP task created, taskId = 10251
+00:00:28 CALLCLIENT: Initialization complete callSipClientMain
+
+Use default bin /var/console now ...
+-------------------------------
+
+-----Welcome to ATP Cli------
+
+-------------------------------
+
+
+
+Login: admin
+
+Password: 
+
+ATP></nowiki>
+</WRAP>\\
+
+==== HG655m OEM bootlog ====
+
+Note that the following bootlog is for the HG655b Romtelecom firmware flashed onto HG655m hardware. As a result, there are errors about the missing Wifi unit, but otherwise the unit appears entirely functional. After this bootlog I also place a bootlog for the HG655d firmware flashed onto HG655m hardware for reference.
+
+You will surely note that the CFE bootloader thinks that the board is a 96368MVWG, not a HG65x.
+<WRAP bootlog>
+<nowiki>CFE version 1.0.37-102.6 for BCM96368 (32bit,SP,BE)
+Build Date: Sun May 20 16:16:27 CST 2012 (wanglaijian@VHG-CT-SER1)
+Copyright (C) 2000-2008 Broadcom Corporation.
+
+
+==== MaxMultibyteWrite: 32 ====
+Parallel flash device: name AM29LV320MT, id 0x2201, size 16384KB
+CPU type 0x2A031: 400MHz, Bus: 160MHz, Ref: 64MHz
+CPU running TP0
+Total memory: 33554432 bytes (32MB)
+Boot Address 0xb8000000
+
+
+Board IP address                  : 192.168.1.1:ffffff00  
+Host IP address                   : 192.168.1.100  
+Gateway IP address                :   
+Run from flash/host (f/h)         : f  
+Default host run file name        : vmlinux  
+Default host flash file name      : bcm963xx_fs_kernel  
+Boot delay (0-9 seconds)          : 3  
+Boot image (0=latest, 1=previous) : 0  
+Board Id (0-4)                    : 96368MVWG  
+Number of MAC Addresses (1-32)    : 11  
+Base MAC Address                  : 00:e0:fc:09:09:09  
+PSI Size (1-64) KBytes            : 64  
+Main Thread Number [0|1]          : 0  
+
+*** Press any key to stop auto run (3 seconds) ***
+Auto run second count down: 33210
+
+ Support Double system.
+
+Flash boot Flag: MAINSS
+Boot from main system!
+Decompression OK!
+Entry at 0x80294000
+Closing network.
+Disabling Switch ports.
+Flushing Receive Buffers...
+36 buffers found.
+Closing DMA Channels.
+Starting program at 0x80294000
+Linux version 2.6.21.5 (dongpeiying@IBM_x3500) (gcc version 4.2.3) #567 Thu Sep 1 17:40:41 CST 2011
+Pri Table Addr = 0040
+ulBootFlag = 0005
+Flash 0 at 0xb8000000
+  Size : 16 MB
+  Regions : 1
+    0 : 0x00000000 - 0x00020000 * 128
+CPU revision is: 0002a031
+Determined physical RAM map:
+ memory: 01f00000 @ 00000000 (usable)
+On node 0 totalpages: 7936
+  DMA zone: 32 pages used for memmap
+  DMA zone: 0 pages reserved
+  DMA zone: 4064 pages, LIFO batch:0
+  Normal zone: 30 pages used for memmap
+  Normal zone: 3810 pages, LIFO batch:0
+Built 1 zonelists.  Total pages: 7874
+Kernel command line: root=31:0 ro noinitrd console=ttyS0,115200
+brcm mips: enabling icache and dcache...
+Primary instruction cache 64kB, physically tagged, 4-way, linesize 16 bytes.
+Primary data cache 32kB, 2-way, linesize 16 bytes.
+Synthesized TLB refill handler (21 instructions).
+Synthesized TLB load handler fastpath (33 instructions).
+Synthesized TLB store handler fastpath (33 instructions).
+Synthesized TLB modify handler fastpath (32 instructions).
+PID hash table entries: 128 (order: 7, 512 bytes)
+Using 200.000 MHz high precision timer.
+Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+Memory: 27012k/31744k available (2081k kernel code, 4732k reserved, 490k data, 104k init, 0k highmem)
+KLOB Pool 1 Initialized: 1048576 bytes <0x80300000 ... 0x80400000>
+Calibrating delay loop... 398.33 BogoMIPS (lpj=199168)
+Mount-cache hash table entries: 512
+wait instruction: enabled
+bhal: bhalInit entry
+NET: Registered protocol family 16
+registering PCI controller with io_map_base unset
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+NET: Registered protocol family 8
+NET: Registered protocol family 20
+Time: MIPS clocksource has been installed.
+NET: Registered protocol family 2
+IP route cache hash table entries: 128 (order: -3, 512 bytes)
+TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+TCP: Hash tables configured (established 1024 bind 1024)
+TCP reno registered
+squashfs: version 3.2-r2 (2007/01/15) Phillip Lougher
+squashfs: LZMA suppport for slax.org by jro
+fuse init (API version 7.8)
+io scheduler noop registered (default)
+PPP generic driver version 2.4.2
+NET: Registered protocol family 24
+IMQ starting with 3 devices...
+IMQ driver loaded successfully.
+	Hooking IMQ before NAT on PREROUTING.
+	Hooking IMQ after NAT on POSTROUTING.
+
+==boot from main kernel==
+Registered device mtd[BCM63XX RootFS] dev[0] Flash[0xb8020100,5062656]
+PCI: Enabling device 0000:00:0a.0 (0000 -> 0002)
+PCI: Setting latency timer of device 0000:00:0a.0 to 64
+ehci_hcd 0000:00:0a.0: EHCI Host Controller
+ehci_hcd 0000:00:0a.0: new USB bus registered, assigned bus number 1
+ehci_hcd 0000:00:0a.0: irq 15, io mem 0x10001500
+ehci_hcd 0000:00:0a.0: USB f.f started, EHCI 1.00, driver 10 Dec 2004
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 2 ports detected
+ohci_hcd: 2006 August 04 USB 1.1 'Open' Host Controller (OHCI) Driver
+PCI: Enabling device 0000:00:09.0 (0000 -> 0002)
+PCI: Setting latency timer of device 0000:00:09.0 to 64
+ohci_hcd 0000:00:09.0: OHCI Host Controller
+ohci_hcd 0000:00:09.0: new USB bus registered, assigned bus number 2
+ohci_hcd 0000:00:09.0: irq 13, io mem 0x10001600
+usb usb2: configuration #1 chosen from 1 choice
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 2 ports detected
+usbcore: registered new interface driver usblp
+drivers/usb/class/usblp.c: v0.13: USB Printer Device Class driver
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+MoniterInit entry
+Serial: BCM63XX driver $Revision: 3.00 $
+ttyS0 at MMIO 0xb0000100 (irq = 10) is a BCM63XX
+ttyS1 at MMIO 0xb0000120 (irq = 11) is a BCM63XX
+bcmxtmrt: Broadcom BCM6368B2 ATM/PTM Network Device v0.3 Sep  1 2011 17:39:10
+GACT probability on
+Mirror/redirect action on
+u32 classifier
+    input device check on 
+    Actions configured 
+Netfilter messages via NETLINK v0.30.
+ip_tables: (C) 2000-2006 Netfilter Core Team
+TCP cubic registered
+Initializing XFRM netlink socket
+NET: Registered protocol family 1
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+Ebtables v2.0 registered
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted root (squashfs filesystem) readonly.
+Freeing unused kernel memory: 104k freed
+init started: BusyBox vv1.9.1 (2011-09-01 17:42:00 CST)
+starting pid 103, tty '': '/etc/init.d/rcS'
+RCS DONE
+starting pid 105, tty '': '/bin/sh'
+
+
+BusyBox vv1.9.1 (2011-09-01 17:42:00 CST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+-/bin/sh: atserver: not found
+-/bin/sh: usbdiagd: not found
+Loading drivers and kernel modules... 
+pktflow: module license 'Proprietary' taints kernel.
+Broadcom Packet Flow Cache  Char Driver v2.2 Aug  6 2010 11:03:27 Registered<242>
+NBUFF v1.0 Initialized
+Broadcom Packet Flow Cache learning via BLOG enabled.
+Created Proc FS /procfs/fcache
+Broadcom Packet Flow Cache registered with netdev chain
+Constructed Broadcom Packet Flow Cache v2.2 Aug  6 2010 11:03:26
+Broadcom Packet CMF (Experimental) Char Driver v0.1 Jul 23 2010 17:43:15 Registered<232>
+Broadcom Packet CMF (Experimental) [6368-B2] v0.1 Jul 23 2010 17:43:15 Loaded
+bcmxtmcfg: bcmxtmcfg_init entry
+adsl: adsl_init entry
+KLOB extended to 2 pools
+KLOB extended to 3 pools
+KLOB extended to 4 pools
+KLOB extended to 5 pools
+KLOB extended to 6 pools
+KLOB extended to 7 pools
+KLOB extended to 8 pools
+Broadcom Packet CMF (Experimental) SWC RESET.
+Broadcom Packet CMF (Experimental) SWC INITIALIZED.
+Broadcom Packet CMF (Experimental) Forwarder Net Device 0 v0.1 Jul 23 2010 17:43:16 Registered
+Broadcom Packet CMF (Experimental) Forwarder Net Device 0 v0.1 Jul 23 2010 17:43:16 Registered
+Broadcom Packet CMF (Experimental) ENABLED.
+
+Warning!!! mac addr has not been set, please set it.
+eth0.5: MAC Address: 00:10:20:30:40:50
+eth0.4: MAC Address: 00:10:20:30:40:50
+eth0.3: MAC Address: 00:10:20:30:40:50
+eth0.2: MAC Address: 00:10:20:30:40:50
+DSP Driver: DSP init stub
+Endpoint: endpoint_init entry
+PROV(ts: 4 s 749ms):ALLOC item = 0000 location = 0x81DFEA00 size = 40 line = 0
+PROV(ts: 4 s 756ms):ALLOC item = 0001 location = 0x81DFE980 size = 40 line = 0
+PROV(ts: 4 s 763ms):ALLOC item = 0002 location = 0x81DFE900 size = 40 line = 0
+PROV(ts: 4 s 771ms):ALLOC item = 0003 location = 0x81DFE880 size = 40 line = 0
+PROV(ts: 4 s 778ms):ALLOC item = 0004 location = 0x81DFE800 size = 40 line = 0
+PROV(ts: 4 s 785ms):ALLOC item = 0005 location = 0x81DFE780 size = 40 line = 0
+PROV(ts: 4 s 792ms):ALLOC item = 0006 location = 0x81DFE700 size = 40 line = 0
+PROV(ts: 4 s 799ms):ALLOC item = 0007 location = 0x81DFE680 size = 40 line = 0
+PROV(ts: 4 s 806ms):ALLOC item = 0008 location = 0x81DFE600 size = 40 line = 0
+PROV(ts: 4 s 814ms):ALLOC item = 0009 location = 0x81DFE580 size = 40 line = 0
+PROV(ts: 4 s 821ms):ALLOC item = 0011 location = 0x819A2280 size = 4 line = 0
+PROV(ts: 4 s 828ms):ALLOC item = 0200 location = 0x81D2AE80 size = 248 line = 0
+PROV(ts: 4 s 835ms):ALLOC item = 0201 location = 0x81D2AD80 size = 248 line = 0
+PROV(ts: 4 s 842ms):ALLOC item = 0202 location = 0x81D2AC80 size = 248 line = 0
+PROV(ts: 4 s 850ms):ALLOC item = 0203 location = 0x81D2AB80 size = 248 line = 0
+PROV(ts: 4 s 857ms):ALLOC item = 0204 location = 0x81D2AA80 size = 248 line = 0
+PROV(ts: 4 s 864ms):ALLOC item = 0205 location = 0x81D2A980 size = 248 line = 0
+PROV(ts: 4 s 871ms):ALLOC item = 0206 location = 0x81D2A880 size = 248 line = 0
+PROV(ts: 4 s 879ms):ALLOC item = 0207 location = 0x81D2A780 size = 248 line = 0
+PROV(ts: 4 s 886ms):ALLOC item = 0208 location = 0x81D2A680 size = 248 line = 0
+PROV(ts: 4 s 893ms):ALLOC item = 0209 location = 0x81D2A580 size = 248 line = 0
+PROV(ts: 4 s 900ms):ALLOC item = 0210 location = 0x81D2A480 size = 248 line = 0
+PROV(ts: 4 s 908ms):ALLOC item = 0211 location = 0x81D2A380 size = 248 line = 0
+PROV(ts: 4 s 915ms):ALLOC item = 0212 location = 0x81D2A280 size = 248 line = 0
+PROV(ts: 4 s 922ms):ALLOC item = 0213 location = 0x81D2A180 size = 248 line = 0
+PROV(ts: 4 s 929ms):ALLOC item = 0218 location = 0x81D2A080 size = 248 line = 0
+PROV(ts: 4 s 937ms):ALLOC item = 0219 location = 0x81622E80 size = 248 line = 0
+PROV(ts: 4 s 944ms):ALLOC item = 0220 location = 0x81622D80 size = 248 line = 0
+PROV(ts: 4 s 951ms):ALLOC item = 0221 location = 0x81622C80 size = 248 line = 0
+PROV(ts: 4 s 958ms):ALLOC item = 0222 location = 0x81622B80 size = 248 line = 0
+PROV(ts: 4 s 966ms):ALLOC item = 0223 location = 0x81622A80 size = 248 line = 0
+PROV(ts: 4 s 973ms):ALLOC item = 0224 location = 0x81622980 size = 248 line = 0
+PROV(ts: 4 s 980ms):ALLOC item = 0225 location = 0x81622880 size = 248 line = 0
+PROV(ts: 4 s 987ms):ALLOC item = 0400 location = 0x819A2200 size = 4 line = 0
+PROV(ts: 4 s 995ms):ALLOC item = 0401 location = 0x819A2180 size = 4 line = 0
+PROV(ts: 5 s 2  ms):ALLOC item = 0402 location = 0x819A2100 size = 4 line = 0
+PROV(ts: 5 s 9  ms):ALLOC item = 0403 location = 0x80D8CF80 size = 4 line = 0
+PROV(ts: 5 s 16 ms):ALLOC item = 0404 location = 0x80D8CF00 size = 4 line = 0
+PROV(ts: 5 s 23 ms):ALLOC item = 0405 location = 0x80D8CE80 size = 4 line = 0
+PROV(ts: 5 s 30 ms):ALLOC item = 0406 location = 0x80D8CE00 size = 4 line = 0
+PROV(ts: 5 s 37 ms):ALLOC item = 0407 location = 0x80D8CD80 size = 4 line = 0
+PROV(ts: 5 s 44 ms):ALLOC item = 0408 location = 0x80D8CD00 size = 4 line = 0
+PROV(ts: 5 s 51 ms):ALLOC item = 0409 location = 0x80D8CC80 size = 4 line = 0
+PROV(ts: 5 s 58 ms):ALLOC item = 0410 location = 0x80D8CC00 size = 4 line = 0
+PROV(ts: 5 s 65 ms):ALLOC item = 0411 location = 0x80D8CB80 size = 4 line = 0
+PROV(ts: 5 s 72 ms):ALLOC item = 0412 location = 0x80D8CB00 size = 4 line = 0
+PROV(ts: 5 s 79 ms):ALLOC item = 0413 location = 0x80D8CA80 size = 4 line = 0
+PROV(ts: 5 s 87 ms):ALLOC item = 0423 location = 0x80D8CA00 size = 4 line = 0
+PROV(ts: 5 s 94 ms):ALLOC item = 0424 location = 0x80D8C980 size = 4 line = 0
+PROV(ts: 5 s 101ms):ALLOC item = 0414 location = 0x80D8C900 size = 4 line = 0
+PROV(ts: 5 s 108ms):ALLOC item = 0416 location = 0x80D8C880 size = 4 line = 0
+PROV(ts: 5 s 115ms):ALLOC item = 0417 location = 0x80D8C800 size = 4 line = 0
+PROV(ts: 5 s 122ms):ALLOC item = 0418 location = 0x80D8C780 size = 4 line = 0
+PROV(ts: 5 s 129ms):ALLOC item = 0600 location = 0x80D8C700 size = 4 line = 0
+PROV(ts: 5 s 136ms):ALLOC item = 0608 location = 0x80D8C680 size = 4 line = 0
+PROV(ts: 5 s 143ms):ALLOC item = 0609 location = 0x80D8C600 size = 4 line = 0
+PROV(ts: 5 s 150ms):ALLOC item = 0610 location = 0x80D8C580 size = 4 line = 0
+PROV(ts: 5 s 157ms):ALLOC item = 0611 location = 0x80D8C500 size = 4 line = 0
+PROV(ts: 5 s 164ms):ALLOC item = 0612 location = 0x80D8C480 size = 4 line = 0
+PROV(ts: 5 s 172ms):ALLOC item = 0613 location = 0x80D8C400 size = 4 line = 0
+PROV(ts: 5 s 179ms):ALLOC item = 0617 location = 0x80D8C380 size = 4 line = 0
+PROV(ts: 5 s 186ms):ALLOC item = 0618 location = 0x80D8C300 size = 4 line = 0
+PROV(ts: 5 s 193ms):ALLOC item = 0619 location = 0x80D8C280 size = 4 line = 0
+PROV(ts: 5 s 200ms):ALLOC item = 0620 location = 0x80D8C200 size = 4 line = 0
+PROV(ts: 5 s 207ms):ALLOC item = 2000 location = 0x80D8C180 size = 4 line = 0
+PROV(ts: 5 s 214ms):ALLOC item = 0805 location = 0x80D8C100 size = 4 line = 0
+PROV(ts: 5 s 221ms):ALLOC item = 2200 location = 0x81591F80 size = 4 line = 0
+PROV(ts: 5 s 228ms):ALLOC item = 2201 location = 0x81591F00 size = 4 line = 0
+PROV(ts: 5 s 235ms):ALLOC item = 2202 location = 0x81591E80 size = 4 line = 0
+PROV(ts: 5 s 242ms):ALLOC item = 2203 location = 0x81591E00 size = 4 line = 0
+PROV(ts: 5 s 249ms):ALLOC item = 0616 location = 0x81591D80 size = 4 line = 0
+PROV(ts: 5 s 256ms):ALLOC item = 2204 location = 0x81591D00 size = 4 line = 0
+PROV(ts: 5 s 264ms):ALLOC item = 2600 location = 0x81591C80 size = 4 line = 0
+PROV(ts: 5 s 271ms):ALLOC item = 2601 location = 0x81591C00 size = 4 line = 0
+PROV(ts: 5 s 278ms):ALLOC item = 2602 location = 0x81591B80 size = 4 line = 0
+PROV(ts: 5 s 285ms):ALLOC item = 2603 location = 0x81591B00 size = 4 line = 0
+PROV(ts: 5 s 292ms):ALLOC item = 2604 location = 0x81591A80 size = 4 line = 0
+PROV(ts: 5 s 299ms):ALLOC item = 2605 location = 0x81591A00 size = 4 line = 0
+PROV(ts: 5 s 306ms):ALLOC item = 2606 location = 0x81591980 size = 4 line = 0
+PROV(ts: 5 s 313ms):ALLOC item = 2800 location = 0x81591900 size = 4 line = 0
+PROV(ts: 5 s 320ms):ALLOC item = 2801 location = 0x81591880 size = 4 line = 0
+PROV(ts: 5 s 327ms):ALLOC item = 2802 location = 0x81D21C00 size = 1024 line = 0
+PROV(ts: 5 s 335ms):ALLOC item = 2803 location = 0x81591800 size = 4 line = 0
+PROV(ts: 5 s 342ms):ALLOC item = 0428 location = 0x81591780 size = 4 line = 0
+PROV(ts: 5 s 349ms):ALLOC item = 0429 location = 0x81591700 size = 4 line = 0
+PROV(ts: 5 s 356ms):ALLOC item = 0430 location = 0x81591680 size = 4 line = 0
+PROV(ts: 5 s 363ms):ALLOC item = 0415 location = 0x81591600 size = 4 line = 0
+PROV(ts: 5 s 370ms):ALLOC item = 0427 location = 0x81591580 size = 4 line = 0
+PROV(ts: 5 s 377ms):ALLOC item = 0000 location = 0x81DFE500 size = 40 line = 1
+PROV(ts: 5 s 384ms):ALLOC item = 0001 location = 0x81DFE480 size = 40 line = 1
+PROV(ts: 5 s 391ms):ALLOC item = 0002 location = 0x81DFE400 size = 40 line = 1
+PROV(ts: 5 s 399ms):ALLOC item = 0003 location = 0x81DFE380 size = 40 line = 1
+PROV(ts: 5 s 406ms):ALLOC item = 0004 location = 0x81DFE300 size = 40 line = 1
+PROV(ts: 5 s 413ms):ALLOC item = 0005 location = 0x81DFE280 size = 40 line = 1
+PROV(ts: 5 s 420ms):ALLOC item = 0006 location = 0x81DFE200 size = 40 line = 1
+PROV(ts: 5 s 427ms):ALLOC item = 0007 location = 0x81DFE180 size = 40 line = 1
+PROV(ts: 5 s 434ms):ALLOC item = 0008 location = 0x81DFE100 size = 40 line = 1
+PROV(ts: 5 s 442ms):ALLOC item = 0009 location = 0x81620F80 size = 40 line = 1
+PROV(ts: 5 s 449ms):ALLOC item = 0011 location = 0x81591500 size = 4 line = 1
+PROV(ts: 5 s 456ms):ALLOC item = 0200 location = 0x81622780 size = 248 line = 1
+PROV(ts: 5 s 463ms):ALLOC item = 0201 location = 0x81622680 size = 248 line = 1
+PROV(ts: 5 s 470ms):ALLOC item = 0202 location = 0x81622580 size = 248 line = 1
+PROV(ts: 5 s 478ms):ALLOC item = 0203 location = 0x81622480 size = 248 line = 1
+PROV(ts: 5 s 485ms):ALLOC item = 0204 location = 0x81622380 size = 248 line = 1
+PROV(ts: 5 s 492ms):ALLOC item = 0205 location = 0x81622280 size = 248 line = 1
+PROV(ts: 5 s 499ms):ALLOC item = 0206 location = 0x81622180 size = 248 line = 1
+PROV(ts: 5 s 507ms):ALLOC item = 0207 location = 0x81622080 size = 248 line = 1
+PROV(ts: 5 s 514ms):ALLOC item = 0208 location = 0x81621E80 size = 248 line = 1
+PROV(ts: 5 s 521ms):ALLOC item = 0209 location = 0x81621D80 size = 248 line = 1
+PROV(ts: 5 s 528ms):ALLOC item = 0210 location = 0x81621C80 size = 248 line = 1
+PROV(ts: 5 s 536ms):ALLOC item = 0211 location = 0x81621B80 size = 248 line = 1
+PROV(ts: 5 s 543ms):ALLOC item = 0212 location = 0x81621A80 size = 248 line = 1
+PROV(ts: 5 s 550ms):ALLOC item = 0213 location = 0x81621980 size = 248 line = 1
+PROV(ts: 5 s 557ms):ALLOC item = 0218 location = 0x81621880 size = 248 line = 1
+PROV(ts: 5 s 565ms):ALLOC item = 0219 location = 0x81621780 size = 248 line = 1
+PROV(ts: 5 s 572ms):ALLOC item = 0220 location = 0x81621680 size = 248 line = 1
+PROV(ts: 5 s 579ms):ALLOC item = 0221 location = 0x81621580 size = 248 line = 1
+PROV(ts: 5 s 586ms):ALLOC item = 0222 location = 0x81621480 size = 248 line = 1
+PROV(ts: 5 s 594ms):ALLOC item = 0223 location = 0x81621380 size = 248 line = 1
+PROV(ts: 5 s 601ms):ALLOC item = 0224 location = 0x81621280 size = 248 line = 1
+PROV(ts: 5 s 608ms):ALLOC item = 0225 location = 0x81621180 size = 248 line = 1
+PROV(ts: 5 s 615ms):ALLOC item = 0400 location = 0x81591480 size = 4 line = 1
+PROV(ts: 5 s 623ms):ALLOC item = 0401 location = 0x81591400 size = 4 line = 1
+PROV(ts: 5 s 630ms):ALLOC item = 0402 location = 0x81591380 size = 4 line = 1
+PROV(ts: 5 s 637ms):ALLOC item = 0403 location = 0x81591300 size = 4 line = 1
+PROV(ts: 5 s 644ms):ALLOC item = 0404 location = 0x81591280 size = 4 line = 1
+PROV(ts: 5 s 651ms):ALLOC item = 0405 location = 0x81591200 size = 4 line = 1
+PROV(ts: 5 s 658ms):ALLOC item = 0406 location = 0x81591180 size = 4 line = 1
+PROV(ts: 5 s 665ms):ALLOC item = 0407 location = 0x81591100 size = 4 line = 1
+PROV(ts: 5 s 672ms):ALLOC item = 0408 location = 0x81592F80 size = 4 line = 1
+PROV(ts: 5 s 679ms):ALLOC item = 0409 location = 0x81592F00 size = 4 line = 1
+PROV(ts: 5 s 686ms):ALLOC item = 0410 location = 0x81592E80 size = 4 line = 1
+PROV(ts: 5 s 693ms):ALLOC item = 0411 location = 0x81592E00 size = 4 line = 1
+PROV(ts: 5 s 700ms):ALLOC item = 0412 location = 0x81592D80 size = 4 line = 1
+PROV(ts: 5 s 707ms):ALLOC item = 0413 location = 0x81592D00 size = 4 line = 1
+PROV(ts: 5 s 715ms):ALLOC item = 0423 location = 0x81592C80 size = 4 line = 1
+PROV(ts: 5 s 722ms):ALLOC item = 0424 location = 0x81592C00 size = 4 line = 1
+PROV(ts: 5 s 729ms):ALLOC item = 0414 location = 0x81592B80 size = 4 line = 1
+PROV(ts: 5 s 736ms):ALLOC item = 0416 location = 0x81592B00 size = 4 line = 1
+PROV(ts: 5 s 743ms):ALLOC item = 0417 location = 0x81592A80 size = 4 line = 1
+PROV(ts: 5 s 750ms):ALLOC item = 0418 location = 0x81592A00 size = 4 line = 1
+PROV(ts: 5 s 757ms):ALLOC item = 0600 location = 0x81592980 size = 4 line = 1
+PROV(ts: 5 s 764ms):ALLOC item = 0608 location = 0x81592900 size = 4 line = 1
+PROV(ts: 5 s 771ms):ALLOC item = 0609 location = 0x81592880 size = 4 line = 1
+PROV(ts: 5 s 778ms):ALLOC item = 0610 location = 0x81592800 size = 4 line = 1
+PROV(ts: 5 s 785ms):ALLOC item = 0611 location = 0x81592780 size = 4 line = 1
+PROV(ts: 5 s 792ms):ALLOC item = 0612 location = 0x81592700 size = 4 line = 1
+PROV(ts: 5 s 800ms):ALLOC item = 0613 location = 0x81592680 size = 4 line = 1
+PROV(ts: 5 s 807ms):ALLOC item = 0617 location = 0x81592600 size = 4 line = 1
+PROV(ts: 5 s 814ms):ALLOC item = 0618 location = 0x81592580 size = 4 line = 1
+PROV(ts: 5 s 821ms):ALLOC item = 0619 location = 0x81592500 size = 4 line = 1
+PROV(ts: 5 s 828ms):ALLOC item = 0620 location = 0x81592480 size = 4 line = 1
+PROV(ts: 5 s 835ms):ALLOC item = 2000 location = 0x81592400 size = 4 line = 1
+PROV(ts: 5 s 842ms):ALLOC item = 0805 location = 0x81592380 size = 4 line = 1
+PROV(ts: 5 s 849ms):ALLOC item = 2200 location = 0x81592300 size = 4 line = 1
+PROV(ts: 5 s 856ms):ALLOC item = 2201 location = 0x81592280 size = 4 line = 1
+PROV(ts: 5 s 863ms):ALLOC item = 2202 location = 0x81592200 size = 4 line = 1
+PROV(ts: 5 s 870ms):ALLOC item = 2203 location = 0x81592180 size = 4 line = 1
+PROV(ts: 5 s 877ms):ALLOC item = 0616 location = 0x81592100 size = 4 line = 1
+PROV(ts: 5 s 884ms):ALLOC item = 2204 location = 0x81593F80 size = 4 line = 1
+PROV(ts: 5 s 892ms):ALLOC item = 2600 location = 0x81593F00 size = 4 line = 1
+PROV(ts: 5 s 899ms):ALLOC item = 2601 location = 0x81593E80 size = 4 line = 1
+PROV(ts: 5 s 906ms):ALLOC item = 2602 location = 0x81593E00 size = 4 line = 1
+PROV(ts: 5 s 913ms):ALLOC item = 2603 location = 0x81593D80 size = 4 line = 1
+PROV(ts: 5 s 920ms):ALLOC item = 2604 location = 0x81593D00 size = 4 line = 1
+PROV(ts: 5 s 927ms):ALLOC item = 2605 location = 0x81593C80 size = 4 line = 1
+PROV(ts: 5 s 934ms):ALLOC item = 2606 location = 0x81593C00 size = 4 line = 1
+PROV(ts: 5 s 941ms):ALLOC item = 2800 location = 0x81593B80 size = 4 line = 1
+PROV(ts: 5 s 948ms):ALLOC item = 2801 location = 0x81593B00 size = 4 line = 1
+PROV(ts: 5 s 955ms):ALLOC item = 2802 location = 0x81D21800 size = 1024 line = 1
+PROV(ts: 5 s 963ms):ALLOC item = 2803 location = 0x81593A80 size = 4 line = 1
+PROV(ts: 5 s 970ms):ALLOC item = 0428 location = 0x81593A00 size = 4 line = 1
+PROV(ts: 5 s 977ms):ALLOC item = 0429 location = 0x81593980 size = 4 line = 1
+PROV(ts: 5 s 984ms):ALLOC item = 0430 location = 0x81593900 size = 4 line = 1
+PROV(ts: 5 s 991ms):ALLOC item = 0415 location = 0x81593880 size = 4 line = 1
+PROV(ts: 5 s 998ms):ALLOC item = 0427 location = 0x81593800 size = 4 line = 1
+PROV(ts: 6 s 5  ms):Allocated memory = 14200 
+Endpoint: endpoint_init COMPLETED
+Start mic now ...
+Read default configuration file.
+load cfm ok.
+start log proc...
+************************Write flash to db now ..., ulCfgFileType = 0
+ifconfig: SIOCSIFNETMASK: Cannot assign requested address
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such d
+Warning!!! mac addr has not been set, please set it.
+evice
+
+Set ssid1<RomTelecom-WEP->wepkey<1234567890123>, ssid2<RomTelecom-WPA->wpakey<12345678> by equitment...
+************************Write flash to db now ..., ulCfgFileType = 0
+wlancmd: wlan driver adapter not found
+sh: cannot kill pid 318: No such process
+wlancmd: wlan driver adapter not found
+interface wl0 does not exist!
+interface wl0.1 does not exist!
+interface wl0.2 does not exist!
+interface wl0.3 does not exist!
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+
+ begin WlanUpInterfaces...
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wl0       no private ioctls.
+
+wl0       no private ioctls.
+
+wl0       no private ioctls.
+
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wl0       no private ioctls.
+
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wl0.1     no private ioctls.
+
+wlancmd: wlan driver adapter not found
+wl0       no private ioctls.
+
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+
+ begin WlanSetupBridge...
+interface wl0 does not exist!
+port_no -1 not surported, br:br0, port:wl0
+interface wl0.1 does not exist!
+port_no -1 not surported, br:br0, port:wl0.1
+
+ begin WlanStartServices...
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+ATP_WLAN_Init SUCCESS!!
+
+Warning!!! mac addr has not been set, please set it.
+bcmxtmrt: MAC address: 00 10 20 30 40 51
+Use default bin /var/cwmp now ...
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Warning!!! mac addr has not been set, please set it.
+bcmxtmrt: MAC address: 00 10 20 30 40 52
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Warning!!! mac addr has not been set, please set it.
+bcmxtmrt: MAC address: 00 10 20 30 40 53
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...BcmAdsl_Initialize=0xC00AE834, g_pFnNotifyCallback=0xC00D67C4
+Clocks for QPROC and AFE are being aligned with step through ... 
+AFE is aligned, i = 052, PhaseValue = -088, PhaseCntl = 0x7FCD0000
+QPROC is aligned, i = 028, PhaseValue = 0050, PhaseCntl = 0x7FCD401C
+Clocks for QPROC and AFE are aligned with syn_status AFE = 0x78, QPROC = 0x78
+AFE  phase control reg @0xb0f570f8 default actual = 0x0021C38F, exp = 0x0021c38f
+QPRC phase control reg @0xb0f5f0c0 default actual = 0x0421C38F, exp = 0x0421c38f
+pSdramPHY=0xA1FFFFF8, 0xFFFFFFFF 0xFFDFFEFC
+*** XfaceOffset: 0x5FF90 => 0x5FF90 ***
+*** PhySdramSize got adjusted: 0xBE300 => 0xEBA20 ***
+AdslCoreSharedMemInit: shareMemAvailable=83392
+AdslCoreHwReset:  AdslOemDataAddr = 0xA1FB3C78
+
+Warning!!! mac addr has not been set, please set it.
+insmod: can't open '/lib/extra/vnet.ko': No such file or directory
+device eth0.5 entered promiscuous mode
+device eth0.2 entered promiscuous mode
+device eth0.3 entered promiscuous mode
+device eth0.4 entered promiscuous mode
+device eth0 is not a slave of br0
+ifconfig: SIOCGIFFLAGS: No such device
+
+ ERROR: set wan media error. 
+atp: cur kernel version:[2.6.21.5] 
+eth0.5 Link UP 100 mbps full duplex
+br0: port 1(eth0.5) entering learning state
+br0: topology change detected, propagating
+br0: port 1(eth0.5) entering forwarding state
+bridge: can't decode speed from nas_a2_1: 0
+device nas_a2_1 entered promiscuous mode
+br0: port 5(nas_a2_1) entering learning state
+br0: topology change detected, propagating
+br0: port 5(nas_a2_1) entering forwarding state
+br0: port 5(nas_a2_1) entering disabled state
+/var/wan/nas_a3_2/dial: line 1: 3: not found
+iptables: No chain/target/match by that name
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.1
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.1
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.2
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.2
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.3
+port_no -1 not surported, br:br0, port:nas_a1_0
+port_no -1 not surported, br:br0, port:wl0.3
+port_no -1 not surported, br:br0, port:nas_a1_0
+Ritchie app, 0
+Cannot find device "nas0"
+Cannot find device "nas0"
+Action 4 device imq0 ifindex 2
+Cannot find device "nas0"
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+FILE:voicecfg.c,LINE:89,sizeof(TAPI)=884,sizeof(SVC)=31856,sizeof(STATE)=14152
+
+Current sntp process is 1089!
+DEBUG[tapi.c:L1252]TAPI_GetCfg
+
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction in disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Set Mirror direction out disabled to eth0.2 Successfully...
+Sean@All modules init return 0.
+BOS: Enter bosIniBOS: Enter bosInit 
+t 
+bosTimerInitEnter bosAppInit 
+
+Enter bosAppInExit bosAppInit 
+it 
+Exit bosAppBOS: Exit bosInit 
+Init 
+BOS: Exitendpoint_open COMPLETED
+ bosInit 
+Created br0: port 2(eth0.2) entering disabled state
+message queue "HDSP", depth 40, Enter bosStartApp
+id 1
+00:00:25 CALLCLIENT: Initializing endpoints callSipClientMain
+Error getting IP address
+sipConfig: sipzParamp=0x7f1ffa44 sipzParamp->regname=129.102.100.11 line 62 file  hsip.c
+sipConfig: sipzParamp=0x7f1ffa44line 72 file  hsip.c
+sipConfig: &mgscb=0x51cf74line 85 file  hsip.c
+00:00:25 CALLCLIE
+
+bosAppRootTask() - Is it morning already? Spawning app task (epoch #0)...
+
+NT: InitializingAppResetDetectionEnable() - Enabled reset detection.
+ endpoints
+00:0Exit bosStartApp
+0:25 Endpoint will be initialized for country ETbr0: port 3(eth0.3) entering disabled state
+S (country code = 7)
+
+Endpoint Event task started with pid 1118...
+Endpoint Packet task started with pid 1119 ...
+br0: port 4(eth0.4) entering disabled state
+BHAL(ts: 26s 575ms):Initializing board HAL...
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+PCM: Interrupt Masks
+---------------
+IrqMask                    = 0x00000707000080B4 
+IrqMask1                   = 0x0000000000000000 
+PCM_IUDMA->ctrl[0].intMask = 0x00000000 
+PCM_IUDMA->ctrl[1].intMask = 0x00000000 
+
+PCM: Interrupt Status
+-----------------
+IrqStatus                  = 0x0000000000010040 
+IrqStatus1                 = 0x0000000000010040 
+PCM_IUDMA->ctrl[0].intStat = 0x00000000 
+PCM_IUDMA->ctrl[1].intStat = 0x00000000 
+PCM->pcm_pll_ctrl1         = 0xFC80287D 
+PCM->pcm_pll_ctrl2         = 0xD0000000 
+PCM->pcm_pll_ctrl3         = 0x380005C0 
+PCM->pcm_pll_ctrl4         = 0x00000000 
+PCM->pcm_int_pending       = 0x00000000 
+PCM->pcm_int_mask          = 0x00000000 
+PCM->pcm_ctrl              = 0x00000000 
+PCM->pcm_chan_ctrl         = 0x00000000 
+PCM_IUDMA->regs.ctrlConfig = 0x00000001 
+PCM_IUDMA->ctrl[0].maxBurst                  = 0x00000008 
+PCM_IUDMA->ctrl[0].config                    = 0x00000000 
+PCM_IUDMA->stram[0].baseDescPointer          = 0x9833AA24 
+PCM_IUDMA->stram[0].stateBytesDoneRingOffset = 0x2DA62F72 
+PCM_IUDMA->stram[0].flagsLengthStatus        = 0x2A112C68 
+PCM_IUDMA->stram[0].currentBufferPointer     = 0x7BB3C680 
+PCM_IUDMA->ctrl[1].maxBurst                  = 0x00000008 
+PCM_IUDMA->ctrl[1].config                    = 0x00000000 
+PCM_IUDMA->stram[1].baseDescPointer          = 0x992D0050 
+PCM_IUDMA->stram[1].stateBytesDoneRingOffset = 0x21A03C92 
+PCM_IUDMA->stram[1].flagsLengthStatus        = 0x0366E8B3 
+PCM_IUDMA->stram[1].currentBufferPointer     = 0x171100AB 
+PLL init completed. PLL registers set to:
+PCM->pcm_pll_ctrl1       = 0x0080147D 
+PCM->pcm_pll_ctrl2       = 0x10000000 
+PCM->pcm_pll_ctrl3       = 0x38000700 
+PCM->pcm_pll_ctrl4       = 0x00000015 
+Set up PCM registers
+XDRV:pcm6368_timeslotAlloc 0xB0004040: 0x80000000
+
+Channel 0 assigned to timeslot 0
+XDRV:pcm6368_timeslotAlloc 0xB0004040: 0x89000000
+
+Channel 1 assigned to timeslot 1
+XDRV:pcm6368_timeslotAlloc 0xB0004040: 0x89A00000
+
+Channel 2 assigned to timeslot 2
+rxDescriptorArea       = 24 
+txDescriptorArea       = 24 
+Unaligned dmaRxDesc_c  = 0xA05CD000 
+Unaligned dmaTxDesc_c  = 0xA05D7000 
+rxBufferArea          = 1312 
+txBufferArea          = 1312 
+Unaligned dmaRxData   = 0xA0DFB000 
+Unaligned dmaTxData   = 0xA0608000 
+Aligned Tx Desc (0xA05D7000): chan 0, buf 0, sts 0xe000, len 640, bufp 0x608000 
+Aligned Tx Desc (0xA05D7008): chan 0, buf 1, sts 0x7000, len 640, bufp 0x608290 
+Aligned Rx Desc (0xA05CD000): chan 0, buf 0, sts 0x8000, len 640, bufp 0xdfb000 
+Aligned Rx Desc (0xA05CD008): chan 0, buf 1, sts 0x9000, len 640, bufp 0xdfb290 
+initIudma: chan 0, descBase 0xa05cd000, descBaseIudma 0x5cd000
+initIudma: chan 1, descBase 0xa05d7000, descBaseIudma 0x5d7000
+Enter TaskCreate CMT_EXCEPTION_IST
+TaskCreate - spawn new task CMT_EXCEPTION_IST
+Exit TaskCreate 
+BHAL(ts: 27s 34 ms):DSP build date: Fri_Nov_6_2009_15:10:14
+
+regStatus (reg 12 sel 0)    = 0x10008501 
+regStatus (reg 12 sel 7)    = 0x00000101 
+regCause  (reg 13 sel 0)    = 0x00000000 
+regCause  (reg 13 sel 7)    = 0x00808000 
+regCMT    (reg 22 sel 0)    = 0xe31e1406 
+regCMT    (reg 22 sel 1)    = 0x10008001 
+XDRV:Kicking off secondary thread processor at entry point 0x810463C0 ...
+
+XDRV:Secondary thread processor entry point at 0x810463c0
+
+*** DSP TP: Entered main() ***
+XDRV:Thread processor handshake. Secondary app initialized properly.
+
+Enter TaskCreate HTSK
+TaskCreate - spawn new task HTSK
+Exit TaskCreate 
+MSPI INITIALIZED
+SLIC reset pin: GPIO 32778 
+SLIC reset pin: GPIO 32778 
+SLIC chip select pin: GPIO 28 
+Initializing 89116 device 0 ...
+---
+SLIC: Starting 89116 device and line initializion...
+SLIC: Resetting device using GPIO 32778 ...
+SLIC: Reset applied on GPIO pin 32778SLIC: Initializing 89116 device 0
+BcmSpiReserveSlave <0,2,6250000>, spiStatus=0
+SLIC: Received VP_DEV_EVID_DEV_INIT_CMP event (i = 0)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 1024 
+SLIC: 89116 device 0 initialized OK
+SLIC: Initializing 89116 FXS line
+SLIC: Received VP_LINE_EVID_LINE_INIT_CMP event (i = 0)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 2048 
+************************Write flash to db now ..., ulCfgFileType = 0
+Use default bin /var/web now ...
+SLIC: Received VP_EVID_CAL_CMP event (i= 114)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 64 
+SLIC: FXS line RX timeslot = 0 
+SLIC: FXS line TX timeslot = 0 
+SLIC: 89116 FXS line initialized OK
+SLIC: 89116 device 0 and FXS/FXO initializion COMPLETED OK !
+---
+Initializing 89316 device 0 ...
+---
+SLICDAA: Starting 89316 device and line initializion...
+SLICDAA: Skipping SLIC chip reset
+SLICDAA: Initializing 89316 device 0
+SLIC: Received VP_DEV_EVID_DEV_INIT_CMP event (i = 0)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 1024 
+SLICDAA: 89316 device 0 initialized OK
+SLICDAA: Initializing 89316 FXS line
+SLIC: Received VP_LINE_EVID_LINE_INIT_CMP event (i = 0)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 2048 
+SLIC: Received VP_EVID_CAL_CMP event (i= 122)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 64 
+SLICDAA: FXS line RX timeslot = 2 
+SLICDAA: FXS line TX timeslot = 2 
+SLICDAA: 89316 FXS line initialized OK
+SLICDAA: Initializing 89316 FXO line
+SLICDAA: Locale 7
+SLICDAA: Locale 7
+SLICDAA: FXO line RX timeslot = 4 
+SLICDAA: FXO line TX timeslot = 4 
+SLICDAA: 89316 FXO line initialized OK
+SLICDAA: 89316 device 0 and FXS/FXO initializion COMPLETED OK !
+---
+BHAL(ts: 29s 815ms):COMPLETED Initializing board HAL
+boardHalInit completed
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+Enter TaskCreate HRTBEAT
+TaskCreate - spawn new task HRTBEAT
+Exit TaskCreate 
+HEARTBEAT: Initialized!
+Enter TaskCreate VRGEVPR
+TaskCreate - spawn new task VRGEVPR
+Exit TaskCreate 
+Enter TaskCreate HCAS
+TaskCreate - spawn new task HCAS
+Exit TaskCreate 
+gInterruptCounter     = 0x81115B74 
+gInterruptErrors      = 0x81103070 
+gNextRxDesc           = 0x81103064 
+gNextTxDesc           = 0x81103060 
+32 ms ECAN tail-length
+*** gStartRxDesc[0] = 0xA05CD000 
+*** gBufferSizeBytes = 640 
+*** gStartTxDesc[0] = 0xA05D7000 
+hal6368PcmInit 343 nextTxDesc = 0xA05D7000 
+hal6368PcmInit 343 nextTxDesc = 0xA05D7008 
+hal6368PcmInit 347 Ownership for TX desc not set. Use this buffer. 
+DSP: Interrupt Masks
+---------------
+IrqMask_high               = 0x00000707 
+IrqMask                    = 0x000080B4 
+IrqMask1_high              = 0x40000000 
+IrqMask1                   = 0x00000000 
+PCM_IUDMA->ctrl[0].intMask = 0x00000005 
+PCM_IUDMA->ctrl[1].intMask = 0x00000005 
+
+DSP: Interrupt Status
+-----------------
+IrqStatus_high             = 0x00000000 
+IrqStatus                  = 0x00010040 
+IrqStatus1_high            = 0x00000000 
+IrqStatus1                 = 0x00010040 
+PCM_IUDMA->ctrl[0].intStat = 0x00000000 
+PCM_IUDMA->ctrl[1].intStat = 0x00000000 
+EPT(ts: 30s 407ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x50) of type: 0x0
+EPT(ts: 30s 535ms):Setting T.38 error correction mode for vhd 80 to 0x104
+EPT(ts: 30s 871ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x51) of type: 0x0
+EPT(ts: 30s 999ms):Setting T.38 error correction mode for vhd 81 to 0x104
+EPT(ts: 31s 335ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x52) of type: 0x0
+EPT(ts: 31s 462ms):Setting T.38 error correction mode for vhd 82 to 0x104
+EPT(ts: 31s 798ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x53) of type: 0x0
+EPT(ts: 31s 926ms):Setting T.38 error correction mode for vhd 83 to 0x104
+ifconfig: SIOCSIFFLAGS: Cannot assign requested address
+EndpointInit completed
+
+Enter vrgEndptCEPT(ts: 32s 196ms):endptConfigCIDModeParm classStmType = 2
+
+asTimeParamContrEPT(ts: 32s 203ms):ENDPT CREATE: Starting initialization for endpt 0
+ol... minHookFlaEPT(ts: 32s 211ms):EPTYPE_FXS
+sh = 300, maxHookFlash = 800.
+bridge br0:9 doesn't exist; can't delete it
+Append upnp ssdp listener ok.
+Use default bin /var/upnp now ...
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+EPT(ts: 32s 369ms):hdspVhdOpen Line VHD success. DSP 0, VHD (0x54) of type: 0x7
+HDSP(ts: 32s 387ms):VHD 0x54: Frame size = 40, Mode = Narrowband
+HDSP(ts: 32s 412ms):Switchboard ON (type Duplex): VHD 0x54/1 with VHD 0x0/0
+EPT(ts: 32s 419ms):Default value for provItemId '608' did not exist
+EPT(ts: 32s 425ms):Default value for provItemId '600' did not exist
+SLIC: Mode for FXS channel changed to 1 
+SLIC: Mode for FXS channel changed to 1 
+EPT(ts: 32s 522ms):COMPLETED successful initialization for endpt 0
+00:00:32 SIGNAL: EPT(ts: 32s 528ms):SIGNAL: ept:0 cnx:-1 s:79 v:0 d:-1 p:-1 r:-1 
+endpt 0, cnx -1,EPT(ts: 32s 536ms):COMPLETED SIGNAL 79
+ evt 111 (TxGainEPT(ts: 32s 541ms):SIGNAL: ept:0 cnx:-1 s:80 v:0 d:-1 p:-1 r:-1 
+), value 0
+00:0EPT(ts: 32s 548ms):COMPLETED SIGNAL 80
+0:32 SIGNAL: endEPT(ts: 32s 553ms):ENDPT CREATE: Starting initialization for endpt 1
+pt 0, cnx -1, evEPT(ts: 32s 561ms):EPTYPE_FXS
+t 112 (RxGain), value 0
+
+Warning!!! mac addr has not been set, please set it.
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+EPT(ts: 32s 747ms):hdspVhdOpen Line VHD success. DSP 0, VHD (0x55) of type: 0x7
+HDSP(ts: 32s 765ms):VHD 0x55: Frame size = 40, Mode = Narrowband
+HDSP(ts: 32s 794ms):Switchboard ON (type Duplex): VHD 0x55/1 with VHD 0x1/0
+EPT(ts: 32s 801ms):Default value for provItemId '608' did not exist
+EPT(ts: 32s 807ms):Default value for provItemId '600' did not exist
+SLICDAA: Mode for FXS channel changed to 1 
+SLICDAA: Mode for FXS channel changed to 1 
+EPT(ts: 32s 859ms):COMPLETED successful initialization for endpt 1
+00:00:32 SIGNAL: EPT(ts: 32s 865ms):SIGNAL: ept:1 cnx:-1 s:79 v:0 d:-1 p:-1 r:-1 
+endpt 1, cnx -1,EPT(ts: 32s 873ms):COMPLETED SIGNAL 79
+ evt 111 (TxGainEPT(ts: 32s 878ms):SIGNAL: ept:1 cnx:-1 s:80 v:0 d:-1 p:-1 r:-1 
+), value 0
+00:0EPT(ts: 32s 885ms):COMPLETED SIGNAL 80
+0:32 SIGNAL: endpt 1, cnx -1, evt 112 (RxGain), value 0
+ RTCP thread started with pid 1173 
+00:00:32 rtpInit: RTCP task created, taskId = 10251
+00:00:32 CALLCLIENT: Initialization complete callSipClientMain
+Enable Got value: 1
+NATEnabled Got value: 1</nowiki>
+</WRAP>\\
+
+
+This OEM bootlog is for the HG655d firmware revision V100R001C02B050. Again, there are errors about the lack of Wifi hardware, otherwise it appears to work well.
+<WRAP bootlog>
+<nowiki>CFE version 1.0.37-102.6 for BCM96368 (32bit,SP,BE)
+Build Date: Sun May 20 16:16:27 CST 2012 (wanglaijian@VHG-CT-SER1)
+Copyright (C) 2000-2008 Broadcom Corporation.
+
+
+==== MaxMultibyteWrite: 32 ====
+Parallel flash device: name AM29LV320MT, id 0x2201, size 16384KB
+CPU type 0x2A031: 400MHz, Bus: 160MHz, Ref: 64MHz
+CPU running TP0
+Total memory: 33554432 bytes (32MB)
+Boot Address 0xb8000000
+
+
+Board IP address                  : 192.168.1.1:ffffff00  
+Host IP address                   : 192.168.1.100  
+Gateway IP address                :   
+Run from flash/host (f/h)         : f  
+Default host run file name        : vmlinux  
+Default host flash file name      : bcm963xx_fs_kernel  
+Boot delay (0-9 seconds)          : 3  
+Boot image (0=latest, 1=previous) : 0  
+Board Id (0-4)                    : 96368MVWG  
+Number of MAC Addresses (1-32)    : 11  
+Base MAC Address                  : 00:e0:fc:09:09:09  
+PSI Size (1-64) KBytes            : 64  
+Main Thread Number [0|1]          : 0  
+
+*** Press any key to stop auto run (3 seconds) ***
+Auto run second count down: 33210
+
+ Support Double system.
+
+Flash boot Flag: MAINSS
+Boot from main system!
+Decompression OK!
+Entry at 0x80292000
+Closing network.
+Disabling Switch ports.
+Flushing Receive Buffers...
+28 buffers found.
+Closing DMA Channels.
+Starting program at 0x80292000
+Linux version 2.6.21.5 (sunhongyong@atp2) (gcc version 4.2.3) #1040 Tue Jul 9 16:21:42 CST 2013
+Pri Table Addr = 0040
+ulBootFlag = 0005
+Flash 0 at 0xb8000000
+  Size : 16 MB
+  Regions : 1
+    0 : 0x00000000 - 0x00020000 * 128
+CPU revision is: 0002a031
+Determined physical RAM map:
+ memory: 01ece000 @ 00000000 (usable)
+On node 0 totalpages: 7886
+  DMA zone: 32 pages used for memmap
+  DMA zone: 0 pages reserved
+  DMA zone: 4064 pages, LIFO batch:0
+  Normal zone: 29 pages used for memmap
+  Normal zone: 3761 pages, LIFO batch:0
+Built 1 zonelists.  Total pages: 7825
+Kernel command line: root=31:0 ro noinitrd console=ttyS0,115200
+brcm mips: enabling icache and dcache...
+Primary instruction cache 64kB, physically tagged, 4-way, linesize 16 bytes.
+Primary data cache 32kB, 2-way, linesize 16 bytes.
+Synthesized TLB refill handler (21 instructions).
+Synthesized TLB load handler fastpath (33 instructions).
+Synthesized TLB store handler fastpath (33 instructions).
+Synthesized TLB modify handler fastpath (32 instructions).
+PID hash table entries: 128 (order: 7, 512 bytes)
+Using 200.000 MHz high precision timer.
+Dentry cache hash table entries: 4096 (order: 2, 16384 bytes)
+Inode-cache hash table entries: 2048 (order: 1, 8192 bytes)
+Memory: 26820k/31544k available (2075k kernel code, 4724k reserved, 488k data, 104k init, 0k highmem)
+KLOB Pool 1 Initialized: 1048576 bytes <0x80300000 ... 0x80400000>
+Calibrating delay loop... 398.33 BogoMIPS (lpj=199168)
+Mount-cache hash table entries: 512
+wait instruction: enabled
+bhal: bhalInit entry
+NET: Registered protocol family 16
+registering PCI controller with io_map_base unset
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+NET: Registered protocol family 8
+NET: Registered protocol family 20
+Time: MIPS clocksource has been installed.
+NET: Registered protocol family 2
+IP route cache hash table entries: 128 (order: -3, 512 bytes)
+TCP established hash table entries: 1024 (order: 1, 8192 bytes)
+TCP bind hash table entries: 1024 (order: 0, 4096 bytes)
+TCP: Hash tables configured (established 1024 bind 1024)
+TCP reno registered
+squashfs: version 3.2-r2 (2007/01/15) Phillip Lougher
+squashfs: LZMA suppport for slax.org by jro
+fuse init (API version 7.8)
+io scheduler noop registered (default)
+PPP generic driver version 2.4.2
+NET: Registered protocol family 24
+IMQ starting with 3 devices...
+IMQ driver loaded successfully.
+	Hooking IMQ before NAT on PREROUTING.
+	Hooking IMQ after NAT on POSTROUTING.
+
+==boot from main kernel==
+Registered device mtd[BCM63XX RootFS] dev[0] Flash[0xb8020100,4734976]
+PCI: Enabling device 0000:00:0a.0 (0000 -> 0002)
+PCI: Setting latency timer of device 0000:00:0a.0 to 64
+ehci_hcd 0000:00:0a.0: EHCI Host Controller
+ehci_hcd 0000:00:0a.0: new USB bus registered, assigned bus number 1
+ehci_hcd 0000:00:0a.0: irq 15, io mem 0x10001500
+ehci_hcd 0000:00:0a.0: USB f.f started, EHCI 1.00, driver 10 Dec 2004
+usb usb1: configuration #1 chosen from 1 choice
+hub 1-0:1.0: USB hub found
+hub 1-0:1.0: 2 ports detected
+ohci_hcd: 2006 August 04 USB 1.1 'Open' Host Controller (OHCI) Driver
+PCI: Enabling device 0000:00:09.0 (0000 -> 0002)
+PCI: Setting latency timer of device 0000:00:09.0 to 64
+ohci_hcd 0000:00:09.0: OHCI Host Controller
+ohci_hcd 0000:00:09.0: new USB bus registered, assigned bus number 2
+ohci_hcd 0000:00:09.0: irq 13, io mem 0x10001600
+usb usb2: configuration #1 chosen from 1 choice
+hub 2-0:1.0: USB hub found
+hub 2-0:1.0: 2 ports detected
+Initializing USB Mass Storage driver...
+usbcore: registered new interface driver usb-storage
+USB Mass Storage support registered.
+usbcore: registered new interface driver usbserial
+drivers/usb/serial/usb-serial.c: USB Serial support registered for generic
+usbcore: registered new interface driver usbserial_generic
+drivers/usb/serial/usb-serial.c: USB Serial Driver core
+MoniterInit entry
+Serial: BCM63XX driver $Revision: 3.00 $
+ttyS0 at MMIO 0xb0000100 (irq = 10) is a BCM63XX
+ttyS1 at MMIO 0xb0000120 (irq = 11) is a BCM63XX
+bcmxtmrt: Broadcom BCM6368B2 ATM/PTM Network Device v0.3 Jul  9 2013 15:48:03
+GACT probability on
+Mirror/redirect action on
+u32 classifier
+    input device check on 
+    Actions configured 
+Netfilter messages via NETLINK v0.30.
+ip_tables: (C) 2000-2006 Netfilter Core Team
+TCP cubic registered
+Initializing XFRM netlink socket
+NET: Registered protocol family 1
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+Ebtables v2.0 registered
+802.1Q VLAN Support v1.8 Ben Greear <greearb@candelatech.com>
+All bugs added by David S. Miller <davem@redhat.com>
+VFS: Mounted root (squashfs filesystem) readonly.
+Freeing unused kernel memory: 104k freed
+init started: BusyBox vv1.9.1 (2013-07-09 15:53:35 CST)
+starting pid 104, tty '': '/etc/init.d/rcS'
+RCS DONE
+starting pid 106, tty '': '/bin/sh'
+
+
+BusyBox vv1.9.1 (2013-07-09 15:53:35 CST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+-/bin/sh: usbdiagd: not found
+Loading drivers and kernel modules... 
+pktflow: module license 'Proprietary' taints kernel.
+Broadcom Packet Flow Cache  Char Driver v2.2 Aug  6 2010 11:03:27 Registered<242>
+NBUFF v1.0 Initialized
+Broadcom Packet Flow Cache learning via BLOG enabled.
+Created Proc FS /procfs/fcache
+Broadcom Packet Flow Cache registered with netdev chain
+Constructed Broadcom Packet Flow Cache v2.2 Aug  6 2010 11:03:26
+Broadcom Packet CMF (Experimental) Char Driver v0.1 Jul 23 2010 17:43:15 Registered<232>
+Broadcom Packet CMF (Experimental) [6368-B2] v0.1 Jul 23 2010 17:43:15 Loaded
+bcmxtmcfg: bcmxtmcfg_init entry
+adsl: adsl_init entry
+KLOB extended to 2 pools
+KLOB extended to 3 pools
+KLOB extended to 4 pools
+KLOB extended to 5 pools
+KLOB extended to 6 pools
+KLOB extended to 7 pools
+KLOB extended to 8 pools
+Broadcom Packet CMF (Experimental) SWC RESET.
+Broadcom Packet CMF (Experimental) SWC INITIALIZED.
+Broadcom Packet CMF (Experimental) Forwarder Net Device 0 v0.1 Jul 23 2010 17:43:16 Registered
+Broadcom Packet CMF (Experimental) Forwarder Net Device 0 v0.1 Jul 23 2010 17:43:16 Registered
+Broadcom Packet CMF (Experimental) ENABLED.
+
+Warning!!! mac addr is broadcase mac, please set again!
+
+Warning!!! mac addr is broadcase mac, please set again!
+eth0.5: MAC Address: 00:5C:57:BA:65:F3
+eth0.4: MAC Address: 00:5C:57:BA:65:F3
+eth0.3: MAC Address: 00:5C:57:BA:65:F3
+eth0.2: MAC Address: 00:5C:57:BA:65:F3
+DSP Driver: DSP init stub
+Endpoint: endpoint_init entry
+PROV(ts: 5 s 110ms):ALLOC item = 0000 location = 0x81304980 size = 40 line = 0
+PROV(ts: 5 s 117ms):ALLOC item = 0001 location = 0x81304900 size = 40 line = 0
+PROV(ts: 5 s 124ms):ALLOC item = 0002 location = 0x81304880 size = 40 line = 0
+PROV(ts: 5 s 131ms):ALLOC item = 0003 location = 0x81304800 size = 40 line = 0
+PROV(ts: 5 s 138ms):ALLOC item = 0004 location = 0x81304780 size = 40 line = 0
+PROV(ts: 5 s 145ms):ALLOC item = 0005 location = 0x81304700 size = 40 line = 0
+PROV(ts: 5 s 153ms):ALLOC item = 0006 location = 0x81304680 size = 40 line = 0
+PROV(ts: 5 s 160ms):ALLOC item = 0007 location = 0x81304600 size = 40 line = 0
+PROV(ts: 5 s 167ms):ALLOC item = 0008 location = 0x81304580 size = 40 line = 0
+PROV(ts: 5 s 174ms):ALLOC item = 0009 location = 0x81304500 size = 40 line = 0
+PROV(ts: 5 s 181ms):ALLOC item = 0011 location = 0x81351D00 size = 4 line = 0
+PROV(ts: 5 s 188ms):ALLOC item = 0200 location = 0x81A6BE80 size = 248 line = 0
+PROV(ts: 5 s 196ms):ALLOC item = 0201 location = 0x81A6BD80 size = 248 line = 0
+PROV(ts: 5 s 203ms):ALLOC item = 0202 location = 0x81A6BC80 size = 248 line = 0
+PROV(ts: 5 s 210ms):ALLOC item = 0203 location = 0x81A6BB80 size = 248 line = 0
+PROV(ts: 5 s 217ms):ALLOC item = 0204 location = 0x81A6BA80 size = 248 line = 0
+PROV(ts: 5 s 225ms):ALLOC item = 0205 location = 0x81A6B980 size = 248 line = 0
+PROV(ts: 5 s 232ms):ALLOC item = 0206 location = 0x81A6B880 size = 248 line = 0
+PROV(ts: 5 s 239ms):ALLOC item = 0207 location = 0x81A6B780 size = 248 line = 0
+PROV(ts: 5 s 246ms):ALLOC item = 0208 location = 0x81A6B680 size = 248 line = 0
+PROV(ts: 5 s 254ms):ALLOC item = 0209 location = 0x81A6B580 size = 248 line = 0
+PROV(ts: 5 s 261ms):ALLOC item = 0210 location = 0x81A6B480 size = 248 line = 0
+PROV(ts: 5 s 268ms):ALLOC item = 0211 location = 0x81A6B380 size = 248 line = 0
+PROV(ts: 5 s 275ms):ALLOC item = 0212 location = 0x81A6B280 size = 248 line = 0
+PROV(ts: 5 s 283ms):ALLOC item = 0217 location = 0x81A6B180 size = 248 line = 0
+PROV(ts: 5 s 290ms):ALLOC item = 0218 location = 0x81A6B080 size = 248 line = 0
+PROV(ts: 5 s 297ms):ALLOC item = 0219 location = 0x81751E80 size = 248 line = 0
+PROV(ts: 5 s 304ms):ALLOC item = 0220 location = 0x81751D80 size = 248 line = 0
+PROV(ts: 5 s 312ms):ALLOC item = 0221 location = 0x81751C80 size = 248 line = 0
+PROV(ts: 5 s 319ms):ALLOC item = 0222 location = 0x81751B80 size = 248 line = 0
+PROV(ts: 5 s 326ms):ALLOC item = 0223 location = 0x81751A80 size = 248 line = 0
+PROV(ts: 5 s 334ms):ALLOC item = 0224 location = 0x81751980 size = 248 line = 0
+PROV(ts: 5 s 341ms):ALLOC item = 0400 location = 0x81351C80 size = 4 line = 0
+PROV(ts: 5 s 348ms):ALLOC item = 0401 location = 0x81351C00 size = 4 line = 0
+PROV(ts: 5 s 355ms):ALLOC item = 0402 location = 0x81351B80 size = 4 line = 0
+PROV(ts: 5 s 362ms):ALLOC item = 0403 location = 0x81351B00 size = 4 line = 0
+PROV(ts: 5 s 369ms):ALLOC item = 0404 location = 0x81351A80 size = 4 line = 0
+PROV(ts: 5 s 376ms):ALLOC item = 0405 location = 0x81351A00 size = 4 line = 0
+PROV(ts: 5 s 383ms):ALLOC item = 0406 location = 0x81351980 size = 4 line = 0
+PROV(ts: 5 s 390ms):ALLOC item = 0407 location = 0x81351900 size = 4 line = 0
+PROV(ts: 5 s 397ms):ALLOC item = 0408 location = 0x81351880 size = 4 line = 0
+PROV(ts: 5 s 404ms):ALLOC item = 0409 location = 0x81351800 size = 4 line = 0
+PROV(ts: 5 s 412ms):ALLOC item = 0410 location = 0x81351780 size = 4 line = 0
+PROV(ts: 5 s 419ms):ALLOC item = 0411 location = 0x81351700 size = 4 line = 0
+PROV(ts: 5 s 426ms):ALLOC item = 0412 location = 0x81351680 size = 4 line = 0
+PROV(ts: 5 s 433ms):ALLOC item = 0413 location = 0x81351600 size = 4 line = 0
+PROV(ts: 5 s 440ms):ALLOC item = 0423 location = 0x81351580 size = 4 line = 0
+PROV(ts: 5 s 447ms):ALLOC item = 0424 location = 0x81351500 size = 4 line = 0
+PROV(ts: 5 s 454ms):ALLOC item = 0414 location = 0x81351480 size = 4 line = 0
+PROV(ts: 5 s 461ms):ALLOC item = 0416 location = 0x81351400 size = 4 line = 0
+PROV(ts: 5 s 468ms):ALLOC item = 0417 location = 0x81351380 size = 4 line = 0
+PROV(ts: 5 s 475ms):ALLOC item = 0418 location = 0x81351300 size = 4 line = 0
+PROV(ts: 5 s 482ms):ALLOC item = 0600 location = 0x81351280 size = 4 line = 0
+PROV(ts: 5 s 489ms):ALLOC item = 0608 location = 0x81351200 size = 4 line = 0
+PROV(ts: 5 s 496ms):ALLOC item = 0609 location = 0x81351180 size = 4 line = 0
+PROV(ts: 5 s 504ms):ALLOC item = 0610 location = 0x81351100 size = 4 line = 0
+PROV(ts: 5 s 511ms):ALLOC item = 0611 location = 0x80E56F80 size = 4 line = 0
+PROV(ts: 5 s 518ms):ALLOC item = 0612 location = 0x80E56F00 size = 4 line = 0
+PROV(ts: 5 s 525ms):ALLOC item = 0613 location = 0x80E56E80 size = 4 line = 0
+PROV(ts: 5 s 532ms):ALLOC item = 0617 location = 0x80E56E00 size = 4 line = 0
+PROV(ts: 5 s 539ms):ALLOC item = 0618 location = 0x80E56D80 size = 4 line = 0
+PROV(ts: 5 s 546ms):ALLOC item = 0619 location = 0x80E56D00 size = 4 line = 0
+PROV(ts: 5 s 553ms):ALLOC item = 0620 location = 0x80E56C80 size = 4 line = 0
+PROV(ts: 5 s 560ms):ALLOC item = 2000 location = 0x80E56C00 size = 4 line = 0
+PROV(ts: 5 s 567ms):ALLOC item = 0805 location = 0x80E56B80 size = 4 line = 0
+PROV(ts: 5 s 574ms):ALLOC item = 2200 location = 0x80E56B00 size = 4 line = 0
+PROV(ts: 5 s 581ms):ALLOC item = 2201 location = 0x80E56A80 size = 4 line = 0
+PROV(ts: 5 s 589ms):ALLOC item = 2202 location = 0x80E56A00 size = 4 line = 0
+PROV(ts: 5 s 596ms):ALLOC item = 2203 location = 0x80E56980 size = 4 line = 0
+PROV(ts: 5 s 603ms):ALLOC item = 0616 location = 0x80E56900 size = 4 line = 0
+PROV(ts: 5 s 610ms):ALLOC item = 2204 location = 0x80E56880 size = 4 line = 0
+PROV(ts: 5 s 617ms):ALLOC item = 2600 location = 0x80E56800 size = 4 line = 0
+PROV(ts: 5 s 624ms):ALLOC item = 2601 location = 0x80E56780 size = 4 line = 0
+PROV(ts: 5 s 631ms):ALLOC item = 2602 location = 0x80E56700 size = 4 line = 0
+PROV(ts: 5 s 638ms):ALLOC item = 2603 location = 0x80E56680 size = 4 line = 0
+PROV(ts: 5 s 645ms):ALLOC item = 2604 location = 0x80E56600 size = 4 line = 0
+PROV(ts: 5 s 652ms):ALLOC item = 2605 location = 0x80E56580 size = 4 line = 0
+PROV(ts: 5 s 659ms):ALLOC item = 2606 location = 0x80E56500 size = 4 line = 0
+PROV(ts: 5 s 666ms):ALLOC item = 2800 location = 0x80E56480 size = 4 line = 0
+PROV(ts: 5 s 673ms):ALLOC item = 2801 location = 0x80E56400 size = 4 line = 0
+PROV(ts: 5 s 681ms):ALLOC item = 2802 location = 0x81D51C00 size = 1024 line = 0
+PROV(ts: 5 s 688ms):ALLOC item = 2803 location = 0x80E56380 size = 4 line = 0
+PROV(ts: 5 s 695ms):ALLOC item = 0428 location = 0x80E56300 size = 4 line = 0
+PROV(ts: 5 s 702ms):ALLOC item = 0429 location = 0x80E56280 size = 4 line = 0
+PROV(ts: 5 s 709ms):ALLOC item = 0430 location = 0x80E56200 size = 4 line = 0
+PROV(ts: 5 s 716ms):ALLOC item = 0415 location = 0x80E56180 size = 4 line = 0
+PROV(ts: 5 s 723ms):ALLOC item = 0427 location = 0x80E56100 size = 4 line = 0
+PROV(ts: 5 s 730ms):ALLOC item = 0000 location = 0x81304480 size = 40 line = 1
+PROV(ts: 5 s 738ms):ALLOC item = 0001 location = 0x81304400 size = 40 line = 1
+PROV(ts: 5 s 745ms):ALLOC item = 0002 location = 0x81304380 size = 40 line = 1
+PROV(ts: 5 s 752ms):ALLOC item = 0003 location = 0x81304300 size = 40 line = 1
+PROV(ts: 5 s 759ms):ALLOC item = 0004 location = 0x81304280 size = 40 line = 1
+PROV(ts: 5 s 766ms):ALLOC item = 0005 location = 0x81304200 size = 40 line = 1
+PROV(ts: 5 s 773ms):ALLOC item = 0006 location = 0x81304180 size = 40 line = 1
+PROV(ts: 5 s 781ms):ALLOC item = 0007 location = 0x81304100 size = 40 line = 1
+PROV(ts: 5 s 788ms):ALLOC item = 0008 location = 0x81752F80 size = 40 line = 1
+PROV(ts: 5 s 795ms):ALLOC item = 0009 location = 0x81752F00 size = 40 line = 1
+PROV(ts: 5 s 802ms):ALLOC item = 0011 location = 0x81753F80 size = 4 line = 1
+PROV(ts: 5 s 809ms):ALLOC item = 0200 location = 0x81751880 size = 248 line = 1
+PROV(ts: 5 s 816ms):ALLOC item = 0201 location = 0x81751780 size = 248 line = 1
+PROV(ts: 5 s 824ms):ALLOC item = 0202 location = 0x81751680 size = 248 line = 1
+PROV(ts: 5 s 831ms):ALLOC item = 0203 location = 0x81751580 size = 248 line = 1
+PROV(ts: 5 s 838ms):ALLOC item = 0204 location = 0x81751480 size = 248 line = 1
+PROV(ts: 5 s 845ms):ALLOC item = 0205 location = 0x81751380 size = 248 line = 1
+PROV(ts: 5 s 853ms):ALLOC item = 0206 location = 0x81751280 size = 248 line = 1
+PROV(ts: 5 s 860ms):ALLOC item = 0207 location = 0x81751180 size = 248 line = 1
+PROV(ts: 5 s 867ms):ALLOC item = 0208 location = 0x81751080 size = 248 line = 1
+PROV(ts: 5 s 874ms):ALLOC item = 0209 location = 0x81754E80 size = 248 line = 1
+PROV(ts: 5 s 882ms):ALLOC item = 0210 location = 0x81754D80 size = 248 line = 1
+PROV(ts: 5 s 889ms):ALLOC item = 0211 location = 0x81754C80 size = 248 line = 1
+PROV(ts: 5 s 896ms):ALLOC item = 0212 location = 0x81754B80 size = 248 line = 1
+PROV(ts: 5 s 903ms):ALLOC item = 0217 location = 0x81754A80 size = 248 line = 1
+PROV(ts: 5 s 911ms):ALLOC item = 0218 location = 0x81754980 size = 248 line = 1
+PROV(ts: 5 s 918ms):ALLOC item = 0219 location = 0x81754880 size = 248 line = 1
+PROV(ts: 5 s 925ms):ALLOC item = 0220 location = 0x81754780 size = 248 line = 1
+PROV(ts: 5 s 932ms):ALLOC item = 0221 location = 0x81754680 size = 248 line = 1
+PROV(ts: 5 s 940ms):ALLOC item = 0222 location = 0x81754580 size = 248 line = 1
+PROV(ts: 5 s 947ms):ALLOC item = 0223 location = 0x81754480 size = 248 line = 1
+PROV(ts: 5 s 954ms):ALLOC item = 0224 location = 0x81754380 size = 248 line = 1
+PROV(ts: 5 s 962ms):ALLOC item = 0400 location = 0x81753F00 size = 4 line = 1
+PROV(ts: 5 s 969ms):ALLOC item = 0401 location = 0x81753E80 size = 4 line = 1
+PROV(ts: 5 s 976ms):ALLOC item = 0402 location = 0x81753E00 size = 4 line = 1
+PROV(ts: 5 s 983ms):ALLOC item = 0403 location = 0x81753D80 size = 4 line = 1
+PROV(ts: 5 s 990ms):ALLOC item = 0404 location = 0x81753D00 size = 4 line = 1
+PROV(ts: 5 s 997ms):ALLOC item = 0405 location = 0x81753C80 size = 4 line = 1
+PROV(ts: 6 s 4  ms):ALLOC item = 0406 location = 0x81753C00 size = 4 line = 1
+PROV(ts: 6 s 11 ms):ALLOC item = 0407 location = 0x81753B80 size = 4 line = 1
+PROV(ts: 6 s 18 ms):ALLOC item = 0408 location = 0x81753B00 size = 4 line = 1
+PROV(ts: 6 s 25 ms):ALLOC item = 0409 location = 0x81753A80 size = 4 line = 1
+PROV(ts: 6 s 32 ms):ALLOC item = 0410 location = 0x81753A00 size = 4 line = 1
+PROV(ts: 6 s 39 ms):ALLOC item = 0411 location = 0x81753980 size = 4 line = 1
+PROV(ts: 6 s 46 ms):ALLOC item = 0412 location = 0x81753900 size = 4 line = 1
+PROV(ts: 6 s 54 ms):ALLOC item = 0413 location = 0x81753880 size = 4 line = 1
+PROV(ts: 6 s 61 ms):ALLOC item = 0423 location = 0x81753800 size = 4 line = 1
+PROV(ts: 6 s 68 ms):ALLOC item = 0424 location = 0x81753780 size = 4 line = 1
+PROV(ts: 6 s 75 ms):ALLOC item = 0414 location = 0x81753700 size = 4 line = 1
+PROV(ts: 6 s 82 ms):ALLOC item = 0416 location = 0x81753680 size = 4 line = 1
+PROV(ts: 6 s 89 ms):ALLOC item = 0417 location = 0x81753600 size = 4 line = 1
+PROV(ts: 6 s 96 ms):ALLOC item = 0418 location = 0x81753580 size = 4 line = 1
+PROV(ts: 6 s 103ms):ALLOC item = 0600 location = 0x81753500 size = 4 line = 1
+PROV(ts: 6 s 110ms):ALLOC item = 0608 location = 0x81753480 size = 4 line = 1
+PROV(ts: 6 s 117ms):ALLOC item = 0609 location = 0x81753400 size = 4 line = 1
+PROV(ts: 6 s 124ms):ALLOC item = 0610 location = 0x81753380 size = 4 line = 1
+PROV(ts: 6 s 131ms):ALLOC item = 0611 location = 0x81753300 size = 4 line = 1
+PROV(ts: 6 s 138ms):ALLOC item = 0612 location = 0x81753280 size = 4 line = 1
+PROV(ts: 6 s 146ms):ALLOC item = 0613 location = 0x81753200 size = 4 line = 1
+PROV(ts: 6 s 153ms):ALLOC item = 0617 location = 0x81753180 size = 4 line = 1
+PROV(ts: 6 s 160ms):ALLOC item = 0618 location = 0x81753100 size = 4 line = 1
+PROV(ts: 6 s 167ms):ALLOC item = 0619 location = 0x81755F80 size = 4 line = 1
+PROV(ts: 6 s 174ms):ALLOC item = 0620 location = 0x81755F00 size = 4 line = 1
+PROV(ts: 6 s 181ms):ALLOC item = 2000 location = 0x81755E80 size = 4 line = 1
+PROV(ts: 6 s 188ms):ALLOC item = 0805 location = 0x81755E00 size = 4 line = 1
+PROV(ts: 6 s 195ms):ALLOC item = 2200 location = 0x81755D80 size = 4 line = 1
+PROV(ts: 6 s 202ms):ALLOC item = 2201 location = 0x81755D00 size = 4 line = 1
+PROV(ts: 6 s 209ms):ALLOC item = 2202 location = 0x81755C80 size = 4 line = 1
+PROV(ts: 6 s 216ms):ALLOC item = 2203 location = 0x81755C00 size = 4 line = 1
+PROV(ts: 6 s 223ms):ALLOC item = 0616 location = 0x81755B80 size = 4 line = 1
+PROV(ts: 6 s 230ms):ALLOC item = 2204 location = 0x81755B00 size = 4 line = 1
+PROV(ts: 6 s 238ms):ALLOC item = 2600 location = 0x81755A80 size = 4 line = 1
+PROV(ts: 6 s 245ms):ALLOC item = 2601 location = 0x81755A00 size = 4 line = 1
+PROV(ts: 6 s 252ms):ALLOC item = 2602 location = 0x81755980 size = 4 line = 1
+PROV(ts: 6 s 259ms):ALLOC item = 2603 location = 0x81755900 size = 4 line = 1
+PROV(ts: 6 s 266ms):ALLOC item = 2604 location = 0x81755880 size = 4 line = 1
+PROV(ts: 6 s 273ms):ALLOC item = 2605 location = 0x81755800 size = 4 line = 1
+PROV(ts: 6 s 280ms):ALLOC item = 2606 location = 0x81755780 size = 4 line = 1
+PROV(ts: 6 s 287ms):ALLOC item = 2800 location = 0x81755700 size = 4 line = 1
+PROV(ts: 6 s 294ms):ALLOC item = 2801 location = 0x81755680 size = 4 line = 1
+PROV(ts: 6 s 301ms):ALLOC item = 2802 location = 0x81D51800 size = 1024 line = 1
+PROV(ts: 6 s 309ms):ALLOC item = 2803 location = 0x81755600 size = 4 line = 1
+PROV(ts: 6 s 316ms):ALLOC item = 0428 location = 0x81755580 size = 4 line = 1
+PROV(ts: 6 s 323ms):ALLOC item = 0429 location = 0x81755500 size = 4 line = 1
+PROV(ts: 6 s 330ms):ALLOC item = 0430 location = 0x81755480 size = 4 line = 1
+PROV(ts: 6 s 337ms):ALLOC item = 0415 location = 0x81755400 size = 4 line = 1
+PROV(ts: 6 s 344ms):ALLOC item = 0427 location = 0x81755380 size = 4 line = 1
+PROV(ts: 6 s 351ms):ALLOC item = 0000 location = 0x81752E80 size = 40 line = 2
+PROV(ts: 6 s 358ms):ALLOC item = 0001 location = 0x81752E00 size = 40 line = 2
+PROV(ts: 6 s 365ms):ALLOC item = 0002 location = 0x81752D80 size = 40 line = 2
+PROV(ts: 6 s 373ms):ALLOC item = 0003 location = 0x81752D00 size = 40 line = 2
+PROV(ts: 6 s 380ms):ALLOC item = 0004 location = 0x81752C80 size = 40 line = 2
+PROV(ts: 6 s 387ms):ALLOC item = 0005 location = 0x81752C00 size = 40 line = 2
+PROV(ts: 6 s 394ms):ALLOC item = 0006 location = 0x81752B80 size = 40 line = 2
+PROV(ts: 6 s 401ms):ALLOC item = 0007 location = 0x81752B00 size = 40 line = 2
+PROV(ts: 6 s 408ms):ALLOC item = 0008 location = 0x81752A80 size = 40 line = 2
+PROV(ts: 6 s 416ms):ALLOC item = 0009 location = 0x81752A00 size = 40 line = 2
+PROV(ts: 6 s 423ms):ALLOC item = 0011 location = 0x81755300 size = 4 line = 2
+PROV(ts: 6 s 430ms):ALLOC item = 0200 location = 0x81754280 size = 248 line = 2
+PROV(ts: 6 s 437ms):ALLOC item = 0201 location = 0x81754180 size = 248 line = 2
+PROV(ts: 6 s 444ms):ALLOC item = 0202 location = 0x81754080 size = 248 line = 2
+PROV(ts: 6 s 452ms):ALLOC item = 0203 location = 0x81756E80 size = 248 line = 2
+PROV(ts: 6 s 459ms):ALLOC item = 0204 location = 0x81756D80 size = 248 line = 2
+PROV(ts: 6 s 466ms):ALLOC item = 0205 location = 0x81756C80 size = 248 line = 2
+PROV(ts: 6 s 473ms):ALLOC item = 0206 location = 0x81756B80 size = 248 line = 2
+PROV(ts: 6 s 481ms):ALLOC item = 0207 location = 0x81756A80 size = 248 line = 2
+PROV(ts: 6 s 488ms):ALLOC item = 0208 location = 0x81756980 size = 248 line = 2
+PROV(ts: 6 s 495ms):ALLOC item = 0209 location = 0x81756880 size = 248 line = 2
+PROV(ts: 6 s 502ms):ALLOC item = 0210 location = 0x81756780 size = 248 line = 2
+PROV(ts: 6 s 510ms):ALLOC item = 0211 location = 0x81756680 size = 248 line = 2
+PROV(ts: 6 s 517ms):ALLOC item = 0212 location = 0x81756580 size = 248 line = 2
+PROV(ts: 6 s 524ms):ALLOC item = 0217 location = 0x81756480 size = 248 line = 2
+PROV(ts: 6 s 531ms):ALLOC item = 0218 location = 0x81756380 size = 248 line = 2
+PROV(ts: 6 s 539ms):ALLOC item = 0219 location = 0x81756280 size = 248 line = 2
+PROV(ts: 6 s 546ms):ALLOC item = 0220 location = 0x81756180 size = 248 line = 2
+PROV(ts: 6 s 553ms):ALLOC item = 0221 location = 0x81756080 size = 248 line = 2
+PROV(ts: 6 s 560ms):ALLOC item = 0222 location = 0x81757E80 size = 248 line = 2
+PROV(ts: 6 s 568ms):ALLOC item = 0223 location = 0x81757D80 size = 248 line = 2
+PROV(ts: 6 s 575ms):ALLOC item = 0224 location = 0x81757C80 size = 248 line = 2
+PROV(ts: 6 s 582ms):ALLOC item = 0400 location = 0x81755280 size = 4 line = 2
+PROV(ts: 6 s 589ms):ALLOC item = 0401 location = 0x81755200 size = 4 line = 2
+PROV(ts: 6 s 596ms):ALLOC item = 0402 location = 0x81755180 size = 4 line = 2
+PROV(ts: 6 s 604ms):ALLOC item = 0403 location = 0x81755100 size = 4 line = 2
+PROV(ts: 6 s 611ms):ALLOC item = 0404 location = 0x81758F80 size = 4 line = 2
+PROV(ts: 6 s 618ms):ALLOC item = 0405 location = 0x81758F00 size = 4 line = 2
+PROV(ts: 6 s 625ms):ALLOC item = 0406 location = 0x81758E80 size = 4 line = 2
+PROV(ts: 6 s 632ms):ALLOC item = 0407 location = 0x81758E00 size = 4 line = 2
+PROV(ts: 6 s 639ms):ALLOC item = 0408 location = 0x81758D80 size = 4 line = 2
+PROV(ts: 6 s 646ms):ALLOC item = 0409 location = 0x81758D00 size = 4 line = 2
+PROV(ts: 6 s 653ms):ALLOC item = 0410 location = 0x81758C80 size = 4 line = 2
+PROV(ts: 6 s 660ms):ALLOC item = 0411 location = 0x81758C00 size = 4 line = 2
+PROV(ts: 6 s 667ms):ALLOC item = 0412 location = 0x81758B80 size = 4 line = 2
+PROV(ts: 6 s 674ms):ALLOC item = 0413 location = 0x81758B00 size = 4 line = 2
+PROV(ts: 6 s 681ms):ALLOC item = 0423 location = 0x81758A80 size = 4 line = 2
+PROV(ts: 6 s 688ms):ALLOC item = 0424 location = 0x81758A00 size = 4 line = 2
+PROV(ts: 6 s 696ms):ALLOC item = 0414 location = 0x81758980 size = 4 line = 2
+PROV(ts: 6 s 703ms):ALLOC item = 0416 location = 0x81758900 size = 4 line = 2
+PROV(ts: 6 s 710ms):ALLOC item = 0417 location = 0x81758880 size = 4 line = 2
+PROV(ts: 6 s 717ms):ALLOC item = 0418 location = 0x81758800 size = 4 line = 2
+PROV(ts: 6 s 724ms):ALLOC item = 0600 location = 0x81758780 size = 4 line = 2
+PROV(ts: 6 s 731ms):ALLOC item = 0608 location = 0x81758700 size = 4 line = 2
+PROV(ts: 6 s 738ms):ALLOC item = 0609 location = 0x81758680 size = 4 line = 2
+PROV(ts: 6 s 745ms):ALLOC item = 0610 location = 0x81758600 size = 4 line = 2
+PROV(ts: 6 s 752ms):ALLOC item = 0611 location = 0x81758580 size = 4 line = 2
+PROV(ts: 6 s 759ms):ALLOC item = 0612 location = 0x81758500 size = 4 line = 2
+PROV(ts: 6 s 766ms):ALLOC item = 0613 location = 0x81758480 size = 4 line = 2
+PROV(ts: 6 s 773ms):ALLOC item = 0617 location = 0x81758400 size = 4 line = 2
+PROV(ts: 6 s 780ms):ALLOC item = 0618 location = 0x81758380 size = 4 line = 2
+PROV(ts: 6 s 788ms):ALLOC item = 0619 location = 0x81758300 size = 4 line = 2
+PROV(ts: 6 s 795ms):ALLOC item = 0620 location = 0x81758280 size = 4 line = 2
+PROV(ts: 6 s 802ms):ALLOC item = 2000 location = 0x81758200 size = 4 line = 2
+PROV(ts: 6 s 809ms):ALLOC item = 0805 location = 0x81758180 size = 4 line = 2
+PROV(ts: 6 s 816ms):ALLOC item = 2200 location = 0x81758100 size = 4 line = 2
+PROV(ts: 6 s 823ms):ALLOC item = 2201 location = 0x81759F80 size = 4 line = 2
+PROV(ts: 6 s 830ms):ALLOC item = 2202 location = 0x81759F00 size = 4 line = 2
+PROV(ts: 6 s 837ms):ALLOC item = 2203 location = 0x81759E80 size = 4 line = 2
+PROV(ts: 6 s 844ms):ALLOC item = 0616 location = 0x81759E00 size = 4 line = 2
+PROV(ts: 6 s 851ms):ALLOC item = 2204 location = 0x81759D80 size = 4 line = 2
+PROV(ts: 6 s 858ms):ALLOC item = 2600 location = 0x81759D00 size = 4 line = 2
+PROV(ts: 6 s 865ms):ALLOC item = 2601 location = 0x81759C80 size = 4 line = 2
+PROV(ts: 6 s 872ms):ALLOC item = 2602 location = 0x81759C00 size = 4 line = 2
+PROV(ts: 6 s 880ms):ALLOC item = 2603 location = 0x81759B80 size = 4 line = 2
+PROV(ts: 6 s 887ms):ALLOC item = 2604 location = 0x81759B00 size = 4 line = 2
+PROV(ts: 6 s 894ms):ALLOC item = 2605 location = 0x81759A80 size = 4 line = 2
+PROV(ts: 6 s 901ms):ALLOC item = 2606 location = 0x81759A00 size = 4 line = 2
+PROV(ts: 6 s 908ms):ALLOC item = 2800 location = 0x81759980 size = 4 line = 2
+PROV(ts: 6 s 915ms):ALLOC item = 2801 location = 0x81759900 size = 4 line = 2
+PROV(ts: 6 s 922ms):ALLOC item = 2802 location = 0x81D51400 size = 1024 line = 2
+PROV(ts: 6 s 929ms):ALLOC item = 2803 location = 0x81759880 size = 4 line = 2
+PROV(ts: 6 s 936ms):ALLOC item = 0428 location = 0x81759800 size = 4 line = 2
+PROV(ts: 6 s 944ms):ALLOC item = 0429 location = 0x81759780 size = 4 line = 2
+PROV(ts: 6 s 951ms):ALLOC item = 0430 location = 0x81759700 size = 4 line = 2
+PROV(ts: 6 s 958ms):ALLOC item = 0415 location = 0x81759680 size = 4 line = 2
+PROV(ts: 6 s 965ms):ALLOC item = 0427 location = 0x81759600 size = 4 line = 2
+PROV(ts: 6 s 972ms):Allocated memory = 20556 
+Endpoint: endpoint_init COMPLETED
+drivers/usb/serial/usb-serial.c: USB Serial support registered for option1
+usbcore: registered new interface driver option
+drivers/usb/serial/option.c: USB Driver for GSM modems: v0.7.1
+Start mic now ...
+load cfm ok.
+start log proc...
+ifconfig: SIOCSIFNETMASK: Cannot assign requested address
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+sh: cannot kill pid 349: No such process
+wlancmd: wlan driver adapter not found
+interface wl0 does not exist!
+interface wl0.1 does not exist!
+interface wl0.2 does not exist!
+interface wl0.3 does not exist!
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+
+ begin WlanUpInterfaces...
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+ifconfig: SIOCGIFFLAGS: No such device
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wl0       no private ioctls.
+
+wl0       no private ioctls.
+
+wl0       no private ioctls.
+
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wl0       no private ioctls.
+
+wlancmd: wlan driver adapter not found
+wl0       no private ioctls.
+
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+
+ begin WlanSetupBridge...
+interface wl0 does not exist!
+
+ begin WlanStartServices...
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+
+ wlan wps enabled
+wlancmd: wlan driver adapter not found
+wlancmd: wlan driver adapter not found
+wl0       no private ioctls.
+
+ATP_WLAN_Init SUCCESS!!
+
+Warning!!! mac addr is broadcase mac, please set again!
+bcmxtmrt: MAC address: 00 5c 57 ba 65 f4
+Use default bin /var/cwmp now ...
+FILE is  cwmp.c LINE  is  47   0   ëZvÒèaûyÝÜÆâ*Kí×;>0Ôû£vÈŒ°R@ÌeÕÌ"¹íÜcf6ÍMÓHÓ(©üö3H,m¿¶œHx
+Load default  certificate 
+
+Warning!!! mac addr is broadcase mac, please set again!
+bcmxtmrt: MAC address: 00 5c 57 ba 65 f5
+
+Warning!!! mac addr is broadcase mac, please set again!
+bcmxtmrt: MAC address: 00 5c 57 ba 65 f6
+BcmAdsl_Initialize=0xC00B79AC, g_pFnNotifyCallback=0xC00E5A74
+Clocks for QPROC and AFE are being aligned with step through ... 
+AFE is aligned, i = 052, PhaseValue = -096, PhaseCntl = 0x7FCD0000
+QPROC is aligned, i = 053, PhaseValue = -050, PhaseCntl = 0x7FCD3FCB
+Clocks for QPROC and AFE are aligned with syn_status AFE = 0x78, QPROC = 0x70
+AFE  phase control reg @0xb0f570f8 default actual = 0x0021C38F, exp = 0x0021c38f
+QPRC phase control reg @0xb0f5f0c0 default actual = 0x0421C38F, exp = 0x0421c38f
+pSdramPHY=0xA1FFFFF8, 0xFFFDFFFF 0xFFDFFEFE
+*** XfaceOffset: 0x5FF90 => 0x5FF90 ***
+[AdslFileLoadImage] Load dsl img to 0xA1ECE000 size 0x000E20E8 offset 0x00003418
+
+*** PhySdramSize got adjusted: 0xE20E8 => 0x118810 ***
+AdslCoreSharedMemInit: shareMemAvailable=104400
+AdslCoreHwReset:  pLocSbSta=80468000 bkupThreshold=3072
+AdslCoreHwReset:  AdslOemDataAddr = 0xA1FA2CCC
+
+Warning!!! mac addr is broadcase mac, please set again!
+insmod: can't open '/lib/extra/vnet.ko': No such file or directory
+device eth0.2 entered promiscuous mode
+device eth0.3 entered promiscuous mode
+device eth0.4 entered promiscuous mode
+device eth0.5 entered promiscuous mode
+device eth0 is not a slave of br0
+
+Warning!!! mac addr is broadcase mac, please set again!
+atp: cur kernel version:[2.6.21.5] 
+nf_conntrack_rtcp: Unknown symbol nf_conntrack_set_rtp_hook
+nf_conntrack_rtcp: Unknown symbol rtcp_help
+insmod: cannot insert '/lib/kernel/net/netfilter/nf_conntrack_rtcp.ko': Success
+rtsp init
+port #0: 554
+register rtsp alg port #0: 554
+nf_conntrack_rtsp v0.6.21 loading
+nf_nat_rtsp v0.6.21 loading
+eth0.5 Link UP 100 mbps full duplex
+br0: port 4(eth0.5) entering learning state
+br0: topology change detected, propagating
+br0: port 4(eth0.5) entering forwarding state
+/var/wan/nas_a1_0/dial: line 1: 3: not found
+/var/wan/nas_a3_2/dial: line 1: 3: not found
+RTNETLINK answers: No such file or directory
+Action 4 device imq0 ifindex 2
+Cannot find device "ppp260"
+Cannot find device "ppp260"
+Action 4 device imq0 ifindex 2
+Cannot find device "ppp260"
+RTNETLINK answers: No such file or directory
+Action 4 device imq0 ifindex 2
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+iptables: Bad rule (does a matching rule exist in that chain?)
+FILE:voicecfg.c,LINE:80,sizeof(TAPI)=880,sizeof(SVC)=36460,sizeof(STATE)=12488
+************************Write flash to db now ..., ulCfgFileType = 0
+************************Write flash to db now ..., ulCfgFileType = 0
+
+ SIGALRM come in  
+
+Set Mirror direction in disabled to eth0.5 Successfully...
+Set Mirror direction in disabled to eth0.5 Successfully...
+Set Mirror direction in disabled to eth0.5 Successfully...
+Set Mirror direction out disabled to eth0.5 Successfully...
+Set Mirror direction out disabled to eth0.5 Successfully...
+Set Mirror direction out disabled to eth0.5 Successfully...
+Sean@All modules init return 0.
+modem : write AT dial command(ATH) error
+cannot rm /var/wan/ppp261
+<6>br0: port 1(eth0.2) entering disabled state
+br0: port 2(eth0.3) entering disabled state
+br0: port 3(eth0.4) entering disabled state
+DEBUG[tapi.c:L1296]TAPI_GetCfg
+PPP:pppd_ath[2587]:ATH set erro!
+modem : write AT dial command(ATH) error
+PPP:pppd_ath[2590]:ATH set erro!
+
+ ppp disconnect ,modem hungup failed
+tcgetattr: Inappropriate ioctl for device(25)
+sh: -c requires an argument
+disconnect script failed
+
+***pppc clear tcp mss
+pppc -I ppp261 exit.
+BOS: Enter bosIniBOS: Enter bosInit 
+t 
+bosTimerInitEnter bosAppInit 
+
+Enter bosAppInExit bosAppInit 
+it 
+Exit bosAppBOS: Exit bosInit 
+Init 
+BOS: Exitendpoint_open COMPLETED
+ bosInit 
+Created message queue "HDEnter bosStartApp
+SP", depth 60, i
+
+bosAppRootTask() - Is it morning already? Spawning app task (epoch #0)...
+
+d 1
+00:00:25 CAAppResetDetectionEnable() - Enabled reset detection.
+LLCLIENT: InitiaExit bosStartApp
+lizing endpoints callSipClientMain
+Error getting IP address
+sipConfig: sipzParamp=0x7edffa44 sipzParamp->regname=129.102.100.11 line 62 file  hsip.c
+sipConfig: sipzParamp=0x7edffa44line 72 file  hsip.c
+sipConfig: &mgscb=0x52572cline 85 file  hsip.c
+00:00:25 CALLCLIENT: Initializing endpoints
+00:00:25 Endpoint will be initialized for country NLD (country code = 15)
+
+00:00:25 Endpoint Event task started with pid 966...
+
+00:00:25 Endpoint Packet task started with pid 967 ...
+
+BHAL(ts: 26s 255ms):Initializing board HAL...
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+PCM: Interrupt Masks
+---------------
+IrqMask                    = 0x00000707000080B4 
+IrqMask1                   = 0x0000000000000000 
+PCM_IUDMA->ctrl[0].intMask = 0x00000000 
+PCM_IUDMA->ctrl[1].intMask = 0x00000000 
+
+PCM: Interrupt Status
+-----------------
+IrqStatus                  = 0x0000000000010040 
+IrqStatus1                 = 0x0000000000010040 
+PCM_IUDMA->ctrl[0].intStat = 0x00000000 
+PCM_IUDMA->ctrl[1].intStat = 0x00000000 
+PCM->pcm_pll_ctrl1         = 0xFC80287D 
+PCM->pcm_pll_ctrl2         = 0xD0000000 
+PCM->pcm_pll_ctrl3         = 0x380005C0 
+PCM->pcm_pll_ctrl4         = 0x00000000 
+PCM->pcm_int_pending       = 0x00000000 
+PCM->pcm_int_mask          = 0x00000000 
+PCM->pcm_ctrl              = 0x00000000 
+PCM->pcm_chan_ctrl         = 0x00000000 
+PCM_IUDMA->regs.ctrlConfig = 0x00000001 
+PCM_IUDMA->ctrl[0].maxBurst                  = 0x00000008 
+PCM_IUDMA->ctrl[0].config                    = 0x00000000 
+PCM_IUDMA->stram[0].baseDescPointer          = 0x903BAA24 
+PCM_IUDMA->stram[0].stateBytesDoneRingOffset = 0x2DA60F72 
+PCM_IUDMA->stram[0].flagsLengthStatus        = 0x2A112C68 
+PCM_IUDMA->stram[0].currentBufferPointer     = 0x7BB3C680 
+PCM_IUDMA->ctrl[1].maxBurst                  = 0x00000008 
+PCM_IUDMA->ctrl[1].config                    = 0x00000000 
+PCM_IUDMA->stram[1].baseDescPointer          = 0x982D0050 
+PCM_IUDMA->stram[1].stateBytesDoneRingOffset = 0x21A03C92 
+PCM_IUDMA->stram[1].flagsLengthStatus        = 0x0366E8B3 
+PCM_IUDMA->stram[1].currentBufferPointer     = 0x171100AB 
+PLL init completed. PLL registers set to:
+PCM->pcm_pll_ctrl1       = 0x0080147D 
+PCM->pcm_pll_ctrl2       = 0x10000000 
+PCM->pcm_pll_ctrl3       = 0x38000700 
+PCM->pcm_pll_ctrl4       = 0x00000015 
+Set up PCM registers
+XDRV:pcm6368_timeslotAlloc 0xB0004040: 0x80000000
+
+Channel 0 assigned to timeslot 0
+XDRV:pcm6368_timeslotAlloc 0xB0004040: 0x89000000
+
+Channel 1 assigned to timeslot 1
+XDRV:pcm6368_timeslotAlloc 0xB0004040: 0x89A00000
+
+Channel 2 assigned to timeslot 2
+rxDescriptorArea       = 24 
+txDescriptorArea       = 24 
+Unaligned dmaRxDesc_c  = 0xA0924000 
+Unaligned dmaTxDesc_c  = 0xA08F1000 
+rxBufferArea          = 1312 
+txBufferArea          = 1312 
+Unaligned dmaRxData   = 0xA08B6000 
+Unaligned dmaTxData   = 0xA0915000 
+Aligned Tx Desc (0xA08F1000): chan 0, buf 0, sts 0xe000, len 640, bufp 0x915000 
+Aligned Tx Desc (0xA08F1008): chan 0, buf 1, sts 0x7000, len 640, bufp 0x915290 
+Aligned Rx Desc (0xA0924000): chan 0, buf 0, sts 0x8000, len 640, bufp 0x8b6000 
+Aligned Rx Desc (0xA0924008): chan 0, buf 1, sts 0x9000, len 640, bufp 0x8b6290 
+initIudma: chan 0, descBase 0xa0924000, descBaseIudma 0x924000
+initIudma: chan 1, descBase 0xa08f1000, descBaseIudma 0x8f1000
+Enter TaskCreate CMT_EXCEPTION_IST
+TaskCreate - spawn new task CMT_EXCEPTION_IST
+Exit TaskCreate 
+BHAL(ts: 26s 714ms):DSP build date: Fri_Nov_6_2009_15:10:14
+
+regStatus (reg 12 sel 0)    = 0x10008501 
+regStatus (reg 12 sel 7)    = 0x00000101 
+regCause  (reg 13 sel 0)    = 0x00000000 
+regCause  (reg 13 sel 7)    = 0x00808000 
+regCMT    (reg 22 sel 0)    = 0xe31e1406 
+regCMT    (reg 22 sel 1)    = 0x10008001 
+XDRV:Kicking off secondary thread processor at entry point 0x810463C0 ...
+
+XDRV:Secondary thread processor entry point at 0x810463c0
+
+*** DSP TP: Entered main() ***
+XDRV:Thread processor handshake. Secondary app initialized properly.
+
+Enter TaskCreate HTSK
+TaskCreate - spawn new task HTSK
+Exit TaskCreate 
+MSPI INITIALIZED
+SLIC reset pin: GPIO 32778 
+SLIC reset pin: GPIO 32778 
+SLIC 0 relay pin: GPIO 65535 
+SLIC 1 relay pin: GPIO 65535 
+Initializing 89116 device 0 ...
+---
+SLIC: Starting 89116 device and line initializion...
+SLIC: Resetting device using GPIO 32778 ...
+SLIC: Reset applied on GPIO pin 32778SLIC: Initializing 89116 device 0
+BcmSpiReserveSlave <0,2,6250000>, spiStatus=0
+SLIC: Received VP_DEV_EVID_DEV_INIT_CMP event (i = 0)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 1024 
+SLIC: 89116 device 0 initialized OK
+SLIC: Initializing 89116 FXS line
+SLIC: Received VP_LINE_EVID_LINE_INIT_CMP event (i = 0)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 2048 
+ifconfig: SIOCSIFFLAGS: Cannot assign requested address
+bridge br0:9 doesn't exist; can't delete it
+Append upnp ssdp listener ok.
+Use default bin /var/upnp now ...
+
+Warning!!! mac addr is broadcase mac, please set again!
+Enable Got value: 1
+NATEnabled Got value: 1
+
+SLIC: Received VP_EVID_CAL_CMP event (i= 120)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 64 
+SLIC: FXS line RX timeslot = 0 
+SLIC: FXS line TX timeslot = 0 
+SLIC: 89116 FXS line initialized OK
+SLIC: 89116 device 0 and FXS/FXO initializion COMPLETED OK !
+---
+Initializing 89316 device 0 ...
+---
+SLICDAA: Starting 89316 device and line initializion...
+SLICDAA: Skipping SLIC chip reset
+SLICDAA: Initializing 89316 device 0
+SLIC: Received VP_DEV_EVID_DEV_INIT_CMP event (i = 0)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 1024 
+SLICDAA: 89316 device 0 initialized OK
+SLICDAA: Initializing 89316 FXS line
+SLIC: Received VP_LINE_EVID_LINE_INIT_CMP event (i = 0)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 2048 
+SLIC: Received VP_EVID_CAL_CMP event (i= 122)
+SLIC: Found event: pEvent.eventCategory = 2 pEvent.eventId = 64 
+SLICDAA: FXS line RX timeslot = 2 
+SLICDAA: FXS line TX timeslot = 2 
+SLICDAA: 89316 FXS line initialized OK
+SLICDAA: Initializing 89316 FXO line
+SLICDAA: Locale 15
+SLICDAA: Locale 15
+SLICDAA: FXO line RX timeslot = 4 
+SLICDAA: FXO line TX timeslot = 4 
+SLICDAA: 89316 FXO line initialized OK
+SLICDAA: 89316 device 0 and FXS/FXO initializion COMPLETED OK !
+---
+Sean1@boardHalSlicGetDriver addr<0xc02e4c68>
+Sean0@boardHalSlicGetDriver addr<0xc02e4c90>
+BHAL(ts: 29s 792ms):COMPLETED Initializing board HAL
+boardHalInit completed
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+Enter TaskCreate HRTBEAT
+TaskCreate - spawn new task HRTBEAT
+Exit TaskCreate 
+HEARTBEAT: Initialized!
+Enter TaskCreate VRGEVPR
+TaskCreate - spawn new task VRGEVPR
+Exit TaskCreate 
+Enter TaskCreate HCAS
+TaskCreate - spawn new task HCAS
+Exit TaskCreate 
+gInterruptCounter     = 0x81115C18 
+gInterruptErrors      = 0x81103110 
+gNextRxDesc           = 0x81103104 
+gNextTxDesc           = 0x81103100 
+32 ms ECAN tail-length
+*** gStartRxDesc[0] = 0xA0924000 
+*** gBufferSizeBytes = 640 
+*** gStartTxDesc[0] = 0xA08F1000 
+hal6368PcmInit 350 nextTxDesc = 0xA08F1000 
+hal6368PcmInit 350 nextTxDesc = 0xA08F1008 
+hal6368PcmInit 354 Ownership for TX desc not set. Use this buffer. 
+DSP: Interrupt Masks
+---------------
+IrqMask_high               = 0x00000707 
+IrqMask                    = 0x000080B4 
+IrqMask1_high              = 0x40000000 
+IrqMask1                   = 0x00000000 
+PCM_IUDMA->ctrl[0].intMask = 0x00000005 
+PCM_IUDMA->ctrl[1].intMask = 0x00000005 
+
+DSP: Interrupt Status
+-----------------
+IrqStatus_high             = 0x00000000 
+IrqStatus                  = 0x00010040 
+IrqStatus1_high            = 0x00000000 
+IrqStatus1                 = 0x00010040 
+PCM_IUDMA->ctrl[0].intStat = 0x00000000 
+PCM_IUDMA->ctrl[1].intStat = 0x00000000 
+EPT(ts: 30s 5  ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x50) of type: 0x0
+EPT(ts: 30s 73 ms):Setting T.38 error correction mode for vhd 80 to 0x104
+EPT(ts: 30s 204ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x51) of type: 0x0
+EPT(ts: 30s 272ms):Setting T.38 error correction mode for vhd 81 to 0x104
+EPT(ts: 30s 402ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x52) of type: 0x0
+EPT(ts: 30s 470ms):Setting T.38 error correction mode for vhd 82 to 0x104
+EPT(ts: 30s 611ms):hdspVhdOpen Secondary Connection VHD success. DSP 0, VHD (0x53) of type: 0x0
+EPT(ts: 30s 679ms):Setting T.38 error correction mode for vhd 83 to 0x104
+Created message queue "PSTN_CTL_EVQ", depth 8, id 1
+Enter TaskCreate PSTN
+TaskCreate - spawn new task PSTN
+Exit TaskCreate 
+EPT(ts: 30s 776ms):pstnCtlInit successful
+EndpointInit completed
+00:00:30 
+Enter EPT(ts: 30s 782ms):ENDPT CREATE: Starting initialization for endpt 0
+vrgEndptCasTimePEPT(ts: 30s 790ms):EPTYPE_FXS
+aramControl... minHookFlash = 50, maxHookFlash = 600.
+
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+EPT(ts: 30s 885ms):hdspVhdOpen Line VHD success. DSP 0, VHD (0x54) of type: 0x7
+HDSP(ts: 30s 897ms):VHD 0x54: Frame size = 40, Mode = Narrowband
+HDSP(ts: 30s 912ms):Switchboard ON (type Duplex): VHD 0x54/1 with VHD 0x0/0
+Sean1@boardHalSlicGetDriver addr<0xc02e4c68>
+Sean1@boardHalSlicGetDriver addr<0xc02e4c68>
+EPT(ts: 30s 927ms):Default value for provItemId '608' did not exist
+EPT(ts: 30s 934ms):Default value for provItemId '600' did not exist
+SLIC: Mode for FXS channel changed to 1 
+EPT(ts: 30s 958ms):COMPLETED successful initialization for endpt 0
+PROV:No item 426 in the endpoint provisioning table
+00:00:30 SIGNAL: EPT(ts: 30s 969ms):SIGNAL: ept:0 cnx:-1 s:78 v:0 d:-1 p:-1 r:-1 
+endpt 0, cnx -1,EPT(ts: 30s 976ms):COMPLETED SIGNAL 78
+ evt 112 (TxGainEPT(ts: 30s 981ms):SIGNAL: ept:0 cnx:-1 s:79 v:0 d:-1 p:-1 r:-1 
+), value 0
+00:0EPT(ts: 30s 989ms):COMPLETED SIGNAL 79
+0:30 SIGNAL: endSLIC: Mode for FXS channel changed to 1 
+pt 0, cnx -1, evEPT(ts: 30s 999ms):ENDPT CREATE: Starting initialization for endpt 1
+t 113 (RxGain), EPT(ts: 31s 7  ms):EPTYPE_FXS
+value 0
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+EPT(ts: 31s 101ms):hdspVhdOpen Line VHD success. DSP 0, VHD (0x55) of type: 0x7
+HDSP(ts: 31s 113ms):VHD 0x55: Frame size = 40, Mode = Narrowband
+HDSP(ts: 31s 128ms):Switchboard ON (type Duplex): VHD 0x55/1 with VHD 0x1/0
+Sean0@boardHalSlicGetDriver addr<0xc02e4c90>
+Sean0@boardHalSlicGetDriver addr<0xc02e4c90>
+EPT(ts: 31s 143ms):Default value for provItemId '608' did not exist
+EPT(ts: 31s 149ms):Default value for provItemId '600' did not exist
+SLICDAA: Mode for FXS channel changed to 1 
+EPT(ts: 31s 174ms):COMPLETED successful initialization for endpt 1
+PROV:No item 426 in the endpoint provisioning table
+00:00:31 SIGNAL: EPT(ts: 31s 185ms):SIGNAL: ept:1 cnx:-1 s:78 v:0 d:-1 p:-1 r:-1 
+endpt 1, cnx -1,EPT(ts: 31s 192ms):COMPLETED SIGNAL 78
+ evt 112 (TxGainEPT(ts: 31s 198ms):SIGNAL: ept:1 cnx:-1 s:79 v:0 d:-1 p:-1 r:-1 
+), value 0
+00:0EPT(ts: 31s 205ms):COMPLETED SIGNAL 79
+0:31 SIGNAL: endSLICDAA: Mode for FXS channel changed to 1 
+pt 1, cnx -1, evEPT(ts: 31s 216ms):ENDPT CREATE: Starting initialization for endpt 2
+t 113 (RxGain), EPT(ts: 31s 223ms):EPTYPE_PSTN
+value 0
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+EPT(ts: 31s 277ms):hdspVhdOpen PSTN VHD success. DSP 0, VHD (0x56) of type: 0x6
+Codec Support: PCMA/PCMU
+Codec Support: G722
+Codec Support: G729A
+Codec Support: G729B
+Codec Support: G723
+Codec Support: G726
+Codec Support: BV16
+Codec Support: BV32
+Codec Support: LINPCM128
+Codec Support: LINPCM256
+Codec Support: ILBC
+Codec Support: AMRNB
+Codec Support: AMRWB
+Codec Support: T.38
+EPT(ts: 31s 373ms):hdspVhdOpen Line VHD success. DSP 0, VHD (0x57) of type: 0x7
+HDSP(ts: 31s 385ms):VHD 0x57: Frame size = 40, Mode = Narrowband
+HDSP(ts: 31s 400ms):Switchboard ON (type Duplex): VHD 0x57/1 with VHD 0x2/0
+HDSP(ts: 31s 416ms):Switchboard ON (type Duplex): VHD 0x56/1 with VHD 0x57/0
+EPT(ts: 31s 423ms):Default value for provItemId '600' did not exist
+PROV:No item 426 in the endpoint provisioning table
+EPT(ts: 31s 434ms):FskClidRx Service is Disabled
+pLineCtx = 0xC03121C0, pDevCtx = 0xC0311FE0, liu = 0, disconnect = 1, feedDisable = 1 
+DAA: Enable on-hook Caller ID receive. 
+EPT(ts: 31s 481ms):COMPLETED successful initialization for endpt 2
+PROV:No item 426 in the endpoint provisioning table
+00:00:31  RTCP thread started with pid 1026 
+
+00:00:31 rtpInit: RTCP task created, taskId = 10251
+00:00:31 CALLCLIENT: Initialization complete callSipClientMain
+WAN backup state changed.[2]
+Use default bin /var/web now ...
+
+=========before ===== atcmd newcpin display ======
+
+=========after===== atcmd newcpin display ========
+
+====acSimStatus===[
+ERROR:
+]</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 3.10.34 (dani@tool) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.01 r40396) ) #18 SMP Wed Apr 30 19:58:28 CEST 2014
+[    0.000000] Detected Broadcom 0x6368 CPU revision b2
+[    0.000000] CPU frequency is 400 MHz
+[    0.000000] 64MB of RAM installed
+[    0.000000] registering 38 GPIOs
+[    0.000000] board_bcm963xx: Boot address 0xb8000000
+[    0.000000] board_bcm963xx: CFE version: 1.0.37-102.6
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 0002a031 (Broadcom BMIPS4350)
+[    0.000000] board_bcm963xx: board name: HW65x
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 04000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x03ffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x03ffffff]
+[    0.000000] On node 0 totalpages: 16384
+[    0.000000] free_area_init_node: node 0, pgdat 802ffa00, node_mem_map 81000000
+[    0.000000]   Normal zone: 128 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 16384 pages, LIFO batch:3
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 16 bytes.
+[    0.000000] Primary data cache 32kB, 2-way, VIPT, cache aliases, linesize 16 bytes
+[    0.000000] PERCPU: Embedded 7 pages/cpu @81083000 s6592 r8192 d13888 u32768
+[    0.000000] pcpu-alloc: s6592 r8192 d13888 u32768 alloc=8*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 16256
+[    0.000000] Kernel command line:  root=/dev/mtdblock2 rootfstype=squashfs,jffs2 noinitrd console=ttyS0,115200
+[    0.000000] PID hash table entries: 256 (order: -2, 1024 bytes)
+[    0.000000] Dentry cache hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.000000] Inode-cache hash table entries: 4096 (order: 2, 16384 bytes)
+[    0.000000] Memory: 61268k/65536k available (2455k kernel code, 4268k reserved, 620k data, 248k init, 0k highmem)
+[    0.000000] Hierarchical RCU implementation.
+[    0.000000] NR_IRQS:256
+[    0.028000] Calibrating delay loop... 397.82 BogoMIPS (lpj=795648)
+[    0.032000] pid_max: default: 32768 minimum: 301
+[    0.036000] Mount-cache hash table entries: 512
+[    0.044000] SMP: Booting CPU1...
+[    0.048000] CPU revision is: 0002a031 (Broadcom BMIPS4350)
+[    0.048000] Primary instruction cache 64kB, VIPT, 4-way, linesize 16 bytes.
+[    0.048000] Primary data cache 32kB, 2-way, VIPT, cache aliases, linesize 16 bytes
+[    0.080000] Synchronize counters for CPU 1: done.
+[    0.080000] SMP: CPU1 is running
+[    0.084000] Brought up 2 CPUs
+[    0.108000] NET: Registered protocol family 16
+[    0.116000] registering PCI controller with io_map_base unset
+[    0.132000] bio: create slab <bio-0> at 0
+[    0.136000] PCI host bridge to bus 0000:00
+[    0.140000] pci_bus 0000:00: root bus resource [mem 0x30000000-0x37ffffff]
+[    0.144000] pci_bus 0000:00: root bus resource [io  0x8000000-0x800ffff]
+[    0.148000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.152000] pci 0000:00:01.0: [1814:3592] type 00 class 0x028000
+[    0.152000] pci 0000:00:01.0: reg 10: [mem 0xffff0000-0xffffffff]
+[    0.164000] pci 0000:00:01.0: PME# supported from D0 D3hot D3cold
+[    0.164000] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[    0.164000] pci 0000:00:01.0: BAR 0: assigned [mem 0x30000000-0x3000ffff]
+[    0.168000] Switching to clocksource MIPS
+[    0.176000] NET: Registered protocol family 2
+[    0.184000] TCP established hash table entries: 512 (order: 0, 4096 bytes)
+[    0.188000] TCP bind hash table entries: 512 (order: 0, 4096 bytes)
+[    0.196000] TCP: Hash tables configured (established 512 bind 512)
+[    0.204000] TCP: reno registered
+[    0.204000] UDP hash table entries: 256 (order: 1, 8192 bytes)
+[    0.212000] UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+[    0.220000] NET: Registered protocol family 1
+[    0.224000] PCI: CLS 0 bytes, default 16
+[    0.228000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.232000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.244000] msgmni has been set to 119
+[    0.248000] io scheduler noop registered
+[    0.252000] io scheduler deadline registered (default)
+[    0.260000] bcm63xx_uart.0: ttyS0 at MMIO 0xb0000100 (irq = 10) is a bcm63xx_uart
+[    0.268000] console [ttyS0] enabled, bootconsole disabled
+[    0.280000] bcm63xx-rng bcm63xx-rng: registered RNG driver
+[    0.288000] physmap platform flash device: 08000000 at 18000000
+[    0.296000] physmap-flash.0: Found 1 x16 devices at 0x0 in 16-bit bank. Manufacturer ID 0x000001 Chip ID 0x001000
+[    0.304000] physmap-flash.0: Found an alias at 0x800000 for the chip at 0x0
+[    0.304000] physmap-flash.0: Found an alias at 0x1000000 for the chip at 0x0
+[    0.304000] physmap-flash.0: Found an alias at 0x1800000 for the chip at 0x0
+[    0.304000] Amd/Fujitsu Extended Query Table at 0x0040
+[    0.312000]   Amd/Fujitsu Extended Query version 1.3.
+[    0.316000] number of CFI chips: 1
+[    0.320000] bcm63xxpart: CFE boot tag found with version 7 and board type HW65x
+[    0.328000] bcm63xxpart: Partition 0 is CFE offset 0 and length 20000
+[    0.336000] bcm63xxpart: Partition 1 is kernel offset 20100 and length 10ff00
+[    0.340000] bcm63xxpart: Partition 2 is rootfs offset 130000 and length 690000
+[    0.348000] bcm63xxpart: Partition 3 is cal_data offset 7c0000 and length 10000
+[    0.356000] bcm63xxpart: Partition 4 is nvram offset 7f0000 and length 10000
+[    0.364000] bcm63xxpart: Partition 5 is linux offset 20000 and length 7a0000
+[    0.372000] bcm63xxpart: Spare partition is offset 700004 and length bfffc
+[    0.376000] 6 bcm63xxpart partitions found on MTD device physmap-flash.0
+[    0.384000] Creating 6 MTD partitions on "physmap-flash.0":
+[    0.392000] 0x000000000000-0x000000020000 : "CFE"
+[    0.396000] 0x000000020100-0x000000130000 : "kernel"
+[    0.404000] mtd: partition "kernel" must either start or end on erase block boundary or be smaller than an erase block -- forcing read-only
+[    0.420000] 0x000000130000-0x0000007c0000 : "rootfs"
+[    0.424000] mtd: device 2 (rootfs) set to be root filesystem
+[    0.432000] mtd: partition "rootfs_data" created automatically, ofs=0x700000, len=0xc0000
+[    0.440000] 0x000000700000-0x0000007c0000 : "rootfs_data"
+[    0.448000] 0x0000007c0000-0x0000007d0000 : "cal_data"
+[    0.456000] 0x0000007f0000-0x000000800000 : "nvram"
+[    0.464000] 0x000000020000-0x0000007c0000 : "linux"
+[    0.472000] bcm63xx-spi bcm63xx-spi: at 0xb0000800 (irq 9, FIFOs size 542)
+[    0.520000] b53_common: found switch: BCM63xx, rev 0
+[    0.524000] bcm63xx-wdt bcm63xx-wdt:  started, timer margin: 30 sec
+[    0.540000] TCP: cubic registered
+[    0.540000] NET: Registered protocol family 17
+[    0.548000] 8021q: 802.1Q VLAN Support v1.8
+[    0.560000] VFS: Mounted root (squashfs filesystem) readonly on device 31:2.
+[    0.568000] Freeing unused kernel memory: 248K (80312000 - 80350000)
+[    2.916000] bcm63xx_enetsw bcm63xx_enetsw.0: link UP on port1, 100Mbps, full-duplex
+[    4.408000] usbcore: registered new interface driver usbfs
+[    4.416000] usbcore: registered new interface driver hub
+[    4.420000] usbcore: registered new device driver usb
+[    4.432000] Button Hotplug driver version 0.4.1
+[    4.500000] SCSI subsystem initialized
+[    4.516000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    4.524000] ehci-platform: EHCI generic platform driver
+[    4.636000] ehci-platform ehci-platform: EHCI Host Controller
+[    4.640000] ehci-platform ehci-platform: new USB bus registered, assigned bus number 1
+[    4.648000] ehci-platform ehci-platform: irq 15, io mem 0xb0001500
+[    4.668000] ehci-platform ehci-platform: USB 2.0 started, EHCI 1.00, overcurrent ignored
+[    4.676000] hub 1-0:1.0: USB hub found
+[    4.680000] hub 1-0:1.0: 2 ports detected
+[    4.688000] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    4.696000] ohci-platform ohci-platform: Generic Platform OHCI Controller
+[    4.704000] ohci-platform ohci-platform: new USB bus registered, assigned bus number 2
+[    4.712000] ohci-platform ohci-platform: irq 13, io mem 0xb0001600
+[    4.776000] hub 2-0:1.0: USB hub found
+[    4.780000] hub 2-0:1.0: 2 ports detected
+[    4.796000] usbcore: registered new interface driver usb-storage
+[    4.804000] input: gpio-keys-polled as /devices/platform/gpio-keys-polled.0/input/input0
+[    6.292000] jffs2: notice: (265) jffs2_build_xattr_subsystem: complete building xattr subsystem, 1 of xdatum (0 unchecked, 0 orphan) and 39 of xref (0 dead, 25 orphan) found.
+[    9.868000] NET: Registered protocol family 10
+[    9.900000] nf_conntrack version 0.5.0 (961 buckets, 3844 max)
+[    9.912000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[    9.952000] fuse init (API version 7.22)
+[    9.964000] Loading modules backported from Linux version master-2014-03-31-1-0-g5c109d2
+[    9.972000] Backport generated by backports.git backports-20140221-0-g8e94650
+[    9.984000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   10.052000] usbcore: registered new interface driver ums-alauda
+[   10.060000] usbcore: registered new interface driver ums-cypress
+[   10.068000] usbcore: registered new interface driver ums-datafab
+[   10.080000] usbcore: registered new interface driver ums-freecom
+[   10.088000] usbcore: registered new interface driver ums-isd200
+[   10.096000] usbcore: registered new interface driver ums-jumpshot
+[   10.108000] usbcore: registered new interface driver ums-karma
+[   10.116000] usbcore: registered new interface driver ums-sddr09
+[   10.128000] usbcore: registered new interface driver ums-sddr55
+[   10.136000] usbcore: registered new interface driver ums-usbat
+[   10.168000] xt_time: kernel timezone is -0000
+[   10.212000] cfg80211: Calling CRDA to update world regulatory domain
+[   10.220000] cfg80211: World regulatory domain updated:
+[   10.224000] cfg80211:  DFS Master region: unset
+[   10.228000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   10.240000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.248000] cfg80211:   (2457000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.256000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.264000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.272000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   10.280000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   10.352000] PPP generic driver version 2.4.2
+[   10.360000] NET: Registered protocol family 24
+[   10.400000] PCI: Enabling device 0000:00:01.0 (0000 -> 0002)
+[   10.408000] rt2800pci 0000:00:01.0: setting latency timer to 64
+[   10.408000] ieee80211 phy0: rt2x00lib_request_eeprom_file: Info - Loading EEPROM data from 'rt2x00.eeprom'.
+[   10.420000] ieee80211 phy0: rt2x00_set_rt: Info - RT chipset 3572, rev 0223 detected
+[   10.428000] ieee80211 phy0: rt2x00_set_rf: Info - RF chipset 0008 detected
+[   10.436000] ieee80211 phy0: Selected rate control algorithm 'minstrel_ht'
+[   14.032000] bcm63xx_enetsw bcm63xx_enetsw.0: link UP on port1, 100Mbps, full-duplex
+[   17.588000] bcm63xx_enetsw bcm63xx_enetsw.0: link UP on port1, 100Mbps, full-duplex
+[   17.600000] device eth0.1 entered promiscuous mode
+[   17.604000] device eth0 entered promiscuous mode
+[   17.612000] br-lan: port 1(eth0.1) entered forwarding state
+[   17.616000] br-lan: port 1(eth0.1) entered forwarding state
+[   18.612000] IPv6: ADDRCONF(NETDEV_CHANGE): eth0.1: link becomes ready
+[   18.812000] cfg80211: Calling CRDA for country: RO
+[   18.824000] cfg80211: Regulatory domain changed to country: RO
+[   18.828000] cfg80211:  DFS Master region: ETSI
+[   18.832000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   18.844000] cfg80211:   (2402000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   18.852000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   18.860000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz), (N/A, 2000 mBm), (0 s)
+[   18.868000] cfg80211:   (5490000 KHz - 5710000 KHz @ 80000 KHz), (N/A, 2700 mBm), (0 s)
+[   18.876000] cfg80211:   (57240000 KHz - 65880000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+[   19.620000] br-lan: port 1(eth0.1) entered forwarding state
+[   20.996000] ieee80211 phy0: rt2x00lib_request_firmware: Info - Loading firmware file 'rt2860.bin'
+[   21.172000] ieee80211 phy0: rt2x00lib_request_firmware: Info - Firmware detected - version: 0.34
+[   21.272000] IPv6: ADDRCONF(NETDEV_UP): wlan0-1: link is not ready
+[   21.280000] device wlan0-1 entered promiscuous mode
+[   21.532000] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+[   23.052000] wlan0: authenticate with b0:48:7a:d1:3d:a4
+[   23.080000] wlan0: send auth to b0:48:7a:d1:3d:a4 (try 1/3)
+[   23.088000] wlan0: authenticated
+[   23.096000] wlan0: associate with b0:48:7a:d1:3d:a4 (try 1/3)
+[   23.104000] wlan0: RX AssocResp from b0:48:7a:d1:3d:a4 (capab=0x431 status=0 aid=5)
+[   23.116000] wlan0: associated
+[   23.272000] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+[   24.120000] br-lan: port 2(wlan0-1) entered forwarding state
+[   24.124000] br-lan: port 2(wlan0-1) entered forwarding state
+[   24.132000] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0-1: link becomes ready
+[   26.128000] br-lan: port 2(wlan0-1) entered forwarding state</nowiki>
+</WRAP>\\
+
+
+===== Notes =====
+
+[[http://huaweihg612hacking.wordpress.com]] Very nice collection of info, the hg612 is very similar
+
+[[http://voorthuijsen.blogspot.nl/2013/03/huawei-hg655d-vdsl-router.html]]
+
+Datasheet [[http://huaweiservis.net/dosya/HUAWEI-HG655d-datasheet.pdf]] 
+
+
+==== BCM tag ====
+
+''Tag Version -----------> : 7
+Signature 1 -----------> : Broadcom Corporatio
+Signature 2 -----------> : ver. 2.0
+Chip ID ---------------> : 6368
+Board ID --------------> : HW65x
+Bigendian -------------> : true
+Image size ------------> : 005b226c, 5972588
+CFE Address -----------> : 00000000, 0
+CFE Length ------------> : 00000000, 0
+Flash Root Address ----> : bfc20100, 3217162496
+Flash Root Length -----> : 004d4000, 5062656
+Flash Kernel Address --> : c00f4100, 3222225152
+Flash Kernel Length ---> : 000de26c, 909932
+Vendor information ----> : 
+Compile Information ---> : HG655bV100R001C02B0
+Image CRC -------------> : f9c4cb2a  [Computed Value: f9c4cb2a]
+Header CRC ------------> : ed34bdfb  [Computed Value: ed34bdfb]
+Kernel CRC ------------> : 4d04fb6f  [Computed Value: 4d04fb6f]
+Rootfs CRC ------------> : 80e314ce  [Computed Value: 80e314ce]''
+
+==== Wifi calibration data ====
+In theory each wifi chip (it doesn't matter if they are exactly the same model) has its own wifi calibration data. In this router the data is stored in an area of the flash chip. This area is the cal_data partiton in OpenWrt firmwares. It's a good idea to backup this partition. Just use these simple commands
+  * First identify the cal_data partition<code>root@OpenWrt:~# cat /proc/mtd
+dev:    size   erasesize  name
+mtd0: 00020000 00010000 "CFE"
+mtd1: 0010ff00 00010000 "kernel"
+mtd2: 00690000 00010000 "rootfs"
+mtd3: 00350000 00010000 "rootfs_data"
+mtd4: 00010000 00010000 "cal_data"
+mtd5: 00010000 00010000 "nvram"
+mtd6: 007a0000 00010000 "linux"</code>
+  * now backup the mtd that matches to the cal_data partition<code>dd if=/dev/mtd4 of=/tmp/eeprom.bin</code> and transfer the eeprom.bin backup file to your computer.
+
+The content of the cal_data partition is something like this (taken from a full backup of the flash chip):
+<code>007C:0000 | 62 30 01 00  72 D1 5E 0D  AD 6C 62 30  14 18 01 80 | b0..rÑ^.­lb0....
+007C:0010 | 00 00 62 30  14 18 00 00  01 00 6A FF  0C 00 FF FF | ..b0......jÿ..ÿÿ
+007C:0020 | FF FF FF FF  B0 92 FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿ°.ÿÿÿÿÿÿÿÿÿÿ
+007C:0030 | FF FF FF FF  22 08 24 00  FF FF 16 01  FF FF D9 FA | ÿÿÿÿ".$.ÿÿ..ÿÿÙú
+007C:0040 | CC 88 FF FF  0D FF 00 00  03 00 00 00  00 00 FF FF | Ì.ÿÿ.ÿ........ÿÿ
+007C:0050 | FF FF 0E 0F  0F 0F 10 10  10 10 10 0F  0F 0F 0F 0F | ÿÿ..............
+007C:0060 | 0C 0C 0C 0C  0C 0C 0C 0C  0C 0B 0B 0B  0B 0B FF FF | ..............ÿÿ
+007C:0070 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0080 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0090 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:00A0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:00B0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:00C0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:00D0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF 55 55 | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿUU
+007C:00E0 | 88 88 77 77  66 66 66 66  66 66 66 66  66 66 66 66 | ..wwffffffffffff
+007C:00F0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0100 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0110 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0120 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0130 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0140 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0150 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0160 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0170 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0180 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:0190 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:01A0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:01B0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:01C0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:01D0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:01E0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF FF FF FF | ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ
+007C:01F0 | FF FF FF FF  FF FF FF FF  FF FF FF FF  FF 06 86 93 | ÿÿÿÿÿÿÿÿÿÿÿÿÿ...
+</code>
+
+If you accidentally erased your cal_data partition and you you didn't make your own bakcup, you can use the above data to fill the erased partition (note the MAC address is specific for each calibration data). Try this:
+  * Generete a bin file with the cal_data. You don't need to do this step if already have your own backup. Make it at your PC with a linux distro:<code>echo '6230010072D15E0DAD6C623014180180000062301418000001006AFF0C00FFFFFFFFFFFFB092FFFFFFFFFFFFFFFFFFFFFFFFFFFF22082400FFFF1601FFFFD9FACC88FFFF0DFF0000030000000000FFFFFFFF0E0F0F0F10101010100F0F0F0F0F0C0C0C0C0C0C0C0C0C0B0B0B0B0BFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF555588887777666666666666666666666666FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF068693' | xxd -r -p > eeprom.bin</code>
+  * Now transfer the **eeprom.bin** file into your router and flash the **cal_data** partition<code>mtd write eeprom.bin cal_data</code>
+  * **Restart** OpenWrt and check if wifi works.
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>bcm63xx bcm6368 8Flash 64RAM 4Port FastEthernet hwVLAN 1USB 1WNIC 802.11bgn rt2800pci MIPS MIPS32 TRNG}}

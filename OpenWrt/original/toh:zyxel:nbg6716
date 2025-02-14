@@ -1,0 +1,776 @@
+====== ZyXEL NBG6716 ======
+Also known as //ZyXEL Media Router AC 1750 Ultimate Performance// or //ZyXEL EMG2926-Q10A//. The hardware is very similar to the [[toh:tp-link:tl-wdr7500|TP-Link TL-WDR7500]], but with a large NAND flash, internal antennas, and an upright design. The factory firmware is based on OpenWrt/LEDE (the [[#oem_bootlog]] below shows 2013-11-22, r2211 - LEDE 17.01.0 was r3205), customized by Zyxel & Qualcomm, and includes StreamBoost (fq_codel-based QOS).
+
+{{media:zyxel:nbg6716_general_view.png?200|NBG6716}}
+
+===== Supported Versions =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["brand", "model", "version", "supportedcurrentrel", "oemdevicehomepageurl", "owrt_forum_topic_url", "deviceid"],
+  "filterColumns": {"model": "^NBG6716$"}
+} -->
+
+**Note:** "V-1.00" on the board = A01 on the backside of the case (see [[#photos]]). Since the A01 is more visible, it is used as the H/W version in the ToH.
+
+===== Hardware Highlights =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "cpu", "cpumhz", "flashmb", "rammb", "wlanhardware", "wlan24ghz", "wlan50ghz", "ethernet100mports", "ethernet1gports", "modem", "usbports"],
+  "filterColumns": {"model": "^NBG6716$"}
+} -->
+
+There seem to be devices out there with different flash configuration:
+  * either 16MiB + 256MiB
+  * or 8MiB + 128MiB
+  * or 16MiB + 128MiB (see [[toh:hwdata:zyxel:zyxel_emg2926-q10a_1.00|Techdata: ZyXEL EMG2926-Q10A 1.00, A03]])
+  * or even 4MiB + 128MiB flash (see [[https://wikidevi.wi-cat.ru/ZyXEL_NBG6716|wikidevi]]).
+
+===== Installation =====
+<!-- ToH: {
+  "source": "json",
+  "dom": "t",
+  "paging": false,
+  "rotate": true,
+  "shownColumns": ["model", "version", "supportedcurrentrel", "firmwareopenwrtinstallurl", "firmwareopenwrtupgradeurl", "firmwareoemstockurl"],
+  "filterColumns": {"model": "^NBG6716$"}
+} -->
+
+-> [[docs:guide-user:installation:generic.flashing|Install OpenWrt (generic explanation)]]
+
+==== Upgrade from ZyXEL stock firmware ====
+Log on to the router console with the following command and the password //1234//:
+<code>ssh -oKexAlgorithms=+diffie-hellman-group1-sha1 root@192.168.1.1</code>
+If you are unable to log in, open <http://192.168.1.1/>, go to the Maintenance tab, click Account, click Edit, change the username from "admin" to "root", and try again.
+
+Once you are logged in, run the following commands:
+<code>
+ # cd /tmp
+ # wget http://downloads.openwrt.org/releases/19.07.5/targets/ar71xx/nand/openwrt-19.07.5-ar71xx-nand-nbg6716-squashfs-factory.bin
+ # mtd -r write openwrt-19.07.5-ar71xx-nand-nbg6716-squashfs-factory.bin /dev/mtd7
+</code>
+The device then reboots and awaits your login.
+
+=== Problems ===
+**(1)** Error message from //wget// stating //not ftp or http// (from lack of https support): download the binary from the PC using a web browser (or //wget//, etc.) to local //download folder//. Then push the binary with //scp// to the Zyxel router /tmp.
+<code>
+ user@pc# cd [download_folder]
+ user@pc# scp openwrt-19.07.5-ar71xx-nand-nbg6716-squashfs-factory.bin root@OpenWrt:/tmp
+</code>
+From here, access the router console as explained above and proceed with the //mtd write//.
+<code>
+ # cd /tmp
+ # mtd -r write openwrt-19.07.5-ar71xx-nand-nbg6716-squashfs-factory.bin /dev/mtd7
+</code>
+
+**(2)** Difficulty pushing the binary from the PC using //scp//: reverse the operation and pull the binary from the PC //download folder// instead, then use //scp// from the router console.
+<code>
+ # cd /tmp
+ # scp user@pc:/[download_folder]/openwrt-19.07.5-ar71xx-nand-nbg6716-squashfs-factory.bin .
+ # mtd -r write openwrt-19.07.5-ar71xx-nand-nbg6716-squashfs-factory.bin /dev/mtd7
+</code>
+
+==== Sysupgrade ====
+Sysupgrade is supported with the new nand method e.g.: //openwrt-19.07.3-ar71xx-nand-nbg6716-squashfs-sysupgrade.tar//
+
+To upgrade from version 19.07 or earlier (arx71xx) to 21.0 or later (ath79) be aware of the [[commit>?p=openwrt/openwrt.git;a=commitdiff;h=99835e09992bb411519fda1f8d16a6d07df7f598|"sysupgrade-4M-Kernel"]] change. That commit also mentions how to access the root u-boot shell.
+
+==== Recovery ====
+The device is able to flash from a TFTP server. You have to fulfill following requirements:
+  * Connect to the NBG6716 via the LAN port (i.e. the yellow ports)
+  * Preferably via a switch
+  * Configure your server to 192.168.1.33, netmask 255.255.255.0
+  * Copy your firmware file into the TFTP directory and name it ras.bin (e.g. official firmware file or the OpenWrt factory.bin file)
+  * Boot up your device holding the WPS (Key) button.
+
+Flashing the firmware takes about 10 seconds. Afterwards the Power and Key LED will blink rapidly. Reboot the router manually.
+
+Alternatively if you have access to the console:
+  * same setup as above
+  * when connected via a switch you can interrupt the boot (any key)
+  * at the NBG6716> prompt type: ATUR <filename.bin> 
+  * to reboot when flashing is done: ATGO 
+
+[[http://web.archive.org/web/20201125023833/https://blog.incloudus.com/2017/flasher-routeur-zyxel-emg2926-q10a-de-chez-videotron/|On some EMG2926 models]] (Videotron), UBoot will reject the AAVK-EM/NBG6716 headers, even tho the hardware is identical.
+
+The device will not boot ras.bin from TFTP and report in the serial log about a mismatched header.
+
+Build OpenWRT with [[https://gist.github.com/RDS5/34e66f7eeb0e23f7163a0500b5b25336|this patch]] & <code> ln -sr target/linux/ath79/dts/qca9558_zyxel_emg2926_q10a.dts target/linux/ath79/dts/qca9558_zyxel_emg2926_q10a_VTR.dts</code>
+Then follow the regular TFTP boot method.
+
+==== WiFi ====
+WiFi had some issues //prior to Chaos Calmer//:
+
+A MAC address must be set to the single VAPs, otherwise the device may bootloop reboot. Example:
+<code>
+ config wifi-iface 
+ 	option device 'radio0'
+ 	option mode 'ap'
+ 	option encryption 'none'
+ 	option ssid 'TEST'
+ 	option network 'LAN'
+ 	option macaddr 'e8:f5:28:43:69:81'
+</code>
+You can generate one or use the documented one on the backside. You can also look at eth1
+<code>
+ # ifconfig eth0
+ eth0      Link encap:Ethernet  HWaddr F4:F5:28:73:49:16  
+ ...
+</code>
+and subtract 1 from the last field.
+=> F4:F5:28:73:49:15
+
+==== Development sources ====
+Sources are integrated into trunk since R40502 (2014-04-13).
+
+[[#sysupgrade]] was not integrated until 19.07.3, because the image format would change.
+[[http://www.ddimension.net/patches/sysupgrade.patch|Here]] is the intermediate patch.
+
+===== Hardware =====
+==== Info ====
+^ Architecture | MIPS32 (MIPS74Kc) |
+^ Target       | ar7xxx/ar9xxx  |
+^ Vendor       | ZyXEL |
+^ [[docs:techref:bootloader]]    | [[docs:techref:bootloader:uboot|U-Boot]] |
+^ [[docs:techref:hardware:soc|System-On-Chip]]  | QCA9558-AT4A Rev 2 |
+^ [[docs:techref:hardware:cpu|CPU Model]]       | QCA9558 |
+^ CPU Speed      | 720MHz |
+^ Flash size     | 16MB + 256MB |
+^ Flash Chip No1 | Macronix MX25L128 (16MB) |
+^ Flash Chip No2 | Hynix H27U2G8F2CTR-BC (256MB) |
+^ RAM size       | 256MB |
+^ RAM Chip       | Nanya NT5TU64M16GG-AC x 2 |
+^ [[docs:techref:hardware:switch]] | QCA8337 |
+^ WAN      | 1x RJ45 Gbe |
+^ Ethernet | 4x RJ45 Gbe |
+^ Wireless No1 | //SoC-integrated// QCA9558-AT4A w/ 3x3 MIMO for 2.4GHz 802.11b/g/n |
+^ Wireless No2 | QCA9880-2R4E w/ 3x3 MIMO for 5GHz 802.11a/n/ac |
+^ USB | Yes 2 x 2.0 |
+^ [[docs:techref:hardware:port.serial|Serial]] | [[#Serial|Yes (see picture below)]] |
+^ [[docs:techref:hardware:port.jtag|JTAG]]     | unknown |
+^ Buttons | power switch, on/off switch, wifi switch, 2 x USB eject button |
+^ Power | external 12V 2A |
+
+==== Photos ====
+Many interior and exterior photos: [[https://web.archive.org/web/20210920082732/http://galeria.tech-blog.pl/ZyXEL-NBG6716/]]
+{{:media:zyxel:emg2926-q10a:zyxel_emg2926-q10a-va02_case_front.png?400|Front}}
+{{:media:zyxel:emg2926-q10a:emg2926-q10a_box_rear.png?400|Back}}
+{{:media:zyxel:emg2926-q10a:emg2926-q10a_pcb_top.png?400|PCB front. Serial is between the WAN port transformer and the shield.}}
+{{:media:zyxel:emg2926-q10a:emg2926-q10a_pcb_back.png?400|PCB reverse}}
+
+==== Serial ====
+-> [[docs:techref:hardware:port.serial]] general information about the serial port, serial port cable, etc.
+
+{{media:zyxel:nbg6716_serial.jpg?600}}
+
+How to connect to the Serial Port of this specific device:
+
+The device uses TTL @ 3.3V and not a standard RS-232 Serial that operates between 3 and 15V, so do not try to connect it to a common serial adapter: you will certainly fry the serial circuit or even the whole board. There are plenty of USB to TTL and RS-232 to TTL available on the market, just be careful with the voltage: the standard is 5V and it may also damage your board. Look for the ones with 3.3V or with both voltages and a way to switch between them. Try first by leaving +3.3V disconnected as this may power the board without an actual power supply to the board. This would draw more power than a typical USB to UART converter can provide and would likely cause erratic operation.
+
+Bits per second: **115200**\\
+Data bits: **8**\\
+Parity: **None**\\
+Stop bits: **1**\\
+Flow control: **None**\\
+
+On the USB to UART converter, don't forget to reverse RX and TX lines!
+
+<code>
+PINS 
+----> Power On/Off / Wifi On/Off button side
+4 3 2 1
+<--- USB ports side
+</code>
+
+===== Bootlogs =====
+
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>U-Boot 2009.11 (Aug 07 2013 - 10:23:41)
+
+NBG6716 - Scorpion 1.0
+DRAM:  32bit ddr2 256 MB
+Flash: 16 MB
+*** Warning *** : PCIe WLAN Module not found !!!
+Net:   eth0, eth1
+NAND:  Hynix NAND 256MiB 3,3V 8-bit [256MB]
+
+
+ZyXEL zloader v1.01 (Aug 07 2013 - 10:45:52)
+Multiboot clinent version: 1.1
+could not establish link on eth0
+eth_init failed!
+### JFFS2 loading '/boot/vmlinux.lzma.uImage' to 0x80400000
+Scanning JFFS2 FS: '/boot/vmlinux.lzma.uImage' found, done
+Loading file: done
+### JFFS2 load complete: 1017958 bytes loaded to 0x80400000
+## Booting kernel from Legacy Image at 80400000 ...
+   Image Name:   MIPS OpenWrt Linux-3.3.8
+   Created:      2013-11-22   1:16:47 UTC
+   Image Type:   MIPS Linux Kernel Image (lzma compressed)
+   Data Size:    1017894 Bytes = 994 kB
+   Load Address: 80060000
+   Entry Point:  80060000
+   Verifying Checksum ... OK
+   Uncompressing Kernel Image ... OK
+
+Starting kernel ...
+
+[    0.000000] Linux version 3.3.8 (benny@U1004en) (gcc version 4.6.4 20121106 (prerelease) (Linaro GCC 4.6-2012.11) ) #1 Fri Nov 22 09:16:38 CST 2013
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU revision is: 00019750 (MIPS 74Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA9558 rev 0
+[    0.000000] Clocks: CPU:720.000MHz, DDR:600.000MHz, AHB:200.000MHz, Ref:40.000MHz
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 10000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 10000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone PFN ranges:
+[    0.000000]   Normal   0x00000000 -> 0x00010000
+[    0.000000] Movable zone start PFN for each node
+[    0.000000] Early memory PFN ranges
+[    0.000000]     0: 0x00000000 -> 0x00010000
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 65024
+[    0.000000] Kernel command line:  board=NBG6716 root=/dev/mtdblock7 rootfstype=jffs2 noinitrd zld_ver=1.01 console=ttyS0,115200 mtdparts=spi0.0:0x40000(u-boot)ro,0x10000(env)ro,0x10000(RFdata)ro,-(nbu);ath79-nand:0x200000(rootfs_data),0x200000(romd),0x100000(header),0x1E00000(rootfs),0x100000(header1),0x1E00000(rootfs1),0x200000(bu1),-(bu2) mem=256M ethaddr=FC:F5:28:D3:28:B4
+[    0.000000] PID hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 256324k/262144k available (2181k kernel code, 5820k reserved, 575k data, 176k init, 0k highmem)
+[    0.000000] SLUB: Genslabs=9, HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:83
+[    0.000000] Calibrating delay loop... 358.80 BogoMIPS (lpj=1794048)
+[    0.060000] pid_max: default: 32768 minimum: 301
+[    0.060000] Mount-cache hash table entries: 512
+[    0.070000] Initialized recycle list for cpu 0.
+[    0.070000] NET: Registered protocol family 16
+[    0.080000] gpiochip_add: registered GPIOs 0 to 23 on device: ath79
+[    0.080000] MIPS: machine is ZyXEL NBG6716
+[    0.090000] ar724x-pci ar724x-pci.0: PCIe link is down
+[    0.090000] registering PCI controller with io_map_base unset
+[    0.100000] registering PCI controller with io_map_base unset
+[    0.510000] bio: create slab <bio-0> at 0
+[    0.510000] PCI host bridge to bus 0000:00
+[    0.520000] pci_bus 0000:00: root bus resource [mem 0x10000000-0x11ffffff]
+[    0.520000] pci_bus 0000:00: root bus resource [io  0x0000]
+[    0.530000] PCI host bridge to bus 0000:01
+[    0.530000] pci_bus 0000:01: root bus resource [mem 0x12000000-0x13ffffff]
+[    0.540000] pci_bus 0000:01: root bus resource [io  0x0001]
+[    0.540000] pci 0000:01:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    0.550000] pci 0000:01:00.0: BAR 6: assigned [mem 0x12200000-0x1220ffff pref]
+[    0.550000] pci 0000:01:00.0: using irq 41 for pin 1
+[    0.560000] Switching to clocksource MIPS
+[    0.560000] NET: Registered protocol family 2
+[    0.570000] IP route cache hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.570000] TCP established hash table entries: 8192 (order: 4, 65536 bytes)
+[    0.580000] TCP bind hash table entries: 8192 (order: 3, 32768 bytes)
+[    0.580000] TCP: Hash tables configured (established 8192 bind 8192)
+[    0.590000] TCP reno registered
+[    0.590000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.600000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.600000] NET: Registered protocol family 1
+[    0.620000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.620000] JFFS2 version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.630000] msgmni has been set to 500
+[    0.640000] io scheduler noop registered
+[    0.640000] io scheduler deadline registered (default)
+[    0.650000] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.670000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11) is a 16550A
+[    0.680000] console [ttyS0] enabled, bootconsole disabled
+[    0.680000] console [ttyS0] enabled, bootconsole disabled
+[    0.690000] m25p80 spi0.0: found mx25l12805d, expected m25p80
+[    0.700000] m25p80 spi0.0: mx25l12805d (16384 Kbytes)
+[    0.700000] 4 cmdlinepart partitions found on MTD device spi0.0
+[    0.710000] Creating 4 MTD partitions on "spi0.0":
+[    0.720000] 0x000000000000-0x000000040000 : "u-boot"
+[    0.720000] 0x000000040000-0x000000050000 : "env"
+[    0.730000] 0x000000050000-0x000000060000 : "RFdata"
+[    0.730000] 0x000000060000-0x000001000000 : "nbu"
+[    0.740000] ath79-nand ath79-nand: AR71xx/AR9xxx Qualcomm-Atheros NAND FLash Controller driver, Version 1.0 (c) 2010 Atheros Communications, Ltd.
+[    0.750000] NAND device: Manufacturer ID: 0xad, Chip ID: 0xda (Hynix NAND 256MiB 3,3V 8-bit)
+[    0.760000] Bad block table found at page 131008, version 0x01
+[    0.770000] Bad block table found at page 130944, version 0x01
+[    0.780000] 8 cmdlinepart partitions found on MTD device ath79-nand
+[    0.780000] Creating 8 MTD partitions on "ath79-nand":
+[    0.790000] 0x000000000000-0x000000200000 : "rootfs_data"
+[    0.790000] 0x000000200000-0x000000400000 : "romd"
+[    0.800000] 0x000000400000-0x000000500000 : "header"
+[    0.810000] 0x000000500000-0x000002300000 : "rootfs"
+[    0.810000] mtd: partition "rootfs" set to be root filesystem
+[    0.820000] split_squashfs: no squashfs found in "ath79-nand"
+[    0.820000] 0x000002300000-0x000002400000 : "header1"
+[    0.830000] 0x000002400000-0x000004200000 : "rootfs1"
+[    0.840000] 0x000004200000-0x000004400000 : "bu1"
+[    0.840000] 0x000004400000-0x000010000000 : "bu2"
+[    0.850000] ath79-nand ath79-nand: ====== NAND Parameters ======
+[    0.850000]  total size = 0x10000000, page = 0x800 block = 0x20000 oob = 0x40
+[    1.000000] ag71xx_mdio: probed
+[    1.010000] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:RGMII
+[    1.590000] eth0: Atheros AR8337 switch driver attached.
+[    2.780000] ag71xx ag71xx.0: eth0: connected to PHY at ag71xx-mdio.0:00 [uid=004dd036, driver=Atheros AR8216/AR8236/AR8316]
+[    2.790000] eth1: Atheros AG71xx at 0xba000000, irq 5, mode:SGMII
+[    3.350000] TCP cubic registered
+[    3.350000] NET: Registered protocol family 17
+[    3.350000] 8021q: 802.1Q VLAN Support v1.8
+[    3.360000] ### of_selftest(): No testcase data in device tree; not running tests
+[    5.930000] JFFS2 notice: (1) jffs2_build_xattr_subsystem: complete building xattr subsystem, 0 of xdatum (0 unchecked, 0 orphan) and 0 of xref (0 dead, 0 orphan) found.
+[    5.950000] VFS: Mounted root (jffs2 filesystem) readonly on device 31:7.
+[    5.950000] Freeing unused kernel memory: 176k freed
+- preinit -
+Press the [f] key and hit [enter] to enter failsafe mode
+[    8.810000] eth0: link up (1000Mbps/Full duplex)
+- regular preinit -
+[   11.080000] JFFS2 notice: (531) jffs2_build_xattr_subsystem: complete building xattr subsystem, 1 of xdatum (0 unchecked, 0 orphan) and 18 of xref (0 dead, 2 orphan) found.
+[   11.280000] SCSI subsystem initialized
+[   11.340000] usbcore: registered new interface driver usbfs
+[   11.350000] usbcore: registered new interface driver hub
+[   11.360000] usbcore: registered new device driver usb
+[   11.550000] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[   11.560000] ehci-platform ehci-platform.0: Generic Platform EHCI Controller
+[   11.570000] ehci-platform ehci-platform.0: new USB bus registered, assigned bus number 1
+[   11.610000] ehci-platform ehci-platform.0: irq 48, io mem 0x1b000000
+[   11.630000] ehci-platform ehci-platform.0: USB 2.0 started, EHCI 1.00
+[   11.630000] hub 1-0:1.0: USB hub found
+[   11.640000] hub 1-0:1.0: 1 port detected
+[   11.640000] ehci-platform ehci-platform.1: Generic Platform EHCI Controller
+[   11.650000] ehci-platform ehci-platform.1: new USB bus registered, assigned bus number 2
+[   11.690000] ehci-platform ehci-platform.1: irq 49, io mem 0x1b400000
+[   11.710000] ehci-platform ehci-platform.1: USB 2.0 started, EHCI 1.00
+[   11.710000] hub 2-0:1.0: USB hub found
+[   11.720000] hub 2-0:1.0: 1 port detected
+[   11.730000] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[   11.760000] uhci_hcd: USB Universal Host Controller Interface driver
+[   11.790000] Initializing USB Mass Storage driver...
+[   11.790000] usbcore: registered new interface driver usb-storage
+[   11.800000] USB Mass Storage support registered.
+[   13.000000] JFFS2 notice: (532) check_node_data: wrong data CRC in data node at 0x00102794: read 0xa1696320, calculated 0x46204b31.
+switching to jffs2
+- init -
+[   31.960000] eth0: link down
+
+Please press Enter to activate this console. sysinit: Start preboot
+
+sysinit: Start defconfig
+
+sysinit: Start luci_fixtime
+
+sysinit: Fri Aug  9 04:23:00 UTC 2013
+
+sysinit: Start ess_info
+
+sysinit: Start boot
+
+sysinit: Start password
+
+sysinit: Changing password for root
+
+sysinit: New password: 
+
+sysinit: Retype password: 
+
+sysinit: Password for root changed by root
+
+sysinit: Start procd
+
+sysinit: Start fstab
+
+sysinit: Start network
+
+sysinit: Interface wan not found
+
+sysinit: Start wan_down
+
+sysinit: Start usb
+
+sysinit: Start wireless
+
+sysinit: phy for wifi device wifi1 not found
+
+sysinit: Start firewall
+
+sysinit: Start cron
+
+sysinit: Start dropbear
+
+sysinit: Start nat
+
+sysinit: Start proftpd
+
+sysinit: Changing password for root
+
+sysinit: New password: 
+
+sysinit: Retype password: 
+
+sysinit: Password for root changed by root
+
+sysinit: Start telnet
+
+sysinit: Start uhttpd
+
+sysinit: disable www
+
+sysinit: Start updatedd
+
+sysinit: Start luci_dhcp_migrate
+
+sysinit: Start dnsmasq
+
+sysinit: no more available dns servers !
+
+sysinit: no more available dns servers !
+
+sysinit: Start samba
+
+sysinit: Changing password for root
+
+sysinit: New password: 
+
+sysinit: Retype password: 
+
+sysinit: Password for root changed by root
+
+sysinit: Start wol
+
+sysinit: Start wan_up
+
+sysinit: Start route
+
+sysinit: Start done
+
+sysinit: Start miniupnpd
+
+sysinit: miniupnpd starting ...
+
+sysinit: Start led
+
+sysinit: Start portTrigger
+
+sysinit: Start time_daemon
+
+sysinit: Start uci2streamboost
+
+sysinit: Start watchdog
+
+sysinit: Start webstr_filter
+
+sysinit: Start wifi_scheduling
+
+sysinit: Start wifi_scheduling5G
+
+sysinit: Start wireless5G_macfilter
+
+sysinit: Start wireless_macfilter
+
+sysinit: Start streamboost
+
+sysinit:  [  OK  ] 10_p0f boot
+
+sysinit:  [  OK  ] 20_dbldae boot
+
+sysinit:  [  OK  ] 30_bwcd boot
+
+sysinit:  [  OK  ] 35_leash boot
+
+sysinit:  [  OK  ] 40_policy_engine boot
+
+sysinit:  [  OK  ] 50_drflocs boot
+
+sysinit:  [  OK  ] 55_flowcap boot
+
+sysinit:  [  OK  ] 60_ozker boot
+
+sysinit:  [  OK  ] 80_aperture boot
+
+sysinit: Start sysntpd
+
+sysinit: Start dlna
+
+sysinit: Start igmpproxy
+
+sysinit: Start sysctl
+
+sysinit: Start wan_status_monitor
+
+sysinit: Start zybootend
+
+sysinit: phy for wifi device wifi0 not found
+
+sysinit: phy for wifi device wifi1 not found
+
+sysinit: Boot finished!
+
+
+
+
+NBG6716 login: root
+Password: 
+
+
+BusyBox v1.19.4 (2013-11-22 08:50:37 CST) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+ -----------------------------------------------------
+ (r2211)
+root@NBG6716:~</nowiki>
+</WRAP>\\
+
+
+==== OpenWrt Boot Log===
+<WRAP bootlog>
+<nowiki>[    0.000000] Linux version 3.18.23 (buildbot@builder1) (gcc version 4.8.3 (OpenWrt/Linaro GCC 4.8-2014.04 r47269) ) #1 Sun Jan 31 18:23:08 CET 2016
+[    0.000000] bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 00019750 (MIPS 74Kc)
+[    0.000000] SoC: Qualcomm Atheros QCA9558 ver 1 rev 0
+[    0.000000] Determined physical RAM map:
+[    0.000000]  memory: 08000000 @ 00000000 (usable)
+[    0.000000] User-defined physical RAM map:
+[    0.000000]  memory: 10000000 @ 00000000 (usable)
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x00000000-0x0fffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x00000000-0x0fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x00000000-0x0fffffff]
+[    0.000000] On node 0 totalpages: 65536
+[    0.000000] free_area_init_node: node 0, pgdat 803c42b0, node_mem_map 81000000
+[    0.000000]   Normal zone: 512 pages used for memmap
+[    0.000000]   Normal zone: 0 pages reserved
+[    0.000000]   Normal zone: 65536 pages, LIFO batch:15
+[    0.000000] Primary instruction cache 64kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, VIPT, cache aliases, linesize 32 bytes
+[    0.000000] pcpu-alloc: s0 r0 d32768 u32768 alloc=1*32768
+[    0.000000] pcpu-alloc: [0] 0 
+[    0.000000] Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 65024
+[    0.000000] Kernel command line:  board=NBG6716 console=ttyS0,115200 mtdparts=spi0.0:256k(u-boot)ro,64k(env)ro,64k(RFdata)ro,-(nbu);ar934x-nfc:2048k(zyxel_rfsd),2048k(romd),1024k(header),2048k(kernel),-(ubi) mem=256M rootfstype=squashfs noinitrd
+[    0.000000] PID hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes)
+[    0.000000] Writing ErrCtl register=00000000
+[    0.000000] Readback ErrCtl register=00000000
+[    0.000000] Memory: 255480K/262144K available (2849K kernel code, 129K rwdata, 588K rodata, 200K init, 192K bss, 6664K reserved)
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+[    0.000000] NR_IRQS:51
+[    0.000000] Clocks: CPU:720.000MHz, DDR:600.000MHz, AHB:200.000MHz, Ref:40.000MHz
+[    0.000000] Calibrating delay loop... 358.80 BogoMIPS (lpj=1794048)
+[    0.060000] pid_max: default: 32768 minimum: 301
+[    0.060000] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.070000] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+[    0.070000] NET: Registered protocol family 16
+[    0.080000] MIPS: machine is Zyxel NBG6716
+[    0.130000] ar724x-pci ar724x-pci.0: PCIe link is down
+[    0.130000] registering PCI controller with io_map_base unset
+[    0.140000] registering PCI controller with io_map_base unset
+[    0.580000] PCI host bridge to bus 0000:00
+[    0.580000] pci_bus 0000:00: root bus resource [mem 0x10000000-0x11ffffff]
+[    0.590000] pci_bus 0000:00: root bus resource [io  0x0000]
+[    0.590000] pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+[    0.600000] pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+[    0.600000] PCI host bridge to bus 0000:01
+[    0.600000] pci_bus 0000:01: root bus resource [mem 0x12000000-0x13ffffff]
+[    0.610000] pci_bus 0000:01: root bus resource [io  0x0001]
+[    0.610000] pci_bus 0000:01: No busn resource found for root bus, will use [bus 01-ff]
+[    0.620000] pci 0000:01:00.0: [168c:003c] type 00 class 0x028000
+[    0.620000] pci 0000:01:00.0: reg 0x10: [mem 0x00000000-0x001fffff 64bit]
+[    0.620000] pci 0000:01:00.0: reg 0x30: [mem 0x00000000-0x0000ffff pref]
+[    0.620000] pci 0000:01:00.0: supports D1
+[    0.620000] pci 0000:01:00.0: PME# supported from D0 D1 D3hot
+[    0.620000] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    0.620000] pci 0000:01:00.0: BAR 0: assigned [mem 0x12000000-0x121fffff 64bit]
+[    0.620000] pci 0000:01:00.0: BAR 6: assigned [mem 0x12200000-0x1220ffff pref]
+[    0.630000] pci 0000:01:00.0: using irq 41 for pin 1
+[    0.630000] Switched to clocksource MIPS
+[    0.640000] NET: Registered protocol family 2
+[    0.640000] TCP established hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.640000] TCP bind hash table entries: 2048 (order: 1, 8192 bytes)
+[    0.650000] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.650000] TCP: reno registered
+[    0.660000] UDP hash table entries: 256 (order: 0, 4096 bytes)
+[    0.660000] UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+[    0.670000] NET: Registered protocol family 1
+[    0.670000] PCI: CLS 0 bytes, default 32
+[    0.670000] futex hash table entries: 256 (order: -1, 3072 bytes)
+[    0.700000] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.700000] jffs2: version 2.2 (NAND) (SUMMARY) (LZMA) (RTIME) (CMODE_PRIORITY) (c) 2001-2006 Red Hat, Inc.
+[    0.710000] msgmni has been set to 498
+[    0.720000] io scheduler noop registered
+[    0.720000] io scheduler deadline registered (default)
+[    0.720000] Serial: 8250/16550 driver, 16 ports, IRQ sharing enabled
+[    0.730000] console [ttyS0] disabled
+[    0.760000] serial8250.0: ttyS0 at MMIO 0x18020000 (irq = 11, base_baud = 2500000) is a 16550A
+[    0.760000] console [ttyS0] enabled
+[    0.770000] bootconsole [early0] disabled
+[    0.780000] m25p80 spi0.0: found mx25l3205d, expected m25p80
+[    0.790000] m25p80 spi0.0: mx25l3205d (4096 Kbytes)
+[    0.790000] 4 cmdlinepart partitions found on MTD device spi0.0
+[    0.800000] Creating 4 MTD partitions on "spi0.0":
+[    0.800000] 0x000000000000-0x000000040000 : "u-boot"
+[    0.810000] 0x000000040000-0x000000050000 : "env"
+[    0.810000] 0x000000050000-0x000000060000 : "RFdata"
+[    0.820000] 0x000000060000-0x000000400000 : "nbu"
+[    0.830000] nand: device found, Manufacturer ID: 0xad, Chip ID: 0xf1
+[    0.830000] nand: Hynix NAND 128MiB 3,3V 8-bit
+[    0.840000] nand: 128MiB, SLC, page size: 2048, OOB size: 64
+[    0.840000] Scanning device for bad blocks
+[    0.930000] 5 cmdlinepart partitions found on MTD device ar934x-nfc
+[    0.940000] Creating 5 MTD partitions on "ar934x-nfc":
+[    0.940000] 0x000000000000-0x000000200000 : "zyxel_rfsd"
+[    0.950000] 0x000000200000-0x000000400000 : "romd"
+[    0.950000] 0x000000400000-0x000000500000 : "header"
+[    0.960000] 0x000000500000-0x000000700000 : "kernel"
+[    0.970000] 0x000000700000-0x000008000000 : "ubi"
+[    0.980000] switch0: Atheros AR8337 rev. 2 switch registered on ag71xx-mdio.0
+[    1.070000] libphy: ag71xx_mdio: probed
+[    1.670000] ag71xx ag71xx.0: connected to PHY at ag71xx-mdio.0:00 [uid=004dd036, driver=Atheros AR8216/AR8236/AR8316]
+[    1.680000] eth0: Atheros AG71xx at 0xb9000000, irq 4, mode:RGMII
+[    2.270000] eth1: Atheros AG71xx at 0xba000000, irq 5, mode:SGMII
+[    2.270000] TCP: cubic registered
+[    2.280000] NET: Registered protocol family 17
+[    2.280000] bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+[    2.290000] Bridge firewalling registered
+[    2.300000] 8021q: 802.1Q VLAN Support v1.8
+[    2.310000] UBI: auto-attach mtd8
+[    2.310000] UBI: attaching mtd8 to ubi0
+[    3.050000] random: nonblocking pool is initialized
+[    4.170000] UBI: scanning is finished
+[    4.190000] UBI: attached mtd8 (name "ubi", size 121 MiB) to ubi0
+[    4.200000] UBI: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    4.210000] UBI: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    4.210000] UBI: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    4.220000] UBI: good PEBs: 968, bad PEBs: 0, corrupted PEBs: 0
+[    4.230000] UBI: user volume: 2, internal volumes: 1, max. volumes count: 128
+[    4.230000] UBI: max/mean erase counter: 2/1, WL threshold: 4096, image sequence number: 1807168027
+[    4.240000] UBI: available PEBs: 0, total reserved PEBs: 968, PEBs reserved for bad PEB handling: 20
+[    4.250000] UBI: background thread "ubi_bgt0d" started, PID 309
+[    4.260000] UBI: ubiblock0_0 created from ubi0:0(rootfs)
+[    4.260000] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[    4.280000] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    4.290000] Freeing unused kernel memory: 200K (803de000 - 80410000)
+[    5.100000] init: Console is alive
+[    5.100000] init: - watchdog -
+[    6.110000] init: - preinit -
+[    7.700000] eth0: link up (1000Mbps/Full duplex)
+[    9.700000] Atheros AR8216/AR8236/AR8316 ag71xx-mdio.0:00: Port 5 is up
+[    9.880000] UBIFS: background thread "ubifs_bgt0_1" started, PID 362
+[   10.260000] UBIFS: mounted UBI device 0, volume 1, name "rootfs_data"
+[   10.270000] UBIFS: LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   10.280000] UBIFS: FS size: 115802112 bytes (110 MiB, 912 LEBs), journal size 5840896 bytes (5 MiB, 46 LEBs)
+[   10.290000] UBIFS: reserved for root: 4952683 bytes (4836 KiB)
+[   10.290000] UBIFS: media format: w4/r0 (latest is w4/r0), UUID 20D68E47-23A5-46DD-9AE3-A656FED5C337, small LPT model
+[   10.300000] mount_root: overlay filesystem has not been fully initialized yet
+[   10.310000] mount_root: switching to jffs2 overlay
+[   10.450000] eth0: link down
+[   10.460000] procd: - early -
+[   10.460000] procd: - watchdog -
+[   11.260000] procd: - ubus -
+[   12.270000] procd: - init -
+[   12.980000] NET: Registered protocol family 10
+[   12.990000] ip6_tables: (C) 2000-2006 Netfilter Core Team
+[   13.000000] i2c /dev entries driver
+[   13.010000] Loading modules backported from Linux version master-2015-03-09-0-g141f155
+[   13.020000] Backport generated by backports.git backports-20150129-0-gdd4a670
+[   13.050000] cfg80211: Calling CRDA to update world regulatory domain
+[   13.050000] cfg80211: World regulatory domain updated:
+[   13.060000] cfg80211:  DFS Master region: unset
+[   13.060000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   13.070000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   13.080000] cfg80211:   (2457000 KHz - 2482000 KHz @ 20000 KHz, 92000 KHz AUTO), (N/A, 2000 mBm), (N/A)
+[   13.090000] cfg80211:   (2474000 KHz - 2494000 KHz @ 20000 KHz), (N/A, 2000 mBm), (N/A)
+[   13.100000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (N/A)
+[   13.110000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[   13.120000] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2000 mBm), (0 s)
+[   13.120000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 2000 mBm), (N/A)
+[   13.130000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 0 mBm), (N/A)
+[   13.190000] PCI: Enabling device 0000:01:00.0 (0000 -> 0002)
+[   13.190000] ath10k_pci 0000:01:00.0: pci irq legacy interrupts 0 irq_mode 0 reset_mode 0
+[   13.420000] ath10k_pci 0000:01:00.0: Direct firmware load for ath10k/cal-pci-0000:01:00.0.bin failed with error -2
+[   13.430000] ath10k_pci 0000:01:00.0: Falling back to user helper
+[   13.500000] firmware ath10k!cal-pci-0000:01:00.0.bin: firmware_loading_store: map pages failed
+[   13.720000] ath10k_pci 0000:01:00.0: otp stream is empty, using board.bin contents
+[   14.750000] ath10k_pci 0000:01:00.0: qca988x hw2.0 (0x4100016c, 0x043202ff) fw 10.2.4.45 api 4 htt 2.1 wmi 5 cal otp max_sta 128
+[   14.760000] ath10k_pci 0000:01:00.0: debug 0 debugfs 1 tracing 0 dfs 1 testmode 1
+[   14.870000] ath: EEPROM regdomain: 0x0
+[   14.870000] ath: EEPROM indicates default country code should be used
+[   14.870000] ath: doing EEPROM country->regdmn map search
+[   14.870000] ath: country maps to regdmn code: 0x3a
+[   14.870000] ath: Country alpha2 being used: US
+[   14.870000] ath: Regpair used: 0x3a
+[   14.870000] cfg80211: Calling CRDA for country: US
+[   14.870000] cfg80211: Regulatory domain changed to country: US
+[   14.880000] cfg80211:  DFS Master region: FCC
+[   14.890000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   14.890000] cfg80211:   (2402000 KHz - 2472000 KHz @ 40000 KHz), (N/A, 3000 mBm), (N/A)
+[   14.900000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2300 mBm), (N/A)
+[   14.910000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2300 mBm), (0 s)
+[   14.920000] cfg80211:   (5490000 KHz - 5730000 KHz @ 160000 KHz), (N/A, 2300 mBm), (0 s)
+[   14.930000] cfg80211:   (5735000 KHz - 5835000 KHz @ 80000 KHz), (N/A, 3000 mBm), (N/A)
+[   14.940000] cfg80211:   (57240000 KHz - 63720000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+[   14.970000] ip_tables: (C) 2000-2006 Netfilter Core Team
+[   14.990000] nf_conntrack version 0.5.0 (3995 buckets, 15980 max)
+[   15.030000] xt_time: kernel timezone is -0000
+[   15.060000] PPP generic driver version 2.4.2
+[   15.060000] NET: Registered protocol family 24
+[   15.080000] ath: EEPROM regdomain: 0x0
+[   15.080000] ath: EEPROM indicates default country code should be used
+[   15.080000] ath: doing EEPROM country->regdmn map search
+[   15.080000] ath: country maps to regdmn code: 0x3a
+[   15.080000] ath: Country alpha2 being used: US
+[   15.080000] ath: Regpair used: 0x3a
+[   15.090000] ieee80211 phy1: Selected rate control algorithm 'minstrel_ht'
+[   15.100000] ieee80211 phy1: Atheros AR9550 Rev:0 mem=0xb8100000, irq=47
+[   21.210000] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[   21.230000] device eth0.1 entered promiscuous mode
+[   21.230000] device eth0 entered promiscuous mode
+[   21.250000] IPv6: ADDRCONF(NETDEV_UP): br-lan: link is not ready
+[   21.280000] eth1: link up (1000Mbps/Full duplex)
+[   22.760000] cfg80211: Calling CRDA for country: FR
+[   22.760000] cfg80211: Regulatory domain changed to country: FR
+[   22.770000] cfg80211:  DFS Master region: ETSI
+[   22.770000] cfg80211:   (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp), (dfs_cac_time)
+[   22.780000] cfg80211:   (2402000 KHz - 2482000 KHz @ 40000 KHz), (N/A, 2000 mBm), (N/A)
+[   22.790000] cfg80211:   (5170000 KHz - 5250000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (N/A)
+[   22.800000] cfg80211:   (5250000 KHz - 5330000 KHz @ 80000 KHz, 160000 KHz AUTO), (N/A, 2000 mBm), (0 s)
+[   22.810000] cfg80211:   (5490000 KHz - 5710000 KHz @ 160000 KHz), (N/A, 2700 mBm), (0 s)
+[   22.820000] cfg80211:   (57000000 KHz - 66000000 KHz @ 2160000 KHz), (N/A, 4000 mBm), (N/A)
+[   22.910000] eth0: link up (1000Mbps/Full duplex)
+[   22.910000] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[   22.960000] br-lan: port 1(eth0.1) entered forwarding state
+[   22.960000] br-lan: port 1(eth0.1) entered forwarding state
+[   22.970000] IPv6: ADDRCONF(NETDEV_CHANGE): br-lan: link becomes ready
+[   24.780000] ath10k_pci 0000:01:00.0: otp stream is empty, using board.bin contents
+[   24.960000] br-lan: port 1(eth0.1) entered forwarding state
+[   25.890000] IPv6: ADDRCONF(NETDEV_UP): wlan0: link is not ready
+[   25.910000] device wlan0 entered promiscuous mode
+[   25.980000] IPv6: ADDRCONF(NETDEV_UP): wlan1: link is not ready
+[   25.990000] device wlan1 entered promiscuous mode
+[   25.990000] br-lan: port 3(wlan1) entered forwarding state
+[   26.000000] br-lan: port 3(wlan1) entered forwarding state
+[   26.910000] br-lan: port 3(wlan1) entered disabled state
+[   33.660000] br-lan: port 3(wlan1) entered forwarding state
+[   33.660000] br-lan: port 3(wlan1) entered forwarding state
+[   33.670000] IPv6: ADDRCONF(NETDEV_CHANGE): wlan1: link becomes ready
+[   35.660000] br-lan: port 3(wlan1) entered forwarding state
+[   47.850000] br-lan: port 2(wlan0) entered forwarding state
+[   47.850000] br-lan: port 2(wlan0) entered forwarding state
+[   47.860000] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+[   49.850000] br-lan: port 2(wlan0) entered forwarding state</nowiki>
+</WRAP>\\
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>qca9558 GigabitEthernet 4Port 2WNIC 802.11ac ath10k 802.11abgn 802.11abgn_simultan USB Serial USB2.0 2USB 256RAM 256Flash gt32Flash MIPS MIPS32 74kc}}
