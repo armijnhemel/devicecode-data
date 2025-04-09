@@ -74,7 +74,7 @@ This section deals with
   * Upload the ''initramfs-kernel.bin'' file by your preferred method to the previously determined partition. When prompted, select to boot from the newly flashed image, and reboot the switch.
   * Once OpenWrt has booted, ''scp'' the ''sysupgrade.bin'' image to ''/tmp'' and flash it thought SSH. 
     * **Note** that on older OpenWRT versions by default the device is only reachable from port 1 using VLAN 100. With OpenWRT 21.02 and newer, this VLAN is no longer necessary, also any switch port can be used to access the web interface.
-    * It may be the case, that using `scp` is not possible, as the ''openssh-sftp-server'' package is not installed by default. You may configure one switch port to a new created interface which uses DHCP and connect it to a network. Then install the package it by using ''opkg update && opkg install openssh-sftp-server''.
+    * OpenWRT does not include ''openssh-sftp-server'' by default. If your SCP client fails due to lacking an SFTP server on the device, consider using the legacy SCP protocol instead. With OpenSSH's ''scp'' this can be done by adding the ''-O'' option on the command line.
     <code>sysupgrade -n /tmp/<sysupgrade file name></code>
   * It may be necessary to restart the network (''/etc/init.d/network restart'') on the running initramfs image.
 
@@ -197,6 +197,11 @@ mtd write /tmp/xxx.abc linux && reboot
 -> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
 
 ===== Return to factory/stock firmware =====
+
+<WRAP round info 100%>
+For devices in the Zyxel GS1900 series with a serial number starting with "S21" or higher, [[https://community.zyxel.com/en/discussion/15891/recommendation-to-keep-gs1900-operating-on-v2-70-firmware|it is strongly recommended to only install stock firmware v2.70 or newer]]. An older stock firmware can irreversibly brick PoE capabilities, irrelevant of which firmware is flashed afterwards (newer stock or OpenWRT).
+</WRAP>
+
   * To boot the Zyxel firmware from the secondary/backup ROM again, you must go into U-boot mode, just like the previous procedure [[:toh:zyxel:gs1900-8hp_v1#oem_installation_using_the_tftp_method]]:
 
   * [[:toh:zyxel:gs1900-8hp_v1#serial|Connect serial]], power up the switch, interrupt U-boot by hitting the space bar, and enable the network: 
@@ -268,6 +273,48 @@ The ZyXEL GS1900-8HP has the following buttons:
 | Soft Reset    |  user   |
 
 </WRAP>
+
+==== Power over Ethernet ====
+PoE+ is enabled on all ports when the device is powered on due to the bootloader initiating the PoE microcontroller unit (MCU). This also ensures that the PoE status LEDs on the front of the device work. The MCU's state is not preserved when the device is restarted. Thus, all connected PoE devices will briefly lose power when the switch reboots.
+
+The ''realtek-poe'' package is included in OpenWrt images for this device. The included daemon (enabled by default) configures and monitors the MCU, allowing OpenWrt to manage PoE capabilities.
+
+PoE port IDs are different to network interface numbers. The PoE port IDs for this device match. So interface lan1 has PoE port ID 1, lan2 has PoE port ID 2, etc.
+
+OpenWrt's default configuration only allows the daemon to manage PoE on PoE port ID 1 (lan1). Based on information from ''/etc/board.json'', consider the following configuration in ''/etc/config/poe'':
+
+<code>
+config global
+        option budget '70'
+
+config port
+        option id '1'
+        option name 'lan1'
+        option enable '1'
+        option priority '2'
+        option poe_plus '1'
+
+config port
+        option id '2'
+        option name 'lan2'
+        option enable '1'
+        option priority '2'
+        option poe_plus '1'
+(...)
+</code>
+
+Repeat this configuration for the other ports to let them be managed by the PoE daemon. The above configuration tells the daemon to enable power output and PoE+ (802.3at) on these ports (the same state the MCU is in after a fresh boot). Only standard PoE (802.3af) is supported if PoE+ is disabled. Note that ''name'' is just a label for the PoE daemon to refer to a PoE-capable port. Making the name the same as the network interface of the relevant port makes management considerably easier.
+
+Make sure to reload the PoE daemon's configuration after making changes to the configuration. Applying changes to the total available power budget requires a restart of the daemon.
+
+PoE command cheat sheet:
+^ Action                                           ^ Command                                                                    ^
+| Restart PoE daemon                               | <code>/etc/init.d/poe restart</code>                                       |
+| Get all PoE daemon\\ capabilities                | <code>ubus -v list poe</code>                                              |
+| Reload configuration\\ from ''/etc/config/poe''  | <code>ubus call poe reload</code>                                          |
+| Current PoE status                               | <code>ubus call poe info</code>                                            |
+| Disable PoE on a\\ configured PoE port           | <code>ubus call poe manage '{ "port" : "lan1", "enable" : false }'</code>  |
+| Enable PoE on a\\ configured PoE port            | <code>ubus call poe manage '{ "port" : "lan1", "enable" : true }'</code>   |
 
 ===== Hardware =====
 ==== Info ====
