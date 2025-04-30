@@ -81,7 +81,7 @@ Power Supply                                : 12V/1.5A via barrel plug # Specifi
 Outdoor_yesno                               : No # Specified for outdoor use?
 OpenVPN performance                         : ¿ # max Mbit achievable with OpenVPN
 Wireguard performance                       : ¿ # max Mbit achievable with Wireguard
-Device Page_page                            :  # Omit https://openwrt.org/ and enter only toh:brand:brand_model_version from https://openwrt.org/toh/brand/brand_model_version
+Device Page_page                            : toh:phicomm:k2 # Omit https://openwrt.org/ and enter only toh:brand:brand_model_version from https://openwrt.org/toh/brand/brand_model_version
 Device Techdata_hidden                      : View/Edit data # ===> Mandatory, must be "View/Edit data" <===
 OWrt Forum Topic URL_urls                   :  # forum.openwrt.org/...
 Forum search_search-forums                  : K2 PSG1218 # query to search for latest forum postings related to this device, e.g. DIR-505
@@ -98,9 +98,10 @@ Installation method(s)_method-installations : unknown # CTRL+click for multisele
 Comment installation                        :  # SHORT (!) comments like "rename image to 'firmware.bin' before flashing."; Put longer explanations on the devicepage, not in the dataentry.
 Recovery method(s)_method-recoverys         : unknown # CTRL+click for multiselect
 Comment recovery                            :  # SHORT (!) comments like "rename image to 'firmware.bin' before tftp'ing."; Put longer explanations on the devicepage, not in the dataentry.
-Picture_img100s                             : media:example:genericrouter1.png # media:brand:model_general_view.jpg; Single general picture to identify the device; detail pictures to be provided on device page. How to add images: http://openwrt.org/meta/adding_images_to_openwrt_wiki
+Picture_img100s                             : media:phicomm:phicomm_k2.png # media:brand:model_general_view.jpg; Single general picture to identify the device; detail pictures to be provided on device page. How to add images: http://openwrt.org/meta/adding_images_to_openwrt_wiki
 Comments_                                   :  # Anything that is worth mentioning
 ----
+
 
 
 

@@ -33,8 +33,8 @@ FCCID_urls                                  : http://¿ # link-scheme: https://f
 Availability_availability                   : unknown 2020 # Can you buy it TODAY? -> Available <year-of-today>; DO NOT enter a year in the past!
 Where available                             : ¿ # website without http... and no deep link, just the website, eg. amazon.com. List multiple values comma separated.
 Supported Since Commit_git                  : http://¿ # https://git.openwrt.org/?p=openwrt/openwrt.git;a=commit;h=<commithash>
-Supported Since Rel_releasesince            :  # First official release (i.e. not snapshot)
-Supported Current Rel_releasecurrent        : external image # Current official release
+Supported Since Rel_releasesince            : external image # First official release (i.e. not snapshot)
+Supported Current Rel_releasecurrent        : EOL # Current official release
 Image too big_releasecurrents               :  # CTRL+click for multiselect; Report devices which can't save settings due to too big image in the OpenWrt forum.
 Unsupported Functions_unsupporteds          :  # Describe what is not supported, e.g. 'WiFi 5GHz'; list multiple values comma separated
 Gluon support_gluonsupport                  : unknown # Yes, No, Broken, unknown
@@ -49,11 +49,11 @@ Flash MB_mbflashs                           : 32 # CTRL+click for multiselect
 RAM MB_mbram                                : 256 # .
 Ethernet 100M ports_numethport              : 5 # Number of 100Mbit ethernet ports
 Ethernet 1Gbit ports_numethport             : - # Number of 1Gbit ethernet ports
-Ethernet 2.5Gbit ports_numethport           : ¿ # Number of 2.5Gbit ethernet ports
-Ethernet 5Gbit ports_numethport             : ¿ # Number of 5Gbit ethernet ports
-Ethernet 10Gbit ports_numethport            : ¿ # Number of 10Gbit ethernet ports
-SFP ports_port-sfp                          : ¿ # Number of SFP ports
-SFP+ ports_port-sfp                         : ¿ # Number of SFP+ ports
+Ethernet 2.5Gbit ports_numethport           : - # Number of 2.5Gbit ethernet ports
+Ethernet 5Gbit ports_numethport             : - # Number of 5Gbit ethernet ports
+Ethernet 10Gbit ports_numethport            : - # Number of 10Gbit ethernet ports
+SFP ports_port-sfp                          : - # Number of SFP ports
+SFP+ ports_port-sfp                         : - # Number of SFP+ ports
 Switch                                      : ¿ # e.g. Atheros AR8236
 VLAN_yesno                                  : Yes # VLAN capable?
 Modem_modem                                 : - # Select type of modem
@@ -80,7 +80,7 @@ JTAG_yesno                                  : Yes # JTAG available?
 LED count_numled                            : 6 # Number of (user configurable) LEDs
 Button count_numbutton                      : 1 # Number of (user configurable) buttons/switches (other than Power)
 GPIOs_numgpio                               : - # Number of accessible GPIOs
-Power Supply                                : 5 VDC, 1.0 A # Specifications of Power Supply (Volt, Amp) or Battery (Volt, mAh)
+Power Supply                                : 5 VDC, 1.0A # Specifications of Power Supply (Volt, Amp) or Battery (Volt, mAh)
 Outdoor_yesno                               :  # Specified for outdoor use?
 OpenVPN performance                         : ¿ # max Mbit/s achievable with OpenVPN; Pure number without Mbps!
 Wireguard performance                       : ¿ # max Mbit/s achievable with Wireguard; Pure number without Mbps!
@@ -92,7 +92,7 @@ Git search_search-gits                      : WL-WN532N2 # query to search for l
 WikiDevi URL_urls                           :  # https://wikidevi.wi-cat.ru/yourdevice
 WikiDevi ID_hwinfo-ids                      :  # Enter only <yourdevice> from https://wikidevi.wi-cat.ru/<yourdevice>
 OEM Device Homepage URL_url                 : http://www.wavlink.com/en_us/product/WL-WN532N2.html # yourbrand.com/yourdevice
-Firmware OEM Stock URL_url                  : http://www.wavlink.com/en_us/firmware/details/25cfc093ee.html # Do not link directly to the file, but rather to the download or support page. This avoids the need for updating the link with each new firmware revision.
+Firmware OEM Stock URL_url                  : https://docs.wavlink.xyz/Firmware/fm-532n2/ # Do not link directly to the file, but rather to the download or support page. This avoids the need for updating the link with each new firmware revision.
 Firmware OpenWrt Install URL_urls           :  # https://downloads.openwrt.org/.../targets/...factory.bin
 Firmware OpenWrt Upgrade URL_urls           :  # https://downloads.openwrt.org/.../targets/...sysupgrade.bin
 Firmware OpenWrt snapshot Install URL_urls  :  # https://downloads.openwrt.org/snapshots/targets/...factory.bin
@@ -104,6 +104,7 @@ Comment recovery                            :  # SHORT (!) comments like "rename
 Picture_img100s                             : media:example:genericrouter1.png # media:brand:model_general_view.jpg; Single general picture to identify the device; detail pictures to be provided on device page. How to add images: http://openwrt.org/meta/adding_images_to_openwrt_wiki
 Comments_                                   : External image = OEM firmware based on 14.07 # Anything that is worth mentioning
 ----
+
 
 
 
