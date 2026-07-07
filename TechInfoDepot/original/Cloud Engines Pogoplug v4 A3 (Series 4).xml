@@ -3,19 +3,19 @@
     <ns>0</ns>
     <id>20717</id>
     <revision>
-      <id>412912</id>
-      <parentid>401829</parentid>
-      <timestamp>2024-12-16T18:30:25Z</timestamp>
+      <id>519146</id>
+      <parentid>516696</parentid>
+      <timestamp>2026-04-25T02:41:18Z</timestamp>
       <contributor>
         <username>ShadowBot</username>
         <id>3357272</id>
       </contributor>
       <minor/>
       <comment>/* top */ clean up, replaced: hynix → SK hynix (2), SK SK hynix → SK hynix (2)</comment>
-      <origin>412912</origin>
+      <origin>519146</origin>
       <model>wikitext</model>
       <format>text/x-wiki</format>
-      <text bytes="6574" sha1="rankfqd9j7lwe5bj7wy4gew79xp0z71" xml:space="preserve">{{Infobox Embedded System
+      <text bytes="10857" sha1="cahksj6fq83i971su4jiy9rnmcc7l08" xml:space="preserve">{{Infobox Embedded System
 |image1             = &lt;!-- Image filename --&gt;
 |image1_size        = &lt;!-- Image size, ex.150px --&gt;
 |caption            = &lt;!-- tagline --&gt;
@@ -59,13 +59,13 @@
 |flash1type         = NAND
 |fla1_num           = &lt;!-- 1,2,3,4 --&gt;
 |fla1chip           = SK hynix;H27U1G8F2BTR;
-|flash1size         = 128
+|flash1size         = 128 MiB
 |flash1maxsize      = &lt;!-- Maximum size firmware can be in bytes --&gt;
 
 |ram1type           = &lt;!-- DDR,DDR2,DDR3,DDR4, --&gt;
 |ram1type1          = &lt;!-- SO-DIMM,SDRAM, --&gt;
 |ram1spd            = &lt;!-- RAM speed --&gt;
-|ram1size           = 128
+|ram1size           = 128 MiB
 |ram1chip           = SK hynix;H5PS1G63EFR;
 |ram1_num           = &lt;!-- Number of Ram chips --&gt;
 |nvramsize          = &lt;!-- 32, 60, 64, etc... in kb, Leave blank for unknown --&gt;
@@ -156,20 +156,160 @@ USB 3.0 / xHCI Host Controller;Fresco Logic;FL1009;;1;,,,
 |techdata                  = https://openwrt.org/toh/hwdata/cloud_engines/pogoplug_pogoplug_v4
 |wikipage                  = https://openwrt.org/toh/cloud_engines/pogoplug_v4
 |forumpage                 = 
-|forumpage2                = 
-|forumpage3                = 
 |github                    = 
 |target                    = kirkwood
 |subtarget                 = generic
 |arch                      = arm_xscale
+|support_commit_id         = c19f811c4d732f634ac18f33ae95e954ac9e8c81
 |support_started_version   = 18.06.0
-|current_supported_version = &lt;!-- auto --&gt;
+|current_supported_version = 24.10.4
+|last_supported_version    = 
+|image_too_big             = 
 |unsupportedfuncntions     = 
-|comment                   = 
+|lan_hardware              = 
+|lan_comment               = 
+|wlan_hardware             = none
+|wlan_comment              = 
+|usb_sata_comment          = Serial, see devicepage
+|inst_method               = serial access + bootloader replacement required
+|inst_comment              = 
+|rec_method                = see git-commit
+|rec_comment               = serial + kwboot
+|comment                   = The "eject" button on the back is used as "reset" button
 }}
-Please insert instructions here
+This device supports the (linux-only) kwboot tool to send
+a new uboot over serial console, so it is easy to unbrick
+in case the uboot is erased and the device won't boot.
+
+&lt;pre&gt;-----
+Install instructions:
+-----
+Since it's not possible to get ssh access to these
+devices, the only way to take control is to
+solder pins to get TTL serial access.
+
+Case can be opened by removing screws beneath two rubber
+feet at back of device, then lifting while prying the
+sides of the upper part out to unhook a latch on each
+side about 2/3rds of the way toward the front.
+
+Serial connection pins are those labeled "J11", left
+of SD as you face SD opening.
+Pins are (from left to right, i.e. the first in the list
+is the nearest to the SD slot) GND, Rx, Tx.
+Do not connect +V pin if you use a USB (self-powered)
+TTL-to-USB dongle. Any USB TTL-to-USB converter will work.
+Baud rate is 115200, parity "none", databits "8",
+flow control "none".
+
+Stock uboot is unable to read ubi partitions (nor usb)
+so we will replace it first with our uboot.
+
+Start a TFTP server at IP address 169.254.254.254, and
+place the uboot.kwb file in the folder of the server.
+
+Start the serial session and then power up the device.
+
+As soon as you see text on the serial start pressing random
+letter keys to stop the boot process.
+
+If you see something like the following line you can proceed:
+
+CE&gt;&gt;
+
+Otherwise if text is still scrolling by you missed the
+opportunity, pull the plug and try again.
+
+write
+
+printenv ethaddr
+
+The uboot will write something like this:
+
+ethaddr=00:50:43:00:02:02
+
+This is the device's MAC address, also present in the sticker
+under the device.
+
+Write this down as we will need to add it in the
+new uboot configuration.
+
+Use the following commands to load the new uboot:
+
+tftp 0x20000 u-boot.kwb
+
+If the uboot confirms that the transfer was successful,
+then you can write it to flash with the following commands:
+
+nand erase 0 0x200000
+nand write 0x20000 0 0x1c0000
+
+if after the last command the uboot wrote
+"xxxx bytes written: OK"
+then it was written correctly and we can proceed.
+
+If it did not go well, try again or ask assistence in forums.
+Shutting down or rebooting at this time will brick
+the device, to unbrick it you will need to use the kwboot
+tool from a Linux PC or Virtual Machine.
+
+Now write:
+
+reset
+
+and press enter, the device will reboot and you should see
+again text scrolling by.
+Press a random key to stop it, and now you should see
+
+pogoplugv4&gt;
+
+We now add the MAC address back, write:
+
+setenv ethaddr '00:50:43:00:02:02'
+
+Confirm that the uboot has understood by writing
+
+printenv ethaddr
+
+If all looks ok, save the setting with
+
+saveenv
+
+At this point the uboot is configured, and we only need to load
+the firmware in the flash memory.
+
+Follow the steps below in "Firmware recovery procedure".
+
+----
+Firmware recovery procedure
+----
+The new uboot allows easy recovery from a bad firmware upgrade
+where you can't access the device anymore over ssh or luci.
+
+Take a USB flash drive formatted as FAT32, and copy the
+initramfs image file in it (it will have "initramfs" in the
+file name), then rename it as "initramfs.bin".
+
+Insert the USB drive in the USB 2.0 port of the pogoplug
+(the port at the top).
+
+Power up the device, and wait for it to finish booting.
+
+The uboot should find and load the "initramfs.bin"
+from usb and if you are connected with serial you should
+see the linux kernel boot log (text scrolling by).
+Once it is done, press Enter and you will be greeted by
+the OpenWRT banner.
+
+If you were not connected with serial just wait a bit and,
+you will be able to access it with ssh or luci web interface
+(once you find its IP).
+
+The recovery "initramfs" images are run from RAM, so you will
+have to do a normal sysupgrade (firmware upgrade) to write
+a firmware image to flash memory.&lt;/pre&gt;
 
 [[Category:English Documentation]]</text>
-      <sha1>rankfqd9j7lwe5bj7wy4gew79xp0z71</sha1>
+      <sha1>cahksj6fq83i971su4jiy9rnmcc7l08</sha1>
     </revision>
   </page>
